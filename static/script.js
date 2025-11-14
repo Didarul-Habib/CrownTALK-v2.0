@@ -1,117 +1,158 @@
 // ------------------------------------------------------
-// CrownTALK vFinal - Premium Frontend Logic
+// CrownTALK v2.0 — Gold Aura Engine
+// Handles batching, API calls, UI rendering & copying
 // ------------------------------------------------------
 
 const generateBtn = document.getElementById("generateBtn");
-const urlInput = document.getElementById("urlInput");
-const progressBox = document.getElementById("progressBox");
-const resultsBox = document.getElementById("results");
-const copyAllBtn = document.getElementById("copyAllBtn");
+const inputBox = document.getElementById("linksInput");
+const resultsDiv = document.getElementById("results");
+const statusBox = document.getElementById("statusBox");
 
-// Helper: Sleep
-function sleep(ms) {
-    return new Promise(resolve => setTimeout(resolve, ms));
+const API_URL = "https://flask-twitter-api.onrender.com/comment";
+
+// Delay helper
+const sleep = (ms) => new Promise((resolve) => setTimeout(resolve, ms));
+
+// Clean status
+function setStatus(msg) {
+    statusBox.textContent = msg;
 }
 
-// Typing animation effect
-function typeEffect(text) {
-    progressBox.innerText = "";
-    let i = 0;
-
-    let typer = setInterval(() => {
-        progressBox.innerText = text.substring(0, i);
-        i++;
-        if (i > text.length) clearInterval(typer);
-    }, 18);
+// Clear UI
+function clearResults() {
+    resultsDiv.innerHTML = "";
 }
 
-// Main event
-generateBtn.addEventListener("click", async () => {
-    const rawInput = urlInput.value.trim();
+// Copy button logic
+function copyText(text, btn) {
+    navigator.clipboard.writeText(text).then(() => {
+        btn.textContent = "Copied!";
+        btn.style.background = "rgba(0,255,120,0.35)";
+        setTimeout(() => {
+            btn.textContent = "Copy";
+            btn.style.background = "rgba(255,200,60,0.2)";
+        }, 1200);
+    });
+}
 
-    if (!rawInput) {
-        alert("Paste at least one tweet link.");
+// Render a full tweet block
+function renderResultBlock(url, comments) {
+    const block = document.createElement("div");
+    block.className = "result-block";
+
+    const link = document.createElement("div");
+    link.className = "result-url";
+    link.textContent = url;
+
+    block.appendChild(link);
+
+    // If error returned
+    if (typeof comments === "string") {
+        const errorLine = document.createElement("div");
+        errorLine.className = "comment-line";
+        errorLine.textContent = comments;
+        block.appendChild(errorLine);
+        resultsDiv.appendChild(block);
         return;
     }
 
-    // Clean and split URLs
-    const urls = rawInput
-        .split("\n")
-        .map(u => u.trim())
-        .filter(u => u.length > 0);
+    // Render each comment
+    comments.forEach((comment) => {
+        const line = document.createElement("div");
+        line.className = "comment-line";
 
-    if (urls.length === 0) {
-        alert("No valid tweet links found.");
-        return;
-    }
+        const textDiv = document.createElement("div");
+        textDiv.textContent = comment;
 
-    // Reset UI
-    resultsBox.innerHTML = "";
-    progressBox.classList.remove("hidden");
-    typeEffect("Starting CrownTALK engine…");
-    copyAllBtn.classList.add("hidden");
+        const copyBtn = document.createElement("button");
+        copyBtn.className = "copy-btn";
+        copyBtn.textContent = "Copy";
+        copyBtn.onclick = () => copyText(comment, copyBtn);
+
+        line.appendChild(textDiv);
+        line.appendChild(copyBtn);
+        block.appendChild(line);
+    });
+
+    resultsDiv.appendChild(block);
+}
+
+// Fetch comments for 1–2 tweet URLs
+async function processBatch(batchLinks, batchIndex, totalBatches) {
+    setStatus(`Processing batch ${batchIndex} of ${totalBatches} — please wait…`);
 
     try {
-        await sleep(400);
-
-        typeEffect("Processing tweets… preparing batches…");
-
-        const response = await fetch("/process", {
+        const response = await fetch(API_URL, {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ urls })
+            body: JSON.stringify({ tweets: batchLinks }),
         });
+
+        if (!response.ok) {
+            batchLinks.forEach((url) => {
+                renderResultBlock(url, "⚠️ The comment generator is temporarily unavailable. Try again shortly.");
+            });
+            return;
+        }
 
         const data = await response.json();
 
-        progressBox.classList.add("hidden");
-
-        // Build combined text for copy-all
-        let finalText = "";
-
-        data.results.forEach((item, i) => {
-            const card = document.createElement("div");
-            card.className =
-                "resultCard fadeUpAnim cardLift";
-
-            if (item.error) {
-                card.innerHTML = `
-                    <p class="text-yellow-400 font-bold goldUnderline">
-                        🔗 ${item.url}
-                    </p>
-                    <p class="mt-3 text-red-400">${item.error}</p>
-                `;
-            } else {
-                card.innerHTML = `
-                    <p class="text-yellow-400 font-bold goldUnderline">
-                        🔗 ${item.url}
-                    </p>
-                    <p class="mt-3">${item.comment1}</p>
-                    <p class="mt-1">${item.comment2}</p>
-                `;
-
-                finalText += `${item.comment1}\n${item.comment2}\n\n`;
+        // Render results per tweet
+        batchLinks.forEach((url, i) => {
+            if (!data.results || !data.results[i]) {
+                renderResultBlock(url, "⚠️ Could not fetch this tweet (private or deleted)");
+                return;
             }
 
-            resultsBox.appendChild(card);
+            const obj = data.results[i];
+
+            if (obj.error) {
+                renderResultBlock(url, `⚠️ ${obj.error}`);
+            } else {
+                renderResultBlock(url, obj.comments);
+            }
         });
 
-        // Enable copy-all
-        copyAllBtn.classList.remove("hidden");
-
-        copyAllBtn.onclick = () => {
-            navigator.clipboard.writeText(finalText);
-            copyAllBtn.innerText = "Copied!";
-            copyAllBtn.classList.add("copyPulse");
-
-            setTimeout(() => {
-                copyAllBtn.classList.remove("copyPulse");
-                copyAllBtn.innerText = "Copy All Comments";
-            }, 1500);
-        };
-
     } catch (err) {
-        progressBox.classList.remove("hidden");
-        progressBox.innerHTML = `<span class="text-red-400">⚠️ Something went wrong. Try again.</span>`;
+        batchLinks.forEach((url) => {
+            renderResultBlock(url, "⚠️ The comment generator is temporarily unavailable.");
+        });
     }
+}
+
+generateBtn.addEventListener("click", async () => {
+    clearResults();
+
+    const raw = inputBox.value.trim();
+    if (!raw) return setStatus("Please enter at least one tweet URL.");
+
+    const links = raw
+        .split("\n")
+        .map((x) => x.trim())
+        .filter((x) => x.length > 5);
+
+    if (links.length === 0) {
+        return setStatus("Please enter valid tweet URLs.");
+    }
+
+    setStatus("Starting…");
+
+    // Split into batches of 2 (TweetAPI C requirement)
+    let batches = [];
+    for (let i = 0; i < links.length; i += 2) {
+        batches.push(links.slice(i, i + 2));
+    }
+
+    const totalBatches = batches.length;
+
+    for (let i = 0; i < totalBatches; i++) {
+        await processBatch(batches[i], i + 1, totalBatches);
+
+        if (i < totalBatches - 1) {
+            setStatus("Waiting 10–12 seconds before next batch…");
+            await sleep(11000);
+        }
+    }
+
+    setStatus("✅ All comments generated successfully.");
 });
