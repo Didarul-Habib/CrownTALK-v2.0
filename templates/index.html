@@ -3,41 +3,41 @@
 <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CrownTALK v2.0</title>
+    <title>CrownTALK v2.5 — Neon Edition</title>
 
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 
 <body>
 
-    <!-- Logo -->
-    <div class="logo-container">
-        <img src="/static/logo.png" alt="CrownTALK Logo">
-    </div>
+    <!-- Floating Neon Aura Background -->
+    <div class="neon-bg"></div>
 
-    <!-- Title -->
-    <div class="title">CrownTALK v2.0</div>
-    <div class="subtitle">Humanlike comment engine powered by CrownDEX 👑</div>
+    <!-- Header -->
+    <header class="header">
+        <img src="/static/logo.png" class="logo" alt="CrownTALK Logo">
+        <h1 class="title">CrownTALK v2.5</h1>
+        <p class="subtitle">Futuristic humanlike reply engine powered by CrownDEX 👑</p>
+    </header>
 
-    <!-- Main UI Card -->
-    <div class="card">
+    <!-- Main Card -->
+    <section class="main-card">
+        <label for="tweetInput" class="label">Paste X links (one per line):</label>
 
-        <label for="tweetInput" style="font-weight:600; font-size:16px;">
-            Paste X links (one per line):
-        </label>
+        <textarea 
+            id="tweetInput" 
+            class="tweet-input" 
+            placeholder="https://x.com/username/status/12345"></textarea>
 
-        <textarea id="tweetInput" placeholder="https://x.com/username/status/12345"></textarea>
+        <button id="generateBtn" class="generate-btn">Generate Replies</button>
 
-        <button id="generateBtn">Generate Replies</button>
+        <p id="statusArea" class="status-area"></p>
+    </section>
 
-        <div id="statusArea" class="status-msg"></div>
+    <!-- Results -->
+    <section id="resultsContainer" class="results"></section>
 
-    </div>
-
-    <!-- CONTAINER FOR GENERATED COMMENTS -->
-    <div id="resultsContainer"></div>
-
-    <div class="footer">© 2025 CrownDEX — All rights reserved.</div>
+    <footer class="footer">© 2025 CrownDEX — All rights reserved.</footer>
 
     <script src="/static/script.js"></script>
 </body>
