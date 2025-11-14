@@ -1,209 +1,224 @@
-/* -----------------------------------------
-   GLOBAL BASE
------------------------------------------- */
+/* -----------------------------------------------------
+   CrownTALK v2.0 — Gold Aura Animated Theme
+   Built for Koyeb / Flask
+--------------------------------------------------------*/
 
-html, body {
+/* ------------ GLOBAL RESET ------------ */
+* {
     margin: 0;
     padding: 0;
-    background: #000000;
-    color: #f2f2f2;
-    font-family: 'Inter', sans-serif;
-    scroll-behavior: smooth;
+    box-sizing: border-box;
+    font-family: "Inter", sans-serif;
+    color: #eaeaea;
 }
 
-/* Smooth Scrolling */
-* {
-    scrollbar-width: thin;
-    scrollbar-color: #9a4dff #000;
+body {
+    background: radial-gradient(circle at top, #0f1624, #05060a 55%);
+    min-height: 100vh;
+    padding-bottom: 60px;
 }
 
-/* Chrome scrollbar */
-::-webkit-scrollbar {
-    width: 8px;
-}
-::-webkit-scrollbar-track {
-    background: #000;
-}
-::-webkit-scrollbar-thumb {
-    background: #9a4dff;
-    border-radius: 4px;
+/* ------------ HERO SECTION ------------ */
+.hero {
+    text-align: center;
+    margin-top: 50px;
+    margin-bottom: 30px;
 }
 
-/* -----------------------------------------
-   BRAND ANIMATIONS
------------------------------------------- */
-
-/* Crown drop animation */
-@keyframes crownDrop {
-    0% { transform: translateY(-38px) rotate(-6deg); opacity: 0; }
-    100% { transform: translateY(0) rotate(0deg); opacity: 1; }
-}
-
-/* Gold shimmer */
-@keyframes shimmer {
-    0% { opacity: 0.6; }
-    50% { opacity: 1; }
-    100% { opacity: 0.6; }
-}
-
-/* Purple typing pulse */
-@keyframes typingPulse {
-    0% { opacity: 0.25; }
-    50% { opacity: 1; }
-    100% { opacity: 0.25; }
-}
-
-.typingPulse {
-    animation: typingPulse 1s infinite ease-in-out;
-}
-
-/* Fade up for result cards */
-@keyframes fadeUp {
-    0% { opacity: 0; transform: translateY(16px); }
-    100% { opacity: 1; transform: translateY(0); }
-}
-
-.fadeUpAnim {
-    animation: fadeUp 0.55s ease-out forwards;
-}
-
-/* -----------------------------------------
-   GLOW EFFECTS
------------------------------------------- */
-
-.goldGlow {
-    box-shadow: 0 0 15px rgba(245, 197, 66, 0.5);
-}
-
-.purpleGlow {
-    box-shadow: 0 0 14px rgba(154, 77, 255, 0.85);
-}
-
-.purpleOutline {
-    outline: 2px solid rgba(154, 77, 255, 0.6);
-}
-
-/* -----------------------------------------
-   BUTTON ENHANCEMENTS
------------------------------------------- */
-
-.glowButton {
-    transition: all 0.25s ease-in-out;
-    transform: translateZ(0);
-}
-
-.glowButton:hover {
-    filter: brightness(1.15);
-    box-shadow: 0 0 18px rgba(245, 197, 66, 0.7),
-                0 0 30px rgba(154, 77, 255, 0.5);
-    transform: scale(1.015);
-}
-
-.glowButton:active {
-    transform: scale(0.98);
-}
-
-/* Copy-all haptic feedback feel */
-.copyPulse {
-    animation: copyPulse 0.5s ease-out;
-}
-
-@keyframes copyPulse {
-    0% { transform: scale(1); }
-    50% { transform: scale(1.06); }
-    100% { transform: scale(1); }
-}
-
-/* -----------------------------------------
-   INPUT + TEXTAREA CUSTOMIZATION
------------------------------------------- */
-
-textarea {
-    resize: none;
-    background: #0c0c0c !important;
-    border-color: #9a4dff !important;
-    color: #f2f2f2 !important;
-}
-
-textarea:focus {
-    border-color: #bf81ff !important;
-    box-shadow: 0 0 10px rgba(154,77,255,0.8);
-}
-
-/* -----------------------------------------
-   RESULT CARD SPECIAL EFFECTS
------------------------------------------- */
-
-.resultCard {
-    border: 2px solid #f5c542;
-    background: #000;
-    border-radius: 14px;
-    box-shadow: 0 0 14px rgba(245, 197, 66, 0.4),
-                0 0 26px rgba(154, 77, 255, 0.3);
-    padding: 18px;
-}
-
-/* Gold underline hover effect */
-.goldUnderline {
+.logo-container {
+    width: 140px;
+    height: 140px;
+    margin: auto;
     position: relative;
 }
 
-.goldUnderline::after {
-    content: "";
-    position: absolute;
-    left: 0;
-    bottom: -3px;
-    width: 0;
-    height: 2px;
-    background: #f5c542;
-    transition: 0.25s ease;
-}
-
-.goldUnderline:hover::after {
+.logo-img {
     width: 100%;
+    height: 100%;
+    filter: drop-shadow(0 0 15px rgba(255, 180, 0, 0.45));
+    animation: float 3.3s ease-in-out infinite;
 }
 
-/* -----------------------------------------
-   HEADER MICRO-PARTICLES (subtle)
------------------------------------------- */
-
-.headerParticles {
+/* Gold Aura Glow Behind Crown */
+.crown-glow {
     position: absolute;
-    top: 0;
-    left: 0;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    width: 160px;
+    height: 160px;
+    border-radius: 50%;
+    background: radial-gradient(
+        circle,
+        rgba(255, 196, 0, 0.55),
+        rgba(255, 196, 0, 0.1),
+        transparent
+    );
+    animation: auraPulse 2.8s linear infinite;
+    filter: blur(25px);
+}
+
+@keyframes auraPulse {
+    0% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+    50% { transform: translate(-50%, -50%) scale(1.18); opacity: 0.45; }
+    100% { transform: translate(-50%, -50%) scale(1); opacity: 0.9; }
+}
+
+@keyframes float {
+    0%, 100% { transform: translateY(0); }
+    50% { transform: translateY(-12px); }
+}
+
+.title {
+    font-size: 38px;
+    font-weight: 800;
+    color: #f8b600;
+    text-shadow: 0 0 18px rgba(255, 185, 0, 0.65);
+    margin-top: 10px;
+}
+
+.title span {
+    color: #5ab9ff;
+}
+
+.subtitle {
+    margin-top: 6px;
+    font-size: 15px;
+    opacity: 0.75;
+}
+
+/* ------------ MAIN INPUT BOX ------------ */
+.main-box {
+    width: 90%;
+    max-width: 700px;
+    margin: 25px auto;
+    padding: 25px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 14px;
+    backdrop-filter: blur(10px);
+    box-shadow: 0 0 25px rgba(0, 0, 0, 0.4),
+                inset 0 0 12px rgba(255, 185, 0, 0.15);
+    animation: fadeIn 0.8s ease forwards;
+}
+
+@keyframes fadeIn {
+    from { opacity: 0; transform: translateY(8px); }
+    to { opacity: 1; transform: translateY(0); }
+}
+
+.input-label {
+    font-size: 18px;
+    margin-bottom: 8px;
+    display: block;
+}
+
+textarea {
     width: 100%;
-    height: 140px;
-    pointer-events: none;
-    background-image:
-        radial-gradient(circle at 20% 30%, rgba(154,77,255,0.18) 0, transparent 50%),
-        radial-gradient(circle at 80% 20%, rgba(245,197,66,0.15) 0, transparent 60%),
-        radial-gradient(circle at 50% 80%, rgba(154,77,255,0.12) 0, transparent 55%);
-    background-size: cover;
+    height: 160px;
+    padding: 12px 14px;
+    border-radius: 8px;
+    background: #111824;
+    border: 1px solid #2a3550;
+    resize: none;
+    outline: none;
+    font-size: 15px;
+    line-height: 1.5;
+    color: #e9eef5;
+    transition: 0.25s;
 }
 
-/* -----------------------------------------
-   SMOOTH HOVER CARD LIFT
------------------------------------------- */
-
-.cardLift {
-    transition: transform 0.25s ease, box-shadow 0.25s ease;
+textarea:focus {
+    border-color: #f7bf3c;
+    box-shadow: 0 0 12px rgba(255, 200, 60, 0.4);
 }
 
-.cardLift:hover {
-    transform: translateY(-4px);
-    box-shadow: 0 0 19px rgba(245, 197, 66, 0.55),
-                0 0 26px rgba(154, 77, 255, 0.45);
+#generateBtn {
+    margin-top: 15px;
+    width: 100%;
+    padding: 15px;
+    background: linear-gradient(to right, #f8b600, #ffdd87);
+    color: #000;
+    font-weight: 700;
+    border-radius: 8px;
+    border: none;
+    cursor: pointer;
+    transition: 0.25s;
+    font-size: 17px;
 }
 
-/* -----------------------------------------
-   MOBILE RESPONSIVE TWEAKS
------------------------------------------- */
+#generateBtn:hover {
+    transform: scale(1.03);
+    box-shadow: 0 0 14px rgba(255, 200, 60, 0.6);
+}
 
-@media (max-width: 600px) {
-    h1 {
-        font-size: 2.2rem !important;
-    }
-    .resultCard {
-        padding: 14px;
-    }
+.status-box {
+    margin-top: 12px;
+    font-size: 15px;
+    color: #72baff;
+    text-align: center;
+    animation: pulseText 1.5s infinite;
+}
+
+@keyframes pulseText {
+    0% { opacity: 0.5; }
+    50% { opacity: 1; }
+    100% { opacity: 0.5; }
+}
+
+/* ------------ RESULTS ------------ */
+#results {
+    width: 90%;
+    max-width: 700px;
+    margin: 25px auto;
+}
+
+.result-block {
+    background: #0f1a2c;
+    border-left: 4px solid #f8b600;
+    padding: 16px;
+    border-radius: 10px;
+    margin-bottom: 22px;
+    box-shadow: 0 0 18px rgba(0, 0, 0, 0.35);
+    animation: fadeIn 0.6s ease forwards;
+}
+
+.result-url {
+    font-size: 15px;
+    color: #5ab9ff;
+    margin-bottom: 8px;
+    word-break: break-all;
+}
+
+/* Each comment line */
+.comment-line {
+    padding: 8px 10px;
+    background: rgba(255, 255, 255, 0.03);
+    border-radius: 6px;
+    margin-top: 6px;
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+}
+
+.copy-btn {
+    background: rgba(255, 200, 60, 0.2);
+    border: 1px solid rgba(255, 185, 0, 0.6);
+    padding: 3px 8px;
+    border-radius: 6px;
+    font-size: 13px;
+    cursor: pointer;
+    transition: 0.2s;
+}
+
+.copy-btn:hover {
+    background: rgba(255, 200, 60, 0.35);
+    transform: scale(1.05);
+}
+
+/* ------------ FOOTER ------------ */
+footer {
+    text-align: center;
+    margin-top: 40px;
+    opacity: 0.6;
+    font-size: 13px;
 }
