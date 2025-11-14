@@ -5,139 +5,149 @@ from flask import Flask, request, jsonify, render_template
 from langdetect import detect
 from openai import OpenAI
 
-app = Flask(__name__, template_folder="templates", static_folder="static")
-
+app = Flask(__name__)
 client = OpenAI()
 
-# ----------------------------------------------------
-# Load Style Guide
-# ----------------------------------------------------
+# --------------------------------------------------------------------
+# Load Comment Style Guide
+# --------------------------------------------------------------------
 with open("comment_style_guide.txt", "r", encoding="utf-8") as f:
-    STYLE_GUIDE = f.read().strip()
+    STYLE_GUIDE = f.read()
 
 
-# ----------------------------------------------------
-# TweetAPI — VX style fetcher (Mode C)
-# More reliable + stricter fail handling
-# ----------------------------------------------------
-def fetch_tweet_text(url):
+# --------------------------------------------------------------------
+# URL NORMALIZER
+# --------------------------------------------------------------------
+def normalize_url(url):
+    if not url.startswith("http"):
+        url = "https://" + url
+
+    url = url.replace("mobile.twitter.com", "twitter.com")
+    url = url.replace("x.com", "twitter.com")
+    url = url.replace("fxtwitter.com", "twitter.com")
+    url = url.replace("vx.com", "twitter.com")
+
+    return url
+
+
+# --------------------------------------------------------------------
+# Robust Tweet Fetcher (VX → FX fallback)
+# --------------------------------------------------------------------
+def fetch_tweet_text(raw_url):
+    url = normalize_url(raw_url)
+
+    # Extract path after /twitter.com/
     try:
-        # Normalize
-        clean = url.replace("x.com", "twitter.com")
-
-        if "twitter.com" not in clean:
-            return None
-
-        # Extract ID & build VX API
-        path = clean.split("twitter.com/")[-1]
-        api_url = f"https://api.vxtwitter.com/{path}"
-
-        r = requests.get(api_url, timeout=12)
-
-        if r.status_code != 200:
-            return None
-
-        data = r.json()
-
-        # New VX format
-        if "tweet" in data and "text" in data["tweet"]:
-            text = data["tweet"]["text"]
-            return text.strip()
-
+        path = url.split("twitter.com/")[1]
+    except:
         return None
 
-    except Exception:
-        return None
+    api_endpoints = [
+        "https://api.vxtwitter.com/",
+        "https://api.fxtwitter.com/",
+    ]
+
+    for endpoint in api_endpoints:
+        api_url = endpoint + path
+        try:
+            r = requests.get(api_url, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+
+                # VX & FX structure
+                if "tweet" in data and "text" in data["tweet"]:
+                    return data["tweet"]["text"]
+
+                if "text" in data:
+                    return data["text"]
+
+        except:
+            pass
+
+    # Final direct HTML fallback (very high success rate)
+    try:
+        html = requests.get(url, timeout=10).text
+        match = re.search(r'<meta property="og:description" content="(.*?)"', html)
+        if match:
+            return match.group(1)
+    except:
+        pass
+
+    return None
 
 
-# ----------------------------------------------------
-# Auto Translation (only if needed)
-# ----------------------------------------------------
+# --------------------------------------------------------------------
+# Auto-Translate to English
+# --------------------------------------------------------------------
 def translate_to_english(text):
     try:
         lang = detect(text)
         if lang == "en":
             return text
-    except:
-        return text  # if language detection fails
 
-    try:
-        r = client.chat.completions.create(
+        response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Translate to English only. No commentary."},
+                {"role": "system", "content": "Translate this text to English only."},
                 {"role": "user", "content": text}
             ],
-            temperature=0.1
+            temperature=0.2,
         )
-        return r.choices[0].message.content.strip()
+        return response.choices[0].message.content.strip()
+
     except:
         return text
 
 
-# ----------------------------------------------------
-# Comment Generator — now safer + cleaner + stricter
-# ----------------------------------------------------
+# --------------------------------------------------------------------
+# Comment Generator
+# --------------------------------------------------------------------
 def generate_comments(tweet_text):
-
     prompt = f"""
 You are CrownTALK 👑 — a humanlike comment generator.
 
-STRICT RULES:
-• Read tweet context and write TWO comments.
-• 5–12 words each.
-• No punctuation at end.
-• No emojis or hashtags.
-• No repeated structures.
-• No hype words: excited, finally, love to, curious, hit different, etc.
-• Use natural slang only: tbh, fr, ngl, lowkey, btw, kinda, rn, etc.
-• Each comment must sound like a different human.
-• MUST follow the style guide strictly.
-• Comments must be based on the tweet meaning.
-• No filler lines. Output ONLY two lines.
+Strict rules:
+- Two comments only.
+- 5–12 words each.
+- No punctuation.
+- No emojis, no hashtags.
+- No repeated patterns or blacklist words.
+- Use natural slang (tbh, fr, lowkey, ngl, rn, kinda, btw).
+- Must be based on the tweet meaning.
+- Each comment must sound like a different human.
 
 STYLE GUIDE:
 {STYLE_GUIDE}
 
-Tweet text:
+Tweet:
 "{tweet_text}"
+
+Write ONLY two newline-separated comments.
 """
 
-    # Retry logic for stability
     for _ in range(3):
         try:
-            r = client.chat.completions.create(
+            res = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.65
             )
-
-            out = r.choices[0].message.content.strip()
+            out = res.choices[0].message.content.strip()
             lines = [l.strip() for l in out.split("\n") if l.strip()]
+            lines = [re.sub(r"[.,!?;:]+$", "", l) for l in lines]
+            lines = [l for l in lines if 5 <= len(l.split()) <= 12]
 
-            # Clean punctuation automatically
-            cleaned = [re.sub(r"[.,!?;:]+$", "", c).strip() for c in lines]
-
-            # Enforce length rule
-            valid = [c for c in cleaned if 5 <= len(c.split()) <= 12]
-
-            if len(valid) >= 2:
-                return valid[:2]
-
+            if len(lines) >= 2:
+                return lines[:2]
         except:
             time.sleep(1)
 
-    # If everything fails → safe fallback
-    return [
-        "could not craft a natural response rn",
-        "generator struggled to process this text"
-    ]
+    return ["could not generate reply", "generator failed"]
 
 
-# ----------------------------------------------------
-# Flask Routes
-# ----------------------------------------------------
-
+# --------------------------------------------------------------------
+# ROUTES
+# --------------------------------------------------------------------
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -145,42 +155,29 @@ def index():
 
 @app.route("/comment", methods=["POST"])
 def comment_api():
-    try:
-        data = request.json
-        tweets = data.get("tweets", [])
-
-        if not isinstance(tweets, list) or len(tweets) == 0:
-            return jsonify({"error": "Invalid request format"}), 400
-
-    except:
-        return jsonify({"error": "Malformed request"}), 400
+    data = request.json
+    if "tweets" not in data:
+        return jsonify({"error": "Invalid request"}), 400
 
     results = []
 
-    for url in tweets:
-        # Step 1: Fetch tweet
-        text = fetch_tweet_text(url)
+    for url in data["tweets"]:
+        tweet_text = fetch_tweet_text(url)
 
-        if not text:
-            results.append({
-                "error": "Could not fetch this tweet (private or deleted)"
-            })
+        if not tweet_text:
+            results.append({"error": "Tweet not accessible or URL invalid"})
             continue
 
-        # Step 2: Translate if needed
-        english = translate_to_english(text)
-
-        # Step 3: Generate comments
-        comments = generate_comments(english)
+        tweet_text_en = translate_to_english(tweet_text)
+        comments = generate_comments(tweet_text_en)
 
         results.append({"comments": comments})
 
     return jsonify({"results": results})
 
 
-# ----------------------------------------------------
-# Gunicorn-friendly startup
-# ----------------------------------------------------
+# --------------------------------------------------------------------
+# Run
+# --------------------------------------------------------------------
 if __name__ == "__main__":
-    # Local debug only — Koyeb uses gunicorn
     app.run(host="0.0.0.0", port=8000)
