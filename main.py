@@ -1,204 +1,159 @@
-import os
 import re
 import time
-import random
 import requests
-from flask import Flask, render_template, request, jsonify
+from flask import Flask, request, jsonify, render_template
+from langdetect import detect
 from openai import OpenAI
 
-app = Flask(__name__, template_folder="templates")
+app = Flask(__name__)
 
-client = OpenAI(api_key=os.getenv("OPENAI_API_KEY"))
+client = OpenAI()
 
-# -------------------------------------------------------
-# 🔥 BLACKLIST (your rules + AI pattern blockers)
-# -------------------------------------------------------
-BLACKLIST = {
-    "finally", "curious", "love", "loving", "love to",
-    "feels like", "excited", "is wild", "hit different",
-    "game changer", "insane", "iconic", "masterpiece",
-    "huge w", "massive w", "phenomenal", "incredible",
-    "beautiful", "well said", "impressive", "stunning",
-    "amazing work", "this aged well", "this goes crazy",
-    "this slaps", "no way", "this blew my mind",
-    "interesting perspective", "well articulated",
-    "insightful", "truly", "definitely", "pretty",
-    "overall", "amazing", "incredible", "great"
-}
+# ---------------------------------------------
+# Load Comment Style Guide
+# ---------------------------------------------
+with open("comment_style_guide.txt", "r", encoding="utf-8") as f:
+    STYLE_GUIDE = f.read()
 
-# -------------------------------------------------------
-# 🔥 SLANG POOL (medium → high)
-# -------------------------------------------------------
-SLANG = [
-    "fr", "ngl", "tbh", "lowkey", "kinda", "btw",
-    "no lie", "rn", "for real", "bro", "man",
-    "real talk", "not gonna lie", "honestly",
-    "deadass", "lowkey feels", "idk tho"
-]
 
-# -------------------------------------------------------
-# 🔥 Extract tweet ID from URL
-# -------------------------------------------------------
-def extract_tweet_id(url):
-    clean = url.split("?")[0]
-    match = re.search(r"/status/(\d+)", clean)
-    return match.group(1) if match else None
+# ---------------------------------------------
+# Tweet Fetcher (TweetAPI: C Mode - VX Style)
+# ---------------------------------------------
+def fetch_tweet_text(url):
+    api_url = "https://api.vxtwitter.com/" + url.split("twitter.com/")[-1].split("x.com/")[-1]
 
-# -------------------------------------------------------
-# 🔥 Fetch tweet text using vx → fx → fallback
-# -------------------------------------------------------
-def fetch_tweet_content(tweet_id):
-    endpoints = [
-        f"https://api.vxtwitter.com/{tweet_id}",
-        f"https://api.fxtwitter.com/{tweet_id}"
-    ]
-
-    for endpoint in endpoints:
-        try:
-            r = requests.get(endpoint, timeout=8)
-            if r.status_code == 200:
-                data = r.json()
-                if "text" in data:
-                    return data["text"]
-        except:
-            continue
-
-    # Fallback scraper (super lightweight)
     try:
-        r = requests.get(f"https://cdn.fxtwitter.com/{tweet_id}", timeout=8)
-        if r.status_code == 200:
-            text = r.text
-            cleaned = re.sub("<.*?>", "", text)
-            return cleaned[:280]  # limit to tweet length
+        r = requests.get(api_url, timeout=10)
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+
+        if "tweet" in data and "text" in data["tweet"]:
+            return data["tweet"]["text"]
+
+        return None
     except:
-        pass
+        return None
 
-    return None
 
-# -------------------------------------------------------
-# 🔥 Generate 2 human-like comments
-# -------------------------------------------------------
+# ---------------------------------------------
+# Auto-Translate to English
+# ---------------------------------------------
+def translate_to_english(text):
+    try:
+        lang = detect(text)
+        if lang == "en":
+            return text
+
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {
+                    "role": "system",
+                    "content": "Translate this text to English. Only output the translation."
+                },
+                {"role": "user", "content": text}
+            ],
+            temperature=0.2,
+        )
+
+        return response.choices[0].message.content.strip()
+
+    except:
+        return text  # fallback
+
+
+# ---------------------------------------------
+# Comment Generator
+# ---------------------------------------------
 def generate_comments(tweet_text):
-    # Remove blacklisted words from context to avoid influence
-    safe_text = tweet_text
-    for bad in BLACKLIST:
-        safe_text = safe_text.replace(bad, "")
-
-    slang_sample = random.sample(SLANG, k=3)
-
     prompt = f"""
-You are CrownTALK 👑 — a medium-edgy, humorous, human-like commenter.
-Generate **two** short comments for this tweet:
+You are CrownTALK 👑 — a humanlike comment generator.
 
-Tweet: "{safe_text}"
+Follow these strict rules:
+- Read the tweet context and write two natural comments.
+- 5–12 words each.
+- No punctuation at the end.
+- No emojis, hashtags, or repeated patterns.
+- Use natural slang (tbh, fr, ngl, lowkey, btw, kinda, etc).
+- Avoid ALL blacklist words and phrases from the style guide.
+- Comments must sound like different humans.
+- No identical openings.
+- No hype words like “finally”, “excited”, “love to”, “hit different”, etc.
+- Must be based on the actual tweet meaning.
+- Output EXACTLY two lines of text with no labels.
 
-RULES:
-- 5 to 12 words each
-- No punctuation (no . , ! ?)
-- No emojis
-- No hashtags
-- No blacklisted phrases
-- Avoid AI patterns or generic hype
-- Vary tone naturally
-- Use slang naturally (e.g. {', '.join(slang_sample)})
-- Make both comments DIFFERENT styles
-- Must be based on the tweet context
-- NO repeated structure
-- NO overhype words
-- Humor allowed
+STYLE GUIDE:
+{STYLE_GUIDE}
 
-OUTPUT:
-Write the two comments on separate lines. No labels.
+Tweet content:
+"{tweet_text}"
+
+Return ONLY the two comments. No extra text.
 """
 
-    for _ in range(3):  # retry Safe
+    for _ in range(3):  # retry loop
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.78,
+                temperature=0.65,
             )
 
-            raw = response.choices[0].message["content"].strip()
-            lines = [l.strip() for l in raw.split("\n") if l.strip()]
+            output = response.choices[0].message.content.strip()
+            lines = output.split("\n")
 
-            # Enforce EXACT 2 comments
+            # clean
+            lines = [re.sub(r"[.,!?;:]+$", "", l).strip() for l in lines]
+            lines = [l for l in lines if len(l.split()) >= 5 and len(l.split()) <= 12]
+
             if len(lines) >= 2:
-                c1, c2 = lines[0], lines[1]
+                return lines[:2]
 
-                # Remove punctuation again (double safety)
-                c1 = re.sub(r"[^\w\s]", "", c1)
-                c2 = re.sub(r"[^\w\s]", "", c2)
-
-                # Word count enforcement
-                if 5 <= len(c1.split()) <= 12 and 5 <= len(c2.split()) <=12:
-                    return c1, c2
-
-        except Exception as e:
+        except:
             time.sleep(1)
 
-    return "couldnt craft comment rn", "try again in a sec"
+    return ["could not generate reply", "generator failed to produce output"]
 
-# -------------------------------------------------------
-# 🔥 ROUTE: Home Page
-# -------------------------------------------------------
+
+# ---------------------------------------------
+# ROUTES
+# ---------------------------------------------
+
 @app.route("/")
 def index():
     return render_template("index.html")
 
-# -------------------------------------------------------
-# 🔥 ROUTE: Process tweet links
-# -------------------------------------------------------
-@app.route("/process", methods=["POST"])
-def process():
-    data = request.json
-    urls = data.get("urls", [])
 
-    if not urls:
-        return jsonify({"error": "No URLs provided"}), 400
+@app.route("/comment", methods=["POST"])
+def comment_api():
+    data = request.json
+
+    if "tweets" not in data or not isinstance(data["tweets"], list):
+        return jsonify({"error": "Invalid request format"}), 400
 
     results = []
-    batch_size = 2
-    total_batches = (len(urls) + batch_size - 1) // batch_size
 
-    for batch_index in range(total_batches):
-        batch = urls[batch_index * batch_size : (batch_index + 1) * batch_size]
+    for url in data["tweets"]:
+        tweet_text = fetch_tweet_text(url)
 
-        for url in batch:
-            tweet_id = extract_tweet_id(url)
-            if not tweet_id:
-                results.append({
-                    "url": url,
-                    "error": "Invalid tweet link"
-                })
-                continue
+        if not tweet_text:
+            results.append({"error": "Could not fetch this tweet (private or deleted)"})
+            continue
 
-            tweet_text = fetch_tweet_content(tweet_id)
-            if not tweet_text:
-                results.append({
-                    "url": url,
-                    "error": "Could not fetch tweet (private/deleted)"
-                })
-                continue
+        # auto-translate
+        tweet_text_en = translate_to_english(tweet_text)
 
-            c1, c2 = generate_comments(tweet_text)
-            results.append({
-                "url": url,
-                "comment1": c1,
-                "comment2": c2
-            })
-
-            # Cooldown between tweets
-            time.sleep(random.uniform(2, 3))
-
-        # Delay between batches
-        if batch_index < total_batches - 1:
-            time.sleep(random.uniform(10, 12))
+        # generate comments
+        comments = generate_comments(tweet_text_en)
+        results.append({"comments": comments})
 
     return jsonify({"results": results})
 
-# -------------------------------------------------------
-# 🔥 GUNICORN ENTRY
-# -------------------------------------------------------
+
+# ---------------------------------------------
+# Run
+# ---------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
