@@ -7,39 +7,54 @@
     <link rel="stylesheet" href="/static/style.css" />
 </head>
 
-<body class="dark-theme">
+<body class="theme-purple">
 
-    <!-- Floating Logo -->
-    <div class="floating-logo">
-        <img src="/static/logo.png" alt="CrownTALK Logo">
+    <!-- THEME SELECTOR -->
+    <div class="theme-selector">
+        <select id="themeSwitcher">
+            <option value="purple" selected>🌌 Purple Neon</option>
+            <option value="midnight">🌑 Midnight Dark</option>
+            <option value="gold">✨ Royal Gold</option>
+            <option value="light">🌤 Soft Light</option>
+        </select>
     </div>
 
-    <!-- Theme Toggle -->
-    <button id="themeToggle" class="theme-toggle">🌙</button>
+    <!-- Centered Logo -->
+    <header>
+        <img src="/static/logo.png" class="main-logo" alt="CrownTALK Logo">
+        <h1 class="title">CrownTALK</h1>
+        <p class="subtitle">Humanlike Twitter Comments • Powered by CrownDEX 👑</p>
+    </header>
 
-    <div class="container">
-        <header class="header">
-            <img src="/static/logo.png" class="main-logo" alt="CrownTALK Logo">
-            <h1 class="title">CrownTALK</h1>
-            <p class="subtitle">Humanlike Twitter Comments • Powered by CrownDEX 👑</p>
-        </header>
+    <main>
 
-        <section class="input-section">
-            <label for="tweetInput">Paste Tweet Links Below</label>
-            <textarea id="tweetInput" placeholder="Paste X/Twitter links here..."></textarea>
+        <!-- INPUT BOX -->
+        <label class="input-label">Paste Tweet Links Below</label>
 
-            <button id="generateBtn" class="primary-btn">Generate Replies</button>
-            <button id="stopBtn" class="stop-btn hidden">Stop</button>
+        <textarea
+            id="tweetInput"
+            placeholder="https://x.com/user/status/12345"
+        ></textarea>
 
-            <p id="batchStatus" class="batch-status"></p>
-        </section>
+        <button id="generateBtn" class="btn-main">Generate Replies</button>
+        <button id="stopBtn" class="btn-stop hidden">Stop</button>
 
-        <section id="results"></section>
+        <p id="statusMessage" class="status-message"></p>
 
-        <footer class="footer">
-            © 2025 CrownDEX • All rights reserved.
-        </footer>
-    </div>
+        <!-- RESULTS -->
+        <div id="resultsContainer"></div>
+
+        <!-- FAILED LINKS -->
+        <div id="retrySection" class="retry-section hidden">
+            <h3>⚠ Failed Links</h3>
+            <ul id="retryList"></ul>
+        </div>
+
+    </main>
+
+    <footer>
+        <p>© 2025 CrownDEX • All rights reserved.</p>
+    </footer>
 
     <script src="/static/script.js"></script>
 </body>
