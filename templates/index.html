@@ -7,10 +7,9 @@
     <link rel="stylesheet" href="/static/style.css">
     <link rel="icon" type="image/png" href="/static/logo.png">
 </head>
-
 <body>
 
-    <!-- 🌟 Animated Aura Logo Block -->
+    <!-- HERO / LOGO SECTION -->
     <div class="hero">
         <div class="logo-container">
             <img src="/static/logo.png" class="logo-img" alt="CrownTALK Logo">
@@ -21,25 +20,21 @@
         <p class="subtitle">Humanlike comment engine powered by CrownDEX 👑</p>
     </div>
 
-
-    <!-- 🌐 Input Box -->
+    <!-- INPUT AREA -->
     <div class="main-box">
         <label class="input-label">Paste X links (one per line):</label>
-        <textarea id="tweetInput" placeholder="https://x.com/example/status/12345"></textarea>
+        <textarea id="linksInput" placeholder="https://x.com/example/status/12345&#10;https://twitter.com/example/status/67890"></textarea>
 
-        <button id="generateBtn" onclick="generateReplies()">Generate Replies</button>
+        <button id="generateBtn">Generate Replies</button>
 
-        <div id="statusBox" class="status-box" style="display:none;">
-            <span id="statusText">Processing...</span>
+        <div id="statusBox" class="status-box" style="display:block;">
+            Waiting for input…
         </div>
     </div>
 
-
-    <!-- 📝 Results Area -->
+    <!-- RESULTS -->
     <div id="results"></div>
 
-
-    <!-- Footer -->
     <footer>
         CrownTALK v2.0 — Built by CrownDEX © 2025  
     </footer>
