@@ -1,191 +1,233 @@
 /* --------------------------------------------------
-   CrownTALK v2.0 — Royal Purple Premium Theme
-   -------------------------------------------------- */
+   GLOBAL THEME — CrownTALK Premium Dark (Black + Purple)
+-------------------------------------------------- */
 
-/* MAIN BACKGROUND — deep black to dark purple gradient */
-body {
+* {
     margin: 0;
     padding: 0;
-    background: radial-gradient(circle at top, #1a0033 0%, #000000 70%);
+    box-sizing: border-box;
+    user-select: none;
     font-family: 'Inter', sans-serif;
-    color: #f2f2f2;
+}
+
+body {
+    background: radial-gradient(circle at top, #1a132b 0%, #0c0c0f 60%, #020204 100%);
+    color: #f8f8f8;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    padding-bottom: 60px;
+    min-height: 100vh;
+}
+
+/* --------------------------------------------------
+   HEADER + LOGO
+-------------------------------------------------- */
+
+.logo-container {
     text-align: center;
-}
-
-/* Smooth fade animation */
-.fadeIn {
-    animation: fadeIn 0.45s ease-in-out;
-}
-@keyframes fadeIn {
-    from { opacity: 0; transform: translateY(6px); }
-    to { opacity: 1; transform: translateY(0); }
-}
-
-/* LOGO */
-#logo {
-    width: 160px;
     margin-top: 40px;
-    filter: drop-shadow(0 0 12px rgba(125, 0, 255, 0.35));
-}
-
-/* TITLE */
-h1 {
-    font-size: 42px;
-    margin: 10px 0 3px 0;
-    background: linear-gradient(90deg, #ffd76a, #ffffff, #a478ff);
-    -webkit-background-clip: text;
-    color: transparent;
-    filter: drop-shadow(0 0 10px rgba(115, 0, 255, 0.25));
-}
-
-/* SUBTITLE */
-.subtitle {
-    color: #bcbcbc;
-    font-size: 15px;
-    margin-bottom: 45px;
-}
-
-/* MAIN PANEL */
-.main-box {
-    width: 70%;
-    max-width: 900px;
-    margin: auto;
-    padding: 30px;
-    border-radius: 18px;
-
-    /* Glass dark panel */
-    background: rgba(20, 0, 35, 0.55);
-    backdrop-filter: blur(12px);
-    border: 1px solid rgba(150, 80, 255, 0.18);
-    box-shadow: 0 0 25px rgba(100, 0, 180, 0.25);
-}
-
-/* TEXTAREA */
-textarea {
-    width: 96%;
-    height: 200px;
-    padding: 15px;
-    border-radius: 10px;
-    resize: vertical;
-    border: 1px solid #4b1a86;
-    background: #0e001a;
-    color: #e5d6ff;
-    font-size: 15px;
-    outline: none;
-    transition: 0.2s;
-}
-
-textarea:focus {
-    border-color: #9b5cff;
-    box-shadow: 0 0 10px rgba(155, 92, 255, 0.4);
-}
-
-/* BUTTON */
-button {
-    width: 60%;
-    max-width: 350px;
-    padding: 16px;
-    margin-top: 20px;
-    border: none;
-    border-radius: 12px;
-
-    background: linear-gradient(90deg, #ffcc4d, #ffb800);
-    color: #1a1a1a;
-    font-size: 18px;
-    font-weight: 600;
-    cursor: pointer;
-    transition: 0.25s;
-}
-
-button:hover {
-    transform: translateY(-2px);
-    box-shadow: 0 0 16px rgba(255, 200, 0, 0.45);
-}
-
-/* STATUS LINE */
-#statusLine {
-    margin-top: 15px;
-    color: #bfb6ff;
-    font-size: 15px;
-}
-
-/* TWEET RESULT BLOCK */
-.tweet-block {
-    width: 70%;
-    max-width: 900px;
-    margin: 25px auto;
-    padding: 18px;
-    border-radius: 14px;
-    text-align: left;
-
-    background: rgba(28, 0, 48, 0.55);
-    border: 1px solid rgba(155, 92, 255, 0.22);
-    box-shadow: 0 0 18px rgba(120, 0, 255, 0.25);
-}
-
-/* ERROR BLOCK */
-.error-block {
-    border: 1px solid rgba(255, 95, 95, 0.35) !important;
-    background: rgba(70, 0, 0, 0.45) !important;
-    box-shadow: 0 0 18px rgba(255, 40, 40, 0.25) !important;
-}
-
-/* TWEET URL */
-.tweet-url {
-    font-size: 15px;
-    font-weight: 600;
-    color: #d8c4ff;
     margin-bottom: 10px;
 }
 
-/* COMMENT LINES */
-.comment-line {
-    padding: 10px 0;
-    font-size: 15.5px;
-    color: #f1eaff;
-    display: flex;
-    justify-content: space-between;
-    align-items: center;
+.logo-container img {
+    width: 150px;
+    height: 150px;
+    filter: drop-shadow(0 0 22px rgba(147, 85, 255, 0.25));
+    animation: logoFloat 4.5s ease-in-out infinite;
 }
 
-/* COPY BUTTON */
-.copy-btn {
-    padding: 6px 12px;
-    border: none;
-    border-radius: 8px;
-    font-size: 13px;
+@keyframes logoFloat {
+    0% { transform: translateY(0px); }
+    50% { transform: translateY(-5px); }
+    100% { transform: translateY(0px); }
+}
 
-    background: #5c24a3;
-    color: #ffeaff;
+/* --------------------------------------------------
+   TITLE
+-------------------------------------------------- */
+
+.title {
+    font-size: 46px;
+    font-weight: 700;
+    letter-spacing: 1.2px;
+    color: #e7d9ff;
+    text-shadow: 0px 0px 18px rgba(158, 86, 255, 0.45);
+    margin-bottom: 6px;
+}
+
+.subtitle {
+    font-size: 14px;
+    opacity: 0.7;
+    margin-bottom: 35px;
+}
+
+/* --------------------------------------------------
+   MAIN CARD
+-------------------------------------------------- */
+
+.card {
+    width: 88%;
+    max-width: 900px;
+    padding: 35px;
+    background: rgba(16, 12, 24, 0.72);
+    border-radius: 18px;
+    backdrop-filter: blur(14px);
+    border: 1px solid rgba(147, 85, 255, 0.25);
+
+    box-shadow:
+        0 0 25px rgba(147, 85, 255, 0.15),
+        inset 0 0 20px rgba(147, 85, 255, 0.05);
+}
+
+/* --------------------------------------------------
+   TEXTAREA
+-------------------------------------------------- */
+
+textarea {
+    width: 100%;
+    height: 260px;
+    padding: 15px;
+    font-size: 15px;
+
+    background: rgba(34, 25, 52, 0.35);
+    border: 1px solid rgba(147, 85, 255, 0.35);
+
+    outline: none;
+    border-radius: 10px;
+    color: #f1eaff;
+
+    resize: none;
+    line-height: 1.5;
+
+    box-shadow:
+        inset 0 0 15px rgba(147, 85, 255, 0.1),
+        0 0 15px rgba(147, 85, 255, 0.15);
+}
+
+textarea:focus {
+    border-color: #b388ff;
+    box-shadow: 0 0 20px rgba(147, 85, 255, 0.28);
+}
+
+/* --------------------------------------------------
+   BUTTON
+-------------------------------------------------- */
+
+button {
+    width: 100%;
+    margin-top: 20px;
+    padding: 16px;
+    background: linear-gradient(90deg, #f0c46c, #eab64d);
+    color: #000;
+    font-size: 18px;
+    font-weight: 600;
+
+    border-radius: 12px;
+    border: none;
     cursor: pointer;
-    transition: 0.25s;
+
+    transition: 0.25s ease;
+    box-shadow: 0 0 15px rgba(240, 196, 108, 0.28);
+}
+
+button:hover {
+    transform: scale(1.03);
+    box-shadow: 0 0 25px rgba(240, 196, 108, 0.55);
+}
+
+/* --------------------------------------------------
+   RESULT BOXES
+-------------------------------------------------- */
+
+.result-block {
+    width: 88%;
+    max-width: 900px;
+    padding: 20px;
+    margin-top: 22px;
+    background: rgba(22, 17, 34, 0.75);
+    border-radius: 14px;
+
+    border: 1px solid rgba(147, 85, 255, 0.25);
+    box-shadow:
+        0 0 20px rgba(147, 85, 255, 0.15),
+        inset 0 0 10px rgba(147, 85, 255, 0.08);
+}
+
+/* tweet link text */
+.result-block .tweet-link {
+    font-weight: 600;
+    margin-bottom: 14px;
+    color: #c9b6ff;
+}
+
+/* comment text lines */
+.comment-line {
+    padding: 12px;
+    margin: 8px 0;
+
+    background: rgba(255, 255, 255, 0.05);
+    border-left: 4px solid #ac82ff;
+    border-radius: 8px;
+
+    font-size: 15px;
+}
+
+/* --------------------------------------------------
+   COPY BUTTON
+-------------------------------------------------- */
+
+.copy-btn {
+    float: right;
+    margin-top: -40px;
+    margin-right: 5px;
+
+    background: rgba(147, 85, 255, 0.2);
+    border: 1px solid rgba(147, 85, 255, 0.4);
+
+    color: #e6d9ff;
+    padding: 5px 10px;
+    border-radius: 6px;
+    cursor: pointer;
+
+    transition: 0.2s ease;
 }
 
 .copy-btn:hover {
-    background: #8b39ff;
-    box-shadow: 0 0 10px rgba(140, 0, 255, 0.35);
+    background: rgba(147, 85, 255, 0.35);
+    transform: scale(1.05);
 }
 
-.copy-btn.copied {
-    background: #ffd653 !important;
-    color: #1a1a1a !important;
+/* --------------------------------------------------
+   STATUS MESSAGE / BATCH INFO
+-------------------------------------------------- */
+
+.status-msg {
+    margin-top: 18px;
+    opacity: 0.75;
+    font-size: 13px;
+    text-align: center;
 }
 
-/* DIVIDER */
-.divider {
-    margin-top: 12px;
-    height: 1px;
-    background: rgba(200, 140, 255, 0.25);
+/* --------------------------------------------------
+   FOOTER
+-------------------------------------------------- */
+
+.footer {
+    margin-top: 40px;
+    font-size: 13px;
+    opacity: 0.4;
 }
 
-/* MOBILE RESPONSIVE */
-@media (max-width: 768px) {
-    .main-box,
-    .tweet-block {
-        width: 90%;
+/* --------------------------------------------------
+   RESPONSIVE
+-------------------------------------------------- */
+
+@media (max-width: 600px) {
+    textarea {
+        height: 200px;
     }
-
-    button {
-        width: 80%;
+    .title {
+        font-size: 34px;
     }
 }
