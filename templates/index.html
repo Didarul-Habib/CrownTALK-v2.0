@@ -1,43 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
     <title>CrownTALK v2.0</title>
-    <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" type="image/png" href="/static/logo.png">
+
+    <link rel="stylesheet" href="/static/style.css" />
 </head>
+
 <body>
 
-    <!-- HERO / LOGO SECTION -->
-    <div class="hero">
-        <div class="logo-container">
-            <img src="/static/logo.png" class="logo-img" alt="CrownTALK Logo">
-            <div class="crown-glow"></div>
-        </div>
-
-        <h1 class="title">CrownTALK <span>v2.0</span></h1>
-        <p class="subtitle">Humanlike comment engine powered by CrownDEX 👑</p>
+    <!-- Logo -->
+    <div class="logo-container">
+        <img src="/static/logo.png" alt="CrownTALK Logo">
     </div>
 
-    <!-- INPUT AREA -->
-    <div class="main-box">
-        <label class="input-label">Paste X links (one per line):</label>
-        <textarea id="linksInput" placeholder="https://x.com/example/status/12345&#10;https://twitter.com/example/status/67890"></textarea>
+    <!-- Title -->
+    <div class="title">CrownTALK v2.0</div>
+    <div class="subtitle">Humanlike comment engine powered by CrownDEX 👑</div>
+
+    <!-- Main UI Card -->
+    <div class="card">
+
+        <label for="tweetInput" style="font-weight:600; font-size:16px;">
+            Paste X links (one per line):
+        </label>
+
+        <textarea id="tweetInput" placeholder="https://x.com/username/status/12345"></textarea>
 
         <button id="generateBtn">Generate Replies</button>
 
-        <div id="statusBox" class="status-box" style="display:block;">
-            Waiting for input…
-        </div>
+        <div id="statusArea" class="status-msg"></div>
+
     </div>
 
-    <!-- RESULTS -->
-    <div id="results"></div>
+    <!-- CONTAINER FOR GENERATED COMMENTS -->
+    <div id="resultsContainer"></div>
 
-    <footer>
-        CrownTALK v2.0 — Built by CrownDEX © 2025  
-    </footer>
+    <div class="footer">© 2025 CrownDEX — All rights reserved.</div>
 
     <script src="/static/script.js"></script>
 </body>
