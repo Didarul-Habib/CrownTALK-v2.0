@@ -1,188 +1,103 @@
-// -------------------------------------------------------------
-// CrownTALK Frontend Engine — Premium Edition
-// -------------------------------------------------------------
+let stopRequested = false;
 
-const inputBox = document.getElementById("tweetInput");
+const input = document.getElementById("tweetInput");
 const generateBtn = document.getElementById("generateBtn");
+const stopBtn = document.getElementById("stopBtn");
+const resultsContainer = document.getElementById("results");
 const batchStatus = document.getElementById("batchStatus");
-const resultsContainer = document.getElementById("resultsContainer");
-const backToTop = document.getElementById("backToTop");
+const themeToggle = document.getElementById("themeToggle");
 
-// -------------------------------------------------------------
-// BACK TO TOP BUTTON
-// -------------------------------------------------------------
-window.addEventListener("scroll", () => {
-    backToTop.style.display = window.scrollY > 600 ? "block" : "none";
-});
-
-backToTop.addEventListener("click", () => {
-    window.scrollTo({ top: 0, behavior: "smooth" });
-});
-
-// -------------------------------------------------------------
-// CLEAN & NORMALIZE URL
-// -------------------------------------------------------------
-function cleanURL(url) {
-    if (!url) return "";
-    url = url.trim();
-
-    url = url.replace("mobile.twitter.com", "x.com");
-    url = url.replace("twitter.com", "x.com");
-    url = url.replace("vxtwitter.com", "x.com");
-    url = url.replace("fxtwitter.com", "x.com");
-
-    if (!url.startsWith("http")) {
-        url = "https://" + url;
-    }
-    return url.split("?")[0];
+/* ---------------- CLEAN LINK FUNCTION ---------------- */
+function cleanLink(url) {
+    if (!url.includes("x.com") && !url.includes("twitter.com")) return null;
+    return url.split("?")[0].trim();
 }
 
-// -------------------------------------------------------------
-// COPY COMMENT
-// -------------------------------------------------------------
-function copyComment(element, text) {
-    navigator.clipboard.writeText(text).then(() => {
-        element.classList.add("copied");
-        setTimeout(() => element.classList.remove("copied"), 800);
-    });
-}
+/* ---------------- THEME TOGGLE ---------------- */
+themeToggle.onclick = () => {
+    document.body.classList.toggle("light-theme");
+    document.body.classList.toggle("dark-theme");
+};
 
-// -------------------------------------------------------------
-// RENDER RESULT CARD
-// -------------------------------------------------------------
-function renderResultCard(url, comments, error = null) {
-    const card = document.createElement("div");
-    card.className = "result-card";
+/* ---------------- STOP GENERATION ---------------- */
+stopBtn.onclick = () => {
+    stopRequested = true;
+    batchStatus.textContent = "🛑 Generation stopped.";
+};
 
-    if (error) {
-        card.innerHTML = `
-            <span class="tweet-link">${url}</span>
-            <div style="color:#ff9696; font-size:0.95rem;">⚠️ ${error}</div>
-        `;
-        resultsContainer.appendChild(card);
+/* ---------------- MAIN PROCESS ---------------- */
+generateBtn.onclick = async () => {
+    stopRequested = false;
+    resultsContainer.innerHTML = "";
+    batchStatus.textContent = "";
+
+    let links = input.value.split("\n").map(cleanLink).filter(Boolean);
+    links = [...new Set(links)]; // remove duplicates
+
+    if (links.length === 0) {
+        alert("No valid tweet links found.");
         return;
     }
 
-    let commentHTML = "";
-    comments.forEach((c) => {
-        commentHTML += `
-            <div class="comment-row">
-                <span class="comment-text">${c}</span>
-                <div class="copy-btn" title="Copy">
-                    <svg width="17" height="17" viewBox="0 0 24 24" fill="#f7d67c">
-                        <path d="M16 1H4c-1.1 0-2 .9-2 2v14h2V3h12V1zm3 4H8c-1.1 0-2 .9-2 2v14
-                                 c0 1.1.9 2 2 2h11c1.1 0 2-.9 2-2V7c0-1.1-.9-2-2-2zm0 
-                                 16H8V7h11v14z"/>
-                    </svg>
-                </div>
-            </div>
-        `;
-    });
+    generateBtn.classList.add("hidden");
+    stopBtn.classList.remove("hidden");
 
-    card.innerHTML = `
-        <span class="tweet-link">${url}</span>
-        ${commentHTML}
-    `;
+    const batches = [];
+    for (let i = 0; i < links.length; i += 2) {
+        batches.push(links.slice(i, i + 2));
+    }
 
-    // Attach copy events
-    card.querySelectorAll(".copy-btn").forEach((btn, index) => {
-        btn.addEventListener("click", () => {
-            copyComment(btn, comments[index]);
-        });
-    });
+    for (let i = 0; i < batches.length; i++) {
+        if (stopRequested) break;
 
-    resultsContainer.appendChild(card);
+        batchStatus.textContent = `⚙ Processing batch ${i + 1} of ${batches.length} — please wait...`;
 
-    // Auto-scroll
-    card.scrollIntoView({ behavior: "smooth", block: "center" });
-}
-
-// -------------------------------------------------------------
-// BATCH PROCESSING
-// -------------------------------------------------------------
-async function sendBatch(batch, batchIndex, totalBatches) {
-    batchStatus.textContent =
-        `⚙️ Processing batch ${batchIndex} of ${totalBatches} — please wait...`;
-
-    try {
         const response = await fetch("/comment", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tweets: batch }),
+            body: JSON.stringify({ tweets: batches[i] }),
         });
 
         const data = await response.json();
 
-        if (!data.results) {
-            batch.forEach((url) =>
-                renderResultCard(url, null, "The generator returned an invalid response")
-            );
-            return;
-        }
+        data.results.forEach((item, idx) => {
+            let url = batches[i][idx];
 
-        data.results.forEach((res, i) => {
-            const originalURL = batch[i];
+            const card = document.createElement("div");
+            card.className = "result-card";
 
-            if (res.error) {
-                renderResultCard(originalURL, null, res.error);
+            card.innerHTML = `
+                <div class="tweet-url">${url}</div>
+            `;
+
+            if (item.error) {
+                card.innerHTML += `<p style="color:#ff6262;">⚠ ${item.error}</p>`;
             } else {
-                renderResultCard(originalURL, res.comments, null);
+                item.comments.forEach(comment => {
+                    const line = document.createElement("div");
+                    line.className = "comment-line";
+
+                    line.innerHTML = `
+                        <span>${comment}</span>
+                        <button class="copy-btn">Copy</button>
+                    `;
+
+                    line.querySelector("button").onclick = () => {
+                        navigator.clipboard.writeText(comment);
+                    };
+
+                    card.appendChild(line);
+                });
             }
+
+            resultsContainer.appendChild(card);
         });
 
-    } catch (err) {
-        batch.forEach((url) =>
-            renderResultCard(url, null, "Server unreachable — try again shortly")
-        );
-    }
-}
-
-// -------------------------------------------------------------
-// MAIN GENERATE FUNCTION
-// -------------------------------------------------------------
-generateBtn.addEventListener("click", async () => {
-    const raw = inputBox.value.trim();
-    if (!raw) return;
-
-    // Prevent spamming
-    generateBtn.disabled = true;
-    generateBtn.textContent = "Processing...";
-
-    resultsContainer.innerHTML = "";
-    batchStatus.textContent = "";
-
-    // Split + clean URLs
-    let urls = raw.split("\n")
-                  .map((u) => cleanURL(u))
-                  .filter((u) => u.length > 5);
-
-    if (urls.length === 0) {
-        batchStatus.textContent = "⚠️ No valid tweet links found.";
-        generateBtn.disabled = false;
-        generateBtn.textContent = "Generate Replies";
-        return;
+        await new Promise(res => setTimeout(res, 10500));
     }
 
-    // Create batches of 2
-    let batches = [];
-    for (let i = 0; i < urls.length; i += 2) {
-        batches.push(urls.slice(i, i + 2));
-    }
+    stopBtn.classList.add("hidden");
+    generateBtn.classList.remove("hidden");
 
-    const totalBatches = batches.length;
-
-    for (let i = 0; i < totalBatches; i++) {
-        await sendBatch(batches[i], i + 1, totalBatches);
-
-        // Delay between batches (Koyeb safe)
-        if (i < totalBatches - 1) {
-            batchStatus.textContent = `⏳ Waiting 10 seconds before next batch...`;
-            await new Promise((resolve) => setTimeout(resolve, 10000));
-        }
-    }
-
-    batchStatus.textContent = "✅ All comments generated successfully.";
-
-    generateBtn.disabled = false;
-    generateBtn.textContent = "Generate Replies";
-});
+    batchStatus.textContent = "✔ All comments generated successfully!";
+};
