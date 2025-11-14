@@ -1,43 +1,46 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CrownTALK v2.5 — Neon Edition</title>
-
-    <link rel="stylesheet" href="/static/style.css" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrownTALK 👑 – Smart Comment Generator</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" href="/static/logo.png">
 </head>
 
 <body>
 
-    <!-- Floating Neon Aura Background -->
-    <div class="neon-bg"></div>
+    <!-- MAIN WRAPPER -->
+    <div class="page-wrapper">
 
-    <!-- Header -->
-    <header class="header">
-        <img src="/static/logo.png" class="logo" alt="CrownTALK Logo">
-        <h1 class="title">CrownTALK v2.5</h1>
-        <p class="subtitle">Futuristic humanlike reply engine powered by CrownDEX 👑</p>
-    </header>
+        <!-- HEADER AREA -->
+        <header class="header">
+            <div class="logo-box">
+                <img src="/static/logo.png" alt="CrownTALK Logo">
+            </div>
+            <h1 class="title">CrownTALK 👑</h1>
+            <p class="subtitle">Humanlike Twitter Comments • Powered by CrownDEX</p>
+        </header>
 
-    <!-- Main Card -->
-    <section class="main-card">
-        <label for="tweetInput" class="label">Paste X links (one per line):</label>
+        <!-- INPUT SECTION -->
+        <section class="input-section">
+            <label class="input-label">Paste Tweet Links Below</label>
+            <textarea id="tweetInput" class="tweet-box" placeholder="Paste up to 5 tweet links per batch..."></textarea>
 
-        <textarea 
-            id="tweetInput" 
-            class="tweet-input" 
-            placeholder="https://x.com/username/status/12345"></textarea>
+            <button id="generateBtn" class="generate-btn">
+                Generate Replies
+            </button>
 
-        <button id="generateBtn" class="generate-btn">Generate Replies</button>
+            <div id="batchStatus" class="batch-status"></div>
+        </section>
 
-        <p id="statusArea" class="status-area"></p>
-    </section>
+        <!-- RESULTS SECTION -->
+        <section id="resultsContainer" class="results-container"></section>
 
-    <!-- Results -->
-    <section id="resultsContainer" class="results"></section>
+        <!-- BACK TO TOP BUTTON -->
+        <button id="backToTop" class="back-to-top">↑</button>
 
-    <footer class="footer">© 2025 CrownDEX — All rights reserved.</footer>
+    </div>
 
     <script src="/static/script.js"></script>
 </body>
