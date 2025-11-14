@@ -1,0 +1,209 @@
+/* -----------------------------------------
+   GLOBAL BASE
+------------------------------------------ */
+
+html, body {
+    margin: 0;
+    padding: 0;
+    background: #000000;
+    color: #f2f2f2;
+    font-family: 'Inter', sans-serif;
+    scroll-behavior: smooth;
+}
+
+/* Smooth Scrolling */
+* {
+    scrollbar-width: thin;
+    scrollbar-color: #9a4dff #000;
+}
+
+/* Chrome scrollbar */
+::-webkit-scrollbar {
+    width: 8px;
+}
+::-webkit-scrollbar-track {
+    background: #000;
+}
+::-webkit-scrollbar-thumb {
+    background: #9a4dff;
+    border-radius: 4px;
+}
+
+/* -----------------------------------------
+   BRAND ANIMATIONS
+------------------------------------------ */
+
+/* Crown drop animation */
+@keyframes crownDrop {
+    0% { transform: translateY(-38px) rotate(-6deg); opacity: 0; }
+    100% { transform: translateY(0) rotate(0deg); opacity: 1; }
+}
+
+/* Gold shimmer */
+@keyframes shimmer {
+    0% { opacity: 0.6; }
+    50% { opacity: 1; }
+    100% { opacity: 0.6; }
+}
+
+/* Purple typing pulse */
+@keyframes typingPulse {
+    0% { opacity: 0.25; }
+    50% { opacity: 1; }
+    100% { opacity: 0.25; }
+}
+
+.typingPulse {
+    animation: typingPulse 1s infinite ease-in-out;
+}
+
+/* Fade up for result cards */
+@keyframes fadeUp {
+    0% { opacity: 0; transform: translateY(16px); }
+    100% { opacity: 1; transform: translateY(0); }
+}
+
+.fadeUpAnim {
+    animation: fadeUp 0.55s ease-out forwards;
+}
+
+/* -----------------------------------------
+   GLOW EFFECTS
+------------------------------------------ */
+
+.goldGlow {
+    box-shadow: 0 0 15px rgba(245, 197, 66, 0.5);
+}
+
+.purpleGlow {
+    box-shadow: 0 0 14px rgba(154, 77, 255, 0.85);
+}
+
+.purpleOutline {
+    outline: 2px solid rgba(154, 77, 255, 0.6);
+}
+
+/* -----------------------------------------
+   BUTTON ENHANCEMENTS
+------------------------------------------ */
+
+.glowButton {
+    transition: all 0.25s ease-in-out;
+    transform: translateZ(0);
+}
+
+.glowButton:hover {
+    filter: brightness(1.15);
+    box-shadow: 0 0 18px rgba(245, 197, 66, 0.7),
+                0 0 30px rgba(154, 77, 255, 0.5);
+    transform: scale(1.015);
+}
+
+.glowButton:active {
+    transform: scale(0.98);
+}
+
+/* Copy-all haptic feedback feel */
+.copyPulse {
+    animation: copyPulse 0.5s ease-out;
+}
+
+@keyframes copyPulse {
+    0% { transform: scale(1); }
+    50% { transform: scale(1.06); }
+    100% { transform: scale(1); }
+}
+
+/* -----------------------------------------
+   INPUT + TEXTAREA CUSTOMIZATION
+------------------------------------------ */
+
+textarea {
+    resize: none;
+    background: #0c0c0c !important;
+    border-color: #9a4dff !important;
+    color: #f2f2f2 !important;
+}
+
+textarea:focus {
+    border-color: #bf81ff !important;
+    box-shadow: 0 0 10px rgba(154,77,255,0.8);
+}
+
+/* -----------------------------------------
+   RESULT CARD SPECIAL EFFECTS
+------------------------------------------ */
+
+.resultCard {
+    border: 2px solid #f5c542;
+    background: #000;
+    border-radius: 14px;
+    box-shadow: 0 0 14px rgba(245, 197, 66, 0.4),
+                0 0 26px rgba(154, 77, 255, 0.3);
+    padding: 18px;
+}
+
+/* Gold underline hover effect */
+.goldUnderline {
+    position: relative;
+}
+
+.goldUnderline::after {
+    content: "";
+    position: absolute;
+    left: 0;
+    bottom: -3px;
+    width: 0;
+    height: 2px;
+    background: #f5c542;
+    transition: 0.25s ease;
+}
+
+.goldUnderline:hover::after {
+    width: 100%;
+}
+
+/* -----------------------------------------
+   HEADER MICRO-PARTICLES (subtle)
+------------------------------------------ */
+
+.headerParticles {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 140px;
+    pointer-events: none;
+    background-image:
+        radial-gradient(circle at 20% 30%, rgba(154,77,255,0.18) 0, transparent 50%),
+        radial-gradient(circle at 80% 20%, rgba(245,197,66,0.15) 0, transparent 60%),
+        radial-gradient(circle at 50% 80%, rgba(154,77,255,0.12) 0, transparent 55%);
+    background-size: cover;
+}
+
+/* -----------------------------------------
+   SMOOTH HOVER CARD LIFT
+------------------------------------------ */
+
+.cardLift {
+    transition: transform 0.25s ease, box-shadow 0.25s ease;
+}
+
+.cardLift:hover {
+    transform: translateY(-4px);
+    box-shadow: 0 0 19px rgba(245, 197, 66, 0.55),
+                0 0 26px rgba(154, 77, 255, 0.45);
+}
+
+/* -----------------------------------------
+   MOBILE RESPONSIVE TWEAKS
+------------------------------------------ */
+
+@media (max-width: 600px) {
+    h1 {
+        font-size: 2.2rem !important;
+    }
+    .resultCard {
+        padding: 14px;
+    }
+}
