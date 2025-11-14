@@ -1,20 +1,17 @@
 // =========================================
-// CrownTALK v2.0 — Frontend Brain
+// CrownTALK v2.5 — Neon Frontend Engine
 // =========================================
 
-// DOM elements
+// DOM
 const input = document.getElementById("tweetInput");
 const generateBtn = document.getElementById("generateBtn");
 const resultsContainer = document.getElementById("resultsContainer");
 const statusArea = document.getElementById("statusArea");
 
-// Backend endpoint on Koyeb
 const API_URL = "/comment";
 
 
-// ================================
-// Copy-to-Clipboard Helper
-// ================================
+// Copy function
 function copyToClipboard(text, button) {
     navigator.clipboard.writeText(text).then(() => {
         button.textContent = "Copied!";
@@ -28,36 +25,32 @@ function copyToClipboard(text, button) {
 }
 
 
-
-// ================================
-// Render Each Tweet Result
-// ================================
+// Render tweet result
 function renderTweetResult(index, url, data) {
     const box = document.createElement("div");
-    box.className = "result-box fadeIn";
+    box.className = "result-box";
 
     const header = document.createElement("div");
     header.className = "tweet-header";
     header.innerHTML = `<strong>${index}. </strong><a href="${url}" target="_blank">${url}</a>`;
     box.appendChild(header);
 
-    // Error from backend
     if (data.error) {
         const err = document.createElement("div");
-        err.className = "tweet-error";
+        err.style.color = "#ffb4b4";
+        err.style.marginTop = "10px";
         err.textContent = `⚠️ ${data.error}`;
         box.appendChild(err);
         resultsContainer.appendChild(box);
         return;
     }
 
-    // Two comments
     data.comments.forEach((comment) => {
         const line = document.createElement("div");
         line.className = "comment-line";
 
-        const textSpan = document.createElement("span");
-        textSpan.textContent = comment;
+        const span = document.createElement("span");
+        span.textContent = comment;
 
         const btn = document.createElement("button");
         btn.className = "copy-btn";
@@ -65,7 +58,7 @@ function renderTweetResult(index, url, data) {
 
         btn.addEventListener("click", () => copyToClipboard(comment, btn));
 
-        line.appendChild(textSpan);
+        line.appendChild(span);
         line.appendChild(btn);
         box.appendChild(line);
     });
@@ -74,22 +67,20 @@ function renderTweetResult(index, url, data) {
 }
 
 
-
-// ================================
-// Batch Processor (2 per batch)
-// ================================
-async function processInBatches(tweetLinks) {
+// Batch processor
+async function processInBatches(links) {
     resultsContainer.innerHTML = "";
     statusArea.textContent = "";
-    let batchNum = 1;
 
     const batches = [];
-    for (let i = 0; i < tweetLinks.length; i += 2) {
-        batches.push(tweetLinks.slice(i, i + 2));
+    for (let i = 0; i < links.length; i += 2) {
+        batches.push(links.slice(i, i + 2));
     }
 
+    let batchNum = 1;
+
     for (const batch of batches) {
-        statusArea.textContent = `Processing batch ${batchNum} of ${batches.length} — please wait...`;
+        statusArea.textContent = `Processing batch ${batchNum} of ${batches.length}…`;
 
         try {
             const response = await fetch(API_URL, {
@@ -100,42 +91,38 @@ async function processInBatches(tweetLinks) {
 
             const data = await response.json();
 
-            if (data.results) {
-                batch.forEach((url, idx) => {
-                    renderTweetResult(
-                        (batchNum - 1) * 2 + (idx + 1),
-                        url,
-                        data.results[idx]
-                    );
-                });
-            }
-        } catch (e) {
-            batch.forEach((url, idx) => {
+            batch.forEach((url, i) => {
                 renderTweetResult(
-                    (batchNum - 1) * 2 + (idx + 1),
+                    (batchNum - 1) * 2 + (i + 1),
+                    url,
+                    data.results[i]
+                );
+            });
+
+        } catch {
+            batch.forEach((url, i) => {
+                renderTweetResult(
+                    (batchNum - 1) * 2 + (i + 1),
                     url,
                     { error: "The comment generator is temporarily unavailable." }
                 );
             });
         }
 
-        // Wait 10–12 seconds before next batch
+        // Wait between batches
         if (batchNum < batches.length) {
-            statusArea.textContent = `Waiting 10–12 seconds before next batch…`;
+            statusArea.textContent = `Waiting 10–12 seconds…`;
             await new Promise((res) => setTimeout(res, 10000 + Math.random() * 2000));
         }
 
         batchNum++;
     }
 
-    statusArea.innerHTML = `✔ All comments generated successfully.`;
+    statusArea.textContent = "✔ All comments generated successfully.";
 }
 
 
-
-// ================================
-// Handle Generate Button Click
-// ================================
+// Button click
 generateBtn.addEventListener("click", async () => {
     const raw = input.value.trim();
 
@@ -146,13 +133,8 @@ generateBtn.addEventListener("click", async () => {
 
     const links = raw.split("\n").map((l) => l.trim()).filter(Boolean);
 
-    if (links.length === 0) {
-        alert("No valid links found.");
-        return;
-    }
-
     generateBtn.disabled = true;
-    generateBtn.textContent = "Processing...";
+    generateBtn.textContent = "Processing…";
 
     await processInBatches(links);
 
