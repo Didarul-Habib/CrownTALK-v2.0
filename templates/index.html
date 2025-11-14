@@ -2,46 +2,36 @@
 <html lang="en">
 <head>
     <meta charset="UTF-8">
-    <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>CrownTALK 👑 – Smart Comment Generator</title>
+    <title>CrownTALK v2.0</title>
     <link rel="stylesheet" href="/static/style.css">
-    <link rel="icon" href="/static/logo.png">
+    <link rel="icon" type="image/png" href="/static/logo.png">
 </head>
 
 <body>
 
-    <!-- MAIN WRAPPER -->
-    <div class="page-wrapper">
+<div class="floating-logo">
+    <img src="/static/logo.png" class="logo-img" alt="CrownTALK Logo">
+</div>
 
-        <!-- HEADER AREA -->
-        <header class="header">
-            <div class="logo-box">
-                <img src="/static/logo.png" alt="CrownTALK Logo">
-            </div>
-            <h1 class="title">CrownTALK 👑</h1>
-            <p class="subtitle">Humanlike Twitter Comments • Powered by CrownDEX</p>
-        </header>
+<h1 class="title">CrownTALK <span class="title-thin">v2.0</span></h1>
+<p class="subtitle">Humanlike Twitter Comments • Powered by CrownDEX</p>
 
-        <!-- INPUT SECTION -->
-        <section class="input-section">
-            <label class="input-label">Paste Tweet Links Below</label>
-            <textarea id="tweetInput" class="tweet-box" placeholder="Paste up to 5 tweet links per batch..."></textarea>
+<div class="container">
 
-            <button id="generateBtn" class="generate-btn">
-                Generate Replies
-            </button>
+    <label class="input-label">Paste Tweet Links Below</label>
+    <textarea id="tweetInput" placeholder="Paste X/Twitter links, one per line..."></textarea>
 
-            <div id="batchStatus" class="batch-status"></div>
-        </section>
+    <button id="generateBtn">Generate Replies</button>
 
-        <!-- RESULTS SECTION -->
-        <section id="resultsContainer" class="results-container"></section>
+    <div id="batchStatus"></div>
+    <div id="results"></div>
 
-        <!-- BACK TO TOP BUTTON -->
-        <button id="backToTop" class="back-to-top">↑</button>
+</div>
 
-    </div>
+<footer>
+    © 2025 CrownDEX • All rights reserved
+</footer>
 
-    <script src="/static/script.js"></script>
+<script src="/static/script.js"></script>
 </body>
 </html>
