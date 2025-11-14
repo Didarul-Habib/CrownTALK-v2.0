@@ -1,221 +1,291 @@
-/* ----------------------------------------------------------
-   CrownTALK v2.5 — Royal Purple Neon Edition
-   ---------------------------------------------------------- */
-
+/* ---------------------------------------------------
+   GLOBAL RESET
+--------------------------------------------------- */
 * {
     margin: 0;
     padding: 0;
     box-sizing: border-box;
-    font-family: 'Inter', sans-serif;
+    font-family: "Inter", sans-serif;
 }
 
-/* Background (soft + medium hybrid neon) */
 body {
-    background: radial-gradient(circle at top, #1b102f 0%, #0a0910 55%, #020203 100%);
-    color: #eee;
-    min-height: 100vh;
+    background: radial-gradient(circle at top,
+        #240026 0%,
+        #0d0013 40%,
+        #000000 90%
+    );
+    color: #f5f5f7;
     overflow-x: hidden;
 }
 
-/* Floating neon aura */
-.neon-bg {
-    position: fixed;
-    top: -20%;
-    left: 50%;
-    transform: translateX(-50%);
-    width: 70vw;
-    height: 70vw;
-    background: radial-gradient(circle, rgba(160, 90, 255, 0.35), transparent 70%);
-    filter: blur(80px);
-    z-index: 0;
-    pointer-events: none;
+/* ---------------------------------------------------
+   PAGE WRAPPER
+--------------------------------------------------- */
+.page-wrapper {
+    width: 100%;
+    max-width: 1100px;
+    margin: auto;
+    padding: 40px 20px;
 }
 
-/* Header */
+/* ---------------------------------------------------
+   LOGO TILE (Square Premium Icon)
+--------------------------------------------------- */
+.logo-box {
+    width: 140px;
+    height: 140px;
+    border-radius: 18px;
+    overflow: hidden;
+    margin: 0 auto 20px;
+    border: 2px solid rgba(255, 208, 0, 0.25);
+    box-shadow: 
+        0 0 25px rgba(255, 215, 0, 0.35),
+        0 0 10px rgba(255, 255, 255, 0.07) inset;
+    animation: fadeIn 1.5s ease-out;
+}
+
+.logo-box img {
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+}
+
+/* ---------------------------------------------------
+   HEADER TEXT
+--------------------------------------------------- */
 .header {
     text-align: center;
-    margin-top: 40px;
-    position: relative;
-    z-index: 2;
-}
-
-.logo {
-    width: 150px;
-    margin-bottom: 12px;
-    animation: float 4s ease-in-out infinite;
-    filter: drop-shadow(0 0 22px rgba(160, 90, 255, 0.25));
-}
-
-@keyframes float {
-    0% { transform: translateY(0); }
-    50% { transform: translateY(-6px); }
-    100% { transform: translateY(0); }
+    margin-bottom: 40px;
 }
 
 .title {
-    font-size: 46px;
-    font-weight: 700;
-    background: linear-gradient(90deg, #b17aff, #ffffff, #c59eff);
+    font-size: 2.8rem;
+    font-weight: 800;
+    background: linear-gradient(90deg, #f7d27d, #bb8dff);
     -webkit-background-clip: text;
-    color: transparent;
-    text-shadow: 0 0 22px rgba(140, 80, 255, 0.35);
+    -webkit-text-fill-color: transparent;
 }
 
 .subtitle {
-    color: #cbbaf9;
-    opacity: 0.75;
-    margin-top: 4px;
+    margin-top: 8px;
+    font-size: 1rem;
+    opacity: 0.8;
 }
 
-/* Main Card */
-.main-card {
-    width: 90%;
-    max-width: 900px;
-    margin: 45px auto;
-    padding: 35px;
-    background: rgba(25, 15, 45, 0.6);
-    backdrop-filter: blur(14px);
-    border-radius: 18px;
-    border: 1px solid rgba(170, 100, 255, 0.28);
-    box-shadow:
-        0 0 25px rgba(140, 80, 255, 0.28),
-        inset 0 0 20px rgba(100, 50, 200, 0.08);
-    position: relative;
-    z-index: 2;
+/* ---------------------------------------------------
+   INPUT SECTION
+--------------------------------------------------- */
+.input-section {
+    margin-bottom: 35px;
+    animation: fadeInUp 0.9s ease-out;
 }
 
-/* Label */
-.label {
-    font-weight: 600;
-    margin-bottom: 12px;
+.input-label {
+    font-size: 1rem;
+    margin-bottom: 8px;
     display: block;
-    color: #eaddff;
+    color: #d3baff;
 }
 
-/* Textarea */
-.tweet-input {
+.tweet-box {
     width: 100%;
-    height: 230px;
+    height: 130px;
     padding: 15px;
-    background: rgba(35, 25, 58, 0.5);
-    border: 1px solid rgba(170, 100, 255, 0.35);
-    border-radius: 12px;
-    color: #f1eaff;
+    border-radius: 14px;
+    background: rgba(20, 0, 25, 0.65);
+    border: 1px solid rgba(255, 200, 0, 0.25);
+    color: #fff;
+    font-size: 0.95rem;
     resize: none;
     outline: none;
-
-    box-shadow:
-        inset 0 0 12px rgba(140, 80, 255, 0.15),
-        0 0 12px rgba(140, 80, 255, 0.18);
-
     transition: 0.25s;
 }
 
-.tweet-input:focus {
-    border-color: #cdafff;
-    box-shadow: 0 0 22px rgba(160, 100, 255, 0.45);
+.tweet-box:focus {
+    border-color: #d8aaff;
+    box-shadow: 0 0 12px rgba(180, 60, 255, 0.45);
 }
 
-/* Button */
+/* ---------------------------------------------------
+   GENERATE BUTTON (Gold Base + Purple Hover)
+--------------------------------------------------- */
 .generate-btn {
+    margin-top: 14px;
     width: 100%;
-    padding: 17px;
-    margin-top: 22px;
-    font-size: 18px;
+    padding: 15px 0;
+    background: linear-gradient(180deg, #f7d67c, #c9a33d);
+    color: #2f0046;
+    font-size: 1.1rem;
     font-weight: 700;
-
-    background: linear-gradient(90deg, #ffdd7a, #f5c14b);
-    border-radius: 12px;
     border: none;
+    border-radius: 12px;
     cursor: pointer;
-    color: #222;
-
-    transition: 0.25s;
-    box-shadow: 0 0 20px rgba(240, 200, 90, 0.25);
+    transition: 0.3s ease;
+    box-shadow: 0 4px 16px rgba(255, 209, 84, 0.25);
 }
 
 .generate-btn:hover {
-    transform: translateY(-1px);
-    box-shadow: 0 0 26px rgba(240, 200, 90, 0.45);
+    background: #5f1d9b;
+    color: #f4d18b;
+    box-shadow: 0 0 20px rgba(150, 60, 255, 0.55);
+    transform: translateY(-2px);
 }
 
-/* Status */
-.status-area {
-    margin-top: 18px;
-    font-size: 14px;
-    color: #d2c7ff;
-    text-align: center;
+/* ---------------------------------------------------
+   BATCH STATUS
+--------------------------------------------------- */
+.batch-status {
+    margin-top: 12px;
+    font-size: 0.9rem;
+    color: #e0c8ff;
+    min-height: 20px;
 }
 
-/* Results */
-.results {
-    width: 90%;
-    max-width: 900px;
-    margin: auto;
-    position: relative;
-    z-index: 2;
+/* ---------------------------------------------------
+   RESULTS SECTION
+--------------------------------------------------- */
+.results-container {
+    margin-top: 35px;
 }
 
-/* Result Box */
-.result-box {
-    background: rgba(26, 18, 45, 0.65);
-    border: 1px solid rgba(170, 100, 255, 0.28);
-    backdrop-filter: blur(12px);
-
-    margin-top: 24px;
-    padding: 20px;
-    border-radius: 14px;
-
-    box-shadow:
-        0 0 20px rgba(130, 70, 255, 0.22),
-        inset 0 0 12px rgba(130, 70, 255, 0.12);
-
-    animation: fadeIn 0.5s ease-out;
+/* Each result card */
+.result-card {
+    padding: 18px 20px;
+    background: rgba(30, 0, 35, 0.55);
+    border-radius: 16px;
+    border: 1px solid rgba(255, 190, 0, 0.25);
+    margin-bottom: 22px;
+    box-shadow: 
+        0 0 12px rgba(255, 200, 0, 0.18),
+        0 0 8px rgba(150, 0, 255, 0.15) inset;
+    animation: slideIn 0.5s ease-out;
 }
 
-/* Tweet Header */
-.tweet-header a {
-    color: #d2c7ff;
-    text-decoration: none;
+/* Tweet Link */
+.result-card .tweet-link {
+    color: #e7cdff;
     font-weight: 600;
+    margin-bottom: 12px;
+    display: block;
+    word-break: break-all;
 }
 
-/* Comment Line */
-.comment-line {
-    padding: 12px;
-    margin-top: 10px;
+/* Comments Layout */
+.comment-row {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
     background: rgba(255, 255, 255, 0.05);
-    border-left: 4px solid #b388ff;
+    padding: 12px 14px;
+    border-radius: 10px;
+    margin-bottom: 8px;
+}
+
+.comment-text {
+    width: 90%;
+    font-size: 0.97rem;
+    color: #fff;
+}
+
+/* Copy Icon */
+.copy-btn {
+    width: 34px;
+    height: 34px;
+    background: rgba(255, 215, 0, 0.18);
     border-radius: 8px;
     display: flex;
-    justify-content: space-between;
-}
-
-/* Copy Button */
-.copy-btn {
-    padding: 6px 12px;
-    background: rgba(160, 90, 255, 0.2);
-    border: 1px solid rgba(160, 90, 255, 0.45);
-    border-radius: 8px;
-    color: #e8dbff;
-
+    align-items: center;
+    justify-content: center;
     cursor: pointer;
-    transition: 0.25s;
+    transition: 0.22s ease;
 }
 
 .copy-btn:hover {
-    background: rgba(160, 90, 255, 0.35);
+    background: rgba(150, 50, 255, 0.35);
 }
 
-/* Footer */
-.footer {
-    margin: 60px 0 40px 0;
-    opacity: 0.45;
-    text-align: center;
+/* “Copied!” Tooltip */
+.copy-btn.copied::after {
+    content: "Copied!";
+    position: absolute;
+    margin-left: 80px;
+    background: #5f1d9b;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 6px;
+    font-size: 0.75rem;
+    animation: fadeOut 1.3s forwards;
 }
 
-/* Fade In Animation */
+/* ---------------------------------------------------
+   BACK TO TOP BUTTON
+--------------------------------------------------- */
+.back-to-top {
+    position: fixed;
+    bottom: 25px;
+    right: 25px;
+    background: #5f1d9b;
+    color: #fff;
+    padding: 12px 15px;
+    border-radius: 10px;
+    border: none;
+    font-size: 1.2rem;
+    cursor: pointer;
+    display: none;
+    transition: 0.25s ease;
+}
+
+.back-to-top:hover {
+    background: #8d21ff;
+}
+
+/* ---------------------------------------------------
+   ANIMATIONS
+--------------------------------------------------- */
 @keyframes fadeIn {
-    0% { opacity: 0; transform: translateY(6px); }
-    100% { opacity: 1; transform: translateY(0); }
+    from { opacity: 0; transform: scale(0.85); }
+    to { opacity: 1; transform: scale(1); }
+}
+
+@keyframes fadeInUp {
+    from { opacity: 0; transform: translateY(20px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes slideIn {
+    from { opacity: 0; transform: translateY(15px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+@keyframes fadeOut {
+    0% { opacity: 1; }
+    100% { opacity: 0; }
+}
+
+/* ---------------------------------------------------
+   MOBILE RESPONSIVE
+--------------------------------------------------- */
+@media(max-width: 600px) {
+    .logo-box {
+        width: 110px;
+        height: 110px;
+    }
+
+    .title {
+        font-size: 2rem;
+    }
+
+    .generate-btn {
+        font-size: 1rem;
+    }
+
+    .comment-row {
+        flex-direction: column;
+        align-items: flex-start;
+        gap: 6px;
+    }
+
+    .comment-text {
+        width: 100%;
+    }
 }
