@@ -1,182 +1,49 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>CrownTALK 👑</title>
-
-    <!-- Tailwind CDN -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <style>
-        body {
-            background: #000;
-            color: #f2f2f2;
-            font-family: 'Inter', sans-serif;
-        }
-
-        /* Crown animation */
-        @keyframes crownDrop {
-            0% { transform: translateY(-40px) rotate(-8deg); opacity: 0; }
-            100% { transform: translateY(0) rotate(0deg); opacity: 1; }
-        }
-
-        /* Gold shimmer */
-        @keyframes shimmer {
-            0% { opacity: 0.6; }
-            50% { opacity: 1; }
-            100% { opacity: 0.6; }
-        }
-
-        /* Purple typing animation */
-        .typingPulse {
-            animation: typing 1.2s infinite ease-in-out;
-        }
-
-        @keyframes typing {
-            0% { opacity: 0.3; }
-            50% { opacity: 1; }
-            100% { opacity: 0.3; }
-        }
-
-        /* Result card animation */
-        @keyframes fadeUp {
-            0% { opacity: 0; transform: translateY(14px); }
-            100% { opacity: 1; transform: translateY(0); }
-        }
-
-        .fadeUpAnim {
-            animation: fadeUp 0.5s ease forwards;
-        }
-
-        /* Gold glow */
-        .goldGlow {
-            box-shadow: 0 0 16px rgba(245, 197, 66, 0.5);
-        }
-
-        /* Purple neon glow */
-        .purpleGlow {
-            box-shadow: 0 0 14px rgba(154, 77, 255, 0.8);
-        }
-    </style>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrownTALK v2.0</title>
+    <link rel="stylesheet" href="/static/style.css">
+    <link rel="icon" type="image/png" href="/static/logo.png">
 </head>
 
 <body>
 
-    <!-- Header -->
-    <div class="text-center pt-10 pb-6">
-        <div class="flex justify-center mb-3">
-            <span class="text-5xl" style="
-                color:#F5C542;
-                animation:crownDrop 0.7s ease-out;
-                text-shadow:0 0 12px rgba(245,197,66,0.6);
-            ">
-                👑
-            </span>
+    <!-- 🌟 Animated Aura Logo Block -->
+    <div class="hero">
+        <div class="logo-container">
+            <img src="/static/logo.png" class="logo-img" alt="CrownTALK Logo">
+            <div class="crown-glow"></div>
         </div>
 
-        <h1 class="text-4xl font-bold" style="
-            color:#F5C542;
-            animation: shimmer 3s infinite ease-in-out;
-            text-shadow:0 0 12px rgba(245,197,66,0.5);
-        ">
-            CrownTALK
-        </h1>
-
-        <p class="mt-2 text-purple-400 opacity-80">
-            Human-level Twitter reactions — medium edgy • humorous • real
-        </p>
+        <h1 class="title">CrownTALK <span>v2.0</span></h1>
+        <p class="subtitle">Humanlike comment engine powered by CrownDEX 👑</p>
     </div>
 
-    <!-- Main Container -->
-    <div class="max-w-3xl mx-auto px-5">
 
-        <!-- Input Box -->
-        <textarea id="urlInput"
-            class="w-full h-40 p-4 rounded-lg bg-black border-2 border-purple-600 focus:border-purple-400 focus:ring-purple-500 focus:ring-2 purpleGlow transition-all outline-none"
-            placeholder="Paste tweet links (one per line)..."></textarea>
+    <!-- 🌐 Input Box -->
+    <div class="main-box">
+        <label class="input-label">Paste X links (one per line):</label>
+        <textarea id="tweetInput" placeholder="https://x.com/example/status/12345"></textarea>
 
-        <!-- Submit -->
-        <button id="generateBtn"
-            class="mt-5 w-full py-3 text-lg font-semibold rounded-xl transition bg-gradient-to-r from-yellow-500 to-yellow-400 text-black hover:from-yellow-400 hover:to-yellow-300 hover:scale-[1.02] purpleGlow">
-            Generate Comments
-        </button>
+        <button id="generateBtn" onclick="generateReplies()">Generate Replies</button>
 
-        <!-- Batch Progress -->
-        <div id="progressBox" class="mt-6 text-center text-purple-400 typingPulse hidden"></div>
-
-        <!-- Results -->
-        <div id="results" class="mt-10 space-y-6"></div>
-
-        <!-- Copy All -->
-        <button id="copyAllBtn" class="hidden mt-8 w-full py-3 rounded-xl bg-purple-600 hover:bg-purple-500 transition">
-            Copy All Comments
-        </button>
+        <div id="statusBox" class="status-box" style="display:none;">
+            <span id="statusText">Processing...</span>
+        </div>
     </div>
 
-    <!-- SCRIPT -->
-    <script>
-        const generateBtn = document.getElementById("generateBtn");
-        const resultsBox = document.getElementById("results");
-        const progressBox = document.getElementById("progressBox");
-        const copyAllBtn = document.getElementById("copyAllBtn");
 
-        generateBtn.addEventListener("click", async () => {
-            const input = document.getElementById("urlInput").value.trim();
-            if (!input) return;
+    <!-- 📝 Results Area -->
+    <div id="results"></div>
 
-            const urls = input.split("\n").map(u => u.trim()).filter(u => u);
-            if (urls.length === 0) return;
 
-            // Reset UI
-            resultsBox.innerHTML = "";
-            progressBox.classList.remove("hidden");
-            progressBox.innerText = "Preparing CrownTALK engine…";
-            copyAllBtn.classList.add("hidden");
+    <!-- Footer -->
+    <footer>
+        CrownTALK v2.0 — Built by CrownDEX © 2025  
+    </footer>
 
-            const res = await fetch("/process", {
-                method: "POST",
-                headers: { "Content-Type": "application/json" },
-                body: JSON.stringify({ urls })
-            });
-
-            const data = await res.json();
-            progressBox.classList.add("hidden");
-
-            // Render results
-            let finalText = "";
-
-            data.results.forEach((item, index) => {
-                const card = document.createElement("div");
-                card.className =
-                    "fadeUpAnim p-5 rounded-xl border-2 border-yellow-500 bg-black goldGlow";
-
-                // Error case
-                if (item.error) {
-                    card.innerHTML = `
-                    <div class="text-yellow-400 font-bold">🔗 ${item.url}</div>
-                    <p class="mt-2 text-red-400">${item.error}</p>
-                `;
-                } else {
-                    card.innerHTML = `
-                    <div class="text-yellow-400 font-bold">🔗 ${item.url}</div>
-                    <p class="mt-3 text-white">${item.comment1}</p>
-                    <p class="text-white mt-1">${item.comment2}</p>
-                `;
-                    finalText += `${item.comment1}\n${item.comment2}\n\n`;
-                }
-
-                resultsBox.appendChild(card);
-            });
-
-            // Enable Copy All
-            copyAllBtn.classList.remove("hidden");
-            copyAllBtn.onclick = () => {
-                navigator.clipboard.writeText(finalText);
-                copyAllBtn.innerText = "Copied!";
-                setTimeout(() => (copyAllBtn.innerText = "Copy All Comments"), 1500);
-            };
-        });
-    </script>
+    <script src="/static/script.js"></script>
 </body>
 </html>
