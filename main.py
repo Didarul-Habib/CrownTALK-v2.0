@@ -1,44 +1,72 @@
 import re
 import time
+import threading
 import requests
 from flask import Flask, request, jsonify, render_template
 from langdetect import detect
 from openai import OpenAI
 
+# ---------------------------------------------
+# Flask App
+# ---------------------------------------------
 app = Flask(__name__)
-
 client = OpenAI()
 
 # ---------------------------------------------
-# Load Comment Style Guide
+# Keep-Alive System (prevents Koyeb sleeping)
+# ---------------------------------------------
+APP_URL = "https://<YOUR-KOYEB-APP>.koyeb.app"   # <-- CHANGE THIS!
+
+def keep_alive():
+    while True:
+        try:
+            requests.get(APP_URL, timeout=5)
+        except:
+            pass
+        time.sleep(240)  # every 4 minutes
+
+threading.Thread(target=keep_alive, daemon=True).start()
+
+
+# ---------------------------------------------
+# Load Style Guide
 # ---------------------------------------------
 with open("comment_style_guide.txt", "r", encoding="utf-8") as f:
-    STYLE_GUIDE = f.read()
+    STYLE_GUIDE = f.read()[:2000]  # trimmed for safety
 
 
 # ---------------------------------------------
-# Tweet Fetcher (TweetAPI: C Mode - VX Style)
+# FIXED Tweet Fetcher with 3 fallbacks
 # ---------------------------------------------
 def fetch_tweet_text(url):
-    api_url = "https://api.vxtwitter.com/" + url.split("twitter.com/")[-1].split("x.com/")[-1]
 
-    try:
-        r = requests.get(api_url, timeout=10)
-        if r.status_code != 200:
-            return None
+    # normalize link
+    url = url.replace("x.com", "twitter.com").split("?")[0]
 
-        data = r.json()
+    # extract something like: /username/status/123
+    tail = "/".join(url.split("twitter.com/")[-1].split("/")[:3])
 
-        if "tweet" in data and "text" in data["tweet"]:
-            return data["tweet"]["text"]
+    api_urls = [
+        f"https://api.vxtwitter.com/{tail}",          # main
+        f"https://api.fxtwitter.com/{tail}",          # fallback
+        f"https://api.tweety.ai/{tail}"               # backup
+    ]
 
-        return None
-    except:
-        return None
+    for api in api_urls:
+        try:
+            r = requests.get(api, timeout=10)
+            if r.status_code == 200:
+                data = r.json()
+                if "tweet" in data and "text" in data["tweet"]:
+                    return data["tweet"]["text"]
+        except:
+            continue
+
+    return None
 
 
 # ---------------------------------------------
-# Auto-Translate to English
+# Auto-Translate
 # ---------------------------------------------
 def translate_to_english(text):
     try:
@@ -49,67 +77,65 @@ def translate_to_english(text):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {
-                    "role": "system",
-                    "content": "Translate this text to English. Only output the translation."
-                },
+                {"role": "system", "content": "Translate to English. Output only translation."},
                 {"role": "user", "content": text}
             ],
-            temperature=0.2,
+            temperature=0.2
         )
 
         return response.choices[0].message.content.strip()
 
     except:
-        return text  # fallback
+        return text
 
 
 # ---------------------------------------------
-# Comment Generator
+# Comment Generator (Fully Stabilized)
 # ---------------------------------------------
 def generate_comments(tweet_text):
+
     prompt = f"""
-You are CrownTALK 👑 — a humanlike comment generator.
+Generate EXACTLY two short humanlike comments.
 
-Follow these strict rules:
-- Read the tweet context and write two natural comments.
-- 5–12 words each.
-- No punctuation at the end.
-- No emojis, hashtags, or repeated patterns.
-- Use natural slang (tbh, fr, ngl, lowkey, btw, kinda, etc).
-- Avoid ALL blacklist words and phrases from the style guide.
-- Comments must sound like different humans.
-- No identical openings.
-- No hype words like “finally”, “excited”, “love to”, “hit different”, etc.
-- Must be based on the actual tweet meaning.
-- Output EXACTLY two lines of text with no labels.
+Rules:
+- 5–12 words each
+- No punctuation at the end
+- No emojis or hashtags
+- No repeated patterns
+- Must follow slang tone: tbh, fr, ngl, lowkey, kinda, btw, rn etc
+- Must sound like two different humans
+- Must be based ONLY on the tweet’s meaning
+- Avoid ALL blacklist phrases from the style guide
+- Avoid hype words: finally, excited, love to, hit different
 
-STYLE GUIDE:
+STYLE GUIDE (trimmed):
 {STYLE_GUIDE}
 
-Tweet content:
+Tweet:
 "{tweet_text}"
 
-Return ONLY the two comments. No extra text.
+Return ONLY two lines, no labels, no numbering.
 """
 
-    for _ in range(3):  # retry loop
+    for _ in range(3):
         try:
-            response = client.chat.completions.create(
+            res = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
                 temperature=0.65,
             )
 
-            output = response.choices[0].message.content.strip()
-            lines = output.split("\n")
+            out = res.choices[0].message.content.strip()
+            lines = [l.strip() for l in out.split("\n") if l.strip()]
 
-            # clean
-            lines = [re.sub(r"[.,!?;:]+$", "", l).strip() for l in lines]
-            lines = [l for l in lines if len(l.split()) >= 5 and len(l.split()) <= 12]
+            cleaned = []
+            for l in lines:
+                l = re.sub(r"[.,!?;:]+$", "", l).strip()
+                if 5 <= len(l.split()) <= 12:
+                    cleaned.append(l)
 
-            if len(lines) >= 2:
-                return lines[:2]
+            if len(cleaned) >= 2:
+                return cleaned[:2]
 
         except:
             time.sleep(1)
@@ -120,7 +146,6 @@ Return ONLY the two comments. No extra text.
 # ---------------------------------------------
 # ROUTES
 # ---------------------------------------------
-
 @app.route("/")
 def index():
     return render_template("index.html")
@@ -130,30 +155,28 @@ def index():
 def comment_api():
     data = request.json
 
-    if "tweets" not in data or not isinstance(data["tweets"], list):
-        return jsonify({"error": "Invalid request format"}), 400
+    if "tweets" not in data:
+        return jsonify({"error": "Invalid request"}), 400
 
     results = []
 
     for url in data["tweets"]:
-        tweet_text = fetch_tweet_text(url)
+        txt = fetch_tweet_text(url)
 
-        if not tweet_text:
+        if not txt:
             results.append({"error": "Could not fetch this tweet (private or deleted)"})
             continue
 
-        # auto-translate
-        tweet_text_en = translate_to_english(tweet_text)
+        txt_en = translate_to_english(txt)
+        comments = generate_comments(txt_en)
 
-        # generate comments
-        comments = generate_comments(tweet_text_en)
         results.append({"comments": comments})
 
     return jsonify({"results": results})
 
 
 # ---------------------------------------------
-# Run
+# RUN
 # ---------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=8000)
