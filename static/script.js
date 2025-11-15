@@ -1,212 +1,128 @@
+let stopRequested = false;
 
-/* ---------------------------------------------
-   GLOBAL VARIABLES
---------------------------------------------- */
-
-let stopGeneration = false;
-let currentTheme = localStorage.getItem("crownTheme") || "purple";
-
-const themeSwitcher = document.getElementById("themeSwitcher");
-const tweetInput = document.getElementById("tweetInput");
+const inputField = document.getElementById("input");
 const generateBtn = document.getElementById("generateBtn");
 const stopBtn = document.getElementById("stopBtn");
-const resultsContainer = document.getElementById("resultsContainer");
-const retrySection = document.getElementById("retrySection");
-const retryList = document.getElementById("retryList");
-const statusMessage = document.getElementById("statusMessage");
+const resultsContainer = document.getElementById("results");
+const themeToggle = document.getElementById("themeToggle");
 
-/* ---------------------------------------------
-   APPLY THEME
---------------------------------------------- */
-function applyTheme(theme) {
-    document.body.classList.remove(
-        "theme-purple",
-        "theme-midnight",
-        "theme-gold",
-        "theme-light"
-    );
-    document.body.classList.add(`theme-${theme}`);
-    localStorage.setItem("crownTheme", theme);
+/* --------------------------------------------- */
+/* Shorten long URLs for display */
+/* --------------------------------------------- */
+
+function shortenURL(url) {
+    const clean = url.split("?")[0];
+    if (clean.length <= 45) return clean;
+    return clean.slice(0, 42) + "…";
 }
 
-applyTheme(currentTheme);
-themeSwitcher.value = currentTheme;
+/* --------------------------------------------- */
+/* Theme Toggle */
+/* --------------------------------------------- */
 
-/* ---------------- THEME SWITCHER ---------------- */
-
-themeSwitcher.addEventListener("change", () => {
-    currentTheme = themeSwitcher.value;
-    applyTheme(currentTheme);
+themeToggle.addEventListener("click", () => {
+    document.documentElement.classList.toggle("light");
 });
 
-/* ---------------------------------------------
-   CLEAN LINKS
---------------------------------------------- */
-function cleanLink(url) {
-    if (!url) return null;
+/* --------------------------------------------- */
+/* Stop Button */
+/* --------------------------------------------- */
 
-    url = url.trim();
-
-    if (!url.includes("twitter.com") && !url.includes("x.com")) {
-        return null;
-    }
-
-    // Remove tracking parameters
-    return url.split("?")[0];
-}
-
-/* ---------------------------------------------
-   RETRY LOGIC FOR COMMENT GENERATION
---------------------------------------------- */
-async function requestWithRetry(url) {
-    const payload = JSON.stringify({ tweets: [url] });
-    const headers = { "Content-Type": "application/json" };
-
-    let attempt = 0;
-    const delays = [1000, 2000, 4000]; // 1s, 2s, 4s
-
-    while (attempt < 3) {
-        try {
-            const res = await fetch("/comment", {
-                method: "POST",
-                headers,
-                body: payload,
-            });
-
-            const data = await res.json();
-            return data.results[0];
-
-        } catch (err) {
-            await new Promise((r) => setTimeout(r, delays[attempt]));
-            attempt++;
-        }
-    }
-
-    return { error: "Failed after 3 retries" };
-}
-
-/* ---------------------------------------------
-   CREATE RESULT CARD
---------------------------------------------- */
-function createCard(url, data) {
-    const card = document.createElement("div");
-    card.className = "result-card";
-
-    const safeUrl = url;
-
-    card.innerHTML = `
-        <a href="${safeUrl}" target="_blank" class="tweet-link">${safeUrl}</a>
-    `;
-
-    if (data.error) {
-        card.innerHTML += `<p style="color:#ff5757;">⚠ ${data.error}</p>`;
-        return card;
-    }
-
-    data.comments.forEach((comment) => {
-        const line = document.createElement("div");
-        line.className = "comment-line";
-
-        line.innerHTML = `
-            <span>${comment}</span>
-            <button class="copy-btn">Copy</button>
-        `;
-
-        line.querySelector(".copy-btn").onclick = () => {
-            navigator.clipboard.writeText(comment);
-        };
-
-        card.appendChild(line);
-    });
-
-    return card;
-}
-
-/* ---------------------------------------------
-   STOP GENERATION
---------------------------------------------- */
 stopBtn.addEventListener("click", () => {
-    stopGeneration = true;
-    statusMessage.textContent = "🛑 Stopped by user.";
+    stopRequested = true;
+    stopBtn.style.display = "none";
 });
 
-/* ---------------------------------------------
-   MAIN GENERATION FUNCTION
---------------------------------------------- */
+/* --------------------------------------------- */
+/* Generate Replies */
+/* --------------------------------------------- */
+
 generateBtn.addEventListener("click", async () => {
-
-    stopGeneration = false;
+    stopRequested = false;
     resultsContainer.innerHTML = "";
-    retrySection.classList.add("hidden");
-    retryList.innerHTML = "";
-    statusMessage.textContent = "";
 
-    generateBtn.classList.add("hidden");
-    stopBtn.classList.remove("hidden");
-
-    // Extract cleaned links
-    let links = tweetInput.value
+    let links = inputField.value
         .split("\n")
-        .map(cleanLink)
-        .filter(Boolean);
+        .map(x => x.trim().split("?")[0])
+        .filter(x => x.startsWith("http"));
 
-    links = [...new Set(links)];
+    if (!links.length) return;
 
-    if (links.length === 0) {
-        alert("No valid X/Twitter links found.");
-        generateBtn.classList.remove("hidden");
-        stopBtn.classList.add("hidden");
-        return;
-    }
+    generateBtn.style.display = "none";
+    stopBtn.style.display = "block";
 
-    // Batch into groups of 2
-    const batches = [];
-    for (let i = 0; i < links.length; i += 2) {
-        batches.push(links.slice(i, i + 2));
-    }
+    const BATCH = 3;
+    let batchNumber = 1;
 
-    const failed = [];
+    for (let i = 0; i < links.length; i += BATCH) {
+        if (stopRequested) break;
 
-    for (let b = 0; b < batches.length; b++) {
-        if (stopGeneration) break;
+        const batch = links.slice(i, i + BATCH);
 
-        statusMessage.textContent = `⚙ Processing batch ${b + 1} / ${batches.length}...`;
+        const status = document.createElement("div");
+        status.style.margin = "10px 0";
+        status.innerHTML = `⚙ Processing batch ${batchNumber} / ${Math.ceil(links.length / BATCH)}...`;
+        resultsContainer.appendChild(status);
 
-        const batch = batches[b];
+        const res = await fetch("/comment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ tweets: batch })
+        });
 
-        for (const url of batch) {
-            if (stopGeneration) break;
+        const data = await res.json();
 
-            const result = await requestWithRetry(url);
+        data.results.forEach((r, idx) => {
+            const url = batch[idx];
 
-            if (result.error) {
-                failed.push(url);
+            const item = document.createElement("div");
+            item.className = "result-item";
+
+            const link = document.createElement("a");
+            link.className = "tweet-link";
+            link.href = url;
+            link.target = "_blank";
+            link.textContent = shortenURL(url);
+
+            item.appendChild(link);
+
+            if (r.error) {
+                const box = document.createElement("div");
+                box.className = "comment-box";
+                box.textContent = r.error;
+                item.appendChild(box);
+            } else {
+                r.comments.forEach(c => {
+                    const box = document.createElement("div");
+                    box.className = "comment-box";
+                    box.textContent = c;
+
+                    const copy = document.createElement("div");
+                    copy.className = "copy-btn";
+                    copy.textContent = "Copy";
+                    copy.onclick = () => {
+                        navigator.clipboard.writeText(c);
+                        copy.textContent = "Copied!";
+                        setTimeout(() => (copy.textContent = "Copy"), 800);
+                    };
+
+                    box.appendChild(copy);
+                    item.appendChild(box);
+                });
             }
 
-            const card = createCard(url, result);
-            resultsContainer.appendChild(card);
-        }
-
-        // Delay to avoid rate limit
-        if (!stopGeneration) {
-            await new Promise((r) => setTimeout(r, 11000));
-        }
-    }
-
-    stopBtn.classList.add("hidden");
-    generateBtn.classList.remove("hidden");
-
-    // Show failed list
-    if (failed.length > 0) {
-        retrySection.classList.remove("hidden");
-        statusMessage.textContent = "⚠ Some links failed.";
-
-        failed.forEach((url) => {
-            const li = document.createElement("li");
-            li.textContent = url;
-            retryList.appendChild(li);
+            resultsContainer.appendChild(item);
         });
-    } else {
-        statusMessage.textContent = "✔ All comments generated.";
+
+        batchNumber++;
+
+        if (i + BATCH < links.length) {
+            await new Promise(r => setTimeout(r, 3500));
+        }
     }
+
+    stopBtn.style.display = "none";
+    generateBtn.style.display = "block";
 });
+
+/* END */
