@@ -1,170 +1,23 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-<meta charset="UTF-8">
-<title>CrownTALK</title>
-
-<style>
-    body {
-        font-family: Arial, sans-serif;
-        padding: 25px;
-        max-width: 900px;
-        margin: auto;
-        background: #f8f9fb;
-    }
-
-    h1 {
-        font-size: 32px;
-        margin-bottom: 10px;
-    }
-
-    textarea {
-        width: 100%;
-        height: 260px;
-        padding: 12px;
-        font-size: 14px;
-    }
-
-    button {
-        margin-top: 10px;
-        padding: 10px 18px;
-        font-size: 16px;
-        cursor: pointer;
-        background: #1065e0;
-        color: white;
-        border: none;
-        border-radius: 6px;
-    }
-
-    #output {
-        margin-top: 25px;
-    }
-
-    .block {
-        background: white;
-        padding: 12px;
-        border-radius: 6px;
-        margin-bottom: 20px;
-        border: 1px solid #ddd;
-    }
-
-    .url {
-        font-weight: bold;
-        margin-bottom: 6px;
-    }
-
-    .comment-line {
-        display: flex;
-        justify-content: space-between;
-        margin-top: 6px;
-        padding: 6px 0;
-    }
-
-    .copy-btn {
-        cursor: pointer;
-        padding: 2px 8px;
-        font-size: 13px;
-    }
-
-    .failed {
-        color: red;
-        font-size: 14px;
-        margin-top: 10px;
-    }
-</style>
-
+    <meta charset="UTF-8">
+    <title>CrownTALK</title>
+    <link rel="stylesheet" href="./static/styles.css">
 </head>
+
 <body>
 
 <h1>CrownTALK</h1>
-<p>Paste tweet/X URLs (one per line). We’ll process them in batches of 2.</p>
+<p class="hint">Paste tweet/X URLs (one per line). We’ll process them in batches of 2.</p>
 
-<textarea id="inputUrls"
- placeholder="https://x.com/user/status/123&#10;https://x.com/user/status/456">
-</textarea>
+<textarea id="inputUrls" placeholder="https://x.com/user/status/..."></textarea>
 
 <button id="submitBtn">Generate Comments</button>
 
 <div id="output"></div>
 
-<script>
-const API = "https://crowntalk-v2-0.onrender.com/comment";
-
-document.getElementById("submitBtn").onclick = async () => {
-    let raw = document.getElementById("inputUrls").value.trim();
-    if (!raw) return;
-
-    let urls = raw.split("\n").map(x => x.trim()).filter(x => x);
-
-    document.getElementById("output").innerHTML =
-        `<p>Processing ${urls.length} URL(s)...</p>`;
-
-    // SEND TO BACKEND
-    try {
-        let r = await fetch(API, {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ urls })
-        });
-
-        if (!r.ok) {
-            document.getElementById("output").innerHTML =
-                `<p style="color:red;">Server error. Try again.</p>`;
-            return;
-        }
-
-        let data = await r.json();
-        renderResult(data);
-
-    } catch (err) {
-        console.log(err);
-        document.getElementById("output").innerHTML =
-            `<p style="color:red;">Connection error. Try again.</p>`;
-    }
-};
-
-
-function renderResult(data) {
-    let out = "";
-
-    data.results.forEach((item, i) => {
-        out += `
-        <div class="block">
-            <div class="url">${i+1}. <a href="${item.url}" target="_blank">${item.url}</a></div>
-
-            <div class="comment-line">
-                <span>${item.comments[0]}</span>
-                <button class="copy-btn" onclick="copyText('${escapeQuotes(item.comments[0])}')">Copy</button>
-            </div>
-
-            <div class="comment-line">
-                <span>${item.comments[1]}</span>
-                <button class="copy-btn" onclick="copyText('${escapeQuotes(item.comments[1])}')">Copy</button>
-            </div>
-        </div>`;
-    });
-
-    if (data.failed.length > 0) {
-        out += `<div class="failed"><b>Failed:</b><br>`;
-        data.failed.forEach(f => {
-            out += `${f.url || "undefined"} — ${f.reason || "Unknown"}<br>`;
-        });
-        out += `</div>`;
-    }
-
-    document.getElementById("output").innerHTML = out;
-}
-
-
-function escapeQuotes(str) {
-    return str.replace(/'/g, "\\'");
-}
-
-function copyText(text) {
-    navigator.clipboard.writeText(text);
-    alert("Copied!");
-}
-</script>
+<script src="./static/script.js"></script>
 
 </body>
 </html>
