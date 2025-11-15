@@ -1,19 +1,24 @@
 <!DOCTYPE html>
-<html lang="en">
+<html>
 <head>
-  <meta charset="UTF-8" />
-  <title>CrownTALK</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="static/styles.css" />
+    <title>CrownTALK</title>
+    <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-  <div class="container">
+
+<div class="container">
     <h1>CrownTALK</h1>
-    <p class="hint">Paste tweet/X URLs (one per line). We’ll process them in batches of 2.</p>
-    <textarea id="inputUrls" placeholder="https://x.com/user/status/...\nhttps://twitter.com/user/status/..."></textarea>
+    <p class="hint">Paste tweet/X URLs (one per line). We process them in batches of 2.</p>
+
+    <textarea id="inputUrls" placeholder="https://x.com/user/status/123"></textarea>
+
     <button id="submitBtn">Generate Comments</button>
+
+    <div id="progress"></div>
+
     <div id="output"></div>
-  </div>
-  <script src="static/script.js"></script>
+</div>
+
+<script src="script.js"></script>
 </body>
 </html>
