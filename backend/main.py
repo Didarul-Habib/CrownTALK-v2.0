@@ -1,400 +1,215 @@
-import logging
-logging.basicConfig(level=logging.DEBUG)
 import os
-import re
+import requests
+import json
 import time
 import threading
-import requests
-from urllib.parse import urlparse
 from flask import Flask, request, jsonify
-from flask_cors import CORS
+from urllib.parse import urlparse
 
-# =========================================================
-# DISABLE PROXIES (REQUIRED FOR RENDER)
-# =========================================================
-for k in [
-    "HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "NO_PROXY",
-    "http_proxy", "https_proxy", "all_proxy", "no_proxy"
-]:
-    os.environ.pop(k, None)
-
-session = requests.Session()
-session.trust_env = False  # ignore proxy env
-
-
-# =========================================================
-# FLASK SETUP
-# =========================================================
 app = Flask(__name__)
-CORS(app)
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_KEY = os.getenv("OPENAI_API_KEY")
+OPENAI_URL = "https://api.openai.com/v1/chat/completions"
 
+# ---------------------------------------------
+# KEEP-ALIVE THREAD (prevents Render sleep)
+# ---------------------------------------------
+def keep_alive():
+    while True:
+        try:
+            requests.get("https://crowntalk-v2-0.onrender.com/")
+        except Exception:
+            pass
+        time.sleep(600)
 
-# =========================================================
-# STRICT BLOCKLIST (NO HYPE / NO CRINGE / NO CORPORATE)
-# =========================================================
-STRICT_BLOCKLIST = {
-    # generic hype / overused
-    "amazing", "awesome", "incredible", "great", "so good",
-    "epic", "fire", "cool", "nice", "wow", "excited",
-    "cant wait", "can’t wait", "love to see", "love that",
-    "finally", "game changer", "insane", "crazy",
-
-    # corporate cringe
-    "innovation", "innovative", "transformative", "visionary",
-    "empowering", "groundbreaking",
-
-    # tiktok slang cringe
-    "slay", "yass", "yasss", "queen", "sis", "ate",
-    "literally shaking", "bestie",
-
-    # ai giveaways
-    "as an ai", "as a language model",
-    "in today’s world", "in this digital age",
-
-    # engagement bait
-    "thoughts?", "agree?", "anyone else?", "who’s with me"
-}
+threading.Thread(target=keep_alive, daemon=True).start()
 
 
-# =========================================================
-# URL CLEANING & PARSING (OFFICIAL VX API MODE)
-# =========================================================
-def clean_url(url: str) -> str:
-    """Normalize tweet URL, strip parameters, fix x.com."""
-    if not isinstance(url, str):
-        return ""
-    url = url.strip().split("?", 1)[0]
-    url = url.replace("://x.com", "://twitter.com")
-    url = url.replace("://www.x.com", "://twitter.com")
+# ---------------------------------------------
+# URL CLEANER
+# ---------------------------------------------
+def clean_url(url):
+    if not url:
+        return None
 
-    if url.startswith("http://"):
-        url = "https://" + url[len("http://"):]
-    return url
+    url = url.strip()
+
+    # Remove numbering like: 1. https://....
+    if ". " in url[:4]:
+        url = url.split(". ", 1)[1]
+
+    # Remove query params (?ref=xyz)
+    if "?" in url:
+        url = url.split("?", 1)[0]
+
+    # Enforce twitter/x.com format
+    if "twitter.com" in url or "x.com" in url:
+        return url
+
+    return None
 
 
-def extract_user_id(url: str):
-    """
-    Expect: https://twitter.com/<user>/status/<id>
-    Return: (user, id)
-    """
+# ---------------------------------------------
+# FETCH TWEET FROM VX API
+# ---------------------------------------------
+def fetch_tweet_text(url):
     try:
-        p = urlparse(url)
-        parts = p.path.strip("/").split("/")
-        if len(parts) < 3:
-            return None, None
-        if parts[1] != "status":
-            return None, None
-        return parts[0], parts[2]
-    except:
-        return None, None
+        parsed = urlparse(url)
+        path = parsed.path
+        user = path.split("/")[1]
+        status = path.split("/")[3]
+
+        vx_url = f"https://api.vxtwitter.com/{user}/status/{status}"
+        r = requests.get(vx_url, timeout=10)
+
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        return data.get("text", None)
+
+    except Exception:
+        return None
 
 
-# =========================================================
-# FETCH TWEET TEXT FROM VX TWITTER (OFFICIAL API)
-# =========================================================
-def fetch_tweet_text(url: str):
-    norm = clean_url(url)
-    user, tid = extract_user_id(norm)
+# ---------------------------------------------
+# CLEAN GENERATED COMMENT
+# ---------------------------------------------
+def clean_comment(text):
+    if not text:
+        return ""
 
-    if not user or not tid:
-        return None, f"Invalid tweet URL: {url}"
+    text = text.strip()
 
-    api_url = f"https://api.vxtwitter.com/{user}/status/{tid}"
+    # Remove punctuation at end
+    while len(text) > 0 and text[-1] in "!?.,":
+        text = text[:-1]
 
-    headers = {
-        "User-Agent": "CrownTALK/1.0",
-        "Accept": "application/json"
-    }
+    # Force boundaries 5–12 words
+    words = text.split()
+    if len(words) < 5 or len(words) > 12:
+        return ""
 
-    last_error = None
-
-    for attempt in range(3):
-        try:
-            r = session.get(api_url, headers=headers, timeout=15)
-            if r.status_code == 200:
-                data = r.json()
-                text = data.get("text") or data.get("tweet", {}).get("text")
-                if text:
-                    return text.strip(), None
-                last_error = "VX JSON missing .text"
-            else:
-                last_error = f"VX {r.status_code}: {r.text[:200]}"
-        except Exception as ex:
-            last_error = f"VX error: {ex}"
-
-        time.sleep(min(2 ** attempt, 4))
-
-    return None, last_error
+    return " ".join(words)
 
 
-# =========================================================
-# OPENAI RAW REST — WITH 429 HANDLING + RETRIES
-# =========================================================
-def call_openai(prompt):
-    """Low-level OpenAI REST call with retries + 429 backoff."""
-    if not OPENAI_API_KEY:
-        return None, "Missing OPENAI_API_KEY"
-
-    url = "https://api.openai.com/v1/chat/completions"
-
-    headers = {
-        "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY}"
-    }
-
-    payload = {
-        "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "system", "content": "You generate humanlike Twitter/X comments."},
-            {"role": "user", "content": prompt}
-        ],
-        "max_tokens": 120,
-        "temperature": 0.7
-    }
-
-    last_error = None
-
-    for attempt in range(4):
-        try:
-            r = session.post(url, headers=headers, json=payload, timeout=30)
-
-            # SUCCESS
-            if r.status_code == 200:
-                out = r.json()["choices"][0]["message"]["content"]
-                return out, None
-
-            # RATE LIMIT
-            if r.status_code == 429:
-                try:
-                    retry_after = r.json()["error"].get("retry_after", 20)
-                except:
-                    retry_after = 20
-                time.sleep(retry_after + 2)
-                continue
-
-            # SERVER RETRY
-            if r.status_code in (500, 502, 503, 504):
-                time.sleep(min(2 ** attempt, 4))
-                continue
-
-            # HARD FAIL
-            try:
-                msg = r.json().get("error", {}).get("message")
-            except:
-                msg = r.text
-            return None, f"OpenAI {r.status_code}: {msg}"
-
-        except Exception as ex:
-            last_error = f"OpenAI exception: {ex}"
-            time.sleep(min(2 ** attempt, 4))
-
-    return None, last_error
-
-
-# =========================================================
-# COMMENT VALIDATION / CLEANING
-# =========================================================
-def strip_punctuation(s):
-    return re.sub(r"[!?,.;:]+$", "", s).strip()
-
-
-def remove_emojis(text):
-    return re.sub(r"[\U00010000-\U0010ffff]", "", text)
-
-
-def is_banned(line):
-    low = line.lower()
-    for w in STRICT_BLOCKLIST:
-        if w in low:
-            return True
-    return False
-
-
-def valid_comment(line):
-    line = line.strip().lower()
-
-    # no hashtags
-    if "#" in line:
-        return False
-
-    # no emojis
-    if re.search(r"[\U00010000-\U0010ffff]", line):
-        return False
-
-    # strict blocklist
-    if is_banned(line):
-        return False
-
-    # word count
-    wc = len(line.split())
-    if wc < 5 or wc > 12:
-        return False
-
-    return True
-
-
-def clean_and_validate(raw):
-    """Take AI output, produce EXACTLY 2 valid lines."""
-    lines = raw.split("\n")
-    cleaned = []
-
-    for line in lines:
-        line = line.strip()
-        if not line:
-            continue
-
-        # remove emojis
-        line = remove_emojis(line)
-
-        # strip punctuation
-        line = strip_punctuation(line)
-
-        # remove extra spaces
-        line = re.sub(r"\s+", " ", line)
-
-        if valid_comment(line):
-            cleaned.append(line)
-
-        if len(cleaned) == 2:
-            break
-
-    return cleaned
-
-
-# =========================================================
-# GENERATE 2 STRICT COMMENTS FOR EACH TWEET
-# =========================================================
+# ---------------------------------------------
+# GENERATE COMMENTS USING OPENAI
+# ---------------------------------------------
 def generate_comments(tweet_text):
     prompt = f"""
-Generate two humanlike comments based strictly on this tweet.
-
+Generate two humanlike comments.
 Rules:
-- 2 lines ONLY
-- each line 5–12 words
-- no emojis
-- no hashtags
+- 5–12 words each
 - no punctuation at end
-- natural slang allowed (tbh, fr, ngl, bro, lowkey)
-- avoid hype/corporate/cringe words
-- lines must be different
+- no emojis or hashtags
+- natural slang allowed (tbh, fr, ngl, lowkey)
+- comments must be different
+- based on the tweet
+- exactly 2 lines
 
 Tweet:
 {tweet_text}
 """
 
-    for attempt in range(4):
-        raw, err = call_openai(prompt)
-        if not raw:
+    headers = {
+        "Authorization": f"Bearer {OPENAI_KEY}",
+        "Content-Type": "application/json"
+    }
+
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [{"role": "user", "content": prompt}],
+        "temperature": 0.8,
+        "max_tokens": 50
+    }
+
+    max_retries = 2
+
+    for attempt in range(max_retries):
+        r = requests.post(OPENAI_URL, headers=headers, json=payload)
+
+        # success
+        if r.status_code == 200:
+            response = r.json()
+            output = response["choices"][0]["message"]["content"].strip().split("\n")
+            comments = []
+
+            for line in output:
+                cleaned = clean_comment(line)
+                if cleaned:
+                    comments.append(cleaned)
+
+            # ensure exactly 2
+            if len(comments) >= 2:
+                return comments[:2]
+
+            # fallback if bad formatting
+            break
+
+        # rate limit → wait and retry
+        if r.status_code == 429:
+            time.sleep(2)
             continue
 
-        cleaned = clean_and_validate(raw)
-        if len(cleaned) == 2:
-            return cleaned, None
-
-    # fallback
-    return ["generation failed", "please retry"], None
+    # final fallback
+    return ["generation failed", "try again later"]
 
 
-# =========================================================
-# BATCH PROCESSING (2 per batch + cooldown)
-# =========================================================
-def process_batch(urls):
-    results = []
-    failed = []
-
-    for url in urls:
-        text, err = fetch_tweet_text(url)
-        if not text:
-            failed.append(url)
-            continue
-
-        comments, _ = generate_comments(text)
-
-        # spacing to avoid rate-limit
-        time.sleep(1.2)
-
-        results.append({
-            "url": url,
-            "comments": comments
-        })
-
-    return results, failed
-
-
-# =========================================================
-# KEEP ALIVE FOR RENDER
-# =========================================================
-def keep_alive():
-    target = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("SELF_URL")
-    if not target:
-        return
-    time.sleep(8)
-    while True:
-        try:
-            session.get(target, timeout=10)
-        except:
-            pass
-        time.sleep(600)
-
-
-threading.Thread(target=keep_alive, daemon=True).start()
-
-
-# =========================================================
-# ROUTES
-# =========================================================
-@app.route("/", methods=["GET"])
-def home():
-    return jsonify({"status": "CrownTALK backend running"})
-
-
+# ---------------------------------------------
+# MAIN COMMENT ENDPOINT
+# ---------------------------------------------
 @app.route("/comment", methods=["POST"])
 def comment():
     try:
-        data = request.get_json(silent=True) or {}
-        urls = data.get("urls")
+        data = request.get_json()
+        urls = data.get("urls", [])
 
-        if not isinstance(urls, list) or not urls:
-            return jsonify({"error": "Send JSON: {\"urls\": [...]}"})
-
-        # Clean + dedupe
-        seen = set()
-        clean_list = []
-
+        cleaned = []
         for u in urls:
             cu = clean_url(u)
-            if cu and cu not in seen:
-                clean_list.append(cu)
-                seen.add(cu)
+            if cu:
+                cleaned.append(cu)
 
-        all_results = []
-        all_failed = []
+        cleaned = list(dict.fromkeys(cleaned))  # remove duplicates
 
-        # BATCH of 2
-        for i in range(0, len(clean_list), 2):
-            batch = clean_list[i:i+2]
+        results = []
+        failed = []
 
-            r, f = process_batch(batch)
-            all_results.extend(r)
-            all_failed.extend(f)
+        # Batch of 2
+        for i in range(0, len(cleaned), 2):
+            batch = cleaned[i:i+2]
 
-            # cooldown between batches
-            time.sleep(2)
+            for url in batch:
+                tweet_text = fetch_tweet_text(url)
+
+                if not tweet_text:
+                    failed.append(url)
+                    continue
+
+                comments = generate_comments(tweet_text)
+
+                results.append({
+                    "url": url,
+                    "comments": comments
+                })
+
+            time.sleep(2)  # prevent OpenAI overload
 
         return jsonify({
-            "results": all_results,
-            "failed": all_failed
+            "results": results,
+            "failed": failed
         })
 
     except Exception as e:
-        return jsonify({"error": "Internal error", "detail": str(e)}), 500
+        print("SERVER ERROR:", e)
+        return jsonify({"error": "server failure"}), 500
 
 
-# =========================================================
-# LOCAL RUN
-# =========================================================
+@app.route("/")
+def home():
+    return "CrownTALK backend alive", 200
+
+
 if __name__ == "__main__":
-    port = int(os.getenv("PORT", "10000"))
-    app.run(host="0.0.0.0", port=port)
+    app.run(host="0.0.0.0", port=10000)
