@@ -5,14 +5,12 @@ import threading
 import requests
 from flask import Flask, request, jsonify
 
-
 # ----------------------------------------------------
 # REMOVE PROXY VARIABLES (Render injects them)
 # ----------------------------------------------------
 for p in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
     if p in os.environ:
         del os.environ[p]
-
 
 # ----------------------------------------------------
 # CONFIG
@@ -23,23 +21,22 @@ app = Flask(__name__)
 
 
 # ----------------------------------------------------
-# KEEP RENDER AWAKE
+# KEEP RENDER AWAKE (EVERY 10 MIN)
 # ----------------------------------------------------
 def keep_awake():
     while True:
         try:
-            # change to YOUR render URL
-            requests.get("https://crowntalk-v2-0.onrender.com")
+            requests.get("https://crowntalk-v2-0.onrender.com/")
         except:
             pass
-        time.sleep(300)  # every 5 mins
+        time.sleep(600)  # 10 minutes
 
 
 threading.Thread(target=keep_awake, daemon=True).start()
 
 
 # ----------------------------------------------------
-# FETCH TWEET TEXT (VX API)
+# FETCH TWEET TEXT USING VX API
 # ----------------------------------------------------
 def get_tweet_text(url):
     try:
@@ -49,16 +46,18 @@ def get_tweet_text(url):
         r = requests.get(api, timeout=10)
         data = r.json()
 
+        # structure: {"tweet": {"text": "..."}}
         if "tweet" in data and "text" in data["tweet"]:
             return data["tweet"]["text"]
 
         return None
-    except:
+    except Exception as e:
+        print("VX error:", e)
         return None
 
 
 # ----------------------------------------------------
-# CALL OPENAI REST API (NO OPENAI LIB)
+# GENERATE COMMENTS (OpenAI REST)
 # ----------------------------------------------------
 def generate_comments(tweet_text):
     prompt = f"""
@@ -78,7 +77,7 @@ Tweet:
 
     payload = {
         "model": "gpt-4o-mini",
-        "temperature": 0.7,
+        "temperature": 0.65,
         "max_tokens": 60,
         "messages": [
             {"role": "user", "content": prompt}
@@ -102,23 +101,24 @@ Tweet:
             data = r.json()
 
             if "choices" not in data:
-                time.sleep(1)
+                print("AI retry:", data)
+                time.sleep(2)
                 continue
 
             output = data["choices"][0]["message"]["content"]
             lines = [l.strip() for l in output.split("\n") if l.strip()]
 
-            clean_lines = []
+            clean_out = []
             for c in lines:
                 c = re.sub(r"[.,!?;:]+$", "", c)
                 if 5 <= len(c.split()) <= 12:
-                    clean_lines.append(c)
+                    clean_out.append(c)
 
-            if len(clean_lines) >= 2:
-                return clean_lines[:2]
+            if len(clean_out) >= 2:
+                return clean_out[:2]
 
         except Exception as e:
-            print("AI generation error:", e)
+            print("AI error:", e)
             time.sleep(2)
 
     return ["generation failed", "please retry"]
@@ -134,45 +134,52 @@ def home():
 
 @app.route("/comment", methods=["POST"])
 def comment_api():
-    body = request.json
-    urls = body.get("urls", [])
+    try:
+        body = request.json
+        urls = body.get("urls", [])
 
-    if not urls:
-        return jsonify({"error": "No URLs provided"}), 400
+        if not urls:
+            return jsonify({"error": "No URLs provided"}), 400
 
-    # clean + dedupe
-    clean_urls = []
-    for u in urls:
-        u = u.strip()
-        u = re.sub(r"\?.*$", "", u)
-        if u not in clean_urls:
-            clean_urls.append(u)
+        # clean + dedupe
+        clean_urls = []
+        for u in urls:
+            u = re.sub(r"\?.*$", "", u.strip())
+            if u not in clean_urls:
+                clean_urls.append(u)
 
-    results = []
-    failed = []
+        results = []
+        failed = []
 
-    # batch 2 at a time
-    for i in range(0, len(clean_urls), 2):
-        batch = clean_urls[i:i + 2]
+        # batch of 2
+        for i in range(0, len(clean_urls), 2):
+            batch = clean_urls[i:i + 2]
+            print("Processing batch:", batch)
 
-        for url in batch:
-            txt = get_tweet_text(url)
-            if not txt:
-                failed.append(url)
-                continue
+            for url in batch:
+                text = get_tweet_text(url)
 
-            comments = generate_comments(txt)
-            results.append({
-                "url": url,
-                "comments": comments
-            })
+                if not text:
+                    failed.append(url)
+                    continue
 
-        time.sleep(2)
+                comments = generate_comments(text)
 
-    return jsonify({
-        "results": results,
-        "failed": failed
-    })
+                results.append({
+                    "url": url,
+                    "comments": comments
+                })
+
+            time.sleep(2)
+
+        return jsonify({
+            "results": results,
+            "failed": failed
+        })
+
+    except Exception as e:
+        print("SERVER ERROR:", e)
+        return jsonify({"error": "Server internal error"}), 500
 
 
 # ----------------------------------------------------
