@@ -1,45 +1,81 @@
-* { box-sizing: border-box; }
-
 body {
-  font-family: system-ui, -apple-system, Segoe UI, Roboto, Arial, sans-serif;
-  background: #f6f7fb;
-  margin: 0; padding: 24px;
-  color: #1a1a1a;
+    font-family: Arial, sans-serif;
+    background: #f3f3f3;
+    color: #222;
+    margin: 0;
+    padding: 40px;
+}
+
+@media (prefers-color-scheme: dark) {
+    body {
+        background: #1e1e1e;
+        color: #ddd;
+    }
 }
 
 .container {
-  max-width: 880px; margin: 0 auto;
-  background: #fff; padding: 24px 24px 8px; border-radius: 12px;
-  box-shadow: 0 6px 18px rgba(0,0,0,0.06);
+    max-width: 700px;
+    margin: auto;
+    padding: 20px;
 }
 
-h1 { margin-top: 0; font-size: 28px; }
-.hint { color: #666; margin-top: -8px; }
-
 textarea {
-  width: 100%; height: 160px; padding: 12px;
-  border: 1px solid #d7d9e0; border-radius: 8px;
-  font-family: inherit; font-size: 14px;
-  margin: 12px 0 16px;
+    width: 100%;
+    height: 180px;
+    padding: 12px;
+    border-radius: 6px;
+    font-size: 15px;
 }
 
 button {
-  background: #2563eb; color: #fff; border: 0;
-  padding: 12px 18px; border-radius: 8px; cursor: pointer;
-  font-weight: 600;
-}
-button[disabled] { opacity: 0.6; cursor: not-allowed; }
-
-#output { margin: 16px 0; }
-
-.card {
-  background: #f9fafb;
-  border: 1px solid #e5e7eb;
-  border-radius: 10px;
-  padding: 14px 16px;
-  margin: 12px 0;
+    margin-top: 12px;
+    padding: 12px 20px;
+    background: #007bff;
+    border: none;
+    border-radius: 6px;
+    color: white;
+    cursor: pointer;
+    font-size: 16px;
 }
 
-.card h3 { margin: 0 0 8px; font-size: 16px; }
-.failed { color: #b91c1c; }
-.error { color: #b91c1c; font-weight: 600; }
+button:hover {
+    background: #0063d6;
+}
+
+#progress {
+    margin-top: 15px;
+    font-weight: bold;
+}
+
+.tweet-block {
+    background: #fff;
+    padding: 14px;
+    margin-top: 14px;
+    border-radius: 6px;
+    border: 1px solid #ddd;
+}
+
+@media (prefers-color-scheme: dark) {
+    .tweet-block {
+        background: #2a2a2a;
+        border: 1px solid #444;
+    }
+}
+
+.comment-line {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.copyBtn {
+    padding: 3px 8px;
+    border: 1px solid #bbb;
+    background: #eee;
+    cursor: pointer;
+    border-radius: 4px;
+}
+
+.copyBtn:hover {
+    background: #ddd;
+}
