@@ -1,0 +1,48 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrownTALK</title>
+    <link rel="stylesheet" href="/static/style.css">
+</head>
+<body>
+
+<div class="theme-toggle-container">
+    <button id="themeToggle" class="theme-toggle">🌙</button>
+</div>
+
+<div class="container">
+
+    <!-- FIXED SQUARE LOGO -->
+    <img src="/static/logo.png" alt="CrownTALK Logo" class="logo">
+
+    <h1>CrownTALK</h1>
+    <p class="sub">Humanlike Twitter Commenter • Powered by CrownDEX 👑</p>
+
+    <label class="input-label">Paste Tweet Links Below</label>
+    <textarea id="tweetInput" class="input-box" placeholder="https://x.com/..."></textarea>
+
+    <button id="generateBtn" class="btn-generate">Generate Replies</button>
+    <button id="stopBtn" class="btn-stop hidden">Stop</button>
+
+    <div id="statusArea"></div>
+
+    <div id="results"></div>
+
+    <p class="footer">© 2025 CrownDEX • All rights reserved.</p>
+
+    <div class="theme-selector">
+        <label>Theme:</label>
+        <select id="themeSelect">
+            <option value="purple">Purple Neon</option>
+            <option value="darkblue">Dark Blue</option>
+            <option value="sunset">Sunset Gold</option>
+        </select>
+    </div>
+
+</div>
+
+<script src="/static/script.js"></script>
+</body>
+</html>
