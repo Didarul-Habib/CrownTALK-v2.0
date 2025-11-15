@@ -17,53 +17,62 @@ with open("comment_style_guide.txt", "r", encoding="utf-8") as f:
 
 
 # ---------------------------------------------
-# CLEAN URL FUNCTION
-# Removes tracking params (?s=20 etc)
+# Clean Tweet URL (remove params + normalize)
 # ---------------------------------------------
 def clean_url(url):
-    try:
-        url = url.strip()
-        url = url.split("?")[0]
-        url = url.replace("mobile.", "")
-        return url
-    except:
-        return url
+    url = url.strip()
+    url = url.replace("mobile.twitter.com", "twitter.com")
+    url = url.replace("x.com", "twitter.com")
+    url = url.split("?")[0]
+    return url
 
 
 # ---------------------------------------------
-# Twxt API • Ultra-stable Tweet Fetcher
+# Multi-Source Tweet Fetcher (4-layer fallback)
 # ---------------------------------------------
 def fetch_tweet_text(url):
 
     url = clean_url(url)
 
-    # extract tweet id
+    # Extract tweet ID
     try:
         tid = url.split("/status/")[1].split("/")[0]
     except:
         return None
 
-    api_url = f"https://twxt.nest.rip/api/v2/tweet/{tid}"
+    # Multi-source API attempts
+    sources = [
+        f"https://twxt.nest.rip/api/v2/tweet/{tid}",
+        f"https://nitter.lucabased.xyz/{tid}.json",
+        f"https://nitter.mint.lgbt/{tid}.json",
+        f"https://api.vxtwitter.com/Twitter/status/{tid}"
+    ]
 
-    # retry 3×
-    for _ in range(3):
+    for api_url in sources:
         try:
             r = requests.get(api_url, timeout=10)
 
             if r.status_code != 200:
-                time.sleep(1)
                 continue
 
             data = r.json()
 
+            # Twxt format
             if "text" in data:
                 return data["text"]
 
+            # Nitter format
+            if "tweet" in data and "text" in data["tweet"]:
+                return data["tweet"]["text"]
+
+            # VXTwitter format
+            if "tweet" in data and "text" in data["tweet"]:
+                return data["tweet"]["text"]
+
         except:
-            time.sleep(1)
+            continue
 
-    return None
-
+    return None  # if all sources fail
 
 
 # ---------------------------------------------
@@ -78,7 +87,7 @@ def translate_to_english(text):
         response = client.chat.completions.create(
             model="gpt-4o-mini",
             messages=[
-                {"role": "system", "content": "Translate this to English only."},
+                {"role": "system", "content": "Translate this to English. Only output translation."},
                 {"role": "user", "content": text}
             ],
             temperature=0.2,
@@ -90,24 +99,23 @@ def translate_to_english(text):
         return text
 
 
-
 # ---------------------------------------------
-# Comment Generator
+# Comment Generator (with retry x3)
 # ---------------------------------------------
 def generate_comments(tweet_text):
     prompt = f"""
 You are CrownTALK 👑 — a humanlike comment generator.
 
-Rules:
-• EXACTLY 2 comments.
-• 5–12 words each.
-• No punctuation.
-• No emojis or hashtags.
-• No repeated structure.
-• Natural slang allowed (fr, ngl, tbh, btw, kinda, lowkey).
-• Must understand tweet context.
-• Avoid all blacklist words in style guide.
-• Two different human voices.
+Strict Rules:
+- Read the tweet and write two natural comments.
+- 5–12 words each.
+- No punctuation at the end.
+- No emojis, no hashtags.
+- No repeated patterns or hype words (finally, excited, hit different, etc).
+- Use natural slang (tbh, fr, ngl, lowkey, btw, kinda).
+- Comments must be different from each other.
+- Must be based on the tweet meaning.
+- Output EXACTLY two lines, nothing else.
 
 STYLE GUIDE:
 {STYLE_GUIDE}
@@ -115,36 +123,33 @@ STYLE GUIDE:
 Tweet:
 "{tweet_text}"
 
-Respond with ONLY two lines. No numbering.
+Return ONLY the two comments.
 """
 
-    # retry 3× for stability
-    for _ in range(3):
+    for attempt in range(3):
         try:
             response = client.chat.completions.create(
                 model="gpt-4o-mini",
                 messages=[{"role": "user", "content": prompt}],
-                temperature=0.7,
+                temperature=0.65,
             )
 
             output = response.choices[0].message.content.strip()
-            lines = output.split("\n")
+            lines = [l.strip() for l in output.split("\n") if l.strip()]
 
-            # cleanup
-            cleaned = []
-            for l in lines:
-                l = re.sub(r"[.,!?;:]+$", "", l).strip()
-                if 5 <= len(l.split()) <= 12:
-                    cleaned.append(l)
+            # Clean trailing punctuation
+            lines = [re.sub(r"[.,!?;:]+$", "", l) for l in lines]
 
-            if len(cleaned) >= 2:
-                return cleaned[:2]
+            # Filter valid comments
+            valid = [l for l in lines if 5 <= len(l.split()) <= 12]
+
+            if len(valid) >= 2:
+                return valid[:2]
 
         except:
             time.sleep(1)
 
     return ["could not generate reply", "generator failed"]
-
 
 
 # ---------------------------------------------
@@ -155,34 +160,30 @@ def index():
     return render_template("index.html")
 
 
-
 @app.route("/comment", methods=["POST"])
 def comment_api():
+
     data = request.json
 
     if "tweets" not in data or not isinstance(data["tweets"], list):
-        return jsonify({"error": "Invalid request"}), 400
+        return jsonify({"error": "Invalid request format"}), 400
 
     results = []
 
     for url in data["tweets"]:
-        url = clean_url(url)
-
-        tweet_text = fetch_tweet_text(url)
+        cleaned = clean_url(url)
+        tweet_text = fetch_tweet_text(cleaned)
 
         if not tweet_text:
             results.append({"error": "Could not fetch this tweet (private or deleted)"})
             continue
 
-        # translate
-        text_en = translate_to_english(tweet_text)
+        tweet_text_en = translate_to_english(tweet_text)
+        comments = generate_comments(tweet_text_en)
 
-        # generate comments
-        comments = generate_comments(text_en)
         results.append({"comments": comments})
 
     return jsonify({"results": results})
-
 
 
 # ---------------------------------------------
