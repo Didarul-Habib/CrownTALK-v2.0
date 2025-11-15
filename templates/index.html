@@ -4,45 +4,36 @@
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CrownTALK</title>
-    <link rel="stylesheet" href="/static/style.css">
+
+    <!-- CSS -->
+    <link rel="stylesheet" href="style.css">
 </head>
+
 <body>
 
-<div class="theme-toggle-container">
-    <button id="themeToggle" class="theme-toggle">🌙</button>
-</div>
-
-<div class="container">
-
-    <!-- FIXED SQUARE LOGO -->
-    <img src="/static/logo.png" alt="CrownTALK Logo" class="logo">
-
-    <h1>CrownTALK</h1>
-    <p class="sub">Humanlike Twitter Commenter • Powered by CrownDEX 👑</p>
-
-    <label class="input-label">Paste Tweet Links Below</label>
-    <textarea id="tweetInput" class="input-box" placeholder="https://x.com/..."></textarea>
-
-    <button id="generateBtn" class="btn-generate">Generate Replies</button>
-    <button id="stopBtn" class="btn-stop hidden">Stop</button>
-
-    <div id="statusArea"></div>
-
-    <div id="results"></div>
-
-    <p class="footer">© 2025 CrownDEX • All rights reserved.</p>
-
-    <div class="theme-selector">
-        <label>Theme:</label>
-        <select id="themeSelect">
-            <option value="purple">Purple Neon</option>
-            <option value="darkblue">Dark Blue</option>
-            <option value="sunset">Sunset Gold</option>
-        </select>
+    <div class="theme-toggle-container">
+        <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
     </div>
 
-</div>
+    <div class="container">
+        <img src="logo.png" class="logo" alt="Logo">
 
-<script src="/static/script.js"></script>
+        <h1>CrownTALK</h1>
+        <div class="sub">Generate ultra-natural human comments instantly</div>
+
+        <label class="input-label">Enter Tweet Links (1 per line)</label>
+        <textarea id="inputBox" class="input-box" placeholder="https://x.com/..."></textarea>
+
+        <button class="btn-generate" onclick="generateComments()">Generate Comments</button>
+        <button class="btn-stop hidden" id="stopBtn">Stop</button>
+
+        <div id="results"></div>
+
+        <div class="footer">CrownTALK v2 — powered by Render</div>
+    </div>
+
+    <!-- JS -->
+    <script src="script.js"></script>
+
 </body>
 </html>
