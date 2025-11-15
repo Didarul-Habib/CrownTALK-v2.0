@@ -1,5 +1,5 @@
 //-------------------------------------------
-// Extract clean URLs from textarea input
+// Extract clean URLs from user input
 //-------------------------------------------
 function extractUrls(inputText) {
     const lines = inputText.split("\n");
@@ -8,18 +8,14 @@ function extractUrls(inputText) {
     for (let line of lines) {
         if (!line.trim()) continue;
 
-        // Remove numbering such as: "1.", "2)", "3 -", "10:", etc.
+        // Remove numbering (1., 2), 3 -, etc.)
         line = line.replace(/^\s*\d+[\.\)\-:]*\s*/, "").trim();
 
         // Extract actual URL
         const match = line.match(/https?:\/\/[^\s]+/);
-
         if (match) {
             let url = match[0].trim();
-
-            // Clean trailing punctuation like ".", ",", ")", etc.
-            url = url.replace(/[),.]+$/, "");
-
+            url = url.replace(/[),.]+$/, ""); // remove trailing punctuation
             urls.push(url);
         }
     }
@@ -29,32 +25,28 @@ function extractUrls(inputText) {
 
 
 //-------------------------------------------
-// Handle "Generate Comments" button
+// Handle "Generate Comments"
 //-------------------------------------------
-document.getElementById("generateBtn").addEventListener("click", async function () {
+document.getElementById("submitBtn").addEventListener("click", async function () {
 
-    const rawInput = document.getElementById("urlsInput").value.trim();
-    const resultsDiv = document.getElementById("results");
-    const failedDiv = document.getElementById("failed");
+    const rawInput = document.getElementById("inputUrls").value.trim();
+    const outputDiv = document.getElementById("output");
 
-    resultsDiv.innerHTML = "";
-    failedDiv.innerHTML = "";
+    outputDiv.innerHTML = "";
 
     if (!rawInput) {
         alert("Please enter at least one URL.");
         return;
     }
 
-    // Extract the clean URLs
     const urls = extractUrls(rawInput);
 
     if (urls.length === 0) {
-        alert("No valid URLs detected.");
+        alert("No valid URLs found.");
         return;
     }
 
-    // Display loading state
-    resultsDiv.innerHTML = `<p style="color:#555;">Processing ${urls.length} links...</p>`;
+    outputDiv.innerHTML = `<p style="color:#777;">Processing ${urls.length} links...</p>`;
 
     try {
         const response = await fetch("https://crowntalk-v2-0.onrender.com/comment", {
@@ -64,54 +56,59 @@ document.getElementById("generateBtn").addEventListener("click", async function 
         });
 
         const data = await response.json();
-
-        resultsDiv.innerHTML = "";
-        failedDiv.innerHTML = "";
+        outputDiv.innerHTML = "";
 
         //-------------------------------------------
-        // SHOW RESULTS
+        // Show results
         //-------------------------------------------
         if (data.results && data.results.length > 0) {
-            data.results.forEach((item) => {
-                const block = document.createElement("div");
-                block.className = "result-block";
+            let html = "<h2>Results</h2>";
 
-                block.innerHTML = `
-                    <p><a href="${item.url}" target="_blank">${item.url}</a></p>
-                    <div class="comment-line">
-                        <span>${item.comments[0]}</span>
-                        <button onclick="copyText('${item.comments[0]}')">Copy</button>
+            data.results.forEach(item => {
+                html += `
+                    <div class="result-block">
+                        <p><a href="${item.url}" target="_blank">${item.url}</a></p>
+
+                        <div class="comment-line">
+                            <span>${item.comments[0]}</span>
+                            <button onclick="copyText('${item.comments[0]}')">Copy</button>
+                        </div>
+
+                        <div class="comment-line">
+                            <span>${item.comments[1]}</span>
+                            <button onclick="copyText('${item.comments[1]}')">Copy</button>
+                        </div>
+
+                        <hr>
                     </div>
-                    <div class="comment-line">
-                        <span>${item.comments[1]}</span>
-                        <button onclick="copyText('${item.comments[1]}')">Copy</button>
-                    </div>
-                    <hr>
                 `;
-                resultsDiv.appendChild(block);
             });
+
+            outputDiv.innerHTML += html;
         }
 
         //-------------------------------------------
-        // SHOW FAILED URLS
+        // Show failed URLs
         //-------------------------------------------
         if (data.failed && data.failed.length > 0) {
-            let failHTML = "<h3>Failed</h3>";
-            data.failed.forEach((url) => {
-                failHTML += `<p><a href="${url}" target="_blank">${url}</a> — Unknown reason</p>`;
+            let fail = "<h2>Failed</h2>";
+
+            data.failed.forEach(url => {
+                fail += `<p><a href="${url}" target="_blank">${url}</a> — Unknown reason</p>`;
             });
-            failedDiv.innerHTML = failHTML;
+
+            outputDiv.innerHTML += fail;
         }
 
     } catch (err) {
-        resultsDiv.innerHTML = `<p style="color:red;">Server error. Try again.</p>`;
+        outputDiv.innerHTML = `<p style="color:red;">Server error. Try again.</p>`;
         console.error(err);
     }
 });
 
 
 //-------------------------------------------
-// Copy button
+// Copy utility
 //-------------------------------------------
 function copyText(text) {
     navigator.clipboard.writeText(text);
