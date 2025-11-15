@@ -1,179 +1,171 @@
-import os
 import re
 import time
+import requests
 import asyncio
-import httpx
-from fastapi import FastAPI, Request
-from fastapi.middleware.cors import CORSMiddleware
-from pydantic import BaseModel
+from fastapi import FastAPI, Request, Form
+from fastapi.responses import JSONResponse, HTMLResponse
+from fastapi.staticfiles import StaticFiles
+from fastapi.templating import Jinja2Templates
+from langdetect import detect
+from openai import OpenAI
 
 app = FastAPI()
 
-app.add_middleware(
-    CORSMiddleware,
-    allow_origins=["*"],
-    allow_headers=["*"],
-    allow_methods=["*"],
-)
+client = OpenAI()
 
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+# ----------------------------
+# Mount static + templates
+# ----------------------------
+app.mount("/static", StaticFiles(directory="static"), name="static")
+templates = Jinja2Templates(directory="templates")
 
-# ---------------------------------------
-#  CLEAN TWEET URL
-# ---------------------------------------
-def clean_url(url: str) -> str:
-    return url.split("?")[0].strip()
+# ----------------------------
+# Load Style Guide
+# ----------------------------
+with open("comment_style_guide.txt", "r", encoding="utf-8") as f:
+    STYLE_GUIDE = f.read()
 
-# ---------------------------------------
-#  FETCH METHOD A — TWXT (Primary)
-# ---------------------------------------
-async def fetch_twxt(url: str):
-    api = f"https://api.twxt.live/v1/tweet?url={url}"
-    try:
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(api)
-            if r.status_code != 200:
-                return None
-            data = r.json()
-            if "text" in data and data["text"]:
-                return data["text"]
-    except:
-        return None
-    return None
 
-# ---------------------------------------
-#  FETCH METHOD B — VXTwitter
-# ---------------------------------------
-async def fetch_vx(url: str):
-    try:
-        api = url.replace("twitter.com", "vx-twitter.com").replace("x.com", "vx-twitter.com")
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(api)
-            if r.status_code != 200:
-                return None
-            html = r.text
-            match = re.search(r'<meta property="og:description" content="(.*?)"', html)
-            if match:
-                return match.group(1)
-    except:
-        return None
-    return None
+# ----------------------------
+# Clean URLs
+# ----------------------------
+def clean_url(url: str):
+    url = url.strip()
+    url = re.sub(r"\?.*$", "", url)
+    url = url.replace("mobile.", "")
+    return url
 
-# ---------------------------------------
-#  FETCH METHOD C — CATX API (Very reliable)
-# ---------------------------------------
-async def fetch_catx(url: str):
-    try:
-        api = f"https://api.catx.one/tweet?url={url}"
-        async with httpx.AsyncClient(timeout=10) as client:
-            r = await client.get(api)
-            if r.status_code != 200:
-                return None
-            j = r.json()
-            if "text" in j and j["text"]:
-                return j["text"]
-    except:
-        return None
-    return None
 
-# ---------------------------------------
-#  FETCH METHOD D — Raw HTML Scrape
-# ---------------------------------------
-async def fetch_html(url: str):
-    try:
-        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
-            r = await client.get(url)
-            if r.status_code != 200:
-                return None
-            html = r.text
-            # OG tag (works surprisingly often)
-            match = re.search(r'<meta property="og:description" content="(.*?)"', html)
-            if match:
-                return match.group(1)
-    except:
-        return None
-    return None
-
-# ---------------------------------------
-#  MASTER FETCHER (Rotates sources)
-# ---------------------------------------
-async def get_tweet_text(url: str):
+# ----------------------------
+# Fetch tweet text (VxTwitter)
+# ----------------------------
+def fetch_tweet_text(url):
     url = clean_url(url)
-    sources = [fetch_twxt, fetch_vx, fetch_catx, fetch_html]
+    api_url = "https://api.vxtwitter.com/" + url.split("twitter.com/")[-1].split("x.com/")[-1]
 
-    for fetcher in sources:
-        text = await fetcher(url)
-        if text:
+    try:
+        r = requests.get(api_url, timeout=10)
+        if r.status_code != 200:
+            return None
+
+        data = r.json()
+        if "tweet" in data and "text" in data["tweet"]:
+            return data["tweet"]["text"]
+
+        return None
+    except:
+        return None
+
+
+# ----------------------------
+# Translate to English
+# ----------------------------
+def translate_to_english(text):
+    try:
+        lang = detect(text)
+        if lang == "en":
             return text
 
-        # micro delay (protect from rate-limit)
-        await asyncio.sleep(0.04)
-
-    return None
-
-# ---------------------------------------
-#  OPENAI COMMENT GENERATOR
-# ---------------------------------------
-async def generate_comment(text: str):
-    prompt = (
-        "Write a short, casual, humanlike reply to this tweet:\n\n"
-        f"Tweet: {text}\n\n"
-        "Reply:"
-    )
-
-    try:
-        async with httpx.AsyncClient(timeout=20) as client:
-            r = await client.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
-                json={
-                    "model": "gpt-4o-mini",
-                    "messages": [{"role": "user", "content": prompt}],
-                    "max_tokens": 60,
-                    "temperature": 0.8,
-                },
-            )
-
-            if r.status_code != 200:
-                return None
-
-            data = r.json()
-            return data["choices"][0]["message"]["content"].strip()
-
+        res = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[
+                {"role": "system", "content": "Translate this to English only."},
+                {"role": "user", "content": text}
+            ],
+            temperature=0.2
+        )
+        return res.choices[0].message.content.strip()
     except:
-        return None
+        return text
 
-# ---------------------------------------
-#  REQUEST MODEL
-# ---------------------------------------
-class TweetBatch(BaseModel):
-    urls: list
 
-# ---------------------------------------
-#  MAIN PROCESSOR
-# ---------------------------------------
-@app.post("/process")
-async def process(data: TweetBatch):
+# ----------------------------
+# Generate AI comments
+# ----------------------------
+def generate_comments(tweet_text):
+    prompt = f"""
+You are CrownTALK 👑 — a humanlike comment generator.
+
+Rules:
+- Two comments
+- Each 5–12 words
+- No punctuation at end
+- No emojis
+- No hype words
+- No repeated patterns
+- Natural human slang allowed
+- Must follow the style guide exactly
+
+STYLE GUIDE:
+{STYLE_GUIDE}
+
+Tweet:
+"{tweet_text}"
+
+Return exactly two lines.
+"""
+
+    for _ in range(3):
+        try:
+            r = client.chat.completions.create(
+                model="gpt-4o-mini",
+                messages=[{"role": "user", "content": prompt}],
+                temperature=0.65,
+            )
+            out = r.choices[0].message.content.strip().split("\n")
+            out = [re.sub(r"[.,!?;:]+$", "", x).strip() for x in out]
+            out = [x for x in out if 5 <= len(x.split()) <= 12]
+
+            if len(out) >= 2:
+                return out[:2]
+        except:
+            time.sleep(1)
+
+    return ["could not generate reply", "generator failed"]
+
+
+# ----------------------------
+# PAGE ROUTE
+# ----------------------------
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    return templates.TemplateResponse("index.html", {"request": request})
+
+
+# ----------------------------
+# COMMENT API
+# ----------------------------
+@app.post("/comment")
+async def comment_api(request: Request):
+    data = await request.json()
+
+    if "tweets" not in data:
+        return JSONResponse({"error": "Invalid request"}, status_code=400)
+
+    raw_links = data["tweets"]
+    cleaned = [clean_url(x) for x in raw_links]
+
     results = []
 
-    for url in data.urls:
-        cleaned = clean_url(url)
+    for url in cleaned:
+        # Retry tweet fetching 3 times
+        txt = None
+        for _ in range(3):
+            txt = fetch_tweet_text(url)
+            if txt:
+                break
+            time.sleep(1)
 
-        tweet_text = await get_tweet_text(cleaned)
+        if not txt:
+            results.append({"error": "Could not fetch this tweet (private/deleted)", "url": url})
+            continue
 
-        if tweet_text:
-            comment = await generate_comment(tweet_text)
-        else:
-            comment = None
+        en = translate_to_english(txt)
+        comments = generate_comments(en)
 
         results.append({
-            "url": cleaned,
-            "tweet": tweet_text,
-            "comment": comment,
-            "status": "success" if comment else "failed"
+            "url": url,
+            "comments": comments
         })
 
-        # small pause protects from bans
-        await asyncio.sleep(0.05)
-
-    return {"results": results}
+    return JSONResponse({"results": results, "ok": True})
