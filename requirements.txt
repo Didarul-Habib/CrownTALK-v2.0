@@ -1,5 +1,4 @@
 flask
-gunicorn
-requests
+flask-cors
 openai
-langdetect
+gunicorn
