@@ -1,23 +1,42 @@
-<!DOCTYPE html>
+<!doctype html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>CrownTALK</title>
-    <link rel="stylesheet" href="./static/styles.css">
+  <meta charset="utf-8" />
+  <title>CrownTALK</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <link rel="stylesheet" href="./static/styles.css" />
 </head>
-
 <body>
+  <header class="topbar">
+    <h1>CrownTALK</h1>
+    <div class="actions">
+      <button id="toggleTheme" title="Toggle theme">🌗</button>
+      <button id="clearBtn" class="ghost">Clear</button>
+      <button id="downloadBtn" class="ghost">Download JSON</button>
+    </div>
+  </header>
 
-<h1>CrownTALK</h1>
-<p class="hint">Paste tweet/X URLs (one per line). We’ll process them in batches of 2.</p>
+  <main>
+    <p class="hint">
+      Paste tweet/X URLs (one per line). We’ll process them <b>in batches of 2</b> and
+      stream results as each batch finishes.
+    </p>
 
-<textarea id="inputUrls" placeholder="https://x.com/user/status/..."></textarea>
+    <textarea id="inputUrls" spellcheck="false" placeholder="https://x.com/user/status/...\nhttps://twitter.com/user/status/..."></textarea>
 
-<button id="submitBtn">Generate Comments</button>
+    <div class="btn-row">
+      <button id="streamBtn">Generate (Streaming)</button>
+      <button id="classicBtn" class="ghost">Generate (Classic)</button>
+    </div>
 
-<div id="output"></div>
+    <div id="progressWrap" class="progress-wrap hidden">
+      <div id="progressBar" class="progress-bar"></div>
+      <div id="progressText" class="progress-text"></div>
+    </div>
 
-<script src="./static/script.js"></script>
+    <div id="output"></div>
+  </main>
 
+  <script src="./static/script.js"></script>
 </body>
 </html>
