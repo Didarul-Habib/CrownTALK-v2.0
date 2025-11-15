@@ -1,68 +1,119 @@
-const BACKEND = "https://crowntalk-v2-0.onrender.com";
+//-------------------------------------------
+// Extract clean URLs from textarea input
+//-------------------------------------------
+function extractUrls(inputText) {
+    const lines = inputText.split("\n");
+    const urls = [];
 
-const $ = (id) => document.getElementById(id);
+    for (let line of lines) {
+        if (!line.trim()) continue;
 
-$("submitBtn").addEventListener("click", async () => {
-  const output = $("output");
-  const btn = $("submitBtn");
-  const raw = $("inputUrls").value.trim();
+        // Remove numbering such as: "1.", "2)", "3 -", "10:", etc.
+        line = line.replace(/^\s*\d+[\.\)\-:]*\s*/, "").trim();
 
-  if (!raw) {
-    output.innerHTML = `<p class="error">Please enter at least one URL.</p>`;
-    return;
-  }
+        // Extract actual URL
+        const match = line.match(/https?:\/\/[^\s]+/);
 
-  const urls = raw.split("\n").map(u => u.trim()).filter(Boolean);
-  btn.disabled = true;
-  btn.textContent = "Working...";
-  output.innerHTML = "<p>Processing…</p>";
+        if (match) {
+            let url = match[0].trim();
 
-  try {
-    const res = await fetch(`${BACKEND}/comment`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-    });
+            // Clean trailing punctuation like ".", ",", ")", etc.
+            url = url.replace(/[),.]+$/, "");
 
-    const data = await res.json().catch(() => ({}));
-
-    if (!res.ok) {
-      output.innerHTML = `<p class="error">Server error: ${data.error || "Unknown error"}</p>`;
-      btn.disabled = false;
-      btn.textContent = "Generate Comments";
-      return;
+            urls.push(url);
+        }
     }
 
-    let html = "";
-    if (Array.isArray(data.results)) {
-      data.results.forEach(item => {
-        html += `
-          <div class="card">
-            <h3><a href="${item.url}" target="_blank" rel="noopener">${item.url}</a></h3>
-            <p><strong>Tweet:</strong> ${escapeHtml(item.tweet)}</p>
-            <p><strong>Comment:</strong> ${escapeHtml(item.comment)}</p>
-          </div>
-        `;
-      });
+    return urls;
+}
+
+
+//-------------------------------------------
+// Handle "Generate Comments" button
+//-------------------------------------------
+document.getElementById("generateBtn").addEventListener("click", async function () {
+
+    const rawInput = document.getElementById("urlsInput").value.trim();
+    const resultsDiv = document.getElementById("results");
+    const failedDiv = document.getElementById("failed");
+
+    resultsDiv.innerHTML = "";
+    failedDiv.innerHTML = "";
+
+    if (!rawInput) {
+        alert("Please enter at least one URL.");
+        return;
     }
 
-    if (Array.isArray(data.failed) && data.failed.length > 0) {
-      html += `<h2>Failed</h2>`;
-      data.failed.forEach(f => {
-        html += `<p class="failed"><a href="${f.url}" target="_blank" rel="noopener">${f.url}</a> — ${escapeHtml(f.reason || "Unknown reason")}</p>`;
-      });
+    // Extract the clean URLs
+    const urls = extractUrls(rawInput);
+
+    if (urls.length === 0) {
+        alert("No valid URLs detected.");
+        return;
     }
 
-    output.innerHTML = html || "<p>No results.</p>";
-  } catch (e) {
-    output.innerHTML = `<p class="error">Network or CORS error. Try again.</p>`;
-  } finally {
-    btn.disabled = false;
-    btn.textContent = "Generate Comments";
-  }
+    // Display loading state
+    resultsDiv.innerHTML = `<p style="color:#555;">Processing ${urls.length} links...</p>`;
+
+    try {
+        const response = await fetch("https://crowntalk-v2-0.onrender.com/comment", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ urls })
+        });
+
+        const data = await response.json();
+
+        resultsDiv.innerHTML = "";
+        failedDiv.innerHTML = "";
+
+        //-------------------------------------------
+        // SHOW RESULTS
+        //-------------------------------------------
+        if (data.results && data.results.length > 0) {
+            data.results.forEach((item) => {
+                const block = document.createElement("div");
+                block.className = "result-block";
+
+                block.innerHTML = `
+                    <p><a href="${item.url}" target="_blank">${item.url}</a></p>
+                    <div class="comment-line">
+                        <span>${item.comments[0]}</span>
+                        <button onclick="copyText('${item.comments[0]}')">Copy</button>
+                    </div>
+                    <div class="comment-line">
+                        <span>${item.comments[1]}</span>
+                        <button onclick="copyText('${item.comments[1]}')">Copy</button>
+                    </div>
+                    <hr>
+                `;
+                resultsDiv.appendChild(block);
+            });
+        }
+
+        //-------------------------------------------
+        // SHOW FAILED URLS
+        //-------------------------------------------
+        if (data.failed && data.failed.length > 0) {
+            let failHTML = "<h3>Failed</h3>";
+            data.failed.forEach((url) => {
+                failHTML += `<p><a href="${url}" target="_blank">${url}</a> — Unknown reason</p>`;
+            });
+            failedDiv.innerHTML = failHTML;
+        }
+
+    } catch (err) {
+        resultsDiv.innerHTML = `<p style="color:red;">Server error. Try again.</p>`;
+        console.error(err);
+    }
 });
 
-function escapeHtml(s) {
-  if (typeof s !== "string") return "";
-  return s.replace(/[&<>"']/g, m => ({ "&": "&amp;", "<": "&lt;", ">": "&gt;", '"': "&quot;", "'": "&#039;" }[m]));
+
+//-------------------------------------------
+// Copy button
+//-------------------------------------------
+function copyText(text) {
+    navigator.clipboard.writeText(text);
+    alert("Copied!");
 }
