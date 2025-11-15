@@ -1,171 +1,149 @@
 import re
-import time
 import requests
-import asyncio
-from fastapi import FastAPI, Request, Form
-from fastapi.responses import JSONResponse, HTMLResponse
-from fastapi.staticfiles import StaticFiles
-from fastapi.templating import Jinja2Templates
-from langdetect import detect
-from openai import OpenAI
+from flask import Flask, request, jsonify, send_from_directory
 
-app = FastAPI()
-
-client = OpenAI()
-
-# ----------------------------
-# Mount static + templates
-# ----------------------------
-app.mount("/static", StaticFiles(directory="static"), name="static")
-templates = Jinja2Templates(directory="templates")
-
-# ----------------------------
-# Load Style Guide
-# ----------------------------
-with open("comment_style_guide.txt", "r", encoding="utf-8") as f:
-    STYLE_GUIDE = f.read()
+app = Flask(__name__, static_url_path="", static_folder="static")
 
 
-# ----------------------------
-# Clean URLs
-# ----------------------------
-def clean_url(url: str):
+# -------------------------------------------------
+# CLEAN & NORMALIZE TWITTER URLs
+# -------------------------------------------------
+def clean_url(url):
+    if not url:
+        return None
+
+    # Remove spaces
     url = url.strip()
+
+    # Remove index numbers like "1. https://"
+    url = re.sub(r"^\d+\.\s*", "", url)
+
+    # Remove tracking junk
     url = re.sub(r"\?.*$", "", url)
-    url = url.replace("mobile.", "")
+
+    # Force standard x.com format
+    replacements = [
+        ("mobile.twitter.com", "x.com"),
+        ("twitter.com", "x.com"),
+        ("m.twitter.com", "x.com"),
+        ("www.twitter.com", "x.com")
+    ]
+
+    for old, new in replacements:
+        url = url.replace(old, new)
+
     return url
 
 
-# ----------------------------
-# Fetch tweet text (VxTwitter)
-# ----------------------------
-def fetch_tweet_text(url):
-    url = clean_url(url)
-    api_url = "https://api.vxtwitter.com/" + url.split("twitter.com/")[-1].split("x.com/")[-1]
-
+# -------------------------------------------------
+# FETCH SYSTEM: TRY VX → THEN FX → THEN FAIL
+# -------------------------------------------------
+def fetch_from_vx(tweet_url):
     try:
-        r = requests.get(api_url, timeout=10)
-        if r.status_code != 200:
+        api_url = tweet_url.replace("x.com", "api.vxtwitter.com")
+        res = requests.get(api_url, timeout=7)
+
+        if res.status_code != 200:
             return None
 
-        data = r.json()
-        if "tweet" in data and "text" in data["tweet"]:
-            return data["tweet"]["text"]
+        data = res.json()
 
-        return None
-    except:
-        return None
-
-
-# ----------------------------
-# Translate to English
-# ----------------------------
-def translate_to_english(text):
-    try:
-        lang = detect(text)
-        if lang == "en":
-            return text
-
-        res = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {"role": "system", "content": "Translate this to English only."},
-                {"role": "user", "content": text}
-            ],
-            temperature=0.2
+        # VX format changed many times — we normalize it always
+        tweet_text = (
+            data.get("text") or
+            data.get("tweet", {}).get("text") or
+            None
         )
-        return res.choices[0].message.content.strip()
+
+        if not tweet_text:
+            return None
+
+        return {
+            "text": tweet_text,
+            "author": data.get("user_name") or data.get("user", {}).get("screen_name"),
+            "id": data.get("id") or data.get("tweet", {}).get("id")
+        }
+
     except:
-        return text
+        return None
 
 
-# ----------------------------
-# Generate AI comments
-# ----------------------------
-def generate_comments(tweet_text):
-    prompt = f"""
-You are CrownTALK 👑 — a humanlike comment generator.
+def fetch_from_fx(tweet_url):
+    try:
+        api_url = tweet_url.replace("x.com", "api.fxtwitter.com")
+        res = requests.get(api_url, timeout=7)
 
-Rules:
-- Two comments
-- Each 5–12 words
-- No punctuation at end
-- No emojis
-- No hype words
-- No repeated patterns
-- Natural human slang allowed
-- Must follow the style guide exactly
+        if res.status_code != 200:
+            return None
 
-STYLE GUIDE:
-{STYLE_GUIDE}
+        j = res.json()
+        tw = j.get("tweet") or {}
 
-Tweet:
-"{tweet_text}"
+        tweet_text = tw.get("text")
+        if not tweet_text:
+            return None
 
-Return exactly two lines.
-"""
+        return {
+            "text": tweet_text,
+            "author": tw.get("author", {}).get("screen_name"),
+            "id": tw.get("id")
+        }
 
-    for _ in range(3):
-        try:
-            r = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.65,
-            )
-            out = r.choices[0].message.content.strip().split("\n")
-            out = [re.sub(r"[.,!?;:]+$", "", x).strip() for x in out]
-            out = [x for x in out if 5 <= len(x.split()) <= 12]
-
-            if len(out) >= 2:
-                return out[:2]
-        except:
-            time.sleep(1)
-
-    return ["could not generate reply", "generator failed"]
+    except:
+        return None
 
 
-# ----------------------------
-# PAGE ROUTE
-# ----------------------------
-@app.get("/", response_class=HTMLResponse)
-async def index(request: Request):
-    return templates.TemplateResponse("index.html", {"request": request})
+# -------------------------------------------------
+# MAIN FETCH CONTROLLER
+# -------------------------------------------------
+def fetch_tweet(tweet_url):
+    tweet_url = clean_url(tweet_url)
+
+    if not tweet_url:
+        return {"error": "Invalid URL"}
+
+    # 1️⃣ Try VX first
+    data = fetch_from_vx(tweet_url)
+    if data:
+        return {"ok": True, "data": data}
+
+    # 2️⃣ Try FX fallback
+    data = fetch_from_fx(tweet_url)
+    if data:
+        return {"ok": True, "data": data}
+
+    # 3️⃣ Both failed
+    return {"error": "Could not fetch tweet (private / deleted / API blocked)"}
 
 
-# ----------------------------
-# COMMENT API
-# ----------------------------
-@app.post("/comment")
-async def comment_api(request: Request):
-    data = await request.json()
-
-    if "tweets" not in data:
-        return JSONResponse({"error": "Invalid request"}, status_code=400)
-
-    raw_links = data["tweets"]
-    cleaned = [clean_url(x) for x in raw_links]
+# -------------------------------------------------
+# API ROUTE
+# -------------------------------------------------
+@app.route("/api/generate", methods=["POST"])
+def generate():
+    content = request.json
+    links = content.get("links", [])
 
     results = []
 
-    for url in cleaned:
-        # Retry tweet fetching 3 times
-        txt = None
-        for _ in range(3):
-            txt = fetch_tweet_text(url)
-            if txt:
-                break
-            time.sleep(1)
-
-        if not txt:
-            results.append({"error": "Could not fetch this tweet (private/deleted)", "url": url})
-            continue
-
-        en = translate_to_english(txt)
-        comments = generate_comments(en)
-
+    for link in links:
+        cleaned = clean_url(link)
+        fetched = fetch_tweet(cleaned)
         results.append({
-            "url": url,
-            "comments": comments
+            "url": cleaned,
+            "result": fetched
         })
 
-    return JSONResponse({"results": results, "ok": True})
+    return jsonify({"success": True, "results": results})
+
+
+# -------------------------------------------------
+# SERVE FRONTEND (static/index.html)
+# -------------------------------------------------
+@app.route("/")
+def index():
+    return send_from_directory("static", "index.html")
+
+
+if __name__ == "__main__":
+    app.run(host="0.0.0.0", port=8000)
