@@ -1,11 +1,11 @@
-import os
-import time
-import threading
-import requests
 from flask import Flask, request, jsonify
+from flask_cors import CORS
+import os, time, threading, requests
 from urllib.parse import urlparse
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
+
 
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
