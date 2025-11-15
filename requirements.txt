@@ -1,5 +1,9 @@
-flask
+fastapi
+uvicorn
 requests
-gunicorn
 langdetect
 openai
+jinja2
+python-multipart
+gunicorn
+pydantic
