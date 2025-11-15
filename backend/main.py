@@ -1,214 +1,181 @@
 import os
-import json
 import time
 import threading
 import requests
-import re
-from flask import Flask, request, jsonify, Response
+from flask import Flask, request, jsonify
+from urllib.parse import urlparse
 
 app = Flask(__name__)
 
-# -------------------------------------
-# REMOVE RENDER PROXY VARIABLES
-# -------------------------------------
-os.environ.pop("HTTP_PROXY", None)
-os.environ.pop("HTTPS_PROXY", None)
-os.environ.pop("ALL_PROXY", None)
+OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
-OPENAI_KEY = os.getenv("OPENAI_API_KEY", "")
+# =====================================================
+# Clean URL → remove tracking params, dupes, numbering
+# =====================================================
+def clean_url(u):
+    u = u.strip()
 
+    # Remove numbering: "1. http..." → "http..."
+    if u[0].isdigit() and "." in u[:4]:
+        u = u.split(".", 1)[1].strip()
 
-# -------------------------------------
-# CLEAN URL
-# -------------------------------------
-def clean_url(url):
-    if not url:
-        return None
-    url = url.strip()
+    # Strip trailing params
+    if "?" in u:
+        u = u.split("?")[0]
 
-    # remove numbering (1., 2., etc)
-    url = re.sub(r"^\d+\.\s*", "", url)
-
-    # remove parameters
-    url = url.split("?")[0]
-
-    # convert x.com → twitter.com for vxtwitter
-    url = url.replace("x.com/", "twitter.com/")
-
-    # ensure correct form
-    if "twitter.com" not in url:
-        return None
-    return url
+    return u
 
 
-# -------------------------------------
-# FETCH TWEET TEXT FROM VXTWITTER
-# -------------------------------------
+# =====================================================
+# Fetch tweet text using VXTwitter API
+# =====================================================
 def fetch_tweet_text(url):
     try:
-        parts = url.split("twitter.com/")[1]
-        api_url = f"https://api.vxtwitter.com/{parts}"
+        parsed = urlparse(url)
+        path = parsed.path  # /user/status/123
+        clean = f"https://api.vxtwitter.com{path}"
 
-        r = requests.get(api_url, timeout=15)
+        r = requests.get(clean, timeout=10)
         if r.status_code != 200:
             return None
 
         data = r.json()
-        if "text" in data:
-            return data["text"]
+        return data.get("text") or data.get("tweet", {}).get("text")
 
-        if "tweet" in data and "text" in data["tweet"]:
-            return data["tweet"]["text"]
-
-        return None
     except:
         return None
 
 
-# -------------------------------------
-# GENERATE COMMENTS (STRICT MODE)
-# -------------------------------------
+# =====================================================
+# Generate comments using OpenAI (Fast + Strict mode)
+# =====================================================
 def generate_comments(tweet_text):
-    banned_words = [
-        "game changer", "finally", "love to see", "amazing", "incredible", "awesome",
-        "visionary", "groundbreaking", "transformative", "slay", "ate", "queen",
-        "omg", "yass", "bestie", "fascinating perspective",
-        "in today’s world", "as an ai"
-    ]
+    url = "https://api.openai.com/v1/chat/completions"
+    headers = {
+        "Authorization": f"Bearer {OPENAI_KEY}",
+        "Content-Type": "application/json"
+    }
 
     prompt = f"""
-Generate two short humanlike comments. STRICT RULES:
+Generate two short humanlike comments.
+Rules:
 - 5–12 words each
-- 2 lines, one comment per line
 - No emojis
-- No punctuation at end
-- No exclamation marks
 - No hashtags
-- Must NOT contain ANY banned words: {", ".join(banned_words)}
-- Natural slang allowed (tbh, fr, ngl, lowkey)
-- Make them DIFFERENT from each other
-- Must be based on this tweet
+- No punctuation at the end
+- Natural slang allowed
+- Comments must be different
+- Exactly 2 lines
+- Avoid hype/buzzwords (amazing, awesome, incredible, game changer, empowering, etc.)
 
 Tweet:
 {tweet_text}
 """
 
-    for _ in range(4):
-        try:
-            payload = {
-                "model": "gpt-4o-mini",
-                "messages": [{"role": "user", "content": prompt}],
-                "max_tokens": 50,
-                "temperature": 0.7
-            }
+    payload = {
+        "model": "gpt-4o-mini",
+        "messages": [
+            {"role": "user", "content": prompt}
+        ],
+        "temperature": 0.7,
+        "max_tokens": 60
+    }
 
-            r = requests.post(
-                "https://api.openai.com/v1/chat/completions",
-                headers={"Authorization": f"Bearer {OPENAI_KEY}"},
-                json=payload,
-                timeout=20
-            )
+    max_retries = 2  # Option A
+    for attempt in range(max_retries):
 
-            if r.status_code != 200:
-                continue
+        r = requests.post(url, headers=headers, json=payload)
 
-            content = r.json()["choices"][0]["message"]["content"]
-            lines = content.strip().split("\n")
+        # Success
+        if r.status_code == 200:
+            data = r.json()
+            content = data["choices"][0]["message"]["content"]
+            lines = [l.strip() for l in content.split("\n") if l.strip()]
 
-            results = []
+            cleaned = []
             for line in lines:
-                line = line.strip()
-                line = re.sub(r"[.!?]+$", "", line)
+                # Remove punctuation at end
+                while line.endswith((".", "!", "?", ",")):
+                    line = line[:-1]
 
-                if len(line.split()) < 5 or len(line.split()) > 12:
-                    continue
+                words = line.split()
+                if 5 <= len(words) <= 12:
+                    cleaned.append(line)
 
-                skip = False
-                for bad in banned_words:
-                    if bad in line.lower():
-                        skip = True
-                        break
-                if not skip:
-                    results.append(line)
+                if len(cleaned) == 2:
+                    return cleaned
 
-                if len(results) == 2:
-                    return results
+            # If AI didn't produce 2 valid lines → fallback
+            break
 
-        except:
+        # Rate limit → wait + retry
+        if r.status_code == 429:
+            time.sleep(2)
             continue
 
-    return ["generation failed", "please retry"]
+        # Any other error → skip fast
+        break
+
+    # Fallback (strict mode)
+    return ["generation failed", "try again later"]
 
 
-# -------------------------------------
-# STREAM ENDPOINT — REAL-TIME BATCHING
-# -------------------------------------
-@app.route("/stream")
-def stream():
-    try:
-        urls_json = request.args.get("urls", "[]")
-        urls = json.loads(urls_json)
-    except:
-        return "invalid", 400
+# =====================================================
+# /comment endpoint — processes in batches of 2
+# =====================================================
+@app.route("/comment", methods=["POST"])
+def comment():
+    data = request.get_json()
+    urls = data.get("urls", [])
 
+    # Clean + unique
     cleaned = []
     for u in urls:
         cu = clean_url(u)
-        if cu:
+        if cu and cu not in cleaned:
             cleaned.append(cu)
 
-    cleaned = list(dict.fromkeys(cleaned))
-    total_batches = (len(cleaned) + 1) // 2
+    results = []
+    failed = []
 
-    def event_stream():
-        for i in range(0, len(cleaned), 2):
-            batch = cleaned[i:i+2]
-            results = []
+    # Process in batches of 2
+    for i in range(0, len(cleaned), 2):
+        batch = cleaned[i:i+2]
 
-            for url in batch:
-                text = fetch_tweet_text(url)
-                if not text:
-                    results.append({"url": url, "comments": ["failed", "no tweet text"]})
-                    continue
+        for url in batch:
+            text = fetch_tweet_text(url)
+            if not text:
+                failed.append({"url": url, "reason": "Tweet text fetch failed"})
+                continue
 
-                comments = generate_comments(text)
-                results.append({"url": url, "comments": comments})
+            comments = generate_comments(text)
+            if comments[0] == "generation failed":
+                failed.append({"url": url, "reason": "OpenAI generation failed"})
 
-            payload = {
-                "batch": (i // 2) + 1,
-                "total": total_batches,
-                "results": results
-            }
+            results.append({
+                "url": url,
+                "comments": comments
+            })
 
-            yield f"data: {json.dumps(payload)}\n\n"
-            time.sleep(2)
+        time.sleep(1)  # Prevent Render overload
 
-        yield "data: {\"done\": true}\n\n"
-
-    return Response(event_stream(), mimetype="text/event-stream")
+    return jsonify({"results": results, "failed": failed})
 
 
-@app.route("/")
-def home():
-    return {"status": "CrownTALK backend running"}
-
-
-# -------------------------------------
-# KEEP ALIVE THREAD
-# -------------------------------------
+# =====================================================
+# Keep-alive ping (prevents Render sleep)
+# =====================================================
 def keep_alive():
     while True:
         try:
-            requests.get("https://crowntalk-v2-0.onrender.com/")
+            requests.get("https://crowntalk-v2-0.onrender.com", timeout=5)
         except:
             pass
-        time.sleep(600)
+        time.sleep(600)  # every 10 min
+
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
-
-# -------------------------------------
-# RUN
-# -------------------------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=10000)
+@app.route("/")
+def home():
+    return "OK"
