@@ -1,0 +1,34 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>CrownTALK</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+
+<body>
+    <div class="theme-toggle-container">
+        <button class="theme-toggle" onclick="toggleTheme()">🌙</button>
+    </div>
+
+    <div class="container">
+        <img src="logo.png" class="logo">
+
+        <h1>CrownTALK</h1>
+        <p class="sub">Generate natural comments for Twitter posts</p>
+
+        <label class="input-label">Paste Tweet Links</label>
+        <textarea id="input" class="input-box" placeholder="Paste 1–10 tweet links..."></textarea>
+
+        <button id="generate" class="btn-generate" onclick="generateComments()">Generate</button>
+        <button id="stop" class="btn-stop hidden">Stop</button>
+
+        <div id="output"></div>
+
+        <p class="footer">CrownTALK © 2025</p>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
