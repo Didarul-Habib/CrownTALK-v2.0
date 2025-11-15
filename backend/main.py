@@ -68,10 +68,9 @@ def fetch_tweet_text(url):
 # GENERATE COMMENTS (with DEBUG PRINT)
 # ===========================================
 def generate_comments(tweet_text):
-
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
-        "Authorization": f"Bearer {OPENAI_KEY}",
+        "Authorization": f"Bearer " + OPENAI_KEY,
         "Content-Type": "application/json"
     }
 
@@ -85,7 +84,7 @@ Rules:
 - Natural slang allowed
 - Comments must be different
 - Exactly 2 lines
-- Avoid hype/buzzwords (amazing, awesome, incredible, game changer, empowering, etc.)
+- Avoid hype/buzzwords
 
 Tweet:
 {tweet_text}
@@ -94,54 +93,37 @@ Tweet:
     payload = {
         "model": "gpt-4o-mini",
         "messages": [{"role": "user", "content": prompt}],
-        "temperature": 0.7,
-        "max_tokens": 60
+        "temperature": 0.6,
+        "max_tokens": 50
     }
 
-    for _ in range(2):  # 2 retries
-        try:
-            r = requests.post(url, headers=headers, json=payload, timeout=12)
-        except Exception as e:
-            print("OpenAI REQUEST ERROR:", str(e))
-            time.sleep(2)
-            continue
+    try:
+        r = requests.post(url, headers=headers, json=payload, timeout=8)
 
-        # SUCCESS
-        if r.status_code == 200:
-            try:
-                data = r.json()
-                content = data["choices"][0]["message"]["content"]
-            except:
-                return ["generation failed", "try again later"]
-
-            lines = [l.strip() for l in content.split("\n") if l.strip()]
-            cleaned = []
-
-            for line in lines:
-                while line.endswith((".", ",", "!", "?")):
-                    line = line[:-1]
-
-                words = line.split()
-                if 5 <= len(words) <= 12:
-                    cleaned.append(line)
-
-                if len(cleaned) == 2:
-                    return cleaned
-
+        if r.status_code != 200:
             return ["generation failed", "try again later"]
 
-        # 🔥 DEBUG PRINT FOR ALL ERRORS
-        print("\n====== OPENAI ERROR ======")
-        print("Status:", r.status_code)
-        print("Response:", r.text)
-        print("==========================\n")
+        data = r.json()
+        content = data["choices"][0]["message"]["content"]
 
-        if r.status_code == 429:
-            time.sleep(2)
-            continue
+        lines = [l.strip() for l in content.split("\n") if l.strip()]
+        if len(lines) < 2:
+            return ["generation failed", "try again later"]
 
-    return ["generation failed", "try again later"]
+        cleaned = []
+        for line in lines:
+            while line.endswith((".", "!", "?", ",")):
+                line = line[:-1]
+            words = line.split()
+            if 5 <= len(words) <= 12:
+                cleaned.append(line)
+            if len(cleaned) == 2:
+                return cleaned
 
+        return ["generation failed", "try again later"]
+
+    except:
+        return ["generation failed", "try again later"]
 
 # ===========================================
 # COMMENT ENDPOINT
@@ -179,7 +161,7 @@ def comment():
 
             results.append({"url": url, "comments": comments})
 
-        time.sleep(1)
+        time.sleep(0.1)
 
     return jsonify({"results": results, "failed": failed})
 
