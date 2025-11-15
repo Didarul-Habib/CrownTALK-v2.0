@@ -1,128 +1,129 @@
+// =====================
+// GLOBAL STATE
+// =====================
 let stopRequested = false;
 
-const inputField = document.getElementById("input");
-const generateBtn = document.getElementById("generateBtn");
-const stopBtn = document.getElementById("stopBtn");
-const resultsContainer = document.getElementById("results");
+// =====================
+// THEME SYSTEM
+// =====================
+const themeSelect = document.getElementById("themeSelect");
 const themeToggle = document.getElementById("themeToggle");
 
-/* --------------------------------------------- */
-/* Shorten long URLs for display */
-/* --------------------------------------------- */
-
-function shortenURL(url) {
-    const clean = url.split("?")[0];
-    if (clean.length <= 45) return clean;
-    return clean.slice(0, 42) + "…";
-}
-
-/* --------------------------------------------- */
-/* Theme Toggle */
-/* --------------------------------------------- */
+themeSelect.addEventListener("change", () => {
+    document.body.className = themeSelect.value;
+});
 
 themeToggle.addEventListener("click", () => {
-    document.documentElement.classList.toggle("light");
+    document.body.classList.toggle("light");
 });
 
-/* --------------------------------------------- */
-/* Stop Button */
-/* --------------------------------------------- */
+// =====================
+// CLEAN URL
+// =====================
+function cleanUrl(url) {
+    return url.split("?")[0].trim();
+}
 
-stopBtn.addEventListener("click", () => {
-    stopRequested = true;
-    stopBtn.style.display = "none";
-});
+// =====================
+// CREATE RESULT BLOCK IN UI
+// =====================
+function createResultBlock(url, index) {
+    return `
+        <div class="result-block">
+            <div class="result-url">
+                <strong>${index}.</strong>
+                <a href="${url}" target="_blank">${url}</a>
+            </div>
+            <div class="comments"></div>
+        </div>
+    `;
+}
 
-/* --------------------------------------------- */
-/* Generate Replies */
-/* --------------------------------------------- */
+// =====================
+// COPY BUTTON
+// =====================
+function copyText(text) {
+    navigator.clipboard.writeText(text);
+}
 
-generateBtn.addEventListener("click", async () => {
+// =====================
+// GENERATE COMMENTS
+// =====================
+async function generateBatch(batchLinks, batchIndex, totalBatches) {
+    if (stopRequested) return;
+
+    document.getElementById("statusArea").innerHTML =
+        `⚙️ Processing batch ${batchIndex} / ${totalBatches}...`;
+
+    const response = await fetch("/comment", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ tweets: batchLinks }),
+    });
+
+    const data = await response.json();
+    return data.results;
+}
+
+// =====================
+// MAIN PROCESS
+// =====================
+document.getElementById("generateBtn").addEventListener("click", async () => {
     stopRequested = false;
-    resultsContainer.innerHTML = "";
+    document.getElementById("stopBtn").classList.remove("hidden");
+    document.getElementById("generateBtn").classList.add("hidden");
 
-    let links = inputField.value
-        .split("\n")
-        .map(x => x.trim().split("?")[0])
-        .filter(x => x.startsWith("http"));
+    const rawLinks = document.getElementById("tweetInput").value.trim().split("\n");
+    const links = rawLinks.map(cleanUrl).filter(x => x.length > 5);
+    if (links.length === 0) return;
 
-    if (!links.length) return;
+    const batchSize = 2;
+    const totalBatches = Math.ceil(links.length / batchSize);
 
-    generateBtn.style.display = "none";
-    stopBtn.style.display = "block";
+    document.getElementById("results").innerHTML = "";
 
-    const BATCH = 3;
-    let batchNumber = 1;
+    let indexCounter = 1;
 
-    for (let i = 0; i < links.length; i += BATCH) {
+    for (let i = 0; i < links.length; i += batchSize) {
         if (stopRequested) break;
 
-        const batch = links.slice(i, i + BATCH);
+        const batch = links.slice(i, i + batchSize);
+        const results = await generateBatch(batch, (i / batchSize) + 1, totalBatches);
 
-        const status = document.createElement("div");
-        status.style.margin = "10px 0";
-        status.innerHTML = `⚙ Processing batch ${batchNumber} / ${Math.ceil(links.length / BATCH)}...`;
-        resultsContainer.appendChild(status);
-
-        const res = await fetch("/comment", {
-            method: "POST",
-            headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ tweets: batch })
-        });
-
-        const data = await res.json();
-
-        data.results.forEach((r, idx) => {
+        results.forEach((res, idx) => {
             const url = batch[idx];
+            document.getElementById("results").innerHTML += createResultBlock(url, indexCounter);
 
-            const item = document.createElement("div");
-            item.className = "result-item";
+            const block = document.querySelectorAll(".result-block")[indexCounter - 1].querySelector(".comments");
 
-            const link = document.createElement("a");
-            link.className = "tweet-link";
-            link.href = url;
-            link.target = "_blank";
-            link.textContent = shortenURL(url);
-
-            item.appendChild(link);
-
-            if (r.error) {
-                const box = document.createElement("div");
-                box.className = "comment-box";
-                box.textContent = r.error;
-                item.appendChild(box);
+            if (res.error) {
+                block.innerHTML = `<div class="comment-line">${res.error}</div>`;
             } else {
-                r.comments.forEach(c => {
-                    const box = document.createElement("div");
-                    box.className = "comment-box";
-                    box.textContent = c;
-
-                    const copy = document.createElement("div");
-                    copy.className = "copy-btn";
-                    copy.textContent = "Copy";
-                    copy.onclick = () => {
-                        navigator.clipboard.writeText(c);
-                        copy.textContent = "Copied!";
-                        setTimeout(() => (copy.textContent = "Copy"), 800);
-                    };
-
-                    box.appendChild(copy);
-                    item.appendChild(box);
+                res.comments.forEach(c => {
+                    block.innerHTML += `
+                        <div class="comment-line">
+                            ${c}
+                            <button class="copy-btn" onclick="copyText('${c}')">Copy</button>
+                        </div>
+                    `;
                 });
             }
-
-            resultsContainer.appendChild(item);
+            indexCounter++;
         });
 
-        batchNumber++;
-
-        if (i + BATCH < links.length) {
-            await new Promise(r => setTimeout(r, 3500));
-        }
+        await new Promise(r => setTimeout(r, 400)); // faster but safe rate
     }
 
-    stopBtn.style.display = "none";
-    generateBtn.style.display = "block";
+    document.getElementById("statusArea").innerHTML =
+        stopRequested ? "❌ Stopped." : "✔ All comments generated successfully.";
+
+    document.getElementById("generateBtn").classList.remove("hidden");
+    document.getElementById("stopBtn").classList.add("hidden");
 });
 
-/* END */
+// =====================
+// STOP BUTTON
+// =====================
+document.getElementById("stopBtn").addEventListener("click", () => {
+    stopRequested = true;
+});
