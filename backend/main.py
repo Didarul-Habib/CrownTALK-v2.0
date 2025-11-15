@@ -9,17 +9,21 @@ app = Flask(__name__)
 
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
+
 # =====================================================
-# Clean URL → remove tracking params, dupes, numbering
+# CLEAN URL
 # =====================================================
 def clean_url(u):
+    if not u:
+        return None
+
     u = u.strip()
 
-    # Remove numbering: "1. http..." → "http..."
-    if u[0].isdigit() and "." in u[:4]:
+    # Remove numbering: "1. url"
+    if u and u[0].isdigit() and "." in u[:4]:
         u = u.split(".", 1)[1].strip()
 
-    # Strip trailing params
+    # Strip params
     if "?" in u:
         u = u.split("?")[0]
 
@@ -27,29 +31,46 @@ def clean_url(u):
 
 
 # =====================================================
-# Fetch tweet text using VXTwitter API
+# FETCH TWEET TEXT via VXTwitter (100% crash-safe)
 # =====================================================
 def fetch_tweet_text(url):
+
     try:
         parsed = urlparse(url)
+        host = parsed.netloc
         path = parsed.path  # /user/status/123
-        clean = f"https://api.vxtwitter.com{path}"
+
+        # VXTwitter supports this format reliably:
+        clean = f"https://api.vxtwitter.com/{host}{path}"
 
         r = requests.get(clean, timeout=10)
         if r.status_code != 200:
             return None
 
-        data = r.json()
-        return data.get("text") or data.get("tweet", {}).get("text")
+        # Try to decode JSON safely
+        try:
+            data = r.json()
+        except:
+            return None
+
+        # Possible formats
+        if "text" in data:
+            return data["text"]
+
+        if "tweet" in data and "text" in data["tweet"]:
+            return data["tweet"]["text"]
+
+        return None
 
     except:
         return None
 
 
 # =====================================================
-# Generate comments using OpenAI (Fast + Strict mode)
+# GENERATE COMMENTS (Option A Strict)
 # =====================================================
 def generate_comments(tweet_text):
+
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Authorization": f"Bearer {OPENAI_KEY}",
@@ -74,27 +95,32 @@ Tweet:
 
     payload = {
         "model": "gpt-4o-mini",
-        "messages": [
-            {"role": "user", "content": prompt}
-        ],
+        "messages": [{"role": "user", "content": prompt}],
         "temperature": 0.7,
         "max_tokens": 60
     }
 
-    max_retries = 2  # Option A
+    max_retries = 2
     for attempt in range(max_retries):
 
-        r = requests.post(url, headers=headers, json=payload)
+        try:
+            r = requests.post(url, headers=headers, json=payload, timeout=12)
+        except:
+            continue
 
-        # Success
+        # SUCCESS
         if r.status_code == 200:
-            data = r.json()
-            content = data["choices"][0]["message"]["content"]
-            lines = [l.strip() for l in content.split("\n") if l.strip()]
+            try:
+                data = r.json()
+                content = data["choices"][0]["message"]["content"]
+            except:
+                return ["generation failed", "try again later"]
 
+            lines = [l.strip() for l in content.split("\n") if l.strip()]
             cleaned = []
+
             for line in lines:
-                # Remove punctuation at end
+                # strip ending punctuation
                 while line.endswith((".", "!", "?", ",")):
                     line = line[:-1]
 
@@ -105,30 +131,31 @@ Tweet:
                 if len(cleaned) == 2:
                     return cleaned
 
-            # If AI didn't produce 2 valid lines → fallback
             break
 
-        # Rate limit → wait + retry
+        # RATE LIMIT
         if r.status_code == 429:
             time.sleep(2)
             continue
 
-        # Any other error → skip fast
         break
 
-    # Fallback (strict mode)
     return ["generation failed", "try again later"]
 
 
 # =====================================================
-# /comment endpoint — processes in batches of 2
+# /COMMENT — PROCESS IN BATCHES
 # =====================================================
 @app.route("/comment", methods=["POST"])
 def comment():
-    data = request.get_json()
+    try:
+        data = request.get_json(force=True)
+    except:
+        return jsonify({"results": [], "failed": []})
+
     urls = data.get("urls", [])
 
-    # Clean + unique
+    # Clean & dedupe
     cleaned = []
     for u in urls:
         cu = clean_url(u)
@@ -152,29 +179,27 @@ def comment():
             if comments[0] == "generation failed":
                 failed.append({"url": url, "reason": "OpenAI generation failed"})
 
-            results.append({
-                "url": url,
-                "comments": comments
-            })
+            results.append({"url": url, "comments": comments})
 
-        time.sleep(1)  # Prevent Render overload
+        time.sleep(1)
 
     return jsonify({"results": results, "failed": failed})
 
 
 # =====================================================
-# Keep-alive ping (prevents Render sleep)
+# KEEP ALIVE (SAFE VERSION)
 # =====================================================
 def keep_alive():
     while True:
         try:
-            requests.get("https://crowntalk-v2-0.onrender.com", timeout=5)
+            requests.get("https://crowntalk-v2-0.onrender.com/", timeout=5)
         except:
             pass
-        time.sleep(600)  # every 10 min
+        time.sleep(600)
 
 
 threading.Thread(target=keep_alive, daemon=True).start()
+
 
 @app.route("/")
 def home():
