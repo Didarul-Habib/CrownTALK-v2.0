@@ -6,23 +6,22 @@ from urllib.parse import urlparse
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
 
 # ===========================================
-# SAFE URL CLEAN
+# CLEAN URL
 # ===========================================
 def clean_url(u):
     if not u:
         return None
     u = u.strip()
 
-    # Remove numbers like "1. https://..."
+    # Remove numbering like "1. https://..."
     if u[0].isdigit() and "." in u[:4]:
         u = u.split(".", 1)[1].strip()
 
-    # Strip params
+    # Remove URL params
     if "?" in u:
         u = u.split("?")[0]
 
@@ -30,8 +29,7 @@ def clean_url(u):
 
 
 # ===========================================
-# SAFE VXTwitter TEXT FETCH
-# NEVER CRASHES, ALWAYS RETURNS str OR None
+# FETCH TWEET TEXT SAFELY
 # ===========================================
 def fetch_tweet_text(url):
     try:
@@ -42,12 +40,9 @@ def fetch_tweet_text(url):
         api_url = f"https://api.vxtwitter.com/{host}{path}"
 
         r = requests.get(api_url, timeout=10)
-
-        # Must be status 200
         if r.status_code != 200:
             return None
 
-        # If content-type is NOT JSON → VXTwitter returned HTML → FAIL
         ct = r.headers.get("content-type", "")
         if "application/json" not in ct:
             return None
@@ -57,7 +52,6 @@ def fetch_tweet_text(url):
         except:
             return None
 
-        # Multiple possible formats
         if isinstance(data, dict):
             if "text" in data:
                 return data["text"]
@@ -71,8 +65,7 @@ def fetch_tweet_text(url):
 
 
 # ===========================================
-# SAFE OPENAI CALL
-# NEVER CRASHES
+# GENERATE COMMENTS (with DEBUG PRINT)
 # ===========================================
 def generate_comments(tweet_text):
 
@@ -108,10 +101,12 @@ Tweet:
     for _ in range(2):  # 2 retries
         try:
             r = requests.post(url, headers=headers, json=payload, timeout=12)
-        except:
+        except Exception as e:
+            print("OpenAI REQUEST ERROR:", str(e))
             time.sleep(2)
             continue
 
+        # SUCCESS
         if r.status_code == 200:
             try:
                 data = r.json()
@@ -135,6 +130,12 @@ Tweet:
 
             return ["generation failed", "try again later"]
 
+        # 🔥 DEBUG PRINT FOR ALL ERRORS
+        print("\n====== OPENAI ERROR ======")
+        print("Status:", r.status_code)
+        print("Response:", r.text)
+        print("==========================\n")
+
         if r.status_code == 429:
             time.sleep(2)
             continue
@@ -143,7 +144,7 @@ Tweet:
 
 
 # ===========================================
-# MAIN COMMENT ENDPOINT — SAFE MODE
+# COMMENT ENDPOINT
 # ===========================================
 @app.route("/comment", methods=["POST"])
 def comment():
