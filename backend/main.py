@@ -1,13 +1,13 @@
 from flask import Flask, request, jsonify
 from flask_cors import CORS
-import os, time, threading, requests, datetime, json, re
+import os, time, threading, requests, datetime, json, re, random
 from urllib.parse import urlparse
 
 # ──────────────────────────────────────────────────────────────────────────────
-# Disable proxies injected by some environments (Render) so requests don't break
+# Kill any proxy env (Render sometimes injects) to avoid "proxies" bugs
 # ──────────────────────────────────────────────────────────────────────────────
-for k in ["http_proxy", "https_proxy", "HTTP_PROXY", "HTTPS_PROXY",
-          "ALL_PROXY", "all_proxy", "NO_PROXY", "no_proxy"]:
+for k in ["http_proxy","https_proxy","HTTP_PROXY","HTTPS_PROXY",
+          "ALL_PROXY","all_proxy","NO_PROXY","no_proxy"]:
     os.environ.pop(k, None)
 
 http = requests.Session()
@@ -19,24 +19,23 @@ http.trust_env = False
 app = Flask(__name__)
 CORS(app, resources={r"/*": {"origins": "*"}})
 
-OPENAI_KEY        = os.environ.get("OPENAI_API_KEY")
+OPENAI_KEY        = os.environ.get("OPENAI_API_KEY", "")
 OPENAI_MODEL      = os.environ.get("OPENAI_MODEL", "gpt-4o-mini")
 OPENAI_URL        = "https://api.openai.com/v1/chat/completions"
 OPENAI_TIMEOUT_S  = float(os.environ.get("OPENAI_TIMEOUT", "12"))
 
-# Batch tuning (change with env vars if needed)
-MICRO_BATCH_SIZE  = int(os.environ.get("MICRO_BATCH_SIZE", "12"))   # tweets per OpenAI call
-MAX_TWEET_CHARS   = int(os.environ.get("MAX_TWEET_CHARS", "280"))   # keep tokens low
-BACKOFF_CAP_S     = float(os.environ.get("OPENAI_BACKOFF_MAX", "20"))
-RETRIES_429       = int(os.environ.get("OPENAI_RETRIES_429", "2"))  # retries per micro-batch
-SLEEP_BETWEEN_MB  = float(os.environ.get("SLEEP_BETWEEN_MICROBATCH", "0.5"))
+# Micro‑batching for OpenAI (cut RPM/TPM)
+MICRO_BATCH_SIZE  = int(os.environ.get("MICRO_BATCH_SIZE", "12"))
+MAX_TWEET_CHARS   = int(os.environ.get("MAX_TWEET_CHARS", "220"))
+RETRIES_429       = int(os.environ.get("OPENAI_RETRIES_429", "1"))
+BACKOFF_CAP_S     = float(os.environ.get("OPENAI_BACKOFF_MAX", "18"))
+SLEEP_BETWEEN_MB  = float(os.environ.get("SLEEP_BETWEEN_MICROBATCH", "0.4"))
 
 def now_iso():
     return datetime.datetime.utcnow().isoformat() + "Z"
 
 def trunc(s, n=300):
-    if s is None:
-        return None
+    if s is None: return None
     s = str(s)
     return s if len(s) <= n else s[:n] + "…"
 
@@ -44,8 +43,7 @@ def trunc(s, n=300):
 # URL clean
 # ──────────────────────────────────────────────────────────────────────────────
 def clean_url(u: str):
-    if not u:
-        return None
+    if not u: return None
     u = u.strip()
     if u and u[0].isdigit() and "." in u[:4]:
         u = u.split(".", 1)[1].strip()
@@ -54,7 +52,7 @@ def clean_url(u: str):
     return u
 
 # ──────────────────────────────────────────────────────────────────────────────
-# VXTwitter fetch with fallback to /Twitter/status/{id}
+# VXTwitter fetch with fallback
 # ──────────────────────────────────────────────────────────────────────────────
 _TWEET_ID_RE = re.compile(r"/status/(\d+)")
 
@@ -64,7 +62,7 @@ def fetch_tweet_text(url):
         p = urlparse(url)
         host, path = p.netloc, p.path
 
-        # Attempt 1: host + path
+        # Attempt 1: host+path
         api1 = f"https://api.vxtwitter.com/{host}{path}"
         r1 = http.get(api1, timeout=8)
         ct1 = r1.headers.get("content-type", "")
@@ -73,10 +71,9 @@ def fetch_tweet_text(url):
             try:
                 j = r1.json()
                 if isinstance(j, dict):
-                    if "text" in j:
-                        return j["text"], {"path": "host_path", "status": 200}
+                    if "text" in j: return j["text"], {"path":"host_path", "status":200}
                     if "tweet" in j and isinstance(j["tweet"], dict) and "text" in j["tweet"]:
-                        return j["tweet"]["text"], {"path": "host_path", "status": 200}
+                        return j["tweet"]["text"], {"path":"host_path", "status":200}
             except Exception as e:
                 print(f"[VX] JSON decode error #1: {e}")
 
@@ -92,10 +89,9 @@ def fetch_tweet_text(url):
                 try:
                     j2 = r2.json()
                     if isinstance(j2, dict):
-                        if "text" in j2:
-                            return j2["text"], {"path": "twitter_status", "status": 200}
+                        if "text" in j2: return j2["text"], {"path":"twitter_status", "status":200}
                         if "tweet" in j2 and isinstance(j2["tweet"], dict) and "text" in j2["tweet"]:
-                            return j2["tweet"]["text"], {"path": "twitter_status", "status": 200}
+                            return j2["tweet"]["text"], {"path":"twitter_status", "status":200}
                 except Exception as e:
                     print(f"[VX] JSON decode error #2: {e}")
 
@@ -105,39 +101,31 @@ def fetch_tweet_text(url):
         return None, {"error": str(e)}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# OpenAI – micro‑batch (ONE call handles many tweets)
+# OpenAI JSON batch with short prompt (min tokens)
 # ──────────────────────────────────────────────────────────────────────────────
 def parse_retry_after_seconds(msg: str) -> float:
-    """Parse 'Please try again in 1m17.76s' from OpenAI error message."""
-    if not msg:
-        return 5.0
+    if not msg: return 5.0
     m = re.search(r"try again in (\d+(?:\.\d+)?)s", msg)
     if m:
-        try:
-            return max(1.0, float(m.group(1)))
-        except Exception:
-            pass
-    # crude minute+seconds form
+        try: return max(1.0, float(m.group(1)))
+        except: pass
     m2 = re.search(r"try again in (\d+)m(\d+(?:\.\d+)?)s", msg)
     if m2:
-        try:
-            return max(1.0, 60*float(m2.group(1)) + float(m2.group(2)))
-        except Exception:
-            pass
+        try: return max(1.0, 60*float(m2.group(1)) + float(m2.group(2)))
+        except: pass
     return 5.0
 
 def generate_batch_comments(texts):
     """
     texts: list[str] (already truncated)
-    Returns (map: local_index -> [c1,c2], error_info or None)
+    Returns (map: local_index -> [c1,c2], err or None)
     """
-    headers = {"Authorization": f"Bearer {OPENAI_KEY or ''}", "Content-Type": "application/json"}
+    headers = {"Authorization": f"Bearer {OPENAI_KEY}", "Content-Type": "application/json"}
 
-    # Ask model to output strict JSON; use response_format to force JSON.
-    system = "You only output strict JSON and nothing else."
+    # Ultra‑short prompt to cut TPM
+    system = "Only output strict JSON."
     schema = {
-        "instruction": "For each tweet, produce exactly two comments.",
-        "rules": [
+        "rules":[
             "5-12 words each",
             "no emojis",
             "no hashtags",
@@ -145,24 +133,21 @@ def generate_batch_comments(texts):
             "natural slang allowed (ngl, fr, lowkey, tbh)",
             "comments must be different"
         ],
-        "tweets": [{"i": i, "text": t} for i, t in enumerate(texts)]
+        "tweets":[{"i":i,"t":t} for i,t in enumerate(texts)]
     }
     user = (
-        "Return JSON with a single key 'results' only. "
-        "Format: {\"results\":[{\"i\":0,\"c\":[\"comment one\",\"comment two\"]}, ...]}.\n"
-        "No markdown code fences. No extra keys.\n\n" +
-        json.dumps(schema, ensure_ascii=False)
+        "Return strictly: {\"results\":[{\"i\":0,\"c\":[\"line1\",\"line2\"]},...]}\n"
+        + json.dumps(schema, ensure_ascii=False)
     )
-
     payload = {
         "model": OPENAI_MODEL,
-        "messages": [
-            {"role": "system", "content": system},
-            {"role": "user",    "content": user},
+        "messages":[
+            {"role":"system","content":system},
+            {"role":"user","content":user}
         ],
-        "response_format": {"type": "json_object"},
-        "temperature": 0.6,
-        "max_tokens": 120 + 40*len(texts)   # small, predictable
+        "response_format":{"type":"json_object"},
+        "temperature":0.5,
+        "max_tokens": 80 + 30*len(texts)  # very small
     }
 
     for attempt in range(RETRIES_429 + 1):
@@ -171,7 +156,7 @@ def generate_batch_comments(texts):
         except Exception as e:
             print(f"[OA BATCH] request exception: {e}")
             if attempt < RETRIES_429:
-                time.sleep(min(BACKOFF_CAP_S, 3.0))
+                time.sleep(3)
                 continue
             return {}, {"exception": str(e)}
 
@@ -187,34 +172,93 @@ def generate_batch_comments(texts):
             for item in obj.get("results", []):
                 i = item.get("i")
                 c = item.get("c", [])
-                if isinstance(i, int) and isinstance(c, list) and len(c) >= 2:
+                if isinstance(i,int) and isinstance(c,list) and len(c)>=2:
                     cleaned = []
                     for line in c[:2]:
                         s = str(line).strip()
-                        while s.endswith((".", ",", "!", "?")):
+                        while s.endswith((".",",","!","?")):
                             s = s[:-1]
                         if 5 <= len(s.split()) <= 12:
                             cleaned.append(s)
-                    if len(cleaned) == 2:
-                        res_map[i] = cleaned
+                    if len(cleaned)==2:
+                        res_map[i]=cleaned
             return res_map, None
 
-        # 429 or other error
+        # non‑200
         try:
-            err_obj = r.json().get("error", {})
-            msg = err_obj.get("message", "")
+            err = r.json().get("error", {})
+            msg = err.get("message", "")
         except Exception:
-            err_obj, msg = {}, r.text
+            err, msg = {}, r.text
 
-        print(f"[OA BATCH] ERR {r.status_code}: {trunc(msg, 900)}")
+        print(f"[OA BATCH] ERR {r.status_code}: {trunc(msg,900)}")
         if r.status_code == 429 and attempt < RETRIES_429:
-            wait_s = parse_retry_after_seconds(msg)
-            time.sleep(min(BACKOFF_CAP_S, wait_s))
+            time.sleep(min(BACKOFF_CAP_S, parse_retry_after_seconds(msg)))
             continue
         return {}, {"status": r.status_code, "body": trunc(r.text, 900)}
 
 # ──────────────────────────────────────────────────────────────────────────────
-# POST /comment — uses micro‑batches (ONE OA call per micro‑batch)
+# OFFLINE FALLBACK generator (no OpenAI)
+# ──────────────────────────────────────────────────────────────────────────────
+STOPWORDS = set("""
+a an and are as at be but by for from has have i if in is it its of on or our so that the this to was were will with you your
+""".split())
+
+BANNED = [
+    "game changer","finally","love to see","love that","can’t wait","cant wait","excited",
+    "amazing","great","wow","so good","awesome","epic","incredible","innovation",
+    "disruptive","empowering","transformative","visionary","groundbreaking","literally shaking",
+    "omg","so true bestie","slay","ate","yass","yasss","sis","queen","as an ai",
+    "as a language model","in today’s world","in this digital age","fascinating perspective",
+    "thoughts?","agree?","anyone else?","who’s with me?"
+]
+
+OPENERS = ["lowkey","ngl","tbh","fr","no cap","kinda","highkey","honestly","deadass"]
+VERBS   = ["hits","slaps","goes hard","goes crazy","makes sense","is clean","is wild","is tough","is valid","sounds right"]
+TAILS   = ["for real","not mad at it","i vibe with this","i’m here for it","i respect it","no lie","can’t even pretend"]
+
+def _keywords(text):
+    toks = re.findall(r"[A-Za-z0-9']+", text.lower())
+    kws = [t for t in toks if t not in STOPWORDS and len(t) > 2][:6]
+    return kws or ["this"]
+
+def _bad(line):
+    l = line.lower()
+    for b in BANNED:
+        if b in l: return True
+    return False
+
+def fallback_comments(text):
+    kws = _keywords(text)
+    def build(prev_first=None):
+        for _ in range(10):  # try a few times to meet rules + blocklist
+            opener = random.choice(OPENERS)
+            verb   = random.choice(VERBS)
+            k1 = random.choice(kws)
+            k2 = random.choice(kws) if len(kws)>1 else ""
+            parts = [opener, k1, verb]
+            if k2 and k2 != k1 and random.random() < 0.5:
+                parts.insert(2, k2)
+            if random.random() < 0.6:
+                parts += [random.choice(TAILS)]
+            line = " ".join([p for p in parts if p]).strip()
+            while line.endswith((".",",","!","?")):
+                line = line[:-1]
+            words = line.split()
+            if prev_first and len(words)>1 and " ".join(words[:2]) == prev_first:
+                continue
+            if 5 <= len(words) <= 12 and not _bad(line):
+                return line
+        # hard fallback
+        line = f"{random.choice(OPENERS)} {random.choice(kws)} {random.choice(VERBS)}"
+        return line
+
+    l1 = build()
+    l2 = build(prev_first=" ".join(l1.split()[:2]))
+    return [l1, l2]
+
+# ──────────────────────────────────────────────────────────────────────────────
+# POST /comment — batch with offline fallback
 # ──────────────────────────────────────────────────────────────────────────────
 @app.route("/comment", methods=["POST"])
 def comment():
@@ -230,44 +274,48 @@ def comment():
         if cu and cu not in cleaned:
             cleaned.append(cu)
 
-    # 1) Fetch all texts first
+    # 1) fetch texts first (pair-wise rhythm to stay friendly with VX)
     texts, idx_map, failed = [], [], []
     for idx, url in enumerate(cleaned):
-        text, vx_info = fetch_tweet_text(url)
-        if not text:
-            failed.append({"url": url, "reason": "vx_text_not_found", "vx": vx_info})
+        txt, vx = fetch_tweet_text(url)
+        if not txt:
+            failed.append({"url": url, "reason": "vx_text_not_found", "vx": vx})
             continue
-        # truncate to keep tokens tiny
-        text = text.strip()
-        if len(text) > MAX_TWEET_CHARS:
-            text = text[:MAX_TWEET_CHARS]
+        txt = txt.strip()
+        if len(txt) > MAX_TWEET_CHARS:
+            txt = txt[:MAX_TWEET_CHARS]
         idx_map.append((idx, url))
-        texts.append(text)
+        texts.append(txt)
+        time.sleep(0.2)  # light pacing
 
     results = []
 
     if not texts:
         return jsonify({"results": results, "failed": failed})
 
-    # 2) Micro-batch over texts to reduce TPM/RPM drastically
+    # 2) micro-batch into one or few OpenAI calls
     for start in range(0, len(texts), MICRO_BATCH_SIZE):
         sub_texts = texts[start:start+MICRO_BATCH_SIZE]
-        sub_pairs  = idx_map[start:start+MICRO_BATCH_SIZE]  # list[(global_idx, url)]
+        sub_pairs = idx_map[start:start+MICRO_BATCH_SIZE]
 
-        batch_map, err = generate_batch_comments(sub_texts)
+        res_map, err = ({}, {"status": 0}) if not OPENAI_KEY else generate_batch_comments(sub_texts)
 
-        if err:
-            # Record batch failure detail once
-            failed.append({"url": "BATCH", "reason": "openai_batch_failed", "openai": err})
-
-        # Merge results for each local index
-        for local_i, (gidx, url) in enumerate(sub_pairs):
-            if local_i in batch_map:
-                results.append({"url": url, "comments": batch_map[local_i]})
-            else:
-                # No per‑tweet fallback here to keep RPM low; just mark failed cleanly
-                failed.append({"url": url, "reason": "openai_no_result_from_batch"})
-                results.append({"url": url, "comments": ["generation failed", "try again later"]})
+        if res_map:
+            for local_i, (gidx, url) in enumerate(sub_pairs):
+                if local_i in res_map:
+                    results.append({"url": url, "comments": res_map[local_i]})
+                else:
+                    # Offline fallback for any missing rows in the batch result
+                    comments = fallback_comments(sub_texts[local_i])
+                    results.append({"url": url, "comments": comments})
+        else:
+            # Whole batch failed (e.g., 429 / no key / model issue) → offline for all in this slice
+            if err:
+                # keep one batch-level record for transparency (UI can show it)
+                failed.append({"url": "BATCH", "reason": "openai_batch_failed", "openai": err})
+            for local_i, (gidx, url) in enumerate(sub_pairs):
+                comments = fallback_comments(sub_texts[local_i])
+                results.append({"url": url, "comments": comments})
 
         time.sleep(SLEEP_BETWEEN_MB)
 
@@ -282,13 +330,9 @@ def keytest():
 
 @app.route("/diag")
 def diag():
-    # compact summary
     return jsonify({
         "time": now_iso(),
-        "env": {
-            "openai_key_present": bool(OPENAI_KEY),
-            "model": OPENAI_MODEL
-        }
+        "env": {"openai_key_present": bool(OPENAI_KEY), "model": OPENAI_MODEL}
     })
 
 @app.route("/diag/openai")
