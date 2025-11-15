@@ -1,61 +1,48 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>CrownTALK</title>
-    <link rel="stylesheet" href="/static/style.css" />
+    <link rel="stylesheet" href="/static/style.css">
 </head>
+<body>
 
-<body class="theme-purple">
+<div class="theme-toggle-container">
+    <button id="themeToggle" class="theme-toggle">🌙</button>
+</div>
 
-    <!-- THEME SELECTOR -->
+<div class="container">
+
+    <!-- FIXED SQUARE LOGO -->
+    <img src="/static/logo.png" alt="CrownTALK Logo" class="logo">
+
+    <h1>CrownTALK</h1>
+    <p class="sub">Humanlike Twitter Commenter • Powered by CrownDEX 👑</p>
+
+    <label class="input-label">Paste Tweet Links Below</label>
+    <textarea id="tweetInput" class="input-box" placeholder="https://x.com/..."></textarea>
+
+    <button id="generateBtn" class="btn-generate">Generate Replies</button>
+    <button id="stopBtn" class="btn-stop hidden">Stop</button>
+
+    <div id="statusArea"></div>
+
+    <div id="results"></div>
+
+    <p class="footer">© 2025 CrownDEX • All rights reserved.</p>
+
     <div class="theme-selector">
-        <select id="themeSwitcher">
-            <option value="purple" selected>🌌 Purple Neon</option>
-            <option value="midnight">🌑 Midnight Dark</option>
-            <option value="gold">✨ Royal Gold</option>
-            <option value="light">🌤 Soft Light</option>
+        <label>Theme:</label>
+        <select id="themeSelect">
+            <option value="purple">Purple Neon</option>
+            <option value="darkblue">Dark Blue</option>
+            <option value="sunset">Sunset Gold</option>
         </select>
     </div>
 
-    <!-- Centered Logo -->
-    <header>
-        <img src="/static/logo.png" class="main-logo" alt="CrownTALK Logo">
-        <h1 class="title">CrownTALK</h1>
-        <p class="subtitle">Humanlike Twitter Comments • Powered by CrownDEX 👑</p>
-    </header>
+</div>
 
-    <main>
-
-        <!-- INPUT BOX -->
-        <label class="input-label">Paste Tweet Links Below</label>
-
-        <textarea
-            id="tweetInput"
-            placeholder="https://x.com/user/status/12345"
-        ></textarea>
-
-        <button id="generateBtn" class="btn-main">Generate Replies</button>
-        <button id="stopBtn" class="btn-stop hidden">Stop</button>
-
-        <p id="statusMessage" class="status-message"></p>
-
-        <!-- RESULTS -->
-        <div id="resultsContainer"></div>
-
-        <!-- FAILED LINKS -->
-        <div id="retrySection" class="retry-section hidden">
-            <h3>⚠ Failed Links</h3>
-            <ul id="retryList"></ul>
-        </div>
-
-    </main>
-
-    <footer>
-        <p>© 2025 CrownDEX • All rights reserved.</p>
-    </footer>
-
-    <script src="/static/script.js"></script>
+<script src="/static/script.js"></script>
 </body>
 </html>
