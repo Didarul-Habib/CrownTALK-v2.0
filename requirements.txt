@@ -1,5 +1,4 @@
-openai==1.55.0
 flask==3.0.3
-requests==2.31.0
 gunicorn==21.2.0
+requests==2.31.0
 langdetect==1.0.9
