@@ -1,0 +1,211 @@
+/* -----------------------------------------
+   GLOBAL RESET
+----------------------------------------- */
+* {
+    margin: 0;
+    padding: 0;
+    box-sizing: border-box;
+    font-family: "Inter", sans-serif;
+}
+
+body {
+    background: radial-gradient(circle at top, #1a0025 0%, #05000d 70%);
+    color: white;
+    min-height: 100vh;
+    overflow-x: hidden;
+}
+
+/* -----------------------------------------
+   CONTAINER
+----------------------------------------- */
+.container {
+    width: 100%;
+    max-width: 780px;
+    margin: 0 auto;
+    padding: 20px;
+    text-align: center;
+}
+
+/* -----------------------------------------
+   LOGO FIX — SQUARE + CENTERED
+----------------------------------------- */
+.logo {
+    width: 120px;
+    height: 120px;
+    object-fit: cover;
+    border-radius: 20px;
+    display: block;
+    margin: 20px auto;
+}
+
+/* -----------------------------------------
+   TITLE
+----------------------------------------- */
+h1 {
+    font-size: 2.4rem;
+    font-weight: 700;
+    margin-top: 5px;
+    color: #d9a7ff;
+    text-shadow: 0 0 12px #9b4dff;
+}
+
+.sub {
+    margin-top: 4px;
+    font-size: 0.95rem;
+    opacity: 0.85;
+}
+
+/* -----------------------------------------
+   INPUT SECTION
+----------------------------------------- */
+.input-label {
+    display: block;
+    margin-top: 25px;
+    margin-bottom: 8px;
+    font-weight: 600;
+}
+
+.input-box {
+    width: 100%;
+    height: 200px;
+    padding: 15px;
+    border-radius: 12px;
+    border: 0;
+    outline: 0;
+    resize: none;
+    background: #2a0039;
+    color: white;
+    font-size: 0.95rem;
+    box-shadow: inset 0 0 8px #7a1bff;
+}
+
+.input-box::placeholder {
+    color: #b28cd7;
+}
+
+/* -----------------------------------------
+   BUTTONS
+----------------------------------------- */
+.btn-generate,
+.btn-stop {
+    width: 100%;
+    padding: 14px;
+    border-radius: 10px;
+    border: none;
+    margin-top: 18px;
+    font-size: 1.1rem;
+    font-weight: 600;
+    cursor: pointer;
+}
+
+.btn-generate {
+    background: linear-gradient(135deg, #ffcf57, #d4a72d);
+    color: black;
+    box-shadow: 0 0 12px #ffcf57aa;
+}
+
+.btn-generate:hover {
+    filter: brightness(1.1);
+}
+
+.btn-stop {
+    background: #ff4b4b;
+    color: white;
+}
+
+.hidden {
+    display: none;
+}
+
+/* -----------------------------------------
+   LINK RESULT BOXES
+----------------------------------------- */
+.result-block {
+    background: #29003a;
+    border-radius: 14px;
+    padding: 15px;
+    margin-top: 20px;
+    box-shadow: 0 0 18px #7c1aff77;
+    text-align: left;
+    overflow-wrap: break-word;
+}
+
+.result-url a {
+    color: #b273ff;
+    text-decoration: underline;
+    font-size: 0.95rem;
+    word-break: break-all;
+}
+
+/* COMMENT BOX */
+.comment-line {
+    background: #3a004f;
+    padding: 12px;
+    margin-top: 10px;
+    border-radius: 10px;
+    overflow-wrap: break-word;
+    word-break: break-word;
+}
+
+/* COPY BUTTON */
+.copy-btn {
+    float: right;
+    margin-left: 10px;
+    padding: 5px 14px;
+    background: #6f2bff;
+    border-radius: 8px;
+    border: none;
+    color: white;
+    cursor: pointer;
+}
+
+/* -----------------------------------------
+   FOOTER
+----------------------------------------- */
+.footer {
+    margin-top: 40px;
+    font-size: 0.85rem;
+    opacity: 0.7;
+}
+
+/* -----------------------------------------
+   THEME SELECTOR
+----------------------------------------- */
+.theme-selector {
+    margin-top: 15px;
+}
+
+.theme-selector select {
+    padding: 5px 10px;
+    border-radius: 8px;
+}
+
+/* -----------------------------------------
+   THEME TOGGLE BUTTON
+----------------------------------------- */
+.theme-toggle-container {
+    position: absolute;
+    top: 10px;
+    right: 15px;
+}
+
+.theme-toggle {
+    background: #4c00ff;
+    padding: 10px;
+    border-radius: 50%;
+    border: none;
+    font-size: 1.4rem;
+    cursor: pointer;
+}
+
+/* -----------------------------------------
+   THEMES
+----------------------------------------- */
+
+.theme-darkblue body {
+    background: radial-gradient(circle at top, #000b26 0%, #000311 70%);
+}
+
+.theme-sunset body {
+    background: radial-gradient(circle at top, #ff7b00 0%, #2b0000 80%);
+}
