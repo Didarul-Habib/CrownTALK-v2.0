@@ -4,11 +4,10 @@ import re
 import threading
 import requests
 from flask import Flask, request, jsonify
-from openai import OpenAI
 
 
 # ----------------------------------------------------
-# REMOVE RENDER PROXY VARIABLES (fixes "proxies" error)
+# REMOVE PROXY VARIABLES (Render injects them)
 # ----------------------------------------------------
 for p in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
     if p in os.environ:
@@ -16,52 +15,41 @@ for p in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
 
 
 # ----------------------------------------------------
-# Render service URL (YOUR backend URL)
+# CONFIG
 # ----------------------------------------------------
-RENDER_URL = "https://crowntalk-v2-0.onrender.com"
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-
-# ----------------------------------------------------
-# Init Flask + OpenAI
-# ----------------------------------------------------
 app = Flask(__name__)
-client = OpenAI()
 
 
 # ----------------------------------------------------
-# KEEP SERVER AWAKE (important on Render free tier)
+# RENDER KEEP-ALIVE
 # ----------------------------------------------------
-def keep_alive():
+def keep_awake():
     while True:
         try:
-            requests.get(RENDER_URL, timeout=8)
-            print("Ping sent to keep server awake.")
-        except Exception as e:
-            print("Ping failed:", e)
-        time.sleep(600)  # every 10 minutes
+            requests.get("https://crowntalk-v2-0.onrender.com")
+        except:
+            pass
+        time.sleep(300)
 
 
-threading.Thread(target=keep_alive, daemon=True).start()
+threading.Thread(target=keep_awake, daemon=True).start()
 
 
 # ----------------------------------------------------
-# Fetch tweet text using vxtwitter API
+# FETCH TWEET TEXT (VX API)
 # ----------------------------------------------------
 def get_tweet_text(url):
     try:
         clean = url.replace("https://", "").replace("http://", "")
         api = f"https://api.vxtwitter.com/{clean}"
 
-        res = requests.get(api, timeout=10)
-        js = res.json()
+        r = requests.get(api, timeout=10)
+        data = r.json()
 
-        # New VX format: {"tweet": {"text": "...."}}
-        if "tweet" in js and "text" in js["tweet"]:
-            return js["tweet"]["text"]
-
-        # Older format fallback
-        if "text" in js:
-            return js["text"]
+        if "tweet" in data and "text" in data["tweet"]:
+            return data["tweet"]["text"]
 
         return None
     except:
@@ -69,50 +57,66 @@ def get_tweet_text(url):
 
 
 # ----------------------------------------------------
-# Generate 2 comments using OpenAI (with retry)
+# OPENAI REST API (NO CLIENT)
 # ----------------------------------------------------
 def generate_comments(tweet_text):
     prompt = f"""
-Generate two natural human comments based on this tweet.
-
+Generate two humanlike comments.
 Rules:
 - 5–12 words each
-- no emojis
-- no hashtags
 - no punctuation at end
-- casual human tone, but not cringe
-- each comment on a new line
+- no emojis or hashtags
+- natural slang allowed (tbh, fr, ngl, lowkey)
 - comments must be different
+- based on the tweet
+- exactly 2 lines
 
 Tweet:
 {tweet_text}
 """
 
+    payload = {
+        "model": "gpt-4o-mini",
+        "temperature": 0.65,
+        "max_tokens": 60,
+        "messages": [
+            {"role": "user", "content": prompt}
+        ]
+    }
+
+    headers = {
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
+        "Content-Type": "application/json"
+    }
+
     for attempt in range(4):
         try:
-            resp = client.chat.completions.create(
-                model="gpt-4o-mini",
-                temperature=0.65,
-                max_tokens=60,
-                messages=[{"role": "user", "content": prompt}],
-            )
+            r = requests.post("https://api.openai.com/v1/chat/completions",
+                              json=payload,
+                              headers=headers,
+                              timeout=20)
 
-            out_raw = resp.choices[0].message.content.strip()
-            lines = [l.strip() for l in out_raw.split("\n") if l.strip()]
+            data = r.json()
 
-            # cleanup: remove ending punctuation
-            cleaned = []
+            if "choices" not in data:
+                time.sleep(1)
+                continue
+
+            output = data["choices"][0]["message"]["content"]
+            lines = [l.strip() for l in output.split("\n") if l.strip()]
+
+            clean = []
             for c in lines:
-                c = re.sub(r"[.,!?;:]+$", "", c).strip()
+                c = re.sub(r"[.,!?;:]+$", "", c)
                 if 5 <= len(c.split()) <= 12:
-                    cleaned.append(c)
+                    clean.append(c)
 
-            if len(cleaned) >= 2:
-                return cleaned[:2]
+            if len(clean) >= 2:
+                return clean[:2]
 
         except Exception as e:
-            print(f"AI error attempt {attempt+1}:", e)
-            time.sleep(1.5)
+            print("AI error:", e)
+            time.sleep(2)
 
     return ["generation failed", "please retry"]
 
@@ -133,21 +137,17 @@ def comment_api():
     if not urls:
         return jsonify({"error": "No URLs provided"}), 400
 
-    # Clean up URLs
     clean_urls = []
     for u in urls:
-        u = u.strip()
-        u = re.sub(r"\?.*$", "", u)  # remove ? & query
+        u = re.sub(r"\?.*$", "", u.strip())
         if u not in clean_urls:
             clean_urls.append(u)
 
     results = []
     failed = []
 
-    # Batch of 2
     for i in range(0, len(clean_urls), 2):
         batch = clean_urls[i:i + 2]
-        print("Processing batch:", batch)
 
         for url in batch:
             txt = get_tweet_text(url)
@@ -158,10 +158,10 @@ def comment_api():
             comments = generate_comments(txt)
             results.append({
                 "url": url,
-                "comments": comments,
+                "comments": comments
             })
 
-        time.sleep(2)  # small delay to avoid API spam
+        time.sleep(2)
 
     return jsonify({
         "results": results,
@@ -170,7 +170,7 @@ def comment_api():
 
 
 # ----------------------------------------------------
-# Run server
+# RUN
 # ----------------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
