@@ -23,15 +23,16 @@ app = Flask(__name__)
 
 
 # ----------------------------------------------------
-# RENDER KEEP-ALIVE
+# KEEP RENDER AWAKE
 # ----------------------------------------------------
 def keep_awake():
     while True:
         try:
+            # change to YOUR render URL
             requests.get("https://crowntalk-v2-0.onrender.com")
         except:
             pass
-        time.sleep(300)
+        time.sleep(300)  # every 5 mins
 
 
 threading.Thread(target=keep_awake, daemon=True).start()
@@ -57,7 +58,7 @@ def get_tweet_text(url):
 
 
 # ----------------------------------------------------
-# OPENAI REST API (NO CLIENT)
+# CALL OPENAI REST API (NO OPENAI LIB)
 # ----------------------------------------------------
 def generate_comments(tweet_text):
     prompt = f"""
@@ -77,7 +78,7 @@ Tweet:
 
     payload = {
         "model": "gpt-4o-mini",
-        "temperature": 0.65,
+        "temperature": 0.7,
         "max_tokens": 60,
         "messages": [
             {"role": "user", "content": prompt}
@@ -91,10 +92,12 @@ Tweet:
 
     for attempt in range(4):
         try:
-            r = requests.post("https://api.openai.com/v1/chat/completions",
-                              json=payload,
-                              headers=headers,
-                              timeout=20)
+            r = requests.post(
+                "https://api.openai.com/v1/chat/completions",
+                json=payload,
+                headers=headers,
+                timeout=20
+            )
 
             data = r.json()
 
@@ -105,17 +108,17 @@ Tweet:
             output = data["choices"][0]["message"]["content"]
             lines = [l.strip() for l in output.split("\n") if l.strip()]
 
-            clean = []
+            clean_lines = []
             for c in lines:
                 c = re.sub(r"[.,!?;:]+$", "", c)
                 if 5 <= len(c.split()) <= 12:
-                    clean.append(c)
+                    clean_lines.append(c)
 
-            if len(clean) >= 2:
-                return clean[:2]
+            if len(clean_lines) >= 2:
+                return clean_lines[:2]
 
         except Exception as e:
-            print("AI error:", e)
+            print("AI generation error:", e)
             time.sleep(2)
 
     return ["generation failed", "please retry"]
@@ -137,15 +140,18 @@ def comment_api():
     if not urls:
         return jsonify({"error": "No URLs provided"}), 400
 
+    # clean + dedupe
     clean_urls = []
     for u in urls:
-        u = re.sub(r"\?.*$", "", u.strip())
+        u = u.strip()
+        u = re.sub(r"\?.*$", "", u)
         if u not in clean_urls:
             clean_urls.append(u)
 
     results = []
     failed = []
 
+    # batch 2 at a time
     for i in range(0, len(clean_urls), 2):
         batch = clean_urls[i:i + 2]
 
