@@ -1,176 +1,179 @@
+import os
 import re
 import time
-import requests
-from flask import Flask, request, jsonify, render_template
-from langdetect import detect
-from openai import OpenAI
+import asyncio
+import httpx
+from fastapi import FastAPI, Request
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-app = Flask(__name__)
-client = OpenAI()
+app = FastAPI()
 
-# ---------------------------------------------------------
-# Load Style Guide
-# ---------------------------------------------------------
-with open("comment_style_guide.txt", "r", encoding="utf-8") as f:
-    STYLE_GUIDE = f.read()
+app.add_middleware(
+    CORSMiddleware,
+    allow_origins=["*"],
+    allow_headers=["*"],
+    allow_methods=["*"],
+)
 
-# ---------------------------------------------------------
-# Fastest Tweet Fetchers (Balanced Mode)
-# ---------------------------------------------------------
-TIMEOUT = 5  # HARD LIMIT for every tweet source
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-def try_fetch(url):
-    """Protected request with timeout + auto JSON handling"""
+# ---------------------------------------
+#  CLEAN TWEET URL
+# ---------------------------------------
+def clean_url(url: str) -> str:
+    return url.split("?")[0].strip()
+
+# ---------------------------------------
+#  FETCH METHOD A — TWXT (Primary)
+# ---------------------------------------
+async def fetch_twxt(url: str):
+    api = f"https://api.twxt.live/v1/tweet?url={url}"
     try:
-        r = requests.get(url, timeout=TIMEOUT)
-        if r.status_code == 200:
-            return r.json()
-        return None
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(api)
+            if r.status_code != 200:
+                return None
+            data = r.json()
+            if "text" in data and data["text"]:
+                return data["text"]
     except:
         return None
+    return None
 
-def fetch_tweet_text(tweet_url):
-    """
-    Balanced Mode:
-    1) Twxt first — fastest, lightweight
-    2) VXTwitter fallback — reliable
-    """
-
-    # Clean the URL first
-    cleaned = (
-        tweet_url.replace("https://", "")
-                 .replace("http://", "")
-                 .replace("x.com/", "")
-                 .replace("twitter.com/", "")
-    )
-    cleaned = cleaned.split("?")[0]  # remove ?s=123
-
-    # Source 1 — twxt API
-    twxt_api = f"https://api.twxt.dev/v1/tweet?url=https://x.com/{cleaned}"
-    data = try_fetch(twxt_api)
-    if data and "text" in data:
-        return data["text"]
-
-    # Source 2 — vxtwitter
-    vx_api = f"https://api.vxtwitter.com/{cleaned}"
-    data = try_fetch(vx_api)
+# ---------------------------------------
+#  FETCH METHOD B — VXTwitter
+# ---------------------------------------
+async def fetch_vx(url: str):
     try:
-        if data and "tweet" in data and "text" in data["tweet"]:
-            return data["tweet"]["text"]
+        api = url.replace("twitter.com", "vx-twitter.com").replace("x.com", "vx-twitter.com")
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(api)
+            if r.status_code != 200:
+                return None
+            html = r.text
+            match = re.search(r'<meta property="og:description" content="(.*?)"', html)
+            if match:
+                return match.group(1)
     except:
-        pass
+        return None
+    return None
 
-    return None  # final failure
-
-# ---------------------------------------------------------
-# Translation (Balanced Mode – only if needed)
-# ---------------------------------------------------------
-def translate_to_english(text):
+# ---------------------------------------
+#  FETCH METHOD C — CATX API (Very reliable)
+# ---------------------------------------
+async def fetch_catx(url: str):
     try:
-        lang = detect(text)
+        api = f"https://api.catx.one/tweet?url={url}"
+        async with httpx.AsyncClient(timeout=10) as client:
+            r = await client.get(api)
+            if r.status_code != 200:
+                return None
+            j = r.json()
+            if "text" in j and j["text"]:
+                return j["text"]
+    except:
+        return None
+    return None
 
-        # if English, skip translation call
-        if lang == "en":
+# ---------------------------------------
+#  FETCH METHOD D — Raw HTML Scrape
+# ---------------------------------------
+async def fetch_html(url: str):
+    try:
+        async with httpx.AsyncClient(timeout=10, follow_redirects=True) as client:
+            r = await client.get(url)
+            if r.status_code != 200:
+                return None
+            html = r.text
+            # OG tag (works surprisingly often)
+            match = re.search(r'<meta property="og:description" content="(.*?)"', html)
+            if match:
+                return match.group(1)
+    except:
+        return None
+    return None
+
+# ---------------------------------------
+#  MASTER FETCHER (Rotates sources)
+# ---------------------------------------
+async def get_tweet_text(url: str):
+    url = clean_url(url)
+    sources = [fetch_twxt, fetch_vx, fetch_catx, fetch_html]
+
+    for fetcher in sources:
+        text = await fetcher(url)
+        if text:
             return text
 
-        response = client.chat.completions.create(
-            model="gpt-4o-mini",
-            messages=[
-                {
-                    "role": "system",
-                    "content": "Translate this text into English only. Nothing else."
+        # micro delay (protect from rate-limit)
+        await asyncio.sleep(0.04)
+
+    return None
+
+# ---------------------------------------
+#  OPENAI COMMENT GENERATOR
+# ---------------------------------------
+async def generate_comment(text: str):
+    prompt = (
+        "Write a short, casual, humanlike reply to this tweet:\n\n"
+        f"Tweet: {text}\n\n"
+        "Reply:"
+    )
+
+    try:
+        async with httpx.AsyncClient(timeout=20) as client:
+            r = await client.post(
+                "https://api.openai.com/v1/chat/completions",
+                headers={"Authorization": f"Bearer {OPENAI_API_KEY}"},
+                json={
+                    "model": "gpt-4o-mini",
+                    "messages": [{"role": "user", "content": prompt}],
+                    "max_tokens": 60,
+                    "temperature": 0.8,
                 },
-                {"role": "user", "content": text}
-            ],
-            temperature=0.2
-        )
-
-        return response.choices[0].message.content.strip()
-    except:
-        return text  # fallback
-
-
-# ---------------------------------------------------------
-# Comment Generator (Balanced Mode)
-# ---------------------------------------------------------
-def generate_comments(tweet_text):
-    prompt = f"""
-You are CrownTALK 👑 — generate HUMANLIKE Twitter-style comments.
-
-Rules:
-- EXACTLY 2 comments.
-- 5–12 words each.
-- No punctuation.
-- No emojis, no hashtags.
-- No repeated phrases.
-- Must match the tweet context.
-- Use casual slang (tbh, fr, lowkey, kinda).
-- Avoid blacklisted words.
-- Each line is one comment.
-
-STYLE GUIDE:
-{STYLE_GUIDE}
-
-Tweet:
-"{tweet_text}"
-
-Return ONLY the two comments.
-"""
-
-    for _ in range(2):  # balanced retry count (2)
-        try:
-            response = client.chat.completions.create(
-                model="gpt-4o-mini",
-                messages=[{"role": "user", "content": prompt}],
-                temperature=0.65
             )
 
-            output = response.choices[0].message.content.strip()
-            comments = [re.sub(r"[.,!?;:]+$", "", x).strip() for x in output.split("\n")]
-            comments = [c for c in comments if 5 <= len(c.split()) <= 12]
+            if r.status_code != 200:
+                return None
 
-            if len(comments) >= 2:
-                return comments[:2]
+            data = r.json()
+            return data["choices"][0]["message"]["content"].strip()
 
-        except:
-            time.sleep(0.3)
+    except:
+        return None
 
-    return ["could not generate reply", "generator failed"]
+# ---------------------------------------
+#  REQUEST MODEL
+# ---------------------------------------
+class TweetBatch(BaseModel):
+    urls: list
 
-
-# ---------------------------------------------------------
-# ROUTES
-# ---------------------------------------------------------
-@app.route("/")
-def index():
-    return render_template("index.html")
-
-
-@app.route("/comment", methods=["POST"])
-def comment_api():
-    data = request.json
-
-    if "tweets" not in data or not isinstance(data["tweets"], list):
-        return jsonify({"error": "Invalid format"}), 400
-
+# ---------------------------------------
+#  MAIN PROCESSOR
+# ---------------------------------------
+@app.post("/process")
+async def process(data: TweetBatch):
     results = []
 
-    for url in data["tweets"]:
-        text = fetch_tweet_text(url)
+    for url in data.urls:
+        cleaned = clean_url(url)
 
-        if not text:
-            results.append({"error": "Could not fetch this tweet (private or deleted)"})
-            continue
+        tweet_text = await get_tweet_text(cleaned)
 
-        english = translate_to_english(text)
-        comments = generate_comments(english)
-        results.append({"comments": comments})
+        if tweet_text:
+            comment = await generate_comment(tweet_text)
+        else:
+            comment = None
 
-    return jsonify({"results": results})
+        results.append({
+            "url": cleaned,
+            "tweet": tweet_text,
+            "comment": comment,
+            "status": "success" if comment else "failed"
+        })
 
+        # small pause protects from bans
+        await asyncio.sleep(0.05)
 
-# ---------------------------------------------------------
-# RUN (Koyeb)
-# ---------------------------------------------------------
-if __name__ == "__main__":
-    app.run(host="0.0.0.0", port=8000)
+    return {"results": results}
