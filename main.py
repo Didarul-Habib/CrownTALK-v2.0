@@ -1,17 +1,18 @@
 import os
+
+# ----------------------------------------------------
+# REMOVE RENDER PROXY VARIABLES BEFORE ANYTHING ELSE
+# ----------------------------------------------------
+for p in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
+    if p in os.environ:
+        del os.environ[p]
+
 import time
 import re
 import requests
 import threading
 from flask import Flask, request, jsonify
 from openai import OpenAI
-
-
-# ----------------------------------------------------
-# 🔥 FIX RENDER PROXY BUG (DO NOT REMOVE)
-# ----------------------------------------------------
-for p in ["HTTP_PROXY", "HTTPS_PROXY", "http_proxy", "https_proxy"]:
-    os.environ.pop(p, None)
 
 
 # ----------------------------------------------------
@@ -22,7 +23,7 @@ client = OpenAI()
 
 
 # ----------------------------------------------------
-# Keep-alive Ping (to prevent Render sleep)
+# Keep Render awake
 # ----------------------------------------------------
 def keep_awake():
     while True:
@@ -30,7 +31,7 @@ def keep_awake():
             requests.get("https://your-render-url.onrender.com")
         except:
             pass
-        time.sleep(60 * 5)  # ping every 5 min
+        time.sleep(300)
 
 
 threading.Thread(target=keep_awake, daemon=True).start()
@@ -56,21 +57,18 @@ def get_tweet_text(url):
 
 
 # ----------------------------------------------------
-# Generate comments (with retry)
+# Generate comments (AI)
 # ----------------------------------------------------
 def generate_comments(tweet_text):
     prompt = f"""
-You are CrownTALK 👑 — generate TWO short human-like comments.
-
+Generate two humanlike comments.
 Rules:
-- Based on the tweet context
-- 5–12 words
-- NO punctuation at the end
-- NO emojis, no hashtags
-- Avoid repetitive patterns
-- Use natural slang: tbh, fr, ngl, lowkey, btw, kinda, rn, etc
-- Each line = one comment
-- EXACTLY 2 lines
+- 5–12 words each
+- no punctuation at end
+- no emojis, no hashtags
+- natural slang allowed (tbh, fr, ngl, btw, lowkey)
+- comments must be different and based on the tweet
+- exactly 2 lines, no labels
 
 Tweet:
 {tweet_text}
@@ -96,29 +94,26 @@ Tweet:
             print("AI error:", e)
             time.sleep(2)
 
-    return ["comment generation failed", "please retry"]
+    return ["generation failed", "please retry"]
 
 
 # ----------------------------------------------------
-# Homepage
+# Routes
 # ----------------------------------------------------
 @app.route("/")
 def home():
     return jsonify({"status": "CrownTALK backend running"})
 
 
-# ----------------------------------------------------
-# Comment API
-# ----------------------------------------------------
 @app.route("/comment", methods=["POST"])
-def comment():
+def comment_api():
     body = request.json
     urls = body.get("urls", [])
 
     if not urls:
         return jsonify({"error": "No URLs provided"}), 400
 
-    # Clean URLs
+    # Clean URLs — remove duplicates and ? queries
     clean_urls = []
     for u in urls:
         u = u.strip()
@@ -129,7 +124,7 @@ def comment():
     results = []
     failed = []
 
-    # batch process — 2 per batch
+    # Batch size = 2
     for i in range(0, len(clean_urls), 2):
         batch = clean_urls[i:i + 2]
 
@@ -142,10 +137,10 @@ def comment():
             comments = generate_comments(txt)
             results.append({
                 "url": url,
-                "comments": comments
+                "comments": comments,
             })
 
-        time.sleep(3)  # safe spacing
+        time.sleep(3)
 
     return jsonify({
         "results": results,
@@ -153,8 +148,5 @@ def comment():
     })
 
 
-# ----------------------------------------------------
-# Run
-# ----------------------------------------------------
 if __name__ == "__main__":
     app.run(host="0.0.0.0", port=10000)
