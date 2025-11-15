@@ -1,129 +1,54 @@
-// =====================
-// GLOBAL STATE
-// =====================
-let stopRequested = false;
+const backend = "https://crowntalk-v2-0.onrender.com/comment";
 
-// =====================
-// THEME SYSTEM
-// =====================
-const themeSelect = document.getElementById("themeSelect");
-const themeToggle = document.getElementById("themeToggle");
+async function generateComments() {
+    const input = document.getElementById("inputBox").value.trim();
+    if (!input) return alert("Enter at least one URL");
 
-themeSelect.addEventListener("change", () => {
-    document.body.className = themeSelect.value;
-});
+    const urls = input.split("\n").map(u => u.trim()).filter(u => u !== "");
 
-themeToggle.addEventListener("click", () => {
-    document.body.classList.toggle("light");
-});
+    document.getElementById("results").innerHTML = "";
+    document.querySelector(".btn-generate").disabled = true;
 
-// =====================
-// CLEAN URL
-// =====================
-function cleanUrl(url) {
-    return url.split("?")[0].trim();
-}
-
-// =====================
-// CREATE RESULT BLOCK IN UI
-// =====================
-function createResultBlock(url, index) {
-    return `
-        <div class="result-block">
-            <div class="result-url">
-                <strong>${index}.</strong>
-                <a href="${url}" target="_blank">${url}</a>
-            </div>
-            <div class="comments"></div>
-        </div>
-    `;
-}
-
-// =====================
-// COPY BUTTON
-// =====================
-function copyText(text) {
-    navigator.clipboard.writeText(text);
-}
-
-// =====================
-// GENERATE COMMENTS
-// =====================
-async function generateBatch(batchLinks, batchIndex, totalBatches) {
-    if (stopRequested) return;
-
-    document.getElementById("statusArea").innerHTML =
-        `⚙️ Processing batch ${batchIndex} / ${totalBatches}...`;
-
-    const response = await fetch("/comment", {
+    const response = await fetch(backend, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ tweets: batchLinks }),
+        body: JSON.stringify({ urls })
     });
 
     const data = await response.json();
-    return data.results;
-}
+    console.log("Backend:", data);
 
-// =====================
-// MAIN PROCESS
-// =====================
-document.getElementById("generateBtn").addEventListener("click", async () => {
-    stopRequested = false;
-    document.getElementById("stopBtn").classList.remove("hidden");
-    document.getElementById("generateBtn").classList.add("hidden");
+    // SUCCESS RESULTS
+    if (data.results?.length > 0) {
+        data.results.forEach(item => {
+            const div = `
+                <div class="result-block">
+                    <div class="result-url">
+                        <a href="${item.url}" target="_blank">${item.url}</a>
+                    </div>
 
-    const rawLinks = document.getElementById("tweetInput").value.trim().split("\n");
-    const links = rawLinks.map(cleanUrl).filter(x => x.length > 5);
-    if (links.length === 0) return;
-
-    const batchSize = 2;
-    const totalBatches = Math.ceil(links.length / batchSize);
-
-    document.getElementById("results").innerHTML = "";
-
-    let indexCounter = 1;
-
-    for (let i = 0; i < links.length; i += batchSize) {
-        if (stopRequested) break;
-
-        const batch = links.slice(i, i + batchSize);
-        const results = await generateBatch(batch, (i / batchSize) + 1, totalBatches);
-
-        results.forEach((res, idx) => {
-            const url = batch[idx];
-            document.getElementById("results").innerHTML += createResultBlock(url, indexCounter);
-
-            const block = document.querySelectorAll(".result-block")[indexCounter - 1].querySelector(".comments");
-
-            if (res.error) {
-                block.innerHTML = `<div class="comment-line">${res.error}</div>`;
-            } else {
-                res.comments.forEach(c => {
-                    block.innerHTML += `
-                        <div class="comment-line">
-                            ${c}
-                            <button class="copy-btn" onclick="copyText('${c}')">Copy</button>
-                        </div>
-                    `;
-                });
-            }
-            indexCounter++;
+                    <div class="comment-line">${item.comments[0]}</div>
+                    <div class="comment-line">${item.comments[1]}</div>
+                </div>
+            `;
+            document.getElementById("results").innerHTML += div;
         });
-
-        await new Promise(r => setTimeout(r, 400)); // faster but safe rate
     }
 
-    document.getElementById("statusArea").innerHTML =
-        stopRequested ? "❌ Stopped." : "✔ All comments generated successfully.";
+    // FAILED LINKS
+    if (data.failed?.length > 0) {
+        document.getElementById("results").innerHTML += `
+            <div class="result-block">
+                <strong>Failed:</strong><br>
+                ${data.failed.join("<br>")}
+            </div>
+        `;
+    }
 
-    document.getElementById("generateBtn").classList.remove("hidden");
-    document.getElementById("stopBtn").classList.add("hidden");
-});
+    document.querySelector(".btn-generate").disabled = false;
+}
 
-// =====================
-// STOP BUTTON
-// =====================
-document.getElementById("stopBtn").addEventListener("click", () => {
-    stopRequested = true;
-});
+// THEME SWITCH
+function toggleTheme() {
+    document.body.classList.toggle("theme-sunset");
+}
