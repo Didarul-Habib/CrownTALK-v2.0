@@ -10,17 +10,16 @@ app = Flask(__name__)
 OPENAI_KEY = os.environ.get("OPENAI_API_KEY")
 
 
-# =====================================================
-# CLEAN URL
-# =====================================================
+# ===========================================
+# SAFE URL CLEAN
+# ===========================================
 def clean_url(u):
     if not u:
         return None
-
     u = u.strip()
 
-    # Remove numbering: "1. url"
-    if u and u[0].isdigit() and "." in u[:4]:
+    # Remove numbers like "1. https://..."
+    if u[0].isdigit() and "." in u[:4]:
         u = u.split(".", 1)[1].strip()
 
     # Strip params
@@ -30,35 +29,40 @@ def clean_url(u):
     return u
 
 
-# =====================================================
-# FETCH TWEET TEXT via VXTwitter (100% crash-safe)
-# =====================================================
+# ===========================================
+# SAFE VXTwitter TEXT FETCH
+# NEVER CRASHES, ALWAYS RETURNS str OR None
+# ===========================================
 def fetch_tweet_text(url):
-
     try:
         parsed = urlparse(url)
         host = parsed.netloc
-        path = parsed.path  # /user/status/123
+        path = parsed.path
 
-        # VXTwitter supports this format reliably:
-        clean = f"https://api.vxtwitter.com/{host}{path}"
+        api_url = f"https://api.vxtwitter.com/{host}{path}"
 
-        r = requests.get(clean, timeout=10)
+        r = requests.get(api_url, timeout=10)
+
+        # Must be status 200
         if r.status_code != 200:
             return None
 
-        # Try to decode JSON safely
+        # If content-type is NOT JSON → VXTwitter returned HTML → FAIL
+        ct = r.headers.get("content-type", "")
+        if "application/json" not in ct:
+            return None
+
         try:
             data = r.json()
         except:
             return None
 
-        # Possible formats
-        if "text" in data:
-            return data["text"]
-
-        if "tweet" in data and "text" in data["tweet"]:
-            return data["tweet"]["text"]
+        # Multiple possible formats
+        if isinstance(data, dict):
+            if "text" in data:
+                return data["text"]
+            if "tweet" in data and "text" in data["tweet"]:
+                return data["tweet"]["text"]
 
         return None
 
@@ -66,9 +70,10 @@ def fetch_tweet_text(url):
         return None
 
 
-# =====================================================
-# GENERATE COMMENTS (Option A Strict)
-# =====================================================
+# ===========================================
+# SAFE OPENAI CALL
+# NEVER CRASHES
+# ===========================================
 def generate_comments(tweet_text):
 
     url = "https://api.openai.com/v1/chat/completions"
@@ -100,15 +105,13 @@ Tweet:
         "max_tokens": 60
     }
 
-    max_retries = 2
-    for attempt in range(max_retries):
-
+    for _ in range(2):  # 2 retries
         try:
             r = requests.post(url, headers=headers, json=payload, timeout=12)
         except:
+            time.sleep(2)
             continue
 
-        # SUCCESS
         if r.status_code == 200:
             try:
                 data = r.json()
@@ -120,8 +123,7 @@ Tweet:
             cleaned = []
 
             for line in lines:
-                # strip ending punctuation
-                while line.endswith((".", "!", "?", ",")):
+                while line.endswith((".", ",", "!", "?")):
                     line = line[:-1]
 
                 words = line.split()
@@ -131,21 +133,18 @@ Tweet:
                 if len(cleaned) == 2:
                     return cleaned
 
-            break
+            return ["generation failed", "try again later"]
 
-        # RATE LIMIT
         if r.status_code == 429:
             time.sleep(2)
             continue
 
-        break
-
     return ["generation failed", "try again later"]
 
 
-# =====================================================
-# /COMMENT — PROCESS IN BATCHES
-# =====================================================
+# ===========================================
+# MAIN COMMENT ENDPOINT — SAFE MODE
+# ===========================================
 @app.route("/comment", methods=["POST"])
 def comment():
     try:
@@ -154,9 +153,8 @@ def comment():
         return jsonify({"results": [], "failed": []})
 
     urls = data.get("urls", [])
-
-    # Clean & dedupe
     cleaned = []
+
     for u in urls:
         cu = clean_url(u)
         if cu and cu not in cleaned:
@@ -165,7 +163,6 @@ def comment():
     results = []
     failed = []
 
-    # Process in batches of 2
     for i in range(0, len(cleaned), 2):
         batch = cleaned[i:i+2]
 
@@ -186,9 +183,9 @@ def comment():
     return jsonify({"results": results, "failed": failed})
 
 
-# =====================================================
-# KEEP ALIVE (SAFE VERSION)
-# =====================================================
+# ===========================================
+# KEEP ALIVE
+# ===========================================
 def keep_alive():
     while True:
         try:
