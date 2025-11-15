@@ -1,9 +1,3 @@
-fastapi
-uvicorn[standard]
-requests
-langdetect
-openai
-jinja2
-python-multipart
+flask
 gunicorn
-pydantic
+requests
