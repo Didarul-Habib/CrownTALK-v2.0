@@ -1,97 +1,150 @@
 import os
-import json
+import re
 import time
 import threading
-from typing import List, Tuple
+from typing import List, Tuple, Optional
 import requests
 from flask import Flask, request, jsonify
 from flask_cors import CORS
 
-# ============================================
-# Block proxy envs (Render injects these)
-# ============================================
-for k in ["HTTP_PROXY", "HTTPS_PROXY", "ALL_PROXY", "http_proxy", "https_proxy", "all_proxy"]:
-    if k in os.environ:
-        del os.environ[k]
+# -----------------------------
+# Disable proxies (upper/lower)
+# -----------------------------
+for k in [
+    "HTTP_PROXY","HTTPS_PROXY","ALL_PROXY","NO_PROXY",
+    "http_proxy","https_proxy","all_proxy","no_proxy"
+]:
+    os.environ.pop(k, None)
 
-# Use a single session and ensure it ignores env proxies even if any remain
 session = requests.Session()
-session.trust_env = False  # ignore *_PROXY env vars
+session.trust_env = False  # ignore proxy envs
+UA_HEADERS = {
+    "User-Agent": "CrownTALK/1.0 (+https://crowntalk.netlify.app)",
+    "Accept": "application/json",
+}
 
 app = Flask(__name__)
-CORS(app)  # allow all origins so Netlify can POST
+CORS(app)  # allow Netlify → Render
 
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 
-# ============================================
+# -----------------------------
 # Helpers
-# ============================================
+# -----------------------------
 def clean_url(url: str) -> str:
-    """Remove query params and trim whitespace."""
-    return url.split("?")[0].strip()
-
-def chunked(items: List[str], size: int):
-    for i in range(0, len(items), size):
-        yield items[i:i+size]
-
-def _sleep_backoff(attempt: int):
-    # 0 -> 1s, 1 -> 2s, 2 -> 4s, 3 -> 4s
-    delay = min(2 ** attempt, 4)
-    time.sleep(delay)
-
-# ============================================
-# VX Twitter fetch
-# ============================================
-def fetch_tweet_text_once(tweet_url: str, timeout: int = 15) -> str | None:
     """
-    Calls https://api.vxtwitter.com/{tweet_url} and extracts the tweet text.
-    Handles multiple possible shapes of VX responses.
+    1) Trim & strip query params; 2) Normalize x.com -> twitter.com
+    """
+    s = (url or "").strip()
+    s = s.split("?", 1)[0]
+    # normalize host
+    s = s.replace("://x.com/", "://twitter.com/")
+    return s
+
+def chunk2(xs: List[str]):
+    for i in range(0, len(xs), 2):
+        yield xs[i:i+2]
+
+def backoff(attempt: int):
+    time.sleep(min(2 ** attempt, 4))
+
+def extract_tweet_id(u: str) -> Optional[str]:
+    m = re.search(r"/status/(\d+)", u)
+    return m.group(1) if m else None
+
+# -----------------------------
+# VX Twitter fetch (primary)
+# -----------------------------
+def vx_fetch(url: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    Call https://api.vxtwitter.com/{tweet_url} and extract text.
+    Returns (text, error_reason)
     """
     try:
-        # VX expects the full tweet URL appended to the path
-        resp = session.get(f"https://api.vxtwitter.com/{tweet_url}", timeout=timeout)
-        if resp.status_code != 200:
-            return None
-        data = resp.json()
+        r = session.get(f"https://api.vxtwitter.com/{url}", headers=UA_HEADERS, timeout=15)
+        if r.status_code != 200:
+            snippet = (r.text or "")[:120]
+            return None, f"VX {r.status_code}: {snippet}"
+        j = r.json()
+        # common fields observed
+        for path in [
+            ("text",),
+            ("tweet", "text"),
+            ("tweet", "full_text"),
+            ("tweet", "content"),
+        ]:
+            d = j
+            for p in path:
+                d = d.get(p) if isinstance(d, dict) else None
+                if d is None:
+                    break
+            if isinstance(d, str) and d.strip():
+                return d.strip(), None
+        return None, "VX 200 but no text field"
+    except Exception as ex:
+        return None, f"VX exception: {ex}"
 
-        # Common fields seen in VX responses
-        tweet = data.get("tweet", {}) if isinstance(data, dict) else {}
-        candidates = [
-            data.get("text") if isinstance(data, dict) else None,
-            tweet.get("text"),
-            tweet.get("full_text"),
-            tweet.get("content"),
-        ]
-        for c in candidates:
-            if c and isinstance(c, str) and c.strip():
-                return c.strip()
-        return None
-    except Exception:
-        return None
+# -----------------------------
+# Twitter CDN embed fetch (fallback)
+# -----------------------------
+def cdn_fetch(tweet_id: str) -> Tuple[Optional[str], Optional[str]]:
+    """
+    GET https://cdn.syndication.twimg.com/widgets/tweet?id=<id>
+    Returns (text, error_reason)
+    """
+    try:
+        url = f"https://cdn.syndication.twimg.com/widgets/tweet?id={tweet_id}"
+        r = session.get(url, headers=UA_HEADERS, timeout=15)
+        if r.status_code != 200:
+            snippet = (r.text or "")[:120]
+            return None, f"CDN {r.status_code}: {snippet}"
+        j = r.json()
+        text = j.get("text") or j.get("full_text") or j.get("renderedText")
+        if isinstance(text, str) and text.strip():
+            return text.strip(), None
+        return None, "CDN 200 but no text field"
+    except Exception as ex:
+        return None, f"CDN exception: {ex}"
 
-def fetch_tweet_text(tweet_url: str) -> str | None:
-    """Retry VX up to 3x with backoff."""
-    for attempt in range(3):
-        text = fetch_tweet_text_once(tweet_url)
-        if text:
-            return text
-        _sleep_backoff(attempt)
-    return None
+# -----------------------------
+# Unified tweet text fetch with fallback
+# -----------------------------
+def fetch_tweet_text(url: str) -> Tuple[Optional[str], Optional[str]]:
+    # normalize URL
+    norm = clean_url(url)
 
-# ============================================
-# OpenAI raw REST (chat.completions)
-# ============================================
-def generate_comment(tweet_text: str) -> str | None:
+    # 1) Try VX
+    text, err_vx = vx_fetch(norm)
+    if text:
+        return text, None
+
+    # 2) Fallback: try Twitter CDN embed
+    tid = extract_tweet_id(norm)
+    if not tid:
+        return None, f"{err_vx or 'VX failed'}; no tweet id in URL"
+    text2, err_cdn = cdn_fetch(tid)
+    if text2:
+        return text2, None
+
+    return None, f"{err_vx or 'VX failed'}; {err_cdn or 'CDN failed'}"
+
+# -----------------------------
+# OpenAI (raw REST)
+# -----------------------------
+def openai_comment(tweet_text: str) -> Tuple[Optional[str], Optional[str]]:
+    if not OPENAI_API_KEY:
+        return None, "OPENAI_API_KEY is not configured on the server"
+
     url = "https://api.openai.com/v1/chat/completions"
     headers = {
         "Content-Type": "application/json",
-        "Authorization": f"Bearer {OPENAI_API_KEY or ''}",
+        "Authorization": f"Bearer {OPENAI_API_KEY}",
     }
     payload = {
         "model": "gpt-4o-mini",
         "messages": [
-            {"role": "system", "content": "You generate short, friendly, on-topic Twitter/X replies."},
-            {"role": "user", "content": f"Tweet: {tweet_text}\n\nWrite a concise, witty reply (max ~25 words):"}
+            {"role": "system", "content": "You generate short, on-topic Twitter/X replies."},
+            {"role": "user", "content": f"Tweet: {tweet_text}\n\nWrite a concise, witty reply (≤25 words):"}
         ],
         "max_tokens": 80,
         "temperature": 0.7,
@@ -100,78 +153,66 @@ def generate_comment(tweet_text: str) -> str | None:
     for attempt in range(4):
         try:
             r = session.post(url, headers=headers, json=payload, timeout=30)
-            # 200 → parse; 429/5xx → retry; 4xx others → don't retry
             if r.status_code == 200:
-                data = r.json()
-                return data["choices"][0]["message"]["content"].strip()
-            elif r.status_code in (429, 500, 502, 503, 504):
-                _sleep_backoff(attempt)
+                j = r.json()
+                return j["choices"][0]["message"]["content"].strip(), None
+            if r.status_code in (429, 500, 502, 503, 504):
+                backoff(attempt)
                 continue
-            else:
-                # likely 400/401/403 — bad payload or missing API key
-                return None
-        except Exception:
-            _sleep_backoff(attempt)
+            try:
+                err_msg = r.json().get("error", {}).get("message")
+            except Exception:
+                err_msg = r.text[:200]
+            return None, f"OpenAI {r.status_code}: {err_msg or 'Request failed'}"
+        except Exception as ex:
+            last = str(ex)
+            backoff(attempt)
 
-    return None
+    return None, "OpenAI request failed after retries"
 
-# ============================================
-# Batch processing
-# ============================================
-def process_batch(batch: List[str]) -> Tuple[list, list]:
-    results = []
-    failed = []
+# -----------------------------
+# Batch processing (size=2)
+# -----------------------------
+def process_batch(urls: List[str]) -> Tuple[list, list]:
+    results, failed = [], []
+    for raw in urls:
+        cleaned = clean_url(raw)
 
-    for url in batch:
-        cleaned = clean_url(url)
-
-        tweet_text = fetch_tweet_text(cleaned)
-        if not tweet_text:
-            failed.append({"url": cleaned, "reason": "Failed to fetch tweet text from VX API"})
+        text, text_err = fetch_tweet_text(cleaned)
+        if not text:
+            failed.append({"url": cleaned, "reason": text_err or "Failed to fetch tweet text"})
             continue
 
-        if not OPENAI_API_KEY:
-            failed.append({"url": cleaned, "reason": "OPENAI_API_KEY is not configured on the server"})
-            continue
-
-        comment = generate_comment(tweet_text)
+        comment, err = openai_comment(text)
         if not comment:
-            failed.append({"url": cleaned, "reason": "Failed to generate comment"})
+            failed.append({"url": cleaned, "reason": err or "Failed to generate comment"})
             continue
 
-        results.append({
-            "url": cleaned,
-            "tweet": tweet_text,
-            "comment": comment
-        })
-
+        results.append({"url": cleaned, "tweet": text, "comment": comment})
     return results, failed
 
-# ============================================
-# Keep-alive thread (every 10 minutes)
-# Uses RENDER_EXTERNAL_URL if available, otherwise SELF_URL if you set it.
-# ============================================
+# -----------------------------
+# Keep-alive every 10 minutes
+# -----------------------------
 def keep_alive():
-    target = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("SELF_URL")
-    if not target:
-        # Nothing to ping; skip silently
+    base = os.getenv("RENDER_EXTERNAL_URL") or os.getenv("SELF_URL")
+    if not base:
         return
-    # Give the service a few seconds to fully boot before pinging
-    time.sleep(10)
+    time.sleep(8)
     while True:
         try:
-            session.get(target, timeout=10)
+            session.get(base, timeout=10)
         except Exception:
             pass
         time.sleep(600)
 
 threading.Thread(target=keep_alive, daemon=True).start()
 
-# ============================================
+# -----------------------------
 # Routes
-# ============================================
+# -----------------------------
 @app.route("/", methods=["GET"])
-def root():
+def home():
     return jsonify({"status": "CrownTALK backend running"})
 
 @app.route("/comment", methods=["POST"])
@@ -179,33 +220,28 @@ def comment():
     try:
         data = request.get_json(silent=True) or {}
         urls = data.get("urls")
-
-        if not isinstance(urls, list) or len(urls) == 0:
+        if not isinstance(urls, list) or not urls:
             return jsonify({"error": "Invalid body. Expect {\"urls\": [\"https://x.com/...\", ...]}"}), 400
 
-        # normalize, dedupe while preserving order
-        seen = set()
-        cleaned_urls = []
+        # dedupe while preserving order
+        seen, cleaned = set(), []
         for u in urls:
-            if not isinstance(u, str): 
-                continue
-            cu = clean_url(u)
-            if cu and cu not in seen:
-                cleaned_urls.append(cu)
-                seen.add(cu)
+            if isinstance(u, str):
+                cu = clean_url(u)
+                if cu and cu not in seen:
+                    cleaned.append(cu); seen.add(cu)
 
         all_results, all_failed = [], []
-        for batch in chunked(cleaned_urls, 2):  # batch size = 2
+        for batch in chunk2(cleaned):  # size = 2
             r, f = process_batch(batch)
             all_results.extend(r)
             all_failed.extend(f)
 
         return jsonify({"results": all_results, "failed": all_failed})
-
     except Exception as e:
         return jsonify({"error": "Internal error", "detail": str(e)}), 500
 
 if __name__ == "__main__":
-    # Local dev convenience. In Render, gunicorn will run this app and bind to $PORT.
-    port = int(os.environ.get("PORT", "8000"))
+    # In Render, gunicorn runs this app and binds to $PORT
+    port = int(os.environ.get("PORT", "10000"))
     app.run(host="0.0.0.0", port=port)
