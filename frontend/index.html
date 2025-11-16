@@ -7,6 +7,10 @@
 </head>
 <body>
   <div class="page">
+    <div class="logo-orb">
+      <img src="static/logo.png" alt="Crown logo">
+    </div>
+
     <header class="header">
       <div class="brand">
         <img src="static/logo.png" alt="CrownTALK logo" class="logo">
@@ -33,6 +37,7 @@
 
         <div class="controls">
           <button id="generateBtn">Generate Comments</button>
+          <button id="cancelBtn" class="secondary subtle" disabled>Cancel</button>
           <button id="clearBtn" class="secondary">Clear</button>
         </div>
 
@@ -58,6 +63,14 @@
           <span id="failedCount" class="count-pill muted">0</span>
         </div>
         <div id="failed"></div>
+      </section>
+
+      <section class="card history-card">
+        <div class="card-header-row">
+          <h2>Clipboard history</h2>
+          <button id="clearHistoryBtn" class="secondary small">Clear history</button>
+        </div>
+        <div id="history"></div>
       </section>
     </main>
 
