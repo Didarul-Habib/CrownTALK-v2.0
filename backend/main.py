@@ -1,16 +1,22 @@
-from flask import Flask, request, jsonify
-import threading
-import requests
-import time
+import os
 import re
+import time
+import threading
 import random
-from collections import Counter
+from collections import deque
+
+import requests
+from flask import Flask, request, jsonify
+from flask_cors import CORS
+
+# -------------------------------------------------
+# Flask app setup
+# -------------------------------------------------
 
 app = Flask(__name__)
+CORS(app, resources={r"/*": {"origins": "*"}})
 
-# ---------------------------------------------------------
-# Manual CORS
-# ---------------------------------------------------------
+
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -19,503 +25,530 @@ def add_cors_headers(response):
     return response
 
 
-# ---------------------------------------------------------
-# URL Cleaner
-# ---------------------------------------------------------
-def clean_url(url):
-    if not isinstance(url, str):
-        return ""
+# -------------------------------------------------
+# URL cleaning & VXTwitter fetch
+# -------------------------------------------------
 
+CLEAN_URL_RE = re.compile(r"^\s*\d+\.\s*")
+
+
+def clean_url(url: str) -> str:
+    """
+    Remove '1. https://...' numbering, params, trim spaces.
+    """
+    if not url:
+        return ""
     url = url.strip()
-    # Remove leading numbering like "1. https://..."
-    url = re.sub(r"^\d+\.\s*", "", url)
-    # Strip query params
-    url = url.split("?")[0]
+    url = CLEAN_URL_RE.sub("", url).strip()
+
+    # Basic param strip
+    if "?" in url:
+        url = url.split("?", 1)[0]
+
+    # force https
+    if url.startswith("http://"):
+        url = "https://" + url[len("http://") :]
     return url
 
 
-# ---------------------------------------------------------
-# Offline Comment Generator (crypto-aware + multilingual)
-# ---------------------------------------------------------
+def fetch_tweet_from_vx(url: str, max_retries: int = 3, timeout: int = 8):
+    """
+    Fetch tweet JSON from VXTwitter.
+    Returns dict with keys: text, lang, display_name, username.
+    Raises RuntimeError on error.
+    """
+    from urllib.parse import urlparse
 
-banned_phrases = {
-    "amazing", "awesome", "incredible", "finally", "excited",
-    "love this", "empowering", "game changer", "transformative",
-    "as an ai", "in this digital age",
-    "slay", "yass", "bestie", "queen",
-    "thoughts", "agree", "whos with me", "who's with me",
-    "love", "lovely", "like this", "like that"
+    parsed = urlparse(url)
+    if not parsed.netloc or not parsed.path:
+        raise RuntimeError("Invalid tweet URL")
+
+    host = parsed.netloc
+    path = parsed.path
+
+    api_url = f"https://api.vxtwitter.com/{host}{path}"
+
+    last_err = None
+    for _ in range(max_retries):
+        try:
+            resp = requests.get(api_url, timeout=timeout)
+            if resp.status_code != 200:
+                last_err = RuntimeError(f"VXTwitter status {resp.status_code}")
+                time.sleep(0.6)
+                continue
+            data = resp.json()
+
+            # VXTwitter formats can vary; try several paths.
+            tweet_obj = data.get("tweet") or data
+            text = (
+                tweet_obj.get("full_text")
+                or tweet_obj.get("text")
+                or tweet_obj.get("content")
+                or ""
+            )
+            lang = tweet_obj.get("lang") or tweet_obj.get("language") or ""
+
+            # user / author info
+            user_obj = (
+                tweet_obj.get("author")
+                or tweet_obj.get("user")
+                or data.get("user")
+                or {}
+            )
+            display_name = user_obj.get("name") or ""
+            username = (
+                user_obj.get("screen_name")
+                or user_obj.get("username")
+                or tweet_obj.get("username")
+                or ""
+            )
+
+            text = (text or "").strip()
+            if not text:
+                raise RuntimeError("Tweet text missing")
+
+            return {
+                "text": text,
+                "lang": lang,
+                "display_name": display_name,
+                "username": username,
+            }
+        except Exception as e:  # noqa: BLE001
+            last_err = e
+            time.sleep(0.8)
+
+    raise RuntimeError(str(last_err) if last_err else "Unknown VXTwitter error")
+
+
+# -------------------------------------------------
+# Offline comment generator
+# -------------------------------------------------
+
+STOPWORDS = {
+    "the",
+    "a",
+    "an",
+    "and",
+    "or",
+    "but",
+    "this",
+    "that",
+    "with",
+    "for",
+    "from",
+    "into",
+    "been",
+    "are",
+    "is",
+    "was",
+    "were",
+    "on",
+    "to",
+    "in",
+    "of",
+    "at",
+    "by",
+    "it",
+    "its",
+    "as",
+    "about",
+    "just",
+    "still",
+    "kind",
+    "kinda",
+    "very",
+    "really",
 }
 
-stopwords = {
-    "the", "and", "for", "that", "with", "this", "from", "have", "just",
-    "been", "are", "was", "were", "you", "your", "they", "them", "but",
-    "about", "into", "over", "under", "http", "https", "www", "com",
-    "x", "t", "co", "amp", "will", "cant", "can't", "its", "it's",
-    "rt", "on", "in", "to", "of", "at", "is", "a", "an", "be", "by",
-    "or", "it", "we", "our", "us", "me", "my", "so", "if", "as",
-    "up", "out", "at", "im", "i'm"
+BANNED_WORDS = {
+    "amazing",
+    "awesome",
+    "incredible",
+    "empowering",
+    "gamechanger",
+    "game-changer",
+    "transformative",
+    "finally",
+    "excited",
+    "love this",
+    "slay",
+    "yass",
+    "bestie",
+    "queen",
+    "thoughts",
+    "agree",
+    "who’s",
+    "who's",
 }
 
-positive_words = {
-    "great", "good", "solid", "bullish", "up", "win", "strong", "clean",
-    "growth", "progress", "nice", "cool", "pump", "moon", "mooning"
-}
-negative_words = {
-    "bad", "down", "bearish", "rug", "scam", "problem", "issue", "risk",
-    "dump", "crash", "angry", "annoying", "rekt", "liquidation"
+AI_GIVEAWAY = {
+    "as an ai",
+    "in this digital age",
 }
 
-crypto_keywords = {
-    "btc", "eth", "sol", "avax", "bnb", "arb", "op", "base", "layer 2", "l2",
-    "chain", "nft", "token", "airdrop", "alpha", "defi", "dex", "cex",
-    "memecoin", "meme coin", "presale", "ido", "ico", "staking", "lp",
-    "yield", "bridge", "wallet"
-}
+# slang / tone words – we will rotate through them, not spam one
+SLANG_WORDS = [
+    "tbh",
+    "ngl",
+    "lowkey",
+    "fr",
+    "no cap",
+    "deadass",
+    "on god",
+    "for real",
+]
 
-filler_tokens = ["tbh", "fr", "lowkey", "honestly", "really", "ngl"]
+REACTION_WORDS = [
+    "wild",
+    "clean",
+    "solid",
+    "spicy",
+    "messy",
+    "serious",
+    "degen",
+    "heavy",
+    "interesting",
+    "rare",
+]
 
-comment_history = set()
+CLOSERS = [
+    "still watching",
+    "still processing it",
+    "timeline not ready",
+    "cant ignore this",
+    "need to see how it plays",
+    "curious where this goes",
+]
+
+SUPPORTIVE_PHRASES = [
+    "respect the grind",
+    "respect the work here",
+    "respect for sticking with it",
+    "respect for building this",
+]
+
+SKEPTICAL_PHRASES = [
+    "hope they execute for real",
+    "curious if this actually ships",
+    "want to see real delivery",
+    "lets see if numbers back it",
+]
+
+NEUTRAL_PHRASES = [
+    "feels like a key pivot",
+    "keeps popping up on my feed",
+    "keeps coming back in convo",
+    "def worth keeping on radar",
+]
+
+# keep some cross-request history to avoid exact repeats
+COMMENT_HISTORY = deque(maxlen=3000)
+COMMENT_HISTORY_SET = set()
 
 
-def normalize_text(s: str) -> str:
-    return re.sub(r"\s+", " ", s.strip().lower())
+def _normalize_comment(text: str) -> str:
+    text = re.sub(r"\s+", " ", text.strip())
+    # strip ending punctuation
+    text = re.sub(r"[.!?…~]+$", "", text)
 
-
-def extract_keywords(text, max_keywords=12):
-    text = text.lower()
-    text = re.sub(r"[^a-z0-9\s]", " ", text)
-    words = [w for w in text.split() if w and w not in stopwords]
+    words = text.split()
     if not words:
-        return []
-    counts = Counter(words)
-    ordered = [w for (w, _) in counts.most_common(max_keywords)]
-    return ordered
+        return ""
 
-
-def simple_sentiment(text):
-    text_l = text.lower()
-    score = 0
-    for w in positive_words:
-        if w in text_l:
-            score += 1
-    for w in negative_words:
-        if w in text_l:
-            score -= 1
-    if score > 0:
-        return "positive"
-    if score < 0:
-        return "negative"
-    return "neutral"
-
-
-def detect_category(text):
-    t = text.lower()
-    if any(k in t for k in ("giveaway", "give away", "tag 3", "tag three",
-                            "retweet to enter", "like and retweet")):
-        return "giveaway"
-    if any(k in t for k in ("chart", "support", "resistance", "ath",
-                            "price target", "%", "percent",
-                            "market cap", "mc", "pump", "dump")):
-        return "chart"
-    if "🧵" in text or len(text) > 220:
-        return "thread"
-    if len(text) < 80:
-        return "one_liner"
-    return "generic"
-
-
-def is_crypto_tweet(text):
-    t = text.lower()
-    return any(k in t for k in crypto_keywords)
-
-
-def build_comment_from_text_en(text):
-    keywords = extract_keywords(text)
-    sentiment = simple_sentiment(text)
-    category = detect_category(text)
-    crypto = is_crypto_tweet(text)
-
-    kw = "this"
-    if keywords:
-        kw = random.choice(keywords)
-
-    # avoid comments like "lowkey 1 been everywhere lately"
-    if kw.isdigit():
-        kw = "setup"
-
-    neutral_templates = [
-        "lowkey {kw} been everywhere lately",
-        "tbh {kw} still on my mind",
-        "cant ignore {kw} right now",
-        "ngl {kw} got people talking",
-        "still trying to process {kw} fr",
-        "real talk {kw} kinda interesting fr",
-        "lowkey watching how {kw} plays out",
-        "timeline cant stop circling {kw}",
-        "tbh {kw} keeps coming back up",
-    ]
-
-    positive_templates = [
-        "{kw} actually looking solid ngl",
-        "lowkey think {kw} might work out",
-        "tbh {kw} feels like progress fr",
-        "ngl direction around {kw} looks clean",
-        "lowkey {kw} momentum still there",
-    ]
-
-    negative_templates = [
-        "ngl {kw} giving weird vibes rn",
-        "tbh {kw} still feels risky fr",
-        "cant shake the worry around {kw}",
-        "lowkey nervous where {kw} goes next",
-        "ngl {kw} setup feels fragile rn",
-    ]
-
-    crypto_neutral = [
-        "real talk {kw} got the timeline watching",
-        "lowkey curious how {kw} trades next",
-        "tbh {kw} volume been catching my eye",
-        "ngl {kw} narrative still not priced in",
-        "people quietly rotating into {kw} fr",
-    ]
-
-    crypto_positive = [
-        "ngl {kw} setup looking kinda clean fr",
-        "lowkey think {kw} might send later",
-        "tbh {kw} risk reward looking decent",
-        "chart on {kw} not looking bad ngl",
-    ]
-
-    crypto_negative = [
-        "ngl {kw} vibes feel like exit liquidity",
-        "lowkey worried {kw} ends ugly",
-        "tbh {kw} entries already look cooked",
-        "hard not to see {kw} as late entry",
-    ]
-
-    giveaway_templates = [
-        "lowkey hope {kw} picker actually fair",
-        "ngl these {kw} giveaways always feel rigged",
-        "tbh {kw} giveaway meta still going strong",
-        "real talk {kw} farms never really stop",
-    ]
-
-    chart_templates = [
-        "ngl this {kw} chart kinda wild",
-        "tbh {kw} levels actually make some sense",
-        "lowkey watching {kw} support zone rn",
-        "real talk {kw} price action feels fragile",
-        "everyone staring at same {kw} levels fr",
-    ]
-
-    thread_templates = [
-        "lowkey saving this {kw} thread for later",
-        "tbh {kw} breakdown pretty helpful ngl",
-        "ngl this {kw} thread goes deeper than expected",
-        "real talk {kw} thread explaining a lot here",
-        "lot of small details on {kw} in here",
-    ]
-
-    oneliner_templates = [
-        "ngl short but {kw} message lands",
-        "lowkey simple {kw} line but it works",
-        "tbh that {kw} bar kinda hits",
-        "quick line but {kw} said a lot",
-    ]
-
-    if sentiment == "positive":
-        base_pool = positive_templates + neutral_templates
-    elif sentiment == "negative":
-        base_pool = negative_templates + neutral_templates
-    else:
-        base_pool = neutral_templates
-
-    if category == "giveaway":
-        base_pool = giveaway_templates
-    elif category == "chart":
-        base_pool = chart_templates + base_pool
-    elif category == "thread":
-        base_pool = thread_templates + base_pool
-    elif category == "one_liner":
-        base_pool = oneliner_templates + base_pool
-
-    if crypto:
-        if sentiment == "positive":
-            base_pool += crypto_positive + crypto_neutral
-        elif sentiment == "negative":
-            base_pool += crypto_negative + crypto_neutral
-        else:
-            base_pool += crypto_neutral
-
-    template = random.choice(base_pool)
-    comment = template.format(kw=kw)
-    return comment
-
-
-def post_process_comment_en(comment):
-    c_low = comment.lower()
-    for bad in banned_phrases:
-        if bad in c_low:
-            c_low = c_low.replace(bad, "")
-    comment = c_low
-
-    comment = re.sub(r"\s+", " ", comment).strip()
-
-    words = comment.split()
-
+    # enforce 5–12 words
     if len(words) < 5:
-        while len(words) < 5:
-            words.append(random.choice(filler_tokens))
+        # simple padding – but keep on topic-ish
+        pads = ["for real", "no lie", "not even joking", "for now"]
+        while len(words) < 5 and pads:
+            extra = pads.pop(0)
+            words.extend(extra.split())
     elif len(words) > 12:
         words = words[:12]
 
-    comment = " ".join(words)
-    comment = comment.rstrip(".,!?:;…-")
-
-    filtered = []
-    for w in comment.split():
-        if "#" in w:
-            continue
-        if any(ord(ch) > 126 for ch in w):
-            continue
-        filtered.append(w)
-    comment = " ".join(filtered).strip()
-
-    if not comment or len(comment.split()) < 3:
-        comment = "lowkey trying to process all this"
-
-    return comment
+    text = " ".join(words)
+    text = re.sub(r"[.!?…~]+$", "", text)
+    return text
 
 
-# --- language detection: very rough but fully offline ---
-def detect_language(text):
-    lat = hi = cjk = 0
-    for ch in text:
-        code = ord(ch)
-        if "a" <= ch <= "z" or "A" <= ch <= "Z":
-            lat += 1
-        elif 0x0900 <= code <= 0x097F:  # Devanagari (Hindi-ish)
-            hi += 1
-        elif 0x3040 <= code <= 0x30FF or 0x4E00 <= code <= 0x9FFF:  # JP/CN
-            cjk += 1
+def _contains_banned(text: str) -> bool:
+    lowered = text.lower()
+    if any(phrase in lowered for phrase in AI_GIVEAWAY):
+        return True
+    if any(phrase in lowered for phrase in BANNED_WORDS):
+        return True
+    return False
 
-    if hi > lat and hi >= 5 and hi > cjk:
-        return "hi"
-    if cjk > lat and cjk >= 5:
-        return "zh"
+
+def _detect_language(tweet_text: str, lang_hint: str) -> str:
+    if (lang_hint or "").lower().startswith("en"):
+        return "en"
+    # crude detection: lots of non-latin characters -> non-English
+    non_ascii = sum(1 for ch in tweet_text if ord(ch) > 127)
+    if non_ascii > max(5, len(tweet_text) * 0.25):
+        return "non-en"
     return "en"
 
 
-def build_multilang_comment(text, lang):
-    # base english comment first
-    base_en_raw = build_comment_from_text_en(text)
-    base_en = post_process_comment_en(base_en_raw)
+def _extract_keywords(tweet_text: str):
+    """
+    Grab potential project names / key tokens from tweet.
+    """
+    # kill URLs and @mentions / hashtags
+    cleaned = re.sub(r"https?://\S+", " ", tweet_text)
+    cleaned = re.sub(r"[@#]\S+", " ", cleaned)
 
-    keywords = extract_keywords(text)
-    kw = keywords[0] if keywords else ""
-    # avoid bare digits
-    if kw.isdigit():
-        kw = ""
-
-    if lang == "hi":
-        hi_templates = [
-            "ये बात {kw} पर सही लग रही",
-            "सच में {kw} वाली बात सोचने लायक",
-            "{kw} वाली बात दिमाग में घूम रही",
-            "आजकल {kw} वाला सीन काफी दिख रहा",
-            "धीरे धीरे {kw} वाली बातें बढ़ रही",
-            "{kw} वाला पॉइंट हल्का भारी लग रहा",
-        ]
-        kw_local = kw or "ये चीज"
-        tmpl = random.choice(hi_templates)
-        native = tmpl.format(kw=kw_local)
-
-    elif lang == "zh":
-        zh_templates = [
-            "{kw} 这事 确实 有点 东西",
-            "说实话 {kw} 这点 挺有意思",
-            "最近 {kw} 相关 声音 有点多",
-            "{kw} 这波 操作 挺让人 关注",
-            "{kw} 这块 细节 还挺关键",
-            "老实讲 {kw} 后面 走向 值得看",
-        ]
-        kw_local = kw or "这个"
-        tmpl = random.choice(zh_templates)
-        native = tmpl.format(kw=kw_local)
-
-    else:
-        # safety: english only
-        return base_en
-
-    combined = f"{native} ({base_en})"
-    words = combined.split()
-    if len(words) < 5:
-        while len(words) < 5:
-            words.append(random.choice(filler_tokens))
-    elif len(words) > 12:
-        words = words[:12]
-    combined = " ".join(words)
-    combined = combined.rstrip(".,!?:;…-")
-
-    return combined
-
-
-def generate_unique_comment_for_lang(text, lang):
-    comment = None
-    for _ in range(10):
-        if lang == "en":
-            raw = build_comment_from_text_en(text)
-            processed = post_process_comment_en(raw)
+    words = re.findall(r"[A-Za-z0-9$][A-Za-z0-9_\-]{2,}", cleaned)
+    keywords = []
+    project_like = []
+    for w in words:
+        wl = w.lower()
+        if wl in STOPWORDS:
+            continue
+        if wl.isdigit():
+            continue
+        if "$" in w or w.isupper() or wl.endswith("coin") or wl.endswith("dao"):
+            project_like.append(w)
         else:
-            processed = build_multilang_comment(text, lang)
+            keywords.append(w)
 
-        comment = processed
-        norm = normalize_text(processed)
-        if 5 <= len(processed.split()) <= 12 and norm not in comment_history:
-            comment_history.add(norm)
-            return processed
+    # dedupe but keep order
+    seen = set()
+    kw_final = []
+    for lst in [project_like, keywords]:
+        for w in lst:
+            if w.lower() not in seen:
+                seen.add(w.lower())
+                kw_final.append(w)
 
-    return comment or "lowkey trying to process all this"
-
-
-def generate_two_comments(text):
-    lang = detect_language(text)
-    c1 = generate_unique_comment_for_lang(text, lang)
-    c2 = generate_unique_comment_for_lang(text, lang)
-
-    tries = 0
-    while normalize_text(c2) == normalize_text(c1) and tries < 5:
-        c2 = generate_unique_comment_for_lang(text, lang)
-        tries += 1
-
-    return [c1, c2]
+    return kw_final, project_like
 
 
-# ---------------------------------------------------------
-# VXTwitter Fetcher
-# ---------------------------------------------------------
-def fetch_tweet_text(url):
-    try:
-        match = re.search(r"https?://([^/]+)(/.*)", url)
-        if not match:
-            return None, "Invalid URL"
-
-        host, path = match.groups()
-        api_url = f"https://api.vxtwitter.com/{host}{path}"
-
-        for _ in range(3):
-            try:
-                r = requests.get(api_url, timeout=10)
-                if r.status_code != 200:
-                    time.sleep(1)
-                    continue
-
-                data = r.json()
-
-                if "text" in data and isinstance(data["text"], str):
-                    return data["text"], None
-                if "full_text" in data and isinstance(data["full_text"], str):
-                    return data["full_text"], None
-                if "tweet" in data:
-                    t = data["tweet"]
-                    if "text" in t:
-                        return t["text"], None
-                    if "full_text" in t:
-                        return t["full_text"], None
-                if "error" in data:
-                    return None, data["error"]
-            except Exception:
-                # transient issue, retry
-                pass
-
-            time.sleep(1)
-
-        return None, "Tweet text not found"
-
-    except Exception as e:
-        return None, str(e)
+def _first_name(display_name: str) -> str:
+    if not display_name:
+        return ""
+    parts = display_name.split()
+    if not parts:
+        return ""
+    first = re.sub(r"[^A-Za-z]", "", parts[0])
+    return first if first else ""
 
 
-# ---------------------------------------------------------
-# Keep Alive (Render)
-# ---------------------------------------------------------
-def keep_alive():
-    while True:
-        try:
-            requests.get("https://crowntalk-v2-0.onrender.com/", timeout=5)
-        except Exception:
-            pass
-        time.sleep(600)
+def _choose_slang(used_slang: set) -> str:
+    candidates = [s for s in SLANG_WORDS if s not in used_slang]
+    if not candidates:
+        candidates = SLANG_WORDS
+        used_slang.clear()
+    choice = random.choice(candidates)
+    used_slang.add(choice)
+    return choice
 
 
-# ---------------------------------------------------------
-# ROUTES
-# ---------------------------------------------------------
-@app.get("/")
-def home():
+def _build_english_comment(tweet_text: str, meta: dict, style: str, used_slang: set) -> str:
+    keywords, project_like = _extract_keywords(tweet_text)
+    first_name = _first_name(meta.get("display_name", ""))
+    main_kw = keywords[0] if keywords else ""
+    project = project_like[0] if project_like else main_kw
+
+    parts = []
+
+    # optional slang at start
+    if random.random() < 0.8:
+        parts.append(_choose_slang(used_slang))
+
+    # subject phrase
+    if project:
+        subject_word = project
+    elif main_kw:
+        subject_word = main_kw
+    else:
+        subject_word = "this"
+
+    reaction = random.choice(REACTION_WORDS)
+
+    if style == "supportive":
+        if first_name and random.random() < 0.7:
+            parts.append(f"{subject_word} from {first_name} looking {reaction}")
+        else:
+            parts.append(f"{subject_word} looking {reaction}")
+        parts.append(random.choice(SUPPORTIVE_PHRASES))
+
+    elif style == "skeptical":
+        parts.append(f"{subject_word} narrative kinda {reaction}")
+        parts.append(random.choice(SKEPTICAL_PHRASES))
+
+    elif style == "degen":
+        parts.append(f"{subject_word} setup feels {reaction}")
+        parts.append("might be one to gamble on")
+
+    elif style == "serious":
+        parts.append(f"{subject_word} details actually {reaction}")
+        parts.append(random.choice(NEUTRAL_PHRASES))
+
+    else:  # neutral / observer
+        parts.append(f"{subject_word} story pretty {reaction}")
+        parts.append(random.choice(NEUTRAL_PHRASES))
+
+    comment = " ".join(parts)
+    return _normalize_comment(comment)
+
+
+def _wrap_for_non_english(tweet_text: str, english_comment: str) -> str:
+    """
+    For non-english tweets, keep a short native snippet + english in brackets.
+    """
+    # take first ~16 characters of original as "native"
+    native = tweet_text.strip()
+    native = re.sub(r"\s+", " ", native)
+    if len(native) > 16:
+        native = native[:16].rstrip()
+
+    combined = f"{native} ({english_comment})"
+    return _normalize_comment(combined)
+
+
+def generate_comments_for_tweet(tweet_text: str, meta: dict, global_history: set):
+    """
+    Generate two distinct comments for a tweet, with global de-duplication.
+    Respects all rules: 5–12 words, no emojis/hashtags, no hype words,
+    minimal repetition, sometimes mentions names/projects.
+    """
+    lang_mode = _detect_language(tweet_text, meta.get("lang", ""))
+
+    used_slang_local: set = set()
+    styles_pool = ["supportive", "skeptical", "degen", "serious", "neutral"]
+
+    comments = []
+    attempts = 0
+
+    while len(comments) < 2 and attempts < 20:
+        attempts += 1
+        style = styles_pool[attempts % len(styles_pool)]
+        english = _build_english_comment(tweet_text, meta, style, used_slang_local)
+
+        if not english or _contains_banned(english):
+            continue
+
+        if lang_mode == "non-en":
+            candidate = _wrap_for_non_english(tweet_text, english)
+        else:
+            candidate = english
+
+        lowered = candidate.lower()
+        if lowered in global_history:
+            continue
+        if lowered in (c.lower() for c in comments):
+            continue
+
+        comments.append(candidate)
+        global_history.add(lowered)
+        COMMENT_HISTORY.append(lowered)
+        COMMENT_HISTORY_SET.add(lowered)
+
+    # if we failed somehow, at least return something tiny but valid
+    while len(comments) < 2:
+        comments.append(_normalize_comment("tbh still watching this one play out"))
+
+    return comments
+
+
+# -------------------------------------------------
+# API endpoints
+# -------------------------------------------------
+
+@app.route("/", methods=["GET"])
+def health():
     return jsonify({"status": "ok"})
 
 
-@app.post("/comment")
+@app.route("/comment", methods=["OPTIONS", "POST"])
 def comment():
-    try:
-        data = request.get_json(silent=True)
-        if not data or "urls" not in data:
-            return jsonify({"error": "Invalid request"}), 400
+    if request.method == "OPTIONS":
+        # CORS preflight
+        return ("", 200)
 
-        urls = data["urls"]
-        cleaned = [clean_url(u) for u in urls if isinstance(u, str) and u.strip()]
-        batches = [cleaned[i:i + 2] for i in range(0, len(cleaned), 2)]
+    payload = request.get_json(silent=True) or {}
+    urls = payload.get("urls") or []
+    if not isinstance(urls, list) or not urls:
+        return jsonify({"batches": []})
 
-        out = []
+    cleaned_urls = [clean_url(u) for u in urls if clean_url(u)]
+    if not cleaned_urls:
+        return jsonify({"batches": []})
 
-        for i, batch in enumerate(batches):
-            batch_info = {"batch": i + 1, "results": [], "failed": []}
+    batches = []
+    global_history = set(COMMENT_HISTORY_SET)  # seed from past but local copy
 
-            for url in batch:
-                text, err = fetch_tweet_text(url)
-                if err:
-                    batch_info["failed"].append({"url": url, "reason": err})
-                    continue
+    batch_size = 2
+    batch_index = 0
 
-                comments = generate_two_comments(text)
-                batch_info["results"].append({"url": url, "comments": comments})
+    for i in range(0, len(cleaned_urls), batch_size):
+        batch_urls = cleaned_urls[i : i + batch_size]
+        batch_index += 1
 
-            out.append(batch_info)
+        batch_results = []
+        batch_failed = []
 
-        return jsonify({"batches": out})
+        for url in batch_urls:
+            try:
+                info = fetch_tweet_from_vx(url)
+                comments = generate_comments_for_tweet(info["text"], info, global_history)
+                batch_results.append({"url": url, "comments": comments})
+            except Exception as e:  # noqa: BLE001
+                batch_failed.append({"url": url, "reason": str(e) or "Tweet text missing"})
 
-    except Exception as e:
-        return jsonify({"error": "Server error", "detail": str(e)}), 500
+        batches.append(
+            {
+                "batch": batch_index,
+                "results": batch_results,
+                "failed": batch_failed,
+            }
+        )
+
+    return jsonify({"batches": batches})
 
 
-@app.post("/reroll")
+@app.route("/reroll", methods=["OPTIONS", "POST"])
 def reroll():
-    """Per-tweet re-roll endpoint."""
+    if request.method == "OPTIONS":
+        return ("", 200)
+
+    payload = request.get_json(silent=True) or {}
+    url = clean_url(payload.get("url", ""))
+    if not url:
+        return jsonify({"error": "Invalid url"}), 400
+
     try:
-        data = request.get_json(silent=True)
-        if not data or "url" not in data:
-            return jsonify({"error": "Invalid request"}), 400
-
-        url = clean_url(data["url"])
-        text, err = fetch_tweet_text(url)
-        if err:
-            return jsonify({"url": url, "error": err, "comments": []})
-
-        comments = generate_two_comments(text)
-        return jsonify({"url": url, "error": None, "comments": comments})
-
-    except Exception as e:
-        local_url = ""
-        if "data" in locals() and isinstance(data, dict):
-            local_url = data.get("url", "")
-        return jsonify({"url": local_url, "error": str(e), "comments": []}), 500
+        info = fetch_tweet_from_vx(url)
+        global_history = set(COMMENT_HISTORY_SET)
+        comments = generate_comments_for_tweet(info["text"], info, global_history)
+        return jsonify({"url": url, "comments": comments})
+    except Exception as e:  # noqa: BLE001
+        return jsonify({"error": str(e) or "Failed to reroll"}), 500
 
 
-# ---------------------------------------------------------
-# MAIN ENTRY
-# ---------------------------------------------------------
+# -------------------------------------------------
+# Keep-alive ping thread
+# -------------------------------------------------
+
+def keep_alive():
+    """
+    Periodically hit the health endpoint so Render doesn't freeze the dyno.
+    """
+    while True:
+        try:
+            url = os.environ.get("RENDER_EXTERNAL_URL")
+            if url:
+                try:
+                    requests.get(url.rstrip("/") + "/", timeout=5)
+                except requests.RequestException:
+                    pass
+        except Exception:
+            pass
+        time.sleep(600)  # 10 minutes
+
+
 if __name__ == "__main__":
-    threading.Thread(target=keep_alive, daemon=True).start()
-    app.run(host="0.0.0.0", port=10000)
+    t = threading.Thread(target=keep_alive, daemon=True)
+    t.start()
+    port = int(os.environ.get("PORT", 8000))
+    app.run(host="0.0.0.0", port=port)
