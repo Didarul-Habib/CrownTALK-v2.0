@@ -27,21 +27,15 @@ def clean_url(url):
         return ""
 
     url = url.strip()
-
-    # Remove "1. https://..." style numbering
-    url = re.sub(r"^\d+\.\s*", "", url)
-
-    # Strip query params
-    url = url.split("?")[0]
-
+    url = re.sub(r"^\d+\.\s*", "", url)  # remove "1. https://..."
+    url = url.split("?")[0]  # strip query params
     return url
 
 
 # ---------------------------------------------------------
-# Offline Comment Generator (crypto-aware, context-aware)
+# Offline Comment Generator (crypto-aware + multilingual)
 # ---------------------------------------------------------
 
-# banned / cringe / hype / engagement-bait phrases
 banned_phrases = {
     "amazing", "awesome", "incredible", "finally", "excited",
     "love this", "empowering", "game changer", "transformative",
@@ -52,26 +46,29 @@ banned_phrases = {
 }
 
 stopwords = {
-    "the","and","for","that","with","this","from","have","just","been","are",
-    "was","were","you","your","they","them","but","about","into","over","under",
-    "http","https","www","com","x","t","co","amp","will","cant","can't","its",
-    "it's","rt","on","in","to","of","at","is","a","an","be","by","or","it",
-    "we","our","us","me","my","so","if","as","up","out","at","im","i'm"
+    "the", "and", "for", "that", "with", "this", "from", "have", "just",
+    "been", "are", "was", "were", "you", "your", "they", "them", "but",
+    "about", "into", "over", "under", "http", "https", "www", "com",
+    "x", "t", "co", "amp", "will", "cant", "can't", "its", "it's",
+    "rt", "on", "in", "to", "of", "at", "is", "a", "an", "be", "by",
+    "or", "it", "we", "our", "us", "me", "my", "so", "if", "as",
+    "up", "out", "at", "im", "i'm"
 }
 
 positive_words = {
-    "great","good","solid","bullish","up","win","strong","clean","growth",
-    "progress","nice","cool","pump","moon","mooning"
+    "great", "good", "solid", "bullish", "up", "win", "strong", "clean",
+    "growth", "progress", "nice", "cool", "pump", "moon", "mooning"
 }
 negative_words = {
-    "bad","down","bearish","rug","scam","problem","issue","risk","dump",
-    "crash","angry","annoying","rekt","liquidation"
+    "bad", "down", "bearish", "rug", "scam", "problem", "issue", "risk",
+    "dump", "crash", "angry", "annoying", "rekt", "liquidation"
 }
 
 crypto_keywords = {
-    "btc","eth","sol","avax","bnb","arb","op","base","layer 2","l2","chain",
-    "nft","token","airdrop","alpha","defi","dex","cex","memecoin","meme coin",
-    "presale","ido","ico","staking","lp","yield","bridge","wallet"
+    "btc", "eth", "sol", "avax", "bnb", "arb", "op", "base", "layer 2", "l2",
+    "chain", "nft", "token", "airdrop", "alpha", "defi", "dex", "cex",
+    "memecoin", "meme coin", "presale", "ido", "ico", "staking", "lp",
+    "yield", "bridge", "wallet"
 }
 
 filler_tokens = ["tbh", "fr", "lowkey", "honestly", "really", "ngl"]
@@ -87,10 +84,8 @@ def extract_keywords(text, max_keywords=12):
     text = text.lower()
     text = re.sub(r"[^a-z0-9\s]", " ", text)
     words = [w for w in text.split() if w and w not in stopwords]
-
     if not words:
         return []
-
     counts = Counter(words)
     ordered = [w for (w, _) in counts.most_common(max_keywords)]
     return ordered
@@ -114,20 +109,17 @@ def simple_sentiment(text):
 
 def detect_category(text):
     t = text.lower()
-
-    if any(k in t for k in ("giveaway", "give away", "tag 3", "tag three", "retweet to enter", "like and retweet")):
+    if any(k in t for k in ("giveaway", "give away", "tag 3", "tag three",
+                            "retweet to enter", "like and retweet")):
         return "giveaway"
-
-    if any(k in t for k in ("chart", "support", "resistance", "ath", "price target",
-                            "%", "percent", "market cap", "mc", "pump", "dump")):
+    if any(k in t for k in ("chart", "support", "resistance", "ath",
+                            "price target", "%", "percent",
+                            "market cap", "mc", "pump", "dump")):
         return "chart"
-
     if "🧵" in text or len(text) > 220:
         return "thread"
-
     if len(text) < 80:
         return "one_liner"
-
     return "generic"
 
 
@@ -136,7 +128,7 @@ def is_crypto_tweet(text):
     return any(k in t for k in crypto_keywords)
 
 
-def build_comment_from_text(text):
+def build_comment_from_text_en(text):
     keywords = extract_keywords(text)
     sentiment = simple_sentiment(text)
     category = detect_category(text)
@@ -146,7 +138,6 @@ def build_comment_from_text(text):
     if keywords:
         kw = random.choice(keywords)
 
-    # Base template pools
     neutral_templates = [
         "lowkey {kw} been everywhere lately",
         "tbh {kw} still on my mind",
@@ -171,7 +162,6 @@ def build_comment_from_text(text):
         "lowkey nervous where {kw} goes next",
     ]
 
-    # Crypto-focused overlays
     crypto_neutral = [
         "real talk {kw} got the timeline watching",
         "lowkey curious how {kw} trades next",
@@ -191,7 +181,6 @@ def build_comment_from_text(text):
         "tbh {kw} entries already look cooked",
     ]
 
-    # Giveaway
     giveaway_templates = [
         "lowkey hope {kw} picker actually fair",
         "ngl these {kw} giveaways always feel rigged",
@@ -199,7 +188,6 @@ def build_comment_from_text(text):
         "real talk {kw} farms never really stop",
     ]
 
-    # Charts / price
     chart_templates = [
         "ngl this {kw} chart kinda wild",
         "tbh {kw} levels actually make some sense",
@@ -207,7 +195,6 @@ def build_comment_from_text(text):
         "real talk {kw} price action feels fragile",
     ]
 
-    # Threads
     thread_templates = [
         "lowkey saving this {kw} thread for later",
         "tbh {kw} breakdown pretty helpful ngl",
@@ -215,14 +202,12 @@ def build_comment_from_text(text):
         "real talk {kw} thread explaining a lot here",
     ]
 
-    # One liners
     oneliner_templates = [
         "ngl short but {kw} message lands",
         "lowkey simple {kw} line but it works",
         "tbh that {kw} bar kinda hits",
     ]
 
-    # choose starting pool
     if sentiment == "positive":
         base_pool = positive_templates + neutral_templates
     elif sentiment == "negative":
@@ -230,7 +215,6 @@ def build_comment_from_text(text):
     else:
         base_pool = neutral_templates
 
-    # adjust for category
     if category == "giveaway":
         base_pool = giveaway_templates
     elif category == "chart":
@@ -240,7 +224,6 @@ def build_comment_from_text(text):
     elif category == "one_liner":
         base_pool = oneliner_templates + base_pool
 
-    # overlay crypto flavors
     if crypto:
         if sentiment == "positive":
             base_pool += crypto_positive + crypto_neutral
@@ -254,7 +237,7 @@ def build_comment_from_text(text):
     return comment
 
 
-def post_process_comment(comment):
+def post_process_comment_en(comment):
     c_low = comment.lower()
     for bad in banned_phrases:
         if bad in c_low:
@@ -265,7 +248,6 @@ def post_process_comment(comment):
 
     words = comment.split()
 
-    # enforce 5–12 words
     if len(words) < 5:
         while len(words) < 5:
             words.append(random.choice(filler_tokens))
@@ -273,11 +255,8 @@ def post_process_comment(comment):
         words = words[:12]
 
     comment = " ".join(words)
-
-    # strip ending punctuation
     comment = comment.rstrip(".,!?:;…-")
 
-    # remove hashtags/emojis (defensive)
     filtered = []
     for w in comment.split():
         if "#" in w:
@@ -293,26 +272,99 @@ def post_process_comment(comment):
     return comment
 
 
-def generate_unique_comment(text):
-    processed = None
+# --- language detection: very rough but fully offline ---
+def detect_language(text):
+    lat = hi = cjk = 0
+    for ch in text:
+        code = ord(ch)
+        if "a" <= ch <= "z" or "A" <= ch <= "Z":
+            lat += 1
+        elif 0x0900 <= code <= 0x097F:  # Devanagari (Hindi-ish)
+            hi += 1
+        elif 0x3040 <= code <= 0x30FF or 0x4E00 <= code <= 0x9FFF:  # JP/CN
+            cjk += 1
+
+    if hi > lat and hi >= 5 and hi > cjk:
+        return "hi"
+    if cjk > lat and cjk >= 5:
+        return "zh"
+    return "en"
+
+
+def build_multilang_comment(text, lang):
+    # english base first
+    base_en_raw = build_comment_from_text_en(text)
+    base_en = post_process_comment_en(base_en_raw)
+
+    keywords = extract_keywords(text)
+    kw = keywords[0] if keywords else ""
+
+    if lang == "hi":
+        # simple Hindi templates; we keep them short
+        hi_templates = [
+            "ये बात {kw} पर सही लग रही",
+            "सच में {kw} वाली बात सोचने लायक",
+            "{kw} वाली बात दिमाग में घूम रही",
+            "आजकल {kw} वाला माहौल बहुत दिख रहा",
+        ]
+        if not kw:
+            kw = "ये चीज"
+        tmpl = random.choice(hi_templates)
+        native = tmpl.format(kw=kw)
+    elif lang == "zh":
+        zh_templates = [
+            "{kw} 这事 确实 有点 东西",
+            "说实话 {kw} 这点 挺有意思",
+            "最近 {kw} 相关 的 声音 有点多",
+            "{kw} 这波 操作 挺让人 关注",
+        ]
+        if not kw:
+            kw = "这个"
+        tmpl = random.choice(zh_templates)
+        native = tmpl.format(kw=kw)
+    else:
+        return base_en
+
+    combined = f"{native} ({base_en})"
+
+    words = combined.split()
+    if len(words) < 5:
+        while len(words) < 5:
+            words.append(random.choice(filler_tokens))
+    elif len(words) > 12:
+        words = words[:12]
+    combined = " ".join(words)
+    combined = combined.rstrip(".,!?:;…-")
+
+    return combined
+
+
+def generate_unique_comment_for_lang(text, lang):
+    comment = None
     for _ in range(10):
-        raw = build_comment_from_text(text)
-        processed = post_process_comment(raw)
+        if lang == "en":
+            raw = build_comment_from_text_en(text)
+            processed = post_process_comment_en(raw)
+        else:
+            processed = build_multilang_comment(text, lang)
+
+        comment = processed
         norm = normalize_text(processed)
-        if norm not in comment_history and 5 <= len(processed.split()) <= 12:
+        if 5 <= len(processed.split()) <= 12 and norm not in comment_history:
             comment_history.add(norm)
             return processed
 
-    return processed or "lowkey trying to process all this"
+    return comment or "lowkey trying to process all this"
 
 
 def generate_two_comments(text):
-    c1 = generate_unique_comment(text)
-    c2 = generate_unique_comment(text)
+    lang = detect_language(text)
+    c1 = generate_unique_comment_for_lang(text, lang)
+    c2 = generate_unique_comment_for_lang(text, lang)
 
     tries = 0
     while normalize_text(c2) == normalize_text(c1) and tries < 5:
-        c2 = generate_unique_comment(text)
+        c2 = generate_unique_comment_for_lang(text, lang)
         tries += 1
 
     return [c1, c2]
@@ -341,17 +393,14 @@ def fetch_tweet_text(url):
 
                 if "text" in data and isinstance(data["text"], str):
                     return data["text"], None
-
                 if "full_text" in data and isinstance(data["full_text"], str):
                     return data["full_text"], None
-
                 if "tweet" in data:
                     t = data["tweet"]
                     if "text" in t:
                         return t["text"], None
                     if "full_text" in t:
                         return t["full_text"], None
-
                 if "error" in data:
                     return None, data["error"]
             except Exception:
@@ -389,40 +438,26 @@ def home():
 def comment():
     try:
         data = request.get_json(silent=True)
-
         if not data or "urls" not in data:
             return jsonify({"error": "Invalid request"}), 400
 
         urls = data["urls"]
         cleaned = [clean_url(u) for u in urls if isinstance(u, str) and u.strip()]
-
         batches = [cleaned[i:i + 2] for i in range(0, len(cleaned), 2)]
 
         out = []
 
         for i, batch in enumerate(batches):
-            batch_info = {
-                "batch": i + 1,
-                "results": [],
-                "failed": []
-            }
+            batch_info = {"batch": i + 1, "results": [], "failed": []}
 
             for url in batch:
                 text, err = fetch_tweet_text(url)
-
                 if err:
-                    batch_info["failed"].append({
-                        "url": url,
-                        "reason": err
-                    })
+                    batch_info["failed"].append({"url": url, "reason": err})
                     continue
 
                 comments = generate_two_comments(text)
-
-                batch_info["results"].append({
-                    "url": url,
-                    "comments": comments
-                })
+                batch_info["results"].append({"url": url, "comments": comments})
 
             out.append(batch_info)
 
@@ -430,6 +465,26 @@ def comment():
 
     except Exception as e:
         return jsonify({"error": "Server error", "detail": str(e)}), 500
+
+
+@app.post("/reroll")
+def reroll():
+    """Per-tweet re-roll endpoint."""
+    try:
+        data = request.get_json(silent=True)
+        if not data or "url" not in data:
+            return jsonify({"error": "Invalid request"}), 400
+
+        url = clean_url(data["url"])
+        text, err = fetch_tweet_text(url)
+        if err:
+            return jsonify({"url": url, "error": err, "comments": []})
+
+        comments = generate_two_comments(text)
+        return jsonify({"url": url, "error": None, "comments": comments})
+
+    except Exception as e:
+        return jsonify({"url": data.get("url", ""), "error": str(e), "comments": []}), 500
 
 
 # ---------------------------------------------------------
