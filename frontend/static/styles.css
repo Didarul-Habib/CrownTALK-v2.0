@@ -77,30 +77,31 @@ body {
   position: relative;
 }
 
-/* floating middle logo */
+/* floating logo now clearly above input section */
 
 .logo-orb {
-  position: fixed;
-  inset: 0;
+  position: absolute;
+  top: 75px;
+  left: 50%;
+  transform: translateX(-50%);
   pointer-events: none;
   display: flex;
   justify-content: center;
-  align-items: flex-start;
-  padding-top: 80px;
-  z-index: 0;
+  z-index: 1;
 }
 
 .logo-orb img {
-  width: 120px;
-  height: 120px;
-  opacity: 0.08;
-  filter: drop-shadow(0 0 40px rgba(168, 85, 247, 0.8));
+  width: 110px;
+  height: 110px;
+  object-fit: cover;
+  opacity: 0.2;
+  filter: drop-shadow(0 0 40px rgba(168, 85, 247, 0.9));
   animation: floatLogo 6s ease-in-out infinite alternate;
 }
 
 @keyframes floatLogo {
-  0% { transform: translateY(0) scale(1); }
-  100% { transform: translateY(-12px) scale(1.05); }
+  0% { transform: translateX(-50%) translateY(0) scale(1); }
+  100% { transform: translateX(-50%) translateY(-10px) scale(1.05); }
 }
 
 /* Header */
@@ -112,7 +113,7 @@ body {
   gap: 16px;
   margin-bottom: 20px;
   position: relative;
-  z-index: 1;
+  z-index: 3;
 }
 
 .brand {
@@ -124,7 +125,7 @@ body {
 .logo {
   width: 40px;
   height: 40px;
-  object-fit: contain;
+  object-fit: cover;
   border-radius: 10px;
   box-shadow: 0 6px 20px rgba(15, 23, 42, 0.4);
 }
@@ -189,7 +190,6 @@ body {
 /* Cards */
 
 .card {
-  background: rgba(15,23,42,0.92);
   background: var(--card-bg);
   border-radius: 16px;
   padding: 16px 18px;
@@ -198,7 +198,7 @@ body {
   margin-bottom: 16px;
   backdrop-filter: blur(10px);
   position: relative;
-  z-index: 1;
+  z-index: 2;
   transition: transform 0.12s ease, box-shadow 0.12s ease, border-color 0.12s ease;
 }
 
@@ -206,6 +206,10 @@ body {
   transform: translateY(-1px);
   box-shadow: 0 18px 40px rgba(15, 23, 42, 0.18);
   border-color: var(--accent);
+}
+
+body.is-generating .input-card {
+  box-shadow: 0 0 0 1px var(--accent-soft-strong), 0 0 40px rgba(168, 85, 247, 0.5);
 }
 
 .label {
@@ -319,6 +323,15 @@ button {
   transition: width 0.25s ease-out;
 }
 
+body.is-generating .progress-bar-fill {
+  animation: progressPulse 1s infinite alternate;
+}
+
+@keyframes progressPulse {
+  0% { opacity: 0.7; }
+  100% { opacity: 1; }
+}
+
 /* Results / history */
 
 .card-header-row {
@@ -357,15 +370,29 @@ button {
   overflow: hidden;
 }
 
-.result-block a {
+.comment-header-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  margin-bottom: 6px;
+}
+
+.comment-header-row a {
   color: var(--accent);
   font-size: 13px;
   word-break: break-all;
   text-decoration: none;
+  flex: 1;
 }
 
-.result-block a:hover {
+.comment-header-row a:hover {
   text-decoration: underline;
+}
+
+/* old link style still ok */
+.result-block a {
+  color: var(--accent);
 }
 
 .comment-line {
@@ -451,8 +478,13 @@ button {
   border-radius: 999px;
 }
 
+.copy-btn-en {
+  padding-inline: 9px;
+}
+
 .copy-btn:hover:enabled,
-.reroll-btn:hover:enabled {
+.reroll-btn:hover:enabled,
+.copy-btn-en:hover:enabled {
   background: var(--accent-soft-strong);
   color: #f9fafb;
 }
@@ -500,6 +532,15 @@ button {
   text-align: center;
 }
 
+.footer a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.footer a:hover {
+  text-decoration: underline;
+}
+
 /* Responsive */
 
 @media (max-width: 720px) {
@@ -514,7 +555,8 @@ button {
   }
 
   .copy-btn,
-  .reroll-btn {
+  .reroll-btn,
+  .copy-btn-en {
     align-self: flex-end;
   }
 
