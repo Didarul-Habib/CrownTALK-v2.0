@@ -74,6 +74,13 @@ THEMES: Dict[str, ThemeConfig] = {
 }
 
 
+def get_theme_ids() -> List[str]:
+    """
+    Exposed helper so main.py can validate incoming theme IDs.
+    """
+    return list(THEMES.keys())
+
+
 class LanguageMode(str, Enum):
     EN = "en"
     BN = "bn"
@@ -87,7 +94,7 @@ def normalize_language_mode(value: Any) -> str:
     """
     Kept for backwards compatibility with older frontends.
 
-    We do not rely on this anymore; generator is "auto + english" regardless.
+    We don't rely on this anymore; generator behaves as auto+English.
     """
     if not isinstance(value, str):
         return LanguageMode.DUAL.value
@@ -200,7 +207,7 @@ NEGATIVE_WORDS = {
     "pain",
 }
 
-# No explicit hate slurs here; keep it generic.
+# No explicit slurs here; keep it generic.
 BANNED_PHRASES = {
     "fuck",
     "fucking",
@@ -236,11 +243,10 @@ def extract_keywords(text: str, max_keywords: int = 5) -> List[str]:
     if not words:
         return []
 
-    counts = {}
+    counts: Dict[str, int] = {}
     for w in words:
         counts[w] = counts.get(w, 0) + 1
 
-    # take top by frequency then by order
     sorted_words = sorted(counts.items(), key=lambda x: (-x[1], words.index(x[0])))
     keywords: List[str] = []
     for w, _ in sorted_words:
@@ -288,7 +294,6 @@ def is_crypto_tweet(text: str) -> bool:
     ]
     if any(tok in t for tok in crypto_tokens):
         return True
-    # simple ticker guess: ALL CAPS 3–5 chars with digit or not
     return bool(re.search(r"\b[A-Z0-9]{3,5}\b", text))
 
 
@@ -359,7 +364,6 @@ def clean_and_constrain_comment(
     if not comment:
         comment = "lowkey trying to process all this"
 
-    # remove banned phrases (case-insensitive)
     lowered = comment.lower()
     for bad in BANNED_PHRASES:
         if bad in lowered:
@@ -376,8 +380,6 @@ def clean_and_constrain_comment(
         words = words[:target_max]
 
     comment = " ".join(words).strip()
-
-    # basic punctuation ending
     if comment and comment[-1] not in ".!?…":
         comment += "."
 
@@ -475,7 +477,6 @@ def build_english_comment(
             f"{t_emoji} This tweet puts {key_phrase} into words a lot of people couldn’t.",
         ]
 
-    # Mood / sentiment nudges
     if ctx.mood == "sad":
         base_templates.append(
             f"{t_emoji} This feels heavy around {key_phrase}, hope you’re giving yourself some room to breathe."
@@ -546,7 +547,6 @@ def build_native_comment(
         tmpl = random.choice(zh_templates)
         return tmpl.format(kw_local=kw_local)
 
-    # unsupported native language
     return None
 
 
@@ -571,7 +571,9 @@ def build_single_output(
     if native_lang:
         nc_raw = build_native_comment(tweet, ctx, theme, native_lang)
         if nc_raw:
-            native_comment = clean_and_constrain_comment(nc_raw, target_min=6, target_max=20)
+            native_comment = clean_and_constrain_comment(
+                nc_raw, target_min=6, target_max=20
+            )
             native_comment = ensure_not_repeated(native_comment)
 
     comment_payload: Dict[str, str] = {"en": en_comment}
@@ -608,12 +610,7 @@ def generate_comments_for_urls(
     """
     Top-level API used by main.py.
 
-    For each URL:
-    - Fetch tweet data via VXTwitter
-    - Run context engine
-    - Generate multilingual, theme-aware comments
-
-    language_mode is kept for backwards-compat but we always behave as:
+    language_mode is kept for backwards-compat but behaviour is:
     "original language + english".
     """
     theme = THEMES.get(theme_id) or THEMES["default"]
