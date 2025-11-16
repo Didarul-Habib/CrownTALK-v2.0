@@ -4,11 +4,12 @@ import requests
 import time
 import re
 import random
+from collections import Counter
 
 app = Flask(__name__)
 
 # ---------------------------------------------------------
-# Manual CORS (safe & error-free)
+# Manual CORS
 # ---------------------------------------------------------
 @app.after_request
 def add_cors_headers(response):
@@ -27,7 +28,7 @@ def clean_url(url):
 
     url = url.strip()
 
-    # Remove "1. https…" style numbering
+    # Remove "1. https://..." numbering
     url = re.sub(r"^\d+\.\s*", "", url)
 
     # Strip query params
@@ -37,70 +38,198 @@ def clean_url(url):
 
 
 # ---------------------------------------------------------
-# Offline Comment Generator
+# Offline Comment Generator (context-aware)
 # ---------------------------------------------------------
-banned_words = {
-    "amazing","awesome","incredible","finally","excited",
-    "love this","empowering","game changer","transformative",
-    "as an ai","in this digital age","slay","yass","bestie",
-    "queen","thoughts","agree","who’s with me","who's with me"
+
+# words/phrases we don't want
+banned_phrases = {
+    "amazing", "awesome", "incredible", "finally", "excited",
+    "love this", "empowering", "game changer", "transformative",
+    "as an ai", "in this digital age",
+    "slay", "yass", "bestie", "queen",
+    "thoughts", "agree", "whos with me", "who's with me",
+    "love", "lovely"
 }
 
-synonyms = [
-    "wild", "real talk", "lowkey wild", "tbh kinda true",
-    "not gonna lie", "fr tho", "kinda true", "makes sense fr",
-    "whole situation wild", "not wrong", "fair point ngl",
-    "seeing it clearly now", "pretty spot on"
-]
+# stopwords to ignore when extracting keywords
+stopwords = {
+    "the","and","for","that","with","this","from","have","just","been","are",
+    "was","were","you","your","they","them","but","about","into","over","under",
+    "http","https","www","com","x","t","co","amp","will","cant","can't","its",
+    "it's","rt","on","in","to","of","at","is","a","an","be","by","or","it",
+    "we","our","us","me","my","so","if","as","up","out"
+}
 
-phrase_bank = [
-    "this got me thinking",
-    "never saw it like this before",
-    "honestly true sometimes",
-    "hard to ignore fr",
-    "been seeing this everywhere",
-    "cant lie this tracks",
-    "i get the point here",
-    "lowkey makes sense",
-    "not mad at this take"
-]
+# tiny sentiment word lists
+positive_words = {
+    "great","good","solid","bullish","up","win","strong","clean","growth",
+    "progress","nice","cool"
+}
+negative_words = {
+    "bad","down","bearish","rug","scam","problem","issue","risk","dump",
+    "crash","hate","angry","annoying"
+}
 
-def generate_comment(text):
-    try:
-        base = random.sample(synonyms, 1) + random.sample(phrase_bank, 1)
-        combined = " ".join(base)
+# filler bits we can use if comment too short
+filler_tokens = ["tbh", "fr", "lowkey", "honestly", "really"]
 
-        # Remove banned/flagged patterns
-        for bad in banned_words:
-            combined = combined.replace(bad, "")
+# keep a global history to avoid repeating exact comments
+comment_history = set()
 
-        words = combined.split()
-        random.shuffle(words)
 
-        # 5–12 words enforced
-        words = words[:random.randint(5, 12)]
+def normalize_text(s: str) -> str:
+    return re.sub(r"\s+", " ", s.strip().lower())
 
-        return " ".join(words)
 
-    except:
-        return "kinda makes sense tbh seeing this now"
+def extract_keywords(text, max_keywords=10):
+    text = text.lower()
+    text = re.sub(r"[^a-z0-9\s]", " ", text)
+    words = [w for w in text.split() if w and w not in stopwords]
+
+    if not words:
+        return []
+
+    counts = Counter(words)
+    # most common first
+    ordered = [w for (w, _) in counts.most_common(max_keywords)]
+    return ordered
+
+
+def simple_sentiment(text):
+    text_l = text.lower()
+    score = 0
+    for w in positive_words:
+        if w in text_l:
+            score += 1
+    for w in negative_words:
+        if w in text_l:
+            score -= 1
+    if score > 0:
+        return "positive"
+    if score < 0:
+        return "negative"
+    return "neutral"
+
+
+def build_comment_from_text(text):
+    keywords = extract_keywords(text)
+    sentiment = simple_sentiment(text)
+
+    if keywords:
+        kw = random.choice(keywords)
+    else:
+        kw = "this"
+
+    templates_neutral = [
+        "lowkey {kw} been everywhere lately",
+        "tbh {kw} still on my mind",
+        "seeing {kw} pop up more lately",
+        "cant ignore {kw} right now",
+        "ngl {kw} kinda interesting fr",
+        "real talk {kw} got people talking",
+        "still trying to process {kw} fr",
+    ]
+
+    templates_positive = [
+        "{kw} actually looking solid ngl",
+        "lowkey think {kw} might work out",
+        "ngl {kw} direction looks pretty good",
+        "tbh {kw} feels like progress fr",
+    ]
+
+    templates_negative = [
+        "ngl {kw} giving me weird vibes",
+        "tbh {kw} still feels risky fr",
+        "cant shake the feeling {kw} off",
+        "lowkey worried where {kw} goes next",
+    ]
+
+    if sentiment == "positive":
+        templates = templates_positive + templates_neutral
+    elif sentiment == "negative":
+        templates = templates_negative + templates_neutral
+    else:
+        templates = templates_neutral
+
+    template = random.choice(templates)
+    comment = template.format(kw=kw)
+    return comment
+
+
+def post_process_comment(comment):
+    # remove banned phrases (substring basis)
+    c_low = comment.lower()
+    for bad in banned_phrases:
+        if bad in c_low:
+            c_low = c_low.replace(bad, "")
+    comment = c_low
+
+    # collapse whitespace
+    comment = re.sub(r"\s+", " ", comment).strip()
+
+    # split for length control
+    words = comment.split()
+
+    # enforce 5–12 words
+    if len(words) < 5:
+        while len(words) < 5:
+            words.append(random.choice(filler_tokens))
+    elif len(words) > 12:
+        words = words[:12]
+
+    comment = " ".join(words)
+
+    # remove trailing punctuation
+    comment = comment.rstrip(".,!?:;…-")
+
+    # final safety: no emojis / hashtags
+    # (we never add them but just in case)
+    words = []
+    for w in comment.split():
+        if "#" in w:
+            continue
+        # crude emoji filter: drop clearly non-ascii
+        if any(ord(ch) > 126 for ch in w):
+            continue
+        words.append(w)
+    comment = " ".join(words).strip()
+
+    # fallback safety
+    if not comment or len(comment.split()) < 3:
+        comment = "lowkey trying to process all this"
+
+    return comment
+
+
+def generate_unique_comment(text):
+    # try multiple times to avoid history collisions
+    for _ in range(10):
+        raw = build_comment_from_text(text)
+        processed = post_process_comment(raw)
+        norm = normalize_text(processed)
+        if norm not in comment_history and 5 <= len(processed.split()) <= 12:
+            comment_history.add(norm)
+            return processed
+
+    # if everything repeats, just return the last processed
+    return processed
 
 
 def generate_two_comments(text):
-    c1 = generate_comment(text)
-    c2 = generate_comment(text)
+    c1 = generate_unique_comment(text)
+    c2 = generate_unique_comment(text)
 
-    # Ensure different
-    attempts = 0
-    while c2 == c1 and attempts < 5:
-        c2 = generate_comment(text)
-        attempts += 1
+    # ensure they differ
+    tries = 0
+    while normalize_text(c2) == normalize_text(c1) and tries < 5:
+        c2 = generate_unique_comment(text)
+        tries += 1
 
     return [c1, c2]
 
 
 # ---------------------------------------------------------
-# VXTwitter Fetcher (Fully Patched)
+# VXTwitter Fetcher (patched)
 # ---------------------------------------------------------
 def fetch_tweet_text(url):
     try:
@@ -120,29 +249,26 @@ def fetch_tweet_text(url):
 
                 data = r.json()
 
-                # --- Format A: { "text": "" }
+                # { "text": "..." }
                 if "text" in data and isinstance(data["text"], str):
                     return data["text"], None
 
-                # --- Format B: { "full_text": "" }
+                # { "full_text": "..." }
                 if "full_text" in data and isinstance(data["full_text"], str):
                     return data["full_text"], None
 
-                # --- Format C: { "tweet": { "text": "" } }
+                # { "tweet": { ... } }
                 if "tweet" in data:
                     tweet_obj = data["tweet"]
-
                     if "text" in tweet_obj:
                         return tweet_obj["text"], None
-
                     if "full_text" in tweet_obj:
                         return tweet_obj["full_text"], None
 
-                # --- Format D: Tweet unavailable
                 if "error" in data:
                     return None, data["error"]
 
-            except:
+            except Exception:
                 pass
 
             time.sleep(1)
@@ -160,7 +286,7 @@ def keep_alive():
     while True:
         try:
             requests.get("https://crowntalk-v2-0.onrender.com/", timeout=5)
-        except:
+        except Exception:
             pass
         time.sleep(600)
 
@@ -184,7 +310,7 @@ def comment():
         urls = data["urls"]
         cleaned = [clean_url(u) for u in urls if isinstance(u, str) and u.strip()]
 
-        # Batch of 2
+        # group into batches of 2
         batches = [cleaned[i:i + 2] for i in range(0, len(cleaned), 2)]
 
         out = []
