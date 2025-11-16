@@ -68,11 +68,25 @@ function updateCounts(totalResults, totalFailed) {
 function setGenerating(isGenerating) {
   generateBtn.disabled = isGenerating;
   cancelBtn.disabled = !isGenerating;
+  document.body.classList.toggle("is-generating", isGenerating);
   if (isGenerating) {
     generateBtn.textContent = "Working...";
   } else {
     generateBtn.textContent = "Generate Comments";
   }
+}
+
+// split multilingual comment into native + english parts
+function splitComment(comment) {
+  const match = comment.match(/^(.*)\(([^)]*)\)\s*$/);
+  if (match) {
+    const native = match[1].trim();
+    const english = match[2].trim();
+    if (native && english) {
+      return { native, english };
+    }
+  }
+  return { native: comment.trim(), english: null };
 }
 
 // ---------- Main flow ----------
@@ -237,42 +251,58 @@ function fillResultBlock(block, item) {
   block.classList.remove("skeleton");
   block.innerHTML = "";
 
+  // header row with link + single reroll button
+  const headerRow = document.createElement("div");
+  headerRow.className = "comment-header-row";
+
   const link = document.createElement("a");
   link.href = item.url;
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   link.textContent = item.url;
 
-  block.appendChild(link);
+  const rerollBtn = document.createElement("button");
+  rerollBtn.className = "reroll-btn";
+  rerollBtn.textContent = "re-roll";
+  rerollBtn.dataset.url = item.url;
+
+  headerRow.appendChild(link);
+  headerRow.appendChild(rerollBtn);
+  block.appendChild(headerRow);
 
   (item.comments || []).forEach(comment => {
+    const { native, english } = splitComment(comment);
+
     const line = document.createElement("div");
     line.className = "comment-line";
 
     const span = document.createElement("span");
     span.className = "comment-text";
-    span.textContent = comment;
+    span.textContent = english ? `${native} (${english})` : native;
 
     const buttonGroup = document.createElement("div");
     buttonGroup.style.display = "flex";
     buttonGroup.style.gap = "6px";
 
+    // native copy
     const copyBtn = document.createElement("button");
     copyBtn.className = "copy-btn";
     copyBtn.textContent = "copy";
-    copyBtn.dataset.text = comment;
-
-    const rerollBtn = document.createElement("button");
-    rerollBtn.className = "reroll-btn";
-    rerollBtn.textContent = "re-roll";
-    rerollBtn.dataset.url = item.url;
+    copyBtn.dataset.text = native || comment;
 
     buttonGroup.appendChild(copyBtn);
-    buttonGroup.appendChild(rerollBtn);
+
+    // english copy if available
+    if (english && english !== native) {
+      const copyEnBtn = document.createElement("button");
+      copyEnBtn.className = "copy-btn copy-btn-en";
+      copyEnBtn.textContent = "EN";
+      copyEnBtn.dataset.text = english;
+      buttonGroup.appendChild(copyEnBtn);
+    }
 
     line.appendChild(span);
     line.appendChild(buttonGroup);
-
     block.appendChild(line);
   });
 }
@@ -289,7 +319,6 @@ function renderFailed(item) {
 function pushHistory(text) {
   if (!text) return;
   clipboardHistory.unshift(text);
-  // keep only last 20 items
   clipboardHistory = clipboardHistory.slice(0, 20);
   renderHistory();
 }
@@ -304,7 +333,7 @@ function renderHistory() {
     return;
   }
 
-  clipboardHistory.forEach((txt, idx) => {
+  clipboardHistory.forEach(txt => {
     const entry = document.createElement("div");
     entry.className = "history-entry";
 
@@ -328,7 +357,6 @@ clearHistoryBtn.addEventListener("click", () => {
   renderHistory();
 });
 
-// initial history state
 renderHistory();
 
 // ---------- Global click handler: copy + reroll ----------
@@ -336,7 +364,7 @@ renderHistory();
 document.addEventListener("click", async e => {
   const target = e.target;
 
-  // copy
+  // copy (native or EN or history)
   if (target.classList.contains("copy-btn")) {
     const text = target.dataset.text || "";
     if (!text) return;
@@ -358,7 +386,7 @@ document.addEventListener("click", async e => {
     return;
   }
 
-  // per-tweet re-roll
+  // per-tweet re-roll (single button per tweet)
   if (target.classList.contains("reroll-btn")) {
     const url = target.dataset.url;
     if (!url) return;
@@ -370,7 +398,6 @@ document.addEventListener("click", async e => {
     const oldLabel = target.textContent;
     target.textContent = "re-rolling...";
 
-    // mini typing effect in this block
     const tempIndicator = document.createElement("div");
     tempIndicator.className = "typing-indicator";
     tempIndicator.innerHTML = `refreshing<span class="typing-dots"><span></span><span></span><span></span></span>`;
