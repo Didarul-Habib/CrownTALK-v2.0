@@ -2,16 +2,15 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8">
-  <title>CrownTALK Comment Generator</title>
+  <title>CrownTALK EXTREME</title>
   <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
   <div class="page">
-    <!-- HERO -->
+    <!-- LEFT: HERO PANEL -->
     <header class="hero">
       <div class="theme-switcher">
         <span class="theme-label">Theme</span>
-        <!-- UI color themes -->
         <button class="theme-dot" data-theme="white" data-label="Light"></button>
         <button class="theme-dot" data-theme="dark-purple" data-label="Purple"></button>
         <button class="theme-dot" data-theme="gold" data-label="Gold"></button>
@@ -23,24 +22,38 @@
       </div>
 
       <div class="hero-main">
-        <img src="static/logo.png" alt="CrownTALK logo" class="hero-logo">
-        <h1>CrownTALK</h1>
-        <p class="hero-subtitle">Humanlike comment engine powered by CrownDEX 👑</p>
+        <div class="hero-logo-wrap">
+          <img src="static/logo.png" alt="CrownTALK logo" class="hero-logo">
+        </div>
+        <div class="hero-text">
+          <h1 class="hero-title">
+            CrownTALK
+            <span class="hero-badge">EXTREME v3</span>
+          </h1>
+          <p class="hero-subtitle">
+            Humanlike comment engine powered by CrownDEX 👑<br>
+            Drop X / Twitter links.
+          </p>
+        </div>
       </div>
     </header>
 
+    <!-- RIGHT: APP PANEL -->
     <main>
-      <!-- Input / controls -->
+      <!-- INPUT CARD -->
       <section class="card input-card">
         <label for="urlInput" class="label">Tweet URLs</label>
-        <textarea id="urlInput" placeholder="1. https://x.com/user/status/123...
-2. https://x.com/user/status/456..."></textarea>
+        <textarea id="urlInput" placeholder="1) https://x.com/user/status/123...
+2) https://x.com/user/status/456...
+3) One URL per line. We'll clean weird formatting automatically."></textarea>
 
-        <!-- Comment theme selector (tone only, multi-language friendly) -->
+        <!-- COMMENT THEME (tone only) -->
         <div class="comment-theme-group">
           <div class="comment-theme-label-row">
             <span class="label">Comment theme</span>
-            <span class="comment-theme-hint">Tone only — content stays on-context & multi-language.</span>
+            <span class="comment-theme-hint">
+              Tone only — comments stay based on tweet context & support multi-language.
+            </span>
           </div>
           <div class="comment-theme-row">
             <button class="comment-theme-btn active" data-comment-theme="default">Default</button>
@@ -53,12 +66,14 @@
           </div>
         </div>
 
+        <!-- CONTROLS -->
         <div class="controls">
-          <button id="generateBtn">Generate Comments</button>
+          <button id="generateBtn">Generate comments</button>
           <button id="cancelBtn" class="secondary subtle" disabled>Cancel</button>
           <button id="clearBtn" class="secondary">Clear</button>
         </div>
 
+        <!-- PROGRESS -->
         <div class="batch-status">
           <div id="progress" class="progress-text"></div>
           <div class="progress-bar">
@@ -67,7 +82,7 @@
         </div>
       </section>
 
-      <!-- Results -->
+      <!-- RESULTS -->
       <section class="card results-card">
         <div class="card-header-row">
           <h2>Generated comments</h2>
@@ -76,7 +91,7 @@
         <div id="results"></div>
       </section>
 
-      <!-- Failed URLs -->
+      <!-- FAILED URLS -->
       <section class="card failed-card">
         <div class="card-header-row">
           <h2>Failed URLs</h2>
@@ -85,7 +100,7 @@
         <div id="failed"></div>
       </section>
 
-      <!-- Clipboard history -->
+      <!-- CLIPBOARD HISTORY -->
       <section class="card history-card">
         <div class="card-header-row">
           <h2>Clipboard history</h2>
@@ -95,7 +110,7 @@
       </section>
     </main>
 
-    <!-- Footer exactly as you wanted -->
+    <!-- FOOTER -->
     <footer class="footer">
       <span>© <span id="year"></span> CrownTALK — Built by
         <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a>
