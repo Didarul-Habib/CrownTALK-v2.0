@@ -1,13 +1,13 @@
-// CrownTALK EXTREME v3 – merged frontend for current backend
-// Backend base (no /api/generate anymore)
-const backendBase = "https://crowntalk-v2-0.onrender.com";
-const COMMENT_URL = `${backendBase}/comment`;
-const REROLL_URL = `${backendBase}/reroll`;
+// CrownTALK EXTREME v3 – generator-based frontend
+// Backend base URL
+const BACKEND_BASE = "https://crowntalk-v2-0.onrender.com";
+const BACKEND_URL = `${BACKEND_BASE}/api/generate`;
 
-/** State */
+/** @type {AbortController | null} */
 let currentController = null;
-let cancelled = false;
-let clipboardHistory = [];
+
+/** clipboard history in memory */
+const clipboardHistory = [];
 
 /** DOM refs */
 const els = {
@@ -31,9 +31,9 @@ const els = {
 
 /* ------------------ Utils ------------------ */
 
-function setStatus(text, type) {
+function setStatus(status, type) {
   if (!els.statusPill) return;
-  els.statusPill.textContent = text;
+  els.statusPill.textContent = status;
   els.statusPill.classList.remove("ct-status-pill--ok", "ct-status-pill--error");
   if (type === "ok") els.statusPill.classList.add("ct-status-pill--ok");
   if (type === "error") els.statusPill.classList.add("ct-status-pill--error");
@@ -41,26 +41,13 @@ function setStatus(text, type) {
 
 function setProgress(percent, label) {
   if (els.progressFill) {
-    const clamped = Math.max(0, Math.min(100, percent));
-    els.progressFill.style.width = `${clamped}%`;
+    els.progressFill.style.width = `${Math.max(0, Math.min(100, percent))}%`;
   }
   if (label && els.progressLabel) {
     els.progressLabel.textContent = label;
   }
 }
 
-function setSkeletonVisible(visible) {
-  if (!els.skeletonContainer) return;
-  els.skeletonContainer.classList.toggle("is-hidden", !visible);
-}
-
-function clearResults() {
-  if (els.resultsList) {
-    els.resultsList.innerHTML = "";
-  }
-}
-
-/** Parse URLs: trim, dedupe, ignore empty lines */
 function parseUrls(raw) {
   const lines = raw.split(/\r?\n/).map((l) => l.trim());
   const cleaned = [];
@@ -74,44 +61,38 @@ function parseUrls(raw) {
   return cleaned;
 }
 
-/** Active theme ID from UI (for labels only, backend ignores it) */
+/** Theme id from UI (for label only) */
 function getActiveThemeId() {
-  if (!els.themeGrid) return "auto";
-  const active = els.themeGrid.querySelector(".ct-theme-btn.is-active");
-  return active ? active.dataset.themeId || "auto" : "auto";
+  if (!els.themeGrid) return "default";
+  const btn = els.themeGrid.querySelector(".ct-theme-btn.is-active");
+  return btn ? btn.dataset.themeId || "default" : "default";
 }
 
-/** Split "native (english)" into { native, english } */
-function splitComment(comment) {
-  if (!comment) return { native: "", english: "" };
-  const match = comment.match(/^(.*)\(([^)]*)\)\s*$/);
-  if (match) {
-    const native = match[1].trim();
-    const english = match[2].trim();
-    if (native && english) {
-      return { native, english };
-    }
-  }
-  // fallback: treat whole string as native only
-  return { native: comment.trim(), english: "" };
+/** We always ask backend for dual language now */
+function getLanguageMode() {
+  return "dual";
 }
 
-/** Enable/disable buttons depending on running state */
-function setRunning(isRunning) {
-  if (els.btnGenerate) els.btnGenerate.disabled = isRunning;
-  if (els.btnCancel) els.btnCancel.disabled = !isRunning;
-  if (els.btnClear) els.btnClear.disabled = isRunning;
+/** Toggle skeleton loading */
+function setSkeletonVisible(visible) {
+  if (!els.skeletonContainer) return;
+  els.skeletonContainer.classList.toggle("is-hidden", !visible);
 }
 
-/* ------------------ Clipboard History ------------------ */
+/** Clear results list */
+function clearResults() {
+  if (els.resultsList) els.resultsList.innerHTML = "";
+}
+
+/* ------------------ Clipboard history ------------------ */
 
 function pushClipboardHistory(entry) {
-  const ts = new Date();
+  const timestamp = new Date();
   clipboardHistory.unshift({
     ...entry,
-    time: ts,
+    time: timestamp,
   });
-  clipboardHistory = clipboardHistory.slice(0, 20);
+  if (clipboardHistory.length > 20) clipboardHistory.pop();
   renderClipboardHistory();
 }
 
@@ -137,7 +118,7 @@ function renderClipboardHistory() {
 
     const themeSpan = document.createElement("span");
     themeSpan.className = "ct-history-item-theme";
-    themeSpan.textContent = item.label || "Comment";
+    themeSpan.textContent = item.label || `${item.theme || "Comment"} · ${item.mood || ""}`;
 
     const timeSpan = document.createElement("span");
     timeSpan.className = "ct-history-item-time";
@@ -146,33 +127,36 @@ function renderClipboardHistory() {
       minute: "2-digit",
     });
 
-    const body = document.createElement("div");
-    body.className = "ct-history-item-body";
-    body.textContent = item.text || "";
-
     header.appendChild(themeSpan);
     header.appendChild(timeSpan);
+
+    const body = document.createElement("div");
+    body.className = "ct-history-item-body";
+    body.textContent = item.text;
+
     wrap.appendChild(header);
     wrap.appendChild(body);
     container.appendChild(wrap);
   });
 }
 
-/** Copy helper with status + history */
-function copyText(text, label) {
+function copyText(text, meta = {}) {
   if (!text) return;
   navigator.clipboard
     .writeText(text)
     .then(() => {
+      pushClipboardHistory({
+        ...meta,
+        text,
+      });
       setStatus("Copied to clipboard", "ok");
-      pushClipboardHistory({ text, label });
     })
     .catch(() => {
       setStatus("Copy failed (clipboard blocked)", "error");
     });
 }
 
-/* ------------------ History Drawer ------------------ */
+/* ------------------ History drawer ------------------ */
 
 function openHistoryDrawer() {
   if (!els.historyDrawer) return;
@@ -184,30 +168,24 @@ function closeHistoryDrawer() {
   els.historyDrawer.classList.remove("is-open");
 }
 
-/* ------------------ Result Card Rendering ------------------ */
+/* ------------------ Card rendering ------------------ */
 
-function renderResultCard(item, index, totalCount) {
+function renderResultItem(item, batchIndex, indexWithinBatch, totalCount) {
   if (!els.resultsList) return;
 
   const card = document.createElement("article");
   card.className = "ct-card";
-  fillCardContent(card, item, index, totalCount);
-  els.resultsList.appendChild(card);
 
-  // flash highlight on new card
-  card.classList.remove("flash-highlight");
-  void card.offsetWidth;
-  card.classList.add("flash-highlight");
-}
+  const hasError = !!item.error;
+  const themeLabel = item?.meta?.theme_label || item?.meta?.theme_id || getActiveThemeId();
+  const mood = item?.meta?.mood || "neutral";
+  const keywords = item?.meta?.keywords || [];
+  const excerpt = item?.meta?.excerpt || "";
+  const authorName = item?.meta?.author_name || "";
 
-function fillCardContent(card, item, index, totalCount) {
-  card.innerHTML = "";
-
-  const url = item.url || "";
-  const themeId = getActiveThemeId();
-  const comments = Array.isArray(item.comments) ? item.comments : [];
-
-  const hasComments = comments.length > 0;
+  const comment = item.comment || {};
+  const enText = comment.en || "";
+  const bnText = comment.bn || "";
 
   // Header
   const header = document.createElement("div");
@@ -215,10 +193,10 @@ function fillCardContent(card, item, index, totalCount) {
 
   const urlEl = document.createElement("a");
   urlEl.className = "ct-card-url";
-  urlEl.href = url || "#";
+  urlEl.href = item.url || "#";
   urlEl.target = "_blank";
   urlEl.rel = "noopener noreferrer";
-  urlEl.textContent = url || "(no URL)";
+  urlEl.textContent = item.url || "";
   header.appendChild(urlEl);
 
   const chipRow = document.createElement("div");
@@ -226,156 +204,208 @@ function fillCardContent(card, item, index, totalCount) {
 
   const chipTheme = document.createElement("span");
   chipTheme.className = "ct-chip ct-chip--theme";
-  chipTheme.textContent = `Theme: ${themeId}`;
+  chipTheme.textContent = `Theme: ${themeLabel}`;
   chipRow.appendChild(chipTheme);
 
   const chipMood = document.createElement("span");
   chipMood.className = "ct-chip ct-chip--mood";
-  chipMood.textContent = "Mode: contextual";
+  chipMood.textContent = `Mood: ${mood}`;
   chipRow.appendChild(chipMood);
 
+  if (hasError) {
+    const chipErr = document.createElement("span");
+    chipErr.className = "ct-chip";
+    chipErr.textContent = `Error: ${item.error}`;
+    chipRow.appendChild(chipErr);
+  }
+
   header.appendChild(chipRow);
-  card.appendChild(header);
 
   // Body
   const body = document.createElement("div");
   body.className = "ct-card-body";
 
-  if (!hasComments) {
+  if (hasError) {
     const p = document.createElement("p");
     p.className = "ct-comment-text ct-comment-text--faded";
-    p.textContent = "No comments generated for this URL.";
+    p.textContent = item.message || "Something went wrong for this URL.";
     body.appendChild(p);
   } else {
-    comments.forEach((rawComment, idx) => {
-      const { native, english } = splitComment(rawComment || "");
-      const block = document.createElement("div");
-      block.className = "ct-comment-block";
+    if (enText) {
+      const blockEn = document.createElement("div");
+      blockEn.className = "ct-comment-block";
+      const labelEn = document.createElement("div");
+      labelEn.className = "ct-comment-label";
+      labelEn.textContent = "ENGLISH";
+      const pEn = document.createElement("p");
+      pEn.className = "ct-comment-text";
+      pEn.textContent = enText;
+      blockEn.appendChild(labelEn);
+      blockEn.appendChild(pEn);
+      body.appendChild(blockEn);
+    }
 
-      const label = document.createElement("div");
-      label.className = "ct-comment-label";
-      label.textContent = `Comment ${idx + 1}`;
-      block.appendChild(label);
-
-      const nativeP = document.createElement("p");
-      nativeP.className = "ct-comment-text";
-      nativeP.textContent = native || "(empty)";
-      block.appendChild(nativeP);
-
-      if (english) {
-        const enP = document.createElement("p");
-        enP.className = "ct-comment-text ct-comment-text--faded";
-        enP.textContent = english;
-        block.appendChild(enP);
-      }
-
-      // per-comment copy controls
-      const actions = document.createElement("div");
-      actions.className = "ct-card-actions";
-
-      const btnNative = document.createElement("button");
-      btnNative.className = "ct-card-btn";
-      btnNative.textContent = "⧉ Native";
-      btnNative.addEventListener("click", () => {
-        copyText(native, `Native · C${idx + 1}`);
-      });
-
-      const btnEn = document.createElement("button");
-      btnEn.className = "ct-card-btn";
-      btnEn.textContent = "⧉ EN";
-      btnEn.addEventListener("click", () => {
-        const text = english || native;
-        copyText(text, `English · C${idx + 1}`);
-      });
-
-      const btnBoth = document.createElement("button");
-      btnBoth.className = "ct-card-btn";
-      btnBoth.textContent = "⧉ Both";
-      btnBoth.addEventListener("click", () => {
-        const parts = [];
-        if (native) parts.push(native);
-        if (english) parts.push(english);
-        const finalText = parts.join("\n\n");
-        copyText(finalText, `Both · C${idx + 1}`);
-      });
-
-      actions.appendChild(btnNative);
-      actions.appendChild(btnEn);
-      actions.appendChild(btnBoth);
-      block.appendChild(actions);
-
-      body.appendChild(block);
-    });
+    if (bnText) {
+      const blockBn = document.createElement("div");
+      blockBn.className = "ct-comment-block";
+      const labelBn = document.createElement("div");
+      labelBn.className = "ct-comment-label";
+      labelBn.textContent = "BANGLA";
+      const pBn = document.createElement("p");
+      pBn.className = "ct-comment-text ct-comment-text--faded";
+      pBn.textContent = bnText;
+      blockBn.appendChild(labelBn);
+      blockBn.appendChild(pBn);
+      body.appendChild(blockBn);
+    }
   }
 
-  card.appendChild(body);
-
-  // Footer meta (simple)
+  // Meta footer
   const metaFooter = document.createElement("div");
   metaFooter.className = "ct-meta-footer";
 
+  const keywordsText = keywords.length ? keywords.join(", ") : "—";
   const metaLeft = document.createElement("span");
   metaLeft.className = "ct-meta-keywords";
-  metaLeft.textContent = `Index: ${index + 1}/${totalCount}`;
+  metaLeft.textContent = `Keywords: ${keywordsText}`;
+
   const metaRight = document.createElement("span");
-  metaRight.textContent = "CrownTALK offline engine";
+  const shortExcerpt =
+    excerpt && excerpt.length > 120 ? `${excerpt.slice(0, 117)}…` : excerpt;
+  metaRight.textContent =
+    (authorName ? `@${authorName}` : "unknown") +
+    (shortExcerpt ? ` · “${shortExcerpt}”` : "");
 
   metaFooter.appendChild(metaLeft);
   metaFooter.appendChild(metaRight);
-  card.appendChild(metaFooter);
 
-  // Card-level actions (reroll)
-  const footerActions = document.createElement("div");
-  footerActions.className = "ct-card-actions";
+  // Card actions – per-language copy + reroll
+  const actions = document.createElement("div");
+  actions.className = "ct-card-actions";
+
+  if (!hasError) {
+    if (enText) {
+      const btnCopyEn = document.createElement("button");
+      btnCopyEn.className = "ct-card-btn";
+      btnCopyEn.textContent = "⧉ Copy EN";
+      btnCopyEn.addEventListener("click", () => {
+        copyText(enText, { theme: themeLabel, mood, label: "English" });
+      });
+      actions.appendChild(btnCopyEn);
+    }
+
+    if (bnText) {
+      const btnCopyBn = document.createElement("button");
+      btnCopyBn.className = "ct-card-btn";
+      btnCopyBn.textContent = "⧉ Copy Bangla";
+      btnCopyBn.addEventListener("click", () => {
+        copyText(bnText, { theme: themeLabel, mood, label: "Bangla" });
+      });
+      actions.appendChild(btnCopyBn);
+    }
+
+    if (enText || bnText) {
+      const btnCopyBoth = document.createElement("button");
+      btnCopyBoth.className = "ct-card-btn";
+      btnCopyBoth.textContent = "⧉ Copy both";
+      btnCopyBoth.addEventListener("click", () => {
+        const combined = [enText, bnText].filter(Boolean).join("\n\n");
+        copyText(combined, { theme: themeLabel, mood, label: "EN+BN" });
+      });
+      actions.appendChild(btnCopyBoth);
+    }
+  }
 
   const btnReroll = document.createElement("button");
   btnReroll.className = "ct-card-btn";
   btnReroll.textContent = "🔁 Reroll";
   btnReroll.addEventListener("click", () => {
-    if (!url) return;
-    rerollSingle(url, card);
+    rerollSingle(item.url, card);
   });
+  actions.appendChild(btnReroll);
 
-  footerActions.appendChild(btnReroll);
-  card.appendChild(footerActions);
+  card.appendChild(header);
+  card.appendChild(body);
+  card.appendChild(metaFooter);
+  card.appendChild(actions);
+
+  els.resultsList.appendChild(card);
 }
 
 /* ------------------ Reroll ------------------ */
 
 async function rerollSingle(url, cardNode) {
   if (!url) return;
+  const theme = getActiveThemeId();
+  const language = getLanguageMode();
 
-  setStatus("Rerolling…", "ok");
-  cardNode.style.opacity = "0.55";
+  const localController = new AbortController();
 
   try {
-    const res = await fetch(REROLL_URL, {
+    setStatus("Rerolling…", "ok");
+    cardNode.style.opacity = "0.5";
+
+    const res = await fetch(BACKEND_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      headers: {
+        "Content-Type": "application/json",
+      },
+      signal: localController.signal,
+      body: JSON.stringify({
+        urls: [url],
+        theme,
+        language_mode: language,
+      }),
     });
 
-    const data = await res.json();
-    if (data && !data.error && Array.isArray(data.comments)) {
-      fillCardContent(cardNode, { url: data.url || url, comments: data.comments }, 0, 1);
-      setStatus("Reroll done", "ok");
-    } else {
-      console.error("Reroll failed", data && data.error);
-      setStatus("Reroll failed", "error");
+    if (!res.ok) {
+      throw new Error(`HTTP ${res.status}`);
     }
+
+    const json = await res.json();
+    const batches = json.batches || [];
+    if (!batches.length || !batches[0].items || !batches[0].items[0]) {
+      throw new Error("Invalid reroll response");
+    }
+
+    const freshItem = batches[0].items[0];
+
+    // Rebuild card in-place
+    cardNode.innerHTML = "";
+    renderResultItemIntoExisting(freshItem, cardNode);
+    setStatus("Reroll done", "ok");
   } catch (err) {
-    console.error("Reroll network error", err);
-    setStatus("Reroll failed (network)", "error");
+    console.error("Reroll failed", err);
+    setStatus("Reroll failed", "error");
   } finally {
     cardNode.style.opacity = "1";
   }
 }
 
-/* ------------------ Main Generate Flow ------------------ */
+function renderResultItemIntoExisting(item, card) {
+  // reuse main render with slight adaptation
+  card.innerHTML = "";
+  const tmpList = document.createElement("div");
+  els.resultsList.appendChild(tmpList); // just to reuse function? nope
+
+  // hack: temporarily point resultsList to the card's parent
+  const originalList = els.resultsList;
+  els.resultsList = card.parentElement || originalList;
+  renderResultItem(item, 0, 0, 1);
+  els.resultsList = originalList;
+  // remove the new card we just appended & move its content into 'card'
+  const newCard = (card.parentElement || originalList).lastElementChild;
+  if (newCard && newCard !== card) {
+    card.innerHTML = newCard.innerHTML;
+    newCard.remove();
+  }
+}
+
+/* ------------------ Generate main flow ------------------ */
 
 async function handleGenerate() {
-  const raw = (els.urlsInput && els.urlsInput.value) || "";
-  const urls = parseUrls(raw);
+  const rawUrls = els.urlsInput ? els.urlsInput.value : "";
+  const urls = parseUrls(rawUrls);
 
   if (!urls.length) {
     setStatus("Paste at least one URL", "error");
@@ -387,77 +417,61 @@ async function handleGenerate() {
     return;
   }
 
-  cancelled = false;
-  currentController = new AbortController();
+  const theme = getActiveThemeId();
+  const language = getLanguageMode();
 
   clearResults();
   setSkeletonVisible(true);
-  setProgress(5, `Queued ${urls.length} tweets…`);
+  setProgress(8, "Preparing batch…");
   setStatus("Contacting backend…", "ok");
-  setRunning(true);
+
+  els.btnGenerate.disabled = true;
+  els.btnCancel.disabled = false;
+  els.btnClear.disabled = true;
+
+  const controller = new AbortController();
+  currentController = controller;
 
   try {
-    const res = await fetch(COMMENT_URL, {
+    const res = await fetch(BACKEND_URL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-      signal: currentController.signal,
+      signal: controller.signal,
+      headers: {
+        "Content-Type": "application/json",
+      },
+      body: JSON.stringify({
+        urls,
+        theme,
+        language_mode: language, // always "dual"
+      }),
     });
 
     if (!res.ok) {
-      setSkeletonVisible(false);
-      setStatus(`Backend error (HTTP ${res.status})`, "error");
-      setProgress(100, "Error");
-      return;
+      throw new Error(`HTTP ${res.status}`);
     }
 
-    const data = await res.json();
-    if (cancelled) {
-      setSkeletonVisible(false);
-      setStatus("Run cancelled", "error");
-      setProgress(0, "Cancelled");
-      return;
-    }
+    setProgress(30, "Processing…");
 
-    const batches = (data && data.batches) || [];
-    let totalResults = 0;
-    let totalFailed = 0;
-    const totalExpected = urls.length || 1;
+    const json = await res.json();
+
+    const batches = json.batches || [];
+    const totalUrls = json.meta?.total_urls || urls.length || 1;
+    let processed = 0;
 
     setSkeletonVisible(false);
-    clearResults();
 
-    batches.forEach((batch, batchIdx) => {
-      const batchResults = (batch && batch.results) || [];
-      const batchFailed = (batch && batch.failed) || [];
-
-      batchResults.forEach((item, idx) => {
-        if (cancelled) return;
-        totalResults += 1;
-        const percent = 10 + Math.round((totalResults / totalExpected) * 80);
-        setProgress(percent, `Rendering ${totalResults}/${totalExpected}…`);
-        renderResultCard(item, totalResults - 1, totalExpected);
+    batches.forEach((batch, idx) => {
+      const items = batch.items || [];
+      items.forEach((item, itemIdx) => {
+        processed += 1;
+        const percent = 30 + Math.round((processed / totalUrls) * 70);
+        setProgress(percent, `Rendering ${processed}/${totalUrls}…`);
+        renderResultItem(item, idx, itemIdx, totalUrls);
       });
-
-      batchFailed.forEach((f) => {
-        totalFailed += 1;
-        renderFailedCard(f);
-      });
-
-      if (!cancelled) {
-        setStatus(`Batch ${batchIdx + 1} done`, "ok");
-      }
     });
 
-    if (!batches.length) {
-      setStatus("No valid URLs found", "error");
-      setProgress(100, "Done");
-    } else {
-      setProgress(100, "Completed");
-      if (!cancelled) {
-        setStatus("Done", "ok");
-      }
-    }
+    setStatus("Done", "ok");
+    setProgress(100, "Completed");
   } catch (err) {
     if (err.name === "AbortError") {
       setStatus("Run cancelled", "error");
@@ -465,60 +479,22 @@ async function handleGenerate() {
       setProgress(0, "Cancelled");
     } else {
       console.error("Generate failed", err);
-      setStatus("Network / server error", "error");
+      setStatus("Backend error, try again", "error");
       setSkeletonVisible(false);
-      setProgress(100, "Error");
+      setProgress(0, "Error");
     }
   } finally {
-    setRunning(false);
     currentController = null;
+    els.btnGenerate.disabled = false;
+    els.btnCancel.disabled = true;
+    els.btnClear.disabled = false;
   }
 }
 
-function renderFailedCard(item) {
-  if (!els.resultsList) return;
-  const card = document.createElement("article");
-  card.className = "ct-card";
-
-  const header = document.createElement("div");
-  header.className = "ct-card-header";
-
-  const urlEl = document.createElement("a");
-  urlEl.className = "ct-card-url";
-  urlEl.href = item.url || "#";
-  urlEl.target = "_blank";
-  urlEl.rel = "noopener noreferrer";
-  urlEl.textContent = item.url || "(invalid URL)";
-  header.appendChild(urlEl);
-
-  const chipRow = document.createElement("div");
-  chipRow.className = "ct-card-chip-row";
-
-  const chipErr = document.createElement("span");
-  chipErr.className = "ct-chip";
-  chipErr.textContent = "Failed";
-  chipRow.appendChild(chipErr);
-
-  header.appendChild(chipRow);
-  card.appendChild(header);
-
-  const body = document.createElement("div");
-  body.className = "ct-card-body";
-
-  const p = document.createElement("p");
-  p.className = "ct-comment-text ct-comment-text--faded";
-  p.textContent = item.reason || "Unknown error";
-  body.appendChild(p);
-
-  card.appendChild(body);
-  els.resultsList.appendChild(card);
-}
-
-/* ------------------ Handlers ------------------ */
+/* ------------------ Other handlers ------------------ */
 
 function handleCancel() {
   if (currentController) {
-    cancelled = true;
     currentController.abort();
   }
 }
@@ -528,7 +504,6 @@ function handleClear() {
   setStatus("Input cleared", "ok");
 }
 
-/** Theme click (visual only) */
 function handleThemeClick(event) {
   const btn = event.target.closest(".ct-theme-btn");
   if (!btn || !els.themeGrid) return;
@@ -541,30 +516,22 @@ function handleThemeClick(event) {
 /* ------------------ Init ------------------ */
 
 function init() {
-  // backend label
+  // show backend base (without /api/generate)
   if (els.backendUrl) {
-    els.backendUrl.textContent = backendBase;
+    els.backendUrl.textContent = BACKEND_BASE;
   }
 
-  // hide language-mode block (you said you don't want it)
+  // hide language mode block visually (we force dual under the hood)
   const langOptions = document.getElementById("ct-lang-options");
   if (langOptions) {
     const block = langOptions.closest(".ct-section-block");
     if (block) block.style.display = "none";
   }
 
-  if (els.btnGenerate) {
-    els.btnGenerate.addEventListener("click", handleGenerate);
-  }
-  if (els.btnCancel) {
-    els.btnCancel.addEventListener("click", handleCancel);
-  }
-  if (els.btnClear) {
-    els.btnClear.addEventListener("click", handleClear);
-  }
-  if (els.themeGrid) {
-    els.themeGrid.addEventListener("click", handleThemeClick);
-  }
+  if (els.btnGenerate) els.btnGenerate.addEventListener("click", handleGenerate);
+  if (els.btnCancel) els.btnCancel.addEventListener("click", handleCancel);
+  if (els.btnClear) els.btnClear.addEventListener("click", handleClear);
+  if (els.themeGrid) els.themeGrid.addEventListener("click", handleThemeClick);
 
   if (els.historyToggleBtn) {
     els.historyToggleBtn.addEventListener("click", () => {
@@ -582,7 +549,7 @@ function init() {
 
   if (els.historyClearBtn) {
     els.historyClearBtn.addEventListener("click", () => {
-      clipboardHistory = [];
+      clipboardHistory.length = 0;
       renderClipboardHistory();
     });
   }
