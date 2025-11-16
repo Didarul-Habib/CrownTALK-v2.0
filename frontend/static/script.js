@@ -1,59 +1,44 @@
 const backendURL = "https://crowntalk-v2-0.onrender.com/comment";
 
-document.getElementById("generateBtn").addEventListener("click", () => {
-    const raw = document.getElementById("urlInput").value.trim();
-    if (!raw) return;
+const urlInput = document.getElementById("urlInput");
+const generateBtn = document.getElementById("generateBtn");
+const clearBtn = document.getElementById("clearBtn");
+const progressEl = document.getElementById("progress");
+const resultsEl = document.getElementById("results");
+const failedEl = document.getElementById("failed");
 
-    const urls = raw.split(/\n+/).map(u => u.trim()).filter(Boolean);
-
-    document.getElementById("progress").innerHTML = "Processing...";
-    document.getElementById("results").innerHTML = "";
-    document.getElementById("failed").innerHTML = "";
-
-    fetch(backendURL, {
-        method: "POST",
-        headers: {"Content-Type": "application/json"},
-        body: JSON.stringify({ urls })
-    })
-    .then(res => res.json())
-    .then(data => {
-        const batches = data.batches;
-
-        batches.forEach((batch, idx) => {
-            document.getElementById("progress").innerHTML =
-                `Batch ${batch.batch} done (${idx+1}/${batches.length})`;
-
-            batch.results.forEach(item => {
-                const block = document.createElement("div");
-                block.className = "result-block";
-
-                block.innerHTML = `
-                    <a href="${item.url}" target="_blank">${item.url}</a><br><br>
-                    <div>
-                        ${item.comments[0]}
-                        <button class="copy-btn" onclick="copyText('${item.comments[0]}')">copy</button>
-                    </div>
-                    <div>
-                        ${item.comments[1]}
-                        <button class="copy-btn" onclick="copyText('${item.comments[1]}')">copy</button>
-                    </div>
-                `;
-                document.getElementById("results").appendChild(block);
-            });
-
-            batch.failed.forEach(item => {
-                const f = document.createElement("div");
-                f.className = "result-block";
-                f.style.borderLeft = "4px solid red";
-                f.innerHTML = `Failed: ${item.url} — ${item.reason}`;
-                document.getElementById("failed").appendChild(f);
-            });
-        });
-
-        document.getElementById("progress").innerHTML = "All batches completed!";
-    });
-});
-
-function copyText(text) {
-    navigator.clipboard.writeText(text);
+function parseUrls(raw) {
+  return raw
+    .split(/\n+/)
+    .map(line => line.trim())
+    .filter(Boolean);
 }
+
+function clearOutputs() {
+  resultsEl.innerHTML = "";
+  failedEl.innerHTML = "";
+  progressEl.textContent = "";
+}
+
+generateBtn.addEventListener("click", async () => {
+  const raw = urlInput.value.trim();
+  if (!raw) return;
+
+  const urls = parseUrls(raw);
+  if (urls.length === 0) return;
+
+  clearOutputs();
+  progressEl.textContent = `Processing ${urls.length} URLs...`;
+
+  generateBtn.disabled = true;
+  generateBtn.textContent = "Working...";
+
+  try {
+    const res = await fetch(backendURL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls })
+    });
+
+    if (!res.ok) {
+      progressEl.textContent = "Backend error while process
