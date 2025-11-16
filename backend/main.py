@@ -1,5 +1,4 @@
 from flask import Flask, request, jsonify
-from flask_cors import CORS
 import threading
 import requests
 import time
@@ -7,10 +6,20 @@ import re
 import random
 
 app = Flask(__name__)
-CORS(app)   # <-- FIXED CORS (critical for frontend)
 
 # ---------------------------------------------------------
-# Clean URL function
+# Manual CORS (no external dependency needed)
+# ---------------------------------------------------------
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Methods"] = "GET, POST, OPTIONS"]
+    return response
+
+
+# ---------------------------------------------------------
+# URL Cleaner
 # ---------------------------------------------------------
 def clean_url(url):
     if not isinstance(url, str):
@@ -18,17 +27,17 @@ def clean_url(url):
 
     url = url.strip()
 
-    # Remove numbering like "12. https://..."
+    # Remove numbering like "11. https://..."
     url = re.sub(r"^\d+\.\s*", "", url)
 
-    # Remove query params
+    # Remove ?query parameters
     url = url.split("?")[0]
 
     return url
 
 
 # ---------------------------------------------------------
-# Offline Comment Generator (Improved stability)
+# Offline Comment Generator (Stable)
 # ---------------------------------------------------------
 banned_words = {
     "amazing","awesome","incredible","finally","excited",
@@ -58,25 +67,24 @@ phrase_bank = [
 
 def generate_comment(text):
     try:
-        # Build a random structure
-        pick = random.sample(synonyms, k=1) + random.sample(phrase_bank, k=1)
-        combined = " ".join(pick)
+        parts = random.sample(synonyms, k=1) + random.sample(phrase_bank, k=1)
+        combined = " ".join(parts)
 
         # Remove banned words
         for bad in banned_words:
             combined = combined.replace(bad, "")
 
-        # Shuffle words
-        parts = combined.split()
-        random.shuffle(parts)
+        # Shuffle for randomness
+        words = combined.split()
+        random.shuffle(words)
 
-        # Keep 5–12 words
-        parts = parts[:random.randint(5, 12)]
+        # Enforce 5–12 words
+        words = words[:random.randint(5, 12)]
 
-        return " ".join(parts)
+        return " ".join(words)
 
-    except Exception:
-        # Emergency fallback (never fail comment generation)
+    except:
+        # Emergency fallback (never fail)
         return "kinda makes sense tbh seeing this now"
 
 
@@ -84,6 +92,7 @@ def generate_two_comments(text):
     c1 = generate_comment(text)
     c2 = generate_comment(text)
 
+    # Ensure difference
     tries = 0
     while c2 == c1 and tries < 5:
         c2 = generate_comment(text)
@@ -93,10 +102,11 @@ def generate_two_comments(text):
 
 
 # ---------------------------------------------------------
-# Fetch tweet text from VXTwitter
+# VXTwitter Fetcher (Fully Patched)
 # ---------------------------------------------------------
 def fetch_tweet_text(url):
     try:
+        # Parse host/path from URL
         match = re.search(r"https?://([^/]+)(/.*)", url)
         if not match:
             return None, "Invalid URL"
@@ -104,29 +114,48 @@ def fetch_tweet_text(url):
         host, path = match.groups()
         api_url = f"https://api.vxtwitter.com/{host}{path}"
 
-        for _ in range(3):  # retry
+        for _ in range(3):
             try:
                 r = requests.get(api_url, timeout=10)
-                if r.status_code == 200:
-                    data = r.json()
+                if r.status_code != 200:
+                    time.sleep(1)
+                    continue
 
-                    # New VXTwitter format safety check
-                    if "tweet" in data and "text" in data["tweet"]:
-                        return data["tweet"]["text"], None
-                    return None, "Tweet text missing"
+                data = r.json()
+
+                # --- NEW VXTwitter formats ---
+                if "text" in data and isinstance(data["text"], str):
+                    return data["text"], None
+
+                if "full_text" in data and isinstance(data["full_text"], str):
+                    return data["full_text"], None
+
+                # --- Old format ---
+                if "tweet" in data:
+                    tweet_obj = data["tweet"]
+
+                    if "text" in tweet_obj:
+                        return tweet_obj["text"], None
+
+                    if "full_text" in tweet_obj:
+                        return tweet_obj["full_text"], None
+
+                if "error" in data:
+                    return None, data["error"]
+
             except:
                 pass
 
             time.sleep(1)
 
-        return None, "VX API unreachable"
+        return None, "Tweet text not found"
 
     except Exception as e:
         return None, str(e)
 
 
 # ---------------------------------------------------------
-# Keep-alive ping (Render)
+# Render Keep-Alive Thread
 # ---------------------------------------------------------
 def keep_alive():
     while True:
@@ -134,11 +163,11 @@ def keep_alive():
             requests.get("https://crowntalk-v2-0.onrender.com/", timeout=5)
         except:
             pass
-        time.sleep(600)  # every 10 mins
+        time.sleep(600)
 
 
 # ---------------------------------------------------------
-# Routes
+# ROUTES
 # ---------------------------------------------------------
 @app.get("/")
 def home():
@@ -147,23 +176,16 @@ def home():
 
 @app.post("/comment")
 def comment():
-    """
-    Main route — handles batching + comment generation
-    """
-
-    # Ensure backend never crashes on malformed input
     try:
         data = request.get_json(silent=True)
         if not data or "urls" not in data:
             return jsonify({"error": "Invalid request"}), 400
 
-        urls = data.get("urls", [])
-        if not isinstance(urls, list):
-            return jsonify({"error": "URLs must be an array"}), 400
+        urls = data["urls"]
+        cleaned = [clean_url(u) for u in urls if isinstance(u, str) and u.strip()]
 
-        cleaned = [clean_url(u) for u in urls if u.strip()]
-
-        batches = [cleaned[i:i+2] for i in range(0, len(cleaned), 2)]
+        # Batch of 2
+        batches = [cleaned[i:i + 2] for i in range(0, len(cleaned), 2)]
 
         batch_outputs = []
 
@@ -185,6 +207,7 @@ def comment():
                     continue
 
                 comments = generate_two_comments(text)
+
                 batch_result["results"].append({
                     "url": url,
                     "comments": comments
@@ -195,15 +218,12 @@ def comment():
         return jsonify({"batches": batch_outputs})
 
     except Exception as e:
-        # Backend will NEVER hang — always responds
         return jsonify({"error": "Server error", "detail": str(e)}), 500
 
 
 # ---------------------------------------------------------
-# MAIN ENTRY POINT
+# MAIN ENTRY (runs only on Render)
 # ---------------------------------------------------------
 if __name__ == "__main__":
-    # Start keep-alive thread only when running directly
     threading.Thread(target=keep_alive, daemon=True).start()
-
     app.run(host="0.0.0.0", port=10000)
