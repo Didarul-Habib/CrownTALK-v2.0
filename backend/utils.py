@@ -78,9 +78,7 @@ def normalize_tweet_url(url: str) -> str:
     }:
         raise CrownTALKError("Unsupported domain for tweet extraction.", code="unsupported_domain")
 
-    # VXTwitter accepts the original tweet path
     api_url = VX_BASE + parsed.path
-    # Preserve query if exists (e.g., ?s=20)
     if parsed.query:
         api_url += "?" + parsed.query
 
@@ -119,7 +117,6 @@ def fetch_tweet_data(url: str, timeout: float = DEFAULT_TIMEOUT) -> TweetData:
         logger.exception("Failed to parse VXTwitter JSON")
         raise CrownTALKError("Invalid response from VXTwitter.", code="vx_invalid_json") from e
 
-    # VXTwitter variants often use these keys; keep it defensive.
     text = (
         data.get("tweet", {}).get("text")
         or data.get("full_text")
@@ -154,22 +151,35 @@ def naive_lang_detect(text: str) -> str:
     """
     Tiny offline heuristic language detection.
 
-    Returns: "en", "bn", or "other".
+    Returns: "en", "bn", "hi", "zh", or "other".
+
+    - bn: Bangla (Bengali block)
+    - hi: Devanagari-ish (Hindi-ish)
+    - zh: CJK-ish (Chinese/Japanese-ish)
     """
     s = text.strip()
     if not s:
         return "other"
 
-    # If we see lots of Bengali characters, classify as bn
     bengali_chars = re.findall(r"[\u0980-\u09FF]", s)
-    if len(bengali_chars) >= 4:
-        return "bn"
-
-    # Simple heuristic: latin letters + typical English punctuation => "en"
+    devanagari_chars = re.findall(r"[\u0900-\u097F]", s)
+    cjk_chars = re.findall(r"[\u3040-\u30FF\u4E00-\u9FFF]", s)
     latin_letters = re.findall(r"[A-Za-z]", s)
-    if len(latin_letters) >= 5:
-        return "en"
 
+    bn = len(bengali_chars)
+    hi = len(devanagari_chars)
+    zh = len(cjk_chars)
+    en = len(latin_letters)
+
+    # Prioritize whichever script dominates with some minimum density
+    if bn >= 4 and bn > hi and bn > zh:
+        return "bn"
+    if hi >= 4 and hi > bn and hi > zh:
+        return "hi"
+    if zh >= 4 and zh > bn and zh > hi:
+        return "zh"
+    if en >= 5:
+        return "en"
     return "other"
 
 
@@ -197,7 +207,6 @@ def clean_and_normalize_urls(urls: Sequence[Any]) -> List[str]:
         if not candidate:
             continue
 
-        # Normalize scheme + canonical representation
         candidate = _ensure_scheme(candidate)
         parsed = urlparse(candidate)
         normalized = urlunparse(
@@ -205,9 +214,9 @@ def clean_and_normalize_urls(urls: Sequence[Any]) -> List[str]:
                 parsed.scheme.lower(),
                 parsed.netloc.lower(),
                 parsed.path,
-                "",  # params
+                "",
                 parsed.query,
-                "",  # fragment
+                "",
             )
         )
 
