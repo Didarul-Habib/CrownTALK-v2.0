@@ -41,4 +41,91 @@ generateBtn.addEventListener("click", async () => {
     });
 
     if (!res.ok) {
-      progressEl.textContent = "Backend error while process
+      progressEl.textContent = "Backend error while processing.";
+      generateBtn.disabled = false;
+      generateBtn.textContent = "Generate Comments";
+      return;
+    }
+
+    const data = await res.json();
+    const batches = data.batches || [];
+
+    batches.forEach((batch, idx) => {
+      progressEl.textContent = `Batch ${batch.batch} done (${idx + 1}/${batches.length})`;
+
+      (batch.results || []).forEach(renderResult);
+      (batch.failed || []).forEach(renderFailed);
+    });
+
+    progressEl.textContent = "All batches completed!";
+  } catch (err) {
+    console.error(err);
+    progressEl.textContent = "Network error while contacting backend.";
+  } finally {
+    generateBtn.disabled = false;
+    generateBtn.textContent = "Generate Comments";
+  }
+});
+
+clearBtn.addEventListener("click", () => {
+  urlInput.value = "";
+  clearOutputs();
+});
+
+function renderResult(item) {
+  const block = document.createElement("div");
+  block.className = "result-block";
+
+  const link = document.createElement("a");
+  link.href = item.url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = item.url;
+
+  block.appendChild(link);
+
+  (item.comments || []).forEach(comment => {
+    const line = document.createElement("div");
+    line.className = "comment-line";
+
+    const span = document.createElement("span");
+    span.className = "comment-text";
+    span.textContent = comment;
+
+    const btn = document.createElement("button");
+    btn.className = "copy-btn";
+    btn.textContent = "copy";
+    btn.dataset.text = comment;
+
+    line.appendChild(span);
+    line.appendChild(btn);
+    block.appendChild(line);
+  });
+
+  resultsEl.appendChild(block);
+}
+
+function renderFailed(item) {
+  const div = document.createElement("div");
+  div.className = "failed-entry";
+  div.textContent = `Failed: ${item.url} — ${item.reason}`;
+  failedEl.appendChild(div);
+}
+
+// Global click handler for copy buttons
+document.addEventListener("click", e => {
+  if (!e.target.classList.contains("copy-btn")) return;
+
+  const text = e.target.dataset.text || "";
+  if (!text) return;
+
+  navigator.clipboard.writeText(text).then(() => {
+    const old = e.target.textContent;
+    e.target.textContent = "copied";
+    e.target.disabled = true;
+    setTimeout(() => {
+      e.target.textContent = old;
+      e.target.disabled = false;
+    }, 800);
+  });
+});
