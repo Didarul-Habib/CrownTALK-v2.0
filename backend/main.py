@@ -138,6 +138,10 @@ def build_comment_from_text_en(text):
     if keywords:
         kw = random.choice(keywords)
 
+    # avoid comments like "lowkey 1 been everywhere lately"
+    if kw.isdigit():
+        kw = "setup"
+
     neutral_templates = [
         "lowkey {kw} been everywhere lately",
         "tbh {kw} still on my mind",
@@ -146,6 +150,8 @@ def build_comment_from_text_en(text):
         "still trying to process {kw} fr",
         "real talk {kw} kinda interesting fr",
         "lowkey watching how {kw} plays out",
+        "timeline cant stop circling {kw}",
+        "tbh {kw} keeps coming back up",
     ]
 
     positive_templates = [
@@ -153,6 +159,7 @@ def build_comment_from_text_en(text):
         "lowkey think {kw} might work out",
         "tbh {kw} feels like progress fr",
         "ngl direction around {kw} looks clean",
+        "lowkey {kw} momentum still there",
     ]
 
     negative_templates = [
@@ -160,6 +167,7 @@ def build_comment_from_text_en(text):
         "tbh {kw} still feels risky fr",
         "cant shake the worry around {kw}",
         "lowkey nervous where {kw} goes next",
+        "ngl {kw} setup feels fragile rn",
     ]
 
     crypto_neutral = [
@@ -167,18 +175,21 @@ def build_comment_from_text_en(text):
         "lowkey curious how {kw} trades next",
         "tbh {kw} volume been catching my eye",
         "ngl {kw} narrative still not priced in",
+        "people quietly rotating into {kw} fr",
     ]
 
     crypto_positive = [
         "ngl {kw} setup looking kinda clean fr",
         "lowkey think {kw} might send later",
         "tbh {kw} risk reward looking decent",
+        "chart on {kw} not looking bad ngl",
     ]
 
     crypto_negative = [
         "ngl {kw} vibes feel like exit liquidity",
         "lowkey worried {kw} ends ugly",
         "tbh {kw} entries already look cooked",
+        "hard not to see {kw} as late entry",
     ]
 
     giveaway_templates = [
@@ -193,6 +204,7 @@ def build_comment_from_text_en(text):
         "tbh {kw} levels actually make some sense",
         "lowkey watching {kw} support zone rn",
         "real talk {kw} price action feels fragile",
+        "everyone staring at same {kw} levels fr",
     ]
 
     thread_templates = [
@@ -200,12 +212,14 @@ def build_comment_from_text_en(text):
         "tbh {kw} breakdown pretty helpful ngl",
         "ngl this {kw} thread goes deeper than expected",
         "real talk {kw} thread explaining a lot here",
+        "lot of small details on {kw} in here",
     ]
 
     oneliner_templates = [
         "ngl short but {kw} message lands",
         "lowkey simple {kw} line but it works",
         "tbh that {kw} bar kinda hits",
+        "quick line but {kw} said a lot",
     ]
 
     if sentiment == "positive":
@@ -237,41 +251,6 @@ def build_comment_from_text_en(text):
     return comment
 
 
-def post_process_comment_en(comment):
-    c_low = comment.lower()
-    for bad in banned_phrases:
-        if bad in c_low:
-            c_low = c_low.replace(bad, "")
-    comment = c_low
-
-    comment = re.sub(r"\s+", " ", comment).strip()
-
-    words = comment.split()
-
-    if len(words) < 5:
-        while len(words) < 5:
-            words.append(random.choice(filler_tokens))
-    elif len(words) > 12:
-        words = words[:12]
-
-    comment = " ".join(words)
-    comment = comment.rstrip(".,!?:;…-")
-
-    filtered = []
-    for w in comment.split():
-        if "#" in w:
-            continue
-        if any(ord(ch) > 126 for ch in w):
-            continue
-        filtered.append(w)
-    comment = " ".join(filtered).strip()
-
-    if not comment or len(comment.split()) < 3:
-        comment = "lowkey trying to process all this"
-
-    return comment
-
-
 # --- language detection: very rough but fully offline ---
 def detect_language(text):
     lat = hi = cjk = 0
@@ -292,41 +271,47 @@ def detect_language(text):
 
 
 def build_multilang_comment(text, lang):
-    # english base first
+    # base english comment first
     base_en_raw = build_comment_from_text_en(text)
     base_en = post_process_comment_en(base_en_raw)
 
     keywords = extract_keywords(text)
     kw = keywords[0] if keywords else ""
+    # we’ll normalize per language so no ugly digits
+    if kw.isdigit():
+        kw = ""
 
     if lang == "hi":
-        # simple Hindi templates; we keep them short
         hi_templates = [
             "ये बात {kw} पर सही लग रही",
             "सच में {kw} वाली बात सोचने लायक",
             "{kw} वाली बात दिमाग में घूम रही",
-            "आजकल {kw} वाला माहौल बहुत दिख रहा",
+            "आजकल {kw} वाला सीन काफी दिख रहा",
+            "धीरे धीरे {kw} वाली बातें बढ़ रही",
+            "{kw} वाला पॉइंट हल्का भारी लग रहा",
         ]
-        if not kw:
-            kw = "ये चीज"
+        kw_local = kw or "ये चीज"
         tmpl = random.choice(hi_templates)
-        native = tmpl.format(kw=kw)
+        native = tmpl.format(kw=kw_local)
+
     elif lang == "zh":
         zh_templates = [
             "{kw} 这事 确实 有点 东西",
             "说实话 {kw} 这点 挺有意思",
-            "最近 {kw} 相关 的 声音 有点多",
+            "最近 {kw} 相关 声音 有点多",
             "{kw} 这波 操作 挺让人 关注",
+            "{kw} 这块 细节 还挺关键",
+            "老实讲 {kw} 后面 走向 值得看",
         ]
-        if not kw:
-            kw = "这个"
+        kw_local = kw or "这个"
         tmpl = random.choice(zh_templates)
-        native = tmpl.format(kw=kw)
+        native = tmpl.format(kw=kw_local)
+
     else:
+        # safety: english only
         return base_en
 
     combined = f"{native} ({base_en})"
-
     words = combined.split()
     if len(words) < 5:
         while len(words) < 5:
@@ -337,38 +322,6 @@ def build_multilang_comment(text, lang):
     combined = combined.rstrip(".,!?:;…-")
 
     return combined
-
-
-def generate_unique_comment_for_lang(text, lang):
-    comment = None
-    for _ in range(10):
-        if lang == "en":
-            raw = build_comment_from_text_en(text)
-            processed = post_process_comment_en(raw)
-        else:
-            processed = build_multilang_comment(text, lang)
-
-        comment = processed
-        norm = normalize_text(processed)
-        if 5 <= len(processed.split()) <= 12 and norm not in comment_history:
-            comment_history.add(norm)
-            return processed
-
-    return comment or "lowkey trying to process all this"
-
-
-def generate_two_comments(text):
-    lang = detect_language(text)
-    c1 = generate_unique_comment_for_lang(text, lang)
-    c2 = generate_unique_comment_for_lang(text, lang)
-
-    tries = 0
-    while normalize_text(c2) == normalize_text(c1) and tries < 5:
-        c2 = generate_unique_comment_for_lang(text, lang)
-        tries += 1
-
-    return [c1, c2]
-
 
 # ---------------------------------------------------------
 # VXTwitter Fetcher
