@@ -8,8 +8,21 @@
 <body>
   <div class="page">
     <header class="header">
-      <h1>CrownTALK Comment Generator</h1>
-      <p class="subtitle">Paste tweet links, get humanlike replies in batches.</p>
+      <div class="brand">
+        <img src="static/logo.png" alt="CrownTALK logo" class="logo">
+        <div>
+          <h1>CrownTALK Comment Generator</h1>
+          <p class="subtitle">Paste tweet links, get humanlike crypto replies in batches.</p>
+        </div>
+      </div>
+
+      <div class="theme-switcher">
+        <span class="theme-label">Theme</span>
+        <button class="theme-dot" data-theme="white"></button>
+        <button class="theme-dot" data-theme="dark-purple"></button>
+        <button class="theme-dot" data-theme="gold"></button>
+        <button class="theme-dot" data-theme="blue"></button>
+      </div>
     </header>
 
     <main>
@@ -23,19 +36,34 @@
           <button id="clearBtn" class="secondary">Clear</button>
         </div>
 
-        <div id="progress" class="progress-text"></div>
+        <div class="batch-status">
+          <div id="progress" class="progress-text"></div>
+          <div class="progress-bar">
+            <div id="progressBarFill" class="progress-bar-fill"></div>
+          </div>
+        </div>
       </section>
 
       <section class="card results-card">
-        <h2>Results</h2>
+        <div class="card-header-row">
+          <h2>Results</h2>
+          <span id="resultCount" class="count-pill">0 tweets</span>
+        </div>
         <div id="results"></div>
       </section>
 
       <section class="card failed-card">
-        <h2>Failed URLs</h2>
+        <div class="card-header-row">
+          <h2>Failed URLs</h2>
+          <span id="failedCount" class="count-pill muted">0</span>
+        </div>
         <div id="failed"></div>
       </section>
     </main>
+
+    <footer class="footer">
+      <span>© <span id="year"></span> CrownTALK — Built by CrownDEX</span>
+    </footer>
   </div>
 
   <script src="static/script.js"></script>
