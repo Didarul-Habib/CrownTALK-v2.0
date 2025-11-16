@@ -1,26 +1,43 @@
 <!DOCTYPE html>
 <html lang="en">
 <head>
-    <meta charset="UTF-8">
-    <title>CrownTALK</title>
-    <link rel="stylesheet" href="static/styles.css">
+  <meta charset="UTF-8">
+  <title>CrownTALK Comment Generator</title>
+  <link rel="stylesheet" href="static/styles.css">
 </head>
 <body>
+  <div class="page">
+    <header class="header">
+      <h1>CrownTALK Comment Generator</h1>
+      <p class="subtitle">Paste tweet links, get humanlike replies in batches.</p>
+    </header>
 
-<div class="container">
-    <h1>CrownTALK Comment Generator</h1>
+    <main>
+      <section class="card input-card">
+        <label for="urlInput" class="label">Tweet URLs</label>
+        <textarea id="urlInput" placeholder="1. https://x.com/user/status/123...
+2. https://x.com/user/status/456..."></textarea>
 
-    <textarea id="urlInput" placeholder="Paste tweet URLs..."></textarea>
+        <div class="controls">
+          <button id="generateBtn">Generate Comments</button>
+          <button id="clearBtn" class="secondary">Clear</button>
+        </div>
 
-    <button id="generateBtn">Generate Comments</button>
+        <div id="progress" class="progress-text"></div>
+      </section>
 
-    <div id="progress"></div>
+      <section class="card results-card">
+        <h2>Results</h2>
+        <div id="results"></div>
+      </section>
 
-    <div id="results"></div>
+      <section class="card failed-card">
+        <h2>Failed URLs</h2>
+        <div id="failed"></div>
+      </section>
+    </main>
+  </div>
 
-    <div id="failed"></div>
-</div>
-
-<script src="static/script.js"></script>
+  <script src="static/script.js"></script>
 </body>
 </html>
