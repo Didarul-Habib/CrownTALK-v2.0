@@ -27,8 +27,10 @@ def clean_url(url):
         return ""
 
     url = url.strip()
-    url = re.sub(r"^\d+\.\s*", "", url)  # remove "1. https://..."
-    url = url.split("?")[0]  # strip query params
+    # Remove leading numbering like "1. https://..."
+    url = re.sub(r"^\d+\.\s*", "", url)
+    # Strip query params
+    url = url.split("?")[0]
     return url
 
 
@@ -251,6 +253,41 @@ def build_comment_from_text_en(text):
     return comment
 
 
+def post_process_comment_en(comment):
+    c_low = comment.lower()
+    for bad in banned_phrases:
+        if bad in c_low:
+            c_low = c_low.replace(bad, "")
+    comment = c_low
+
+    comment = re.sub(r"\s+", " ", comment).strip()
+
+    words = comment.split()
+
+    if len(words) < 5:
+        while len(words) < 5:
+            words.append(random.choice(filler_tokens))
+    elif len(words) > 12:
+        words = words[:12]
+
+    comment = " ".join(words)
+    comment = comment.rstrip(".,!?:;…-")
+
+    filtered = []
+    for w in comment.split():
+        if "#" in w:
+            continue
+        if any(ord(ch) > 126 for ch in w):
+            continue
+        filtered.append(w)
+    comment = " ".join(filtered).strip()
+
+    if not comment or len(comment.split()) < 3:
+        comment = "lowkey trying to process all this"
+
+    return comment
+
+
 # --- language detection: very rough but fully offline ---
 def detect_language(text):
     lat = hi = cjk = 0
@@ -277,7 +314,7 @@ def build_multilang_comment(text, lang):
 
     keywords = extract_keywords(text)
     kw = keywords[0] if keywords else ""
-    # we’ll normalize per language so no ugly digits
+    # avoid bare digits
     if kw.isdigit():
         kw = ""
 
@@ -323,6 +360,38 @@ def build_multilang_comment(text, lang):
 
     return combined
 
+
+def generate_unique_comment_for_lang(text, lang):
+    comment = None
+    for _ in range(10):
+        if lang == "en":
+            raw = build_comment_from_text_en(text)
+            processed = post_process_comment_en(raw)
+        else:
+            processed = build_multilang_comment(text, lang)
+
+        comment = processed
+        norm = normalize_text(processed)
+        if 5 <= len(processed.split()) <= 12 and norm not in comment_history:
+            comment_history.add(norm)
+            return processed
+
+    return comment or "lowkey trying to process all this"
+
+
+def generate_two_comments(text):
+    lang = detect_language(text)
+    c1 = generate_unique_comment_for_lang(text, lang)
+    c2 = generate_unique_comment_for_lang(text, lang)
+
+    tries = 0
+    while normalize_text(c2) == normalize_text(c1) and tries < 5:
+        c2 = generate_unique_comment_for_lang(text, lang)
+        tries += 1
+
+    return [c1, c2]
+
+
 # ---------------------------------------------------------
 # VXTwitter Fetcher
 # ---------------------------------------------------------
@@ -357,6 +426,7 @@ def fetch_tweet_text(url):
                 if "error" in data:
                     return None, data["error"]
             except Exception:
+                # transient issue, retry
                 pass
 
             time.sleep(1)
@@ -437,7 +507,10 @@ def reroll():
         return jsonify({"url": url, "error": None, "comments": comments})
 
     except Exception as e:
-        return jsonify({"url": data.get("url", ""), "error": str(e), "comments": []}), 500
+        local_url = ""
+        if "data" in locals() and isinstance(data, dict):
+            local_url = data.get("url", "")
+        return jsonify({"url": local_url, "error": str(e), "comments": []}), 500
 
 
 # ---------------------------------------------------------
