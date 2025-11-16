@@ -1,120 +1,89 @@
+// CrownTALK EXTREME v3 – merged frontend for current backend
+// Backend base (no /api/generate anymore)
 const backendBase = "https://crowntalk-v2-0.onrender.com";
-const commentURL = `${backendBase}/comment`;
-const rerollURL = `${backendBase}/reroll`;
+const COMMENT_URL = `${backendBase}/comment`;
+const REROLL_URL = `${backendBase}/reroll`;
 
-const urlInput = document.getElementById("urlInput");
-const generateBtn = document.getElementById("generateBtn");
-const cancelBtn = document.getElementById("cancelBtn");
-const clearBtn = document.getElementById("clearBtn");
-const progressEl = document.getElementById("progress");
-const progressBarFill = document.getElementById("progressBarFill");
-const resultsEl = document.getElementById("results");
-const failedEl = document.getElementById("failed");
-const resultCountEl = document.getElementById("resultCount");
-const failedCountEl = document.getElementById("failedCount");
-const historyEl = document.getElementById("history");
-const clearHistoryBtn = document.getElementById("clearHistoryBtn");
-const yearEl = document.getElementById("year");
-
-// year in footer
-if (yearEl) {
-  yearEl.textContent = new Date().getFullYear();
-}
-
-// ---------- UI theme (background / glow) ----------
-
-const themeDots = document.querySelectorAll(".theme-dot");
-
-function applyTheme(theme) {
-  document.documentElement.setAttribute("data-theme", theme);
-  localStorage.setItem("crowntalk_theme", theme);
-  themeDots.forEach(dot => {
-    dot.classList.toggle("active", dot.dataset.theme === theme);
-  });
-}
-
-const storedTheme = localStorage.getItem("crowntalk_theme") || "dark-purple";
-applyTheme(storedTheme);
-
-themeDots.forEach(dot => {
-  dot.addEventListener("click", () => {
-    applyTheme(dot.dataset.theme);
-  });
-});
-
-// ---------- Comment theme (tone) ----------
-
-const commentThemeButtons = document.querySelectorAll(".comment-theme-btn");
-let currentCommentTheme =
-  localStorage.getItem("crowntalk_comment_theme") || "default";
-
-function applyCommentTheme(theme) {
-  currentCommentTheme = theme;
-  commentThemeButtons.forEach(btn => {
-    btn.classList.toggle(
-      "active",
-      btn.dataset.commentTheme === theme
-    );
-  });
-  localStorage.setItem("crowntalk_comment_theme", theme);
-}
-
-// init
-if (commentThemeButtons.length) {
-  // ensure data-comment-theme attr name is readable from JS
-  commentThemeButtons.forEach(btn => {
-    if (!btn.dataset.commentTheme && btn.dataset.commenttheme) {
-      btn.dataset.commentTheme = btn.dataset.commenttheme;
-    }
-  });
-  applyCommentTheme(currentCommentTheme);
-  commentThemeButtons.forEach(btn => {
-    btn.addEventListener("click", () => {
-      applyCommentTheme(btn.dataset.commentTheme);
-    });
-  });
-}
-
-// ---------- Helpers ----------
-
+/** State */
 let currentController = null;
 let cancelled = false;
 let clipboardHistory = [];
 
-function parseUrls(raw) {
-  return raw
-    .split(/\n+/)
-    .map(line => line.trim())
-    .filter(Boolean);
+/** DOM refs */
+const els = {
+  backendUrl: document.getElementById("ct-backend-url"),
+  urlsInput: document.getElementById("ct-urls-input"),
+  themeGrid: document.getElementById("ct-theme-grid"),
+  btnGenerate: document.getElementById("ct-generate-btn"),
+  btnCancel: document.getElementById("ct-cancel-btn"),
+  btnClear: document.getElementById("ct-clear-btn"),
+  progressFill: document.getElementById("ct-progress-fill"),
+  progressLabel: document.getElementById("ct-progress-label"),
+  statusPill: document.getElementById("ct-status-pill"),
+  skeletonContainer: document.getElementById("ct-skeleton-container"),
+  resultsList: document.getElementById("ct-results-list"),
+  historyDrawer: document.getElementById("ct-history-drawer"),
+  historyBody: document.getElementById("ct-history-body"),
+  historyCloseBtn: document.getElementById("ct-history-close-btn"),
+  historyClearBtn: document.getElementById("ct-history-clear-btn"),
+  historyToggleBtn: document.getElementById("ct-collapse-history-btn"),
+};
+
+/* ------------------ Utils ------------------ */
+
+function setStatus(text, type) {
+  if (!els.statusPill) return;
+  els.statusPill.textContent = text;
+  els.statusPill.classList.remove("ct-status-pill--ok", "ct-status-pill--error");
+  if (type === "ok") els.statusPill.classList.add("ct-status-pill--ok");
+  if (type === "error") els.statusPill.classList.add("ct-status-pill--error");
 }
 
-function clearOutputs() {
-  resultsEl.innerHTML = "";
-  failedEl.innerHTML = "";
-  progressEl.textContent = "";
-  progressBarFill.style.width = "0%";
-  updateCounts(0, 0);
-}
-
-function updateCounts(totalResults, totalFailed) {
-  resultCountEl.textContent = `${totalResults} tweet${
-    totalResults === 1 ? "" : "s"
-  }`;
-  failedCountEl.textContent = `${totalFailed}`;
-}
-
-function setGenerating(isGenerating) {
-  generateBtn.disabled = isGenerating;
-  cancelBtn.disabled = !isGenerating;
-  document.body.classList.toggle("is-generating", isGenerating);
-  generateBtn.textContent = isGenerating ? "Working..." : "Generate Comments";
-}
-
-// split "native (english)" comment into { native, english }
-function splitComment(comment) {
-  if (!comment || typeof comment !== "string") {
-    return { native: "", english: null };
+function setProgress(percent, label) {
+  if (els.progressFill) {
+    const clamped = Math.max(0, Math.min(100, percent));
+    els.progressFill.style.width = `${clamped}%`;
   }
+  if (label && els.progressLabel) {
+    els.progressLabel.textContent = label;
+  }
+}
+
+function setSkeletonVisible(visible) {
+  if (!els.skeletonContainer) return;
+  els.skeletonContainer.classList.toggle("is-hidden", !visible);
+}
+
+function clearResults() {
+  if (els.resultsList) {
+    els.resultsList.innerHTML = "";
+  }
+}
+
+/** Parse URLs: trim, dedupe, ignore empty lines */
+function parseUrls(raw) {
+  const lines = raw.split(/\r?\n/).map((l) => l.trim());
+  const cleaned = [];
+  const seen = new Set();
+  for (const line of lines) {
+    if (!line) continue;
+    if (seen.has(line)) continue;
+    seen.add(line);
+    cleaned.push(line);
+  }
+  return cleaned;
+}
+
+/** Active theme ID from UI (for labels only, backend ignores it) */
+function getActiveThemeId() {
+  if (!els.themeGrid) return "auto";
+  const active = els.themeGrid.querySelector(".ct-theme-btn.is-active");
+  return active ? active.dataset.themeId || "auto" : "auto";
+}
+
+/** Split "native (english)" into { native, english } */
+function splitComment(comment) {
+  if (!comment) return { native: "", english: "" };
   const match = comment.match(/^(.*)\(([^)]*)\)\s*$/);
   if (match) {
     const native = match[1].trim();
@@ -123,467 +92,509 @@ function splitComment(comment) {
       return { native, english };
     }
   }
-  return { native: comment.trim(), english: null };
+  // fallback: treat whole string as native only
+  return { native: comment.trim(), english: "" };
 }
 
-function truncate(text, maxLen) {
-  if (!text || text.length <= maxLen) return text || "";
-  return text.slice(0, maxLen - 1).trimEnd() + "…";
+/** Enable/disable buttons depending on running state */
+function setRunning(isRunning) {
+  if (els.btnGenerate) els.btnGenerate.disabled = isRunning;
+  if (els.btnCancel) els.btnCancel.disabled = !isRunning;
+  if (els.btnClear) els.btnClear.disabled = isRunning;
 }
 
-// normalize comments from different backend formats
-function normalizeCommentsFromItem(item) {
-  const out = [];
+/* ------------------ Clipboard History ------------------ */
 
-  // new style: item.comment = { en: "...", bn/hi/xx: "..." }
-  if (item.comment && typeof item.comment === "object") {
-    const c = item.comment;
-    const en = c.en || c.EN || null;
+function pushClipboardHistory(entry) {
+  const ts = new Date();
+  clipboardHistory.unshift({
+    ...entry,
+    time: ts,
+  });
+  clipboardHistory = clipboardHistory.slice(0, 20);
+  renderClipboardHistory();
+}
 
-    // possible native keys (extend if needed)
-    const langKeys = [
-      "bn", "hi", "ur", "ar", "es", "pt", "id", "tr",
-      "ph", "ta", "te", "ml", "fr", "de", "it", "ru", "zh"
-    ];
+function renderClipboardHistory() {
+  if (!els.historyBody) return;
+  const container = els.historyBody;
+  container.innerHTML = "";
 
-    let native = null;
-    for (const key of langKeys) {
-      if (typeof c[key] === "string" && c[key].trim()) {
-        native = c[key].trim();
-        break;
-      }
-    }
-
-    if (!native && en) native = en;
-
-    if (native || en) {
-      out.push({ native: native || "", english: en });
-    }
+  if (!clipboardHistory.length) {
+    const p = document.createElement("p");
+    p.className = "ct-history-empty";
+    p.textContent = "Nothing copied yet. Copy a comment to see it here.";
+    container.appendChild(p);
+    return;
   }
 
-  // old style: item.comments = ["native (english)", ...]
-  if (Array.isArray(item.comments)) {
-    item.comments.forEach(comment => {
-      if (typeof comment === "string") {
-        out.push(splitComment(comment));
-      } else if (comment && typeof comment === "object") {
-        // if backend someday sends { native, english }
-        const native = comment.native || comment.text || "";
-        const english = comment.english || null;
-        out.push(splitComment(english ? `${native} (${english})` : native));
+  clipboardHistory.forEach((item) => {
+    const wrap = document.createElement("div");
+    wrap.className = "ct-history-item";
+
+    const header = document.createElement("div");
+    header.className = "ct-history-item-header";
+
+    const themeSpan = document.createElement("span");
+    themeSpan.className = "ct-history-item-theme";
+    themeSpan.textContent = item.label || "Comment";
+
+    const timeSpan = document.createElement("span");
+    timeSpan.className = "ct-history-item-time";
+    timeSpan.textContent = item.time.toLocaleTimeString([], {
+      hour: "2-digit",
+      minute: "2-digit",
+    });
+
+    const body = document.createElement("div");
+    body.className = "ct-history-item-body";
+    body.textContent = item.text || "";
+
+    header.appendChild(themeSpan);
+    header.appendChild(timeSpan);
+    wrap.appendChild(header);
+    wrap.appendChild(body);
+    container.appendChild(wrap);
+  });
+}
+
+/** Copy helper with status + history */
+function copyText(text, label) {
+  if (!text) return;
+  navigator.clipboard
+    .writeText(text)
+    .then(() => {
+      setStatus("Copied to clipboard", "ok");
+      pushClipboardHistory({ text, label });
+    })
+    .catch(() => {
+      setStatus("Copy failed (clipboard blocked)", "error");
+    });
+}
+
+/* ------------------ History Drawer ------------------ */
+
+function openHistoryDrawer() {
+  if (!els.historyDrawer) return;
+  els.historyDrawer.classList.add("is-open");
+}
+
+function closeHistoryDrawer() {
+  if (!els.historyDrawer) return;
+  els.historyDrawer.classList.remove("is-open");
+}
+
+/* ------------------ Result Card Rendering ------------------ */
+
+function renderResultCard(item, index, totalCount) {
+  if (!els.resultsList) return;
+
+  const card = document.createElement("article");
+  card.className = "ct-card";
+  fillCardContent(card, item, index, totalCount);
+  els.resultsList.appendChild(card);
+
+  // flash highlight on new card
+  card.classList.remove("flash-highlight");
+  void card.offsetWidth;
+  card.classList.add("flash-highlight");
+}
+
+function fillCardContent(card, item, index, totalCount) {
+  card.innerHTML = "";
+
+  const url = item.url || "";
+  const themeId = getActiveThemeId();
+  const comments = Array.isArray(item.comments) ? item.comments : [];
+
+  const hasComments = comments.length > 0;
+
+  // Header
+  const header = document.createElement("div");
+  header.className = "ct-card-header";
+
+  const urlEl = document.createElement("a");
+  urlEl.className = "ct-card-url";
+  urlEl.href = url || "#";
+  urlEl.target = "_blank";
+  urlEl.rel = "noopener noreferrer";
+  urlEl.textContent = url || "(no URL)";
+  header.appendChild(urlEl);
+
+  const chipRow = document.createElement("div");
+  chipRow.className = "ct-card-chip-row";
+
+  const chipTheme = document.createElement("span");
+  chipTheme.className = "ct-chip ct-chip--theme";
+  chipTheme.textContent = `Theme: ${themeId}`;
+  chipRow.appendChild(chipTheme);
+
+  const chipMood = document.createElement("span");
+  chipMood.className = "ct-chip ct-chip--mood";
+  chipMood.textContent = "Mode: contextual";
+  chipRow.appendChild(chipMood);
+
+  header.appendChild(chipRow);
+  card.appendChild(header);
+
+  // Body
+  const body = document.createElement("div");
+  body.className = "ct-card-body";
+
+  if (!hasComments) {
+    const p = document.createElement("p");
+    p.className = "ct-comment-text ct-comment-text--faded";
+    p.textContent = "No comments generated for this URL.";
+    body.appendChild(p);
+  } else {
+    comments.forEach((rawComment, idx) => {
+      const { native, english } = splitComment(rawComment || "");
+      const block = document.createElement("div");
+      block.className = "ct-comment-block";
+
+      const label = document.createElement("div");
+      label.className = "ct-comment-label";
+      label.textContent = `Comment ${idx + 1}`;
+      block.appendChild(label);
+
+      const nativeP = document.createElement("p");
+      nativeP.className = "ct-comment-text";
+      nativeP.textContent = native || "(empty)";
+      block.appendChild(nativeP);
+
+      if (english) {
+        const enP = document.createElement("p");
+        enP.className = "ct-comment-text ct-comment-text--faded";
+        enP.textContent = english;
+        block.appendChild(enP);
       }
+
+      // per-comment copy controls
+      const actions = document.createElement("div");
+      actions.className = "ct-card-actions";
+
+      const btnNative = document.createElement("button");
+      btnNative.className = "ct-card-btn";
+      btnNative.textContent = "⧉ Native";
+      btnNative.addEventListener("click", () => {
+        copyText(native, `Native · C${idx + 1}`);
+      });
+
+      const btnEn = document.createElement("button");
+      btnEn.className = "ct-card-btn";
+      btnEn.textContent = "⧉ EN";
+      btnEn.addEventListener("click", () => {
+        const text = english || native;
+        copyText(text, `English · C${idx + 1}`);
+      });
+
+      const btnBoth = document.createElement("button");
+      btnBoth.className = "ct-card-btn";
+      btnBoth.textContent = "⧉ Both";
+      btnBoth.addEventListener("click", () => {
+        const parts = [];
+        if (native) parts.push(native);
+        if (english) parts.push(english);
+        const finalText = parts.join("\n\n");
+        copyText(finalText, `Both · C${idx + 1}`);
+      });
+
+      actions.appendChild(btnNative);
+      actions.appendChild(btnEn);
+      actions.appendChild(btnBoth);
+      block.appendChild(actions);
+
+      body.appendChild(block);
     });
   }
 
-  return out;
+  card.appendChild(body);
+
+  // Footer meta (simple)
+  const metaFooter = document.createElement("div");
+  metaFooter.className = "ct-meta-footer";
+
+  const metaLeft = document.createElement("span");
+  metaLeft.className = "ct-meta-keywords";
+  metaLeft.textContent = `Index: ${index + 1}/${totalCount}`;
+  const metaRight = document.createElement("span");
+  metaRight.textContent = "CrownTALK offline engine";
+
+  metaFooter.appendChild(metaLeft);
+  metaFooter.appendChild(metaRight);
+  card.appendChild(metaFooter);
+
+  // Card-level actions (reroll)
+  const footerActions = document.createElement("div");
+  footerActions.className = "ct-card-actions";
+
+  const btnReroll = document.createElement("button");
+  btnReroll.className = "ct-card-btn";
+  btnReroll.textContent = "🔁 Reroll";
+  btnReroll.addEventListener("click", () => {
+    if (!url) return;
+    rerollSingle(url, card);
+  });
+
+  footerActions.appendChild(btnReroll);
+  card.appendChild(footerActions);
 }
 
-// extract meta info safely
-function getMeta(item) {
-  const meta = item.meta || {};
-  const themeLabel =
-    meta.theme_label || meta.themeLabel || meta.theme || null;
-  const moodLabel =
-    meta.mood_label || meta.moodLabel || meta.mood || null;
-  const langLabel =
-    meta.lang_label || meta.langLabel || meta.lang || null;
-  const preview =
-    meta.preview || meta.excerpt || meta.tweet_preview || null;
+/* ------------------ Reroll ------------------ */
 
-  return { themeLabel, moodLabel, langLabel, preview };
+async function rerollSingle(url, cardNode) {
+  if (!url) return;
+
+  setStatus("Rerolling…", "ok");
+  cardNode.style.opacity = "0.55";
+
+  try {
+    const res = await fetch(REROLL_URL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+
+    const data = await res.json();
+    if (data && !data.error && Array.isArray(data.comments)) {
+      fillCardContent(cardNode, { url: data.url || url, comments: data.comments }, 0, 1);
+      setStatus("Reroll done", "ok");
+    } else {
+      console.error("Reroll failed", data && data.error);
+      setStatus("Reroll failed", "error");
+    }
+  } catch (err) {
+    console.error("Reroll network error", err);
+    setStatus("Reroll failed (network)", "error");
+  } finally {
+    cardNode.style.opacity = "1";
+  }
 }
 
-// ---------- Main flow ----------
+/* ------------------ Main Generate Flow ------------------ */
 
-generateBtn.addEventListener("click", async () => {
-  const raw = urlInput.value.trim();
-  if (!raw) return;
-
+async function handleGenerate() {
+  const raw = (els.urlsInput && els.urlsInput.value) || "";
   const urls = parseUrls(raw);
-  if (urls.length === 0) return;
 
-  clearOutputs();
-  progressEl.textContent = `Processing ${urls.length} URLs...`;
-  progressBarFill.style.width = "5%";
+  if (!urls.length) {
+    setStatus("Paste at least one URL", "error");
+    return;
+  }
+
+  if (currentController) {
+    setStatus("Already running, cancel first", "error");
+    return;
+  }
 
   cancelled = false;
   currentController = new AbortController();
-  setGenerating(true);
+
+  clearResults();
+  setSkeletonVisible(true);
+  setProgress(5, `Queued ${urls.length} tweets…`);
+  setStatus("Contacting backend…", "ok");
+  setRunning(true);
 
   try {
-    const payload = {
-      urls,
-      theme: currentCommentTheme   // backend can use or ignore
-    };
-
-    const res = await fetch(commentURL, {
+    const res = await fetch(COMMENT_URL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-      signal: currentController.signal
+      body: JSON.stringify({ urls }),
+      signal: currentController.signal,
     });
 
     if (!res.ok) {
-      if (!cancelled) {
-        progressEl.textContent = "Backend error while processing.";
-        progressBarFill.style.width = "100%";
-      }
+      setSkeletonVisible(false);
+      setStatus(`Backend error (HTTP ${res.status})`, "error");
+      setProgress(100, "Error");
       return;
     }
 
     const data = await res.json();
-    if (cancelled) return;
+    if (cancelled) {
+      setSkeletonVisible(false);
+      setStatus("Run cancelled", "error");
+      setProgress(0, "Cancelled");
+      return;
+    }
 
     const batches = (data && data.batches) || [];
-
     let totalResults = 0;
     let totalFailed = 0;
-    const totalBatches = Math.max(batches.length, 1);
+    const totalExpected = urls.length || 1;
 
-    let delay = 50;
+    setSkeletonVisible(false);
+    clearResults();
 
-    batches.forEach((batch, idx) => {
-      if (cancelled) return;
-      const batchIndex = batch.batch || idx + 1;
-      const batchResults = batch.results || [];
-      const batchFailed = batch.failed || [];
+    batches.forEach((batch, batchIdx) => {
+      const batchResults = (batch && batch.results) || [];
+      const batchFailed = (batch && batch.failed) || [];
 
-      totalResults += batchResults.length;
-      totalFailed += batchFailed.length;
-
-      const progressChunk = ((idx + 1) / totalBatches) * 100;
-      progressEl.textContent = `Batch ${batchIndex} done (${idx + 1}/${totalBatches})`;
-      progressBarFill.style.width = `${progressChunk}%`;
-
-      batchResults.forEach(item => {
+      batchResults.forEach((item, idx) => {
         if (cancelled) return;
-
-        const skeletonBlock = createSkeletonBlock(item.url);
-        resultsEl.appendChild(skeletonBlock);
-
-        setTimeout(() => {
-          if (!cancelled) {
-            fillResultBlock(skeletonBlock, item);
-            updateCounts(totalResults, totalFailed);
-          }
-        }, delay);
-
-        delay += 120;
+        totalResults += 1;
+        const percent = 10 + Math.round((totalResults / totalExpected) * 80);
+        setProgress(percent, `Rendering ${totalResults}/${totalExpected}…`);
+        renderResultCard(item, totalResults - 1, totalExpected);
       });
 
-      batchFailed.forEach(item => {
-        if (cancelled) return;
-        renderFailed(item);
+      batchFailed.forEach((f) => {
+        totalFailed += 1;
+        renderFailedCard(f);
       });
+
+      if (!cancelled) {
+        setStatus(`Batch ${batchIdx + 1} done`, "ok");
+      }
     });
 
-    if (batches.length === 0) {
-      progressEl.textContent = "No valid URLs found.";
-      progressBarFill.style.width = "100%";
+    if (!batches.length) {
+      setStatus("No valid URLs found", "error");
+      setProgress(100, "Done");
     } else {
-      setTimeout(() => {
-        if (!cancelled) {
-          progressEl.textContent = "All batches completed!";
-          progressBarFill.style.width = "100%";
-          updateCounts(totalResults, totalFailed);
-        }
-      }, delay + 150);
+      setProgress(100, "Completed");
+      if (!cancelled) {
+        setStatus("Done", "ok");
+      }
     }
   } catch (err) {
-    if (cancelled) {
-      progressEl.textContent = "Generation cancelled.";
-      progressBarFill.style.width = "0%";
+    if (err.name === "AbortError") {
+      setStatus("Run cancelled", "error");
+      setSkeletonVisible(false);
+      setProgress(0, "Cancelled");
     } else {
-      console.error(err);
-      progressEl.textContent = "Network error while contacting backend.";
-      progressBarFill.style.width = "100%";
+      console.error("Generate failed", err);
+      setStatus("Network / server error", "error");
+      setSkeletonVisible(false);
+      setProgress(100, "Error");
     }
   } finally {
-    setGenerating(false);
+    setRunning(false);
     currentController = null;
   }
-});
-
-cancelBtn.addEventListener("click", () => {
-  if (!currentController) return;
-  cancelled = true;
-  currentController.abort();
-  setGenerating(false);
-  progressEl.textContent = "Generation cancelled.";
-  progressBarFill.style.width = "0%";
-});
-
-clearBtn.addEventListener("click", () => {
-  urlInput.value = "";
-  clearOutputs();
-});
-
-// ---------- Rendering helpers ----------
-
-function createSkeletonBlock(url) {
-  const block = document.createElement("div");
-  block.className = "result-block skeleton";
-
-  const link = document.createElement("a");
-  link.href = url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  link.textContent = url;
-
-  const skeletonWrapper = document.createElement("div");
-  skeletonWrapper.className = "skeleton-bars";
-
-  const bar1 = document.createElement("div");
-  bar1.className = "skeleton-bar";
-  const bar2 = document.createElement("div");
-  bar2.className = "skeleton-bar";
-
-  const typing = document.createElement("div");
-  typing.className = "typing-indicator";
-  typing.innerHTML = `
-      generating<span class="typing-dots">
-        <span></span><span></span><span></span>
-      </span>
-  `;
-
-  skeletonWrapper.appendChild(bar1);
-  skeletonWrapper.appendChild(bar2);
-
-  block.appendChild(link);
-  block.appendChild(skeletonWrapper);
-  block.appendChild(typing);
-
-  return block;
 }
 
-function fillResultBlock(block, item) {
-  block.classList.remove("skeleton");
-  block.innerHTML = "";
+function renderFailedCard(item) {
+  if (!els.resultsList) return;
+  const card = document.createElement("article");
+  card.className = "ct-card";
 
-  // header row with link + single reroll button
-  const headerRow = document.createElement("div");
-  headerRow.className = "comment-header-row";
+  const header = document.createElement("div");
+  header.className = "ct-card-header";
 
-  const link = document.createElement("a");
-  link.href = item.url;
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  link.textContent = item.url;
+  const urlEl = document.createElement("a");
+  urlEl.className = "ct-card-url";
+  urlEl.href = item.url || "#";
+  urlEl.target = "_blank";
+  urlEl.rel = "noopener noreferrer";
+  urlEl.textContent = item.url || "(invalid URL)";
+  header.appendChild(urlEl);
 
-  const rerollBtn = document.createElement("button");
-  rerollBtn.className = "reroll-btn";
-  rerollBtn.textContent = "re-roll";
-  rerollBtn.dataset.url = item.url;
+  const chipRow = document.createElement("div");
+  chipRow.className = "ct-card-chip-row";
 
-  headerRow.appendChild(link);
-  headerRow.appendChild(rerollBtn);
-  block.appendChild(headerRow);
+  const chipErr = document.createElement("span");
+  chipErr.className = "ct-chip";
+  chipErr.textContent = "Failed";
+  chipRow.appendChild(chipErr);
 
-  // meta chips + tweet preview (if backend provides)
-  const { themeLabel, moodLabel, langLabel, preview } = getMeta(item);
+  header.appendChild(chipRow);
+  card.appendChild(header);
 
-  if (themeLabel || moodLabel || langLabel) {
-    const metaRow = document.createElement("div");
-    metaRow.className = "meta-row";
+  const body = document.createElement("div");
+  body.className = "ct-card-body";
 
-    if (themeLabel) {
-      const chip = document.createElement("span");
-      chip.className = "meta-chip theme-chip";
-      chip.textContent = `Theme: ${themeLabel}`;
-      metaRow.appendChild(chip);
-    }
+  const p = document.createElement("p");
+  p.className = "ct-comment-text ct-comment-text--faded";
+  p.textContent = item.reason || "Unknown error";
+  body.appendChild(p);
 
-    if (moodLabel) {
-      const chip = document.createElement("span");
-      chip.className = "meta-chip mood-chip";
-      chip.textContent = `Mood: ${moodLabel}`;
-      metaRow.appendChild(chip);
-    }
+  card.appendChild(body);
+  els.resultsList.appendChild(card);
+}
 
-    if (langLabel) {
-      const chip = document.createElement("span");
-      chip.className = "meta-chip lang-chip";
-      chip.textContent = `Lang: ${langLabel}`;
-      metaRow.appendChild(chip);
-    }
+/* ------------------ Handlers ------------------ */
 
-    block.appendChild(metaRow);
+function handleCancel() {
+  if (currentController) {
+    cancelled = true;
+    currentController.abort();
+  }
+}
+
+function handleClear() {
+  if (els.urlsInput) els.urlsInput.value = "";
+  setStatus("Input cleared", "ok");
+}
+
+/** Theme click (visual only) */
+function handleThemeClick(event) {
+  const btn = event.target.closest(".ct-theme-btn");
+  if (!btn || !els.themeGrid) return;
+  els.themeGrid
+    .querySelectorAll(".ct-theme-btn")
+    .forEach((b) => b.classList.remove("is-active"));
+  btn.classList.add("is-active");
+}
+
+/* ------------------ Init ------------------ */
+
+function init() {
+  // backend label
+  if (els.backendUrl) {
+    els.backendUrl.textContent = backendBase;
   }
 
-  if (preview) {
-    const previewEl = document.createElement("div");
-    previewEl.className = "tweet-preview";
-    previewEl.textContent = truncate(preview, 160);
-    block.appendChild(previewEl);
+  // hide language-mode block (you said you don't want it)
+  const langOptions = document.getElementById("ct-lang-options");
+  if (langOptions) {
+    const block = langOptions.closest(".ct-section-block");
+    if (block) block.style.display = "none";
   }
 
-  // comments (multi-lang + EN copy)
-  const comments = normalizeCommentsFromItem(item);
-  const toRender = comments.length > 0 ? comments : [{ native: "No comment", english: null }];
-
-  toRender.forEach(({ native, english }) => {
-    const line = document.createElement("div");
-    line.className = "comment-line";
-
-    const span = document.createElement("span");
-    span.className = "comment-text";
-    span.textContent = english && english !== native
-      ? `${native} (${english})`
-      : native;
-
-    const buttonGroup = document.createElement("div");
-    buttonGroup.style.display = "flex";
-    buttonGroup.style.gap = "6px";
-
-    // native copy
-    const copyBtn = document.createElement("button");
-    copyBtn.className = "copy-btn";
-    copyBtn.textContent = "copy";
-    copyBtn.dataset.text = native || english || "";
-    buttonGroup.appendChild(copyBtn);
-
-    // english copy if available
-    if (english && english !== native) {
-      const copyEnBtn = document.createElement("button");
-      copyEnBtn.className = "copy-btn copy-btn-en";
-      copyEnBtn.textContent = "EN";
-      copyEnBtn.dataset.text = english;
-      buttonGroup.appendChild(copyEnBtn);
-    }
-
-    line.appendChild(span);
-    line.appendChild(buttonGroup);
-    block.appendChild(line);
-  });
-
-  // trigger highlight animation (initial + reroll)
-  block.classList.remove("flash-highlight");
-  // force reflow so animation can restart
-  void block.offsetWidth;
-  block.classList.add("flash-highlight");
-}
-
-function renderFailed(item) {
-  const div = document.createElement("div");
-  div.className = "failed-entry";
-  div.textContent = `Failed: ${item.url} — ${item.reason}`;
-  failedEl.appendChild(div);
-}
-
-// ---------- Clipboard history ----------
-
-function pushHistory(text) {
-  if (!text) return;
-  clipboardHistory.unshift(text);
-  clipboardHistory = clipboardHistory.slice(0, 20);
-  renderHistory();
-}
-
-function renderHistory() {
-  historyEl.innerHTML = "";
-  if (clipboardHistory.length === 0) {
-    const empty = document.createElement("div");
-    empty.className = "history-entry";
-    empty.innerHTML = "<span class='history-text'>No copied comments yet.</span>";
-    historyEl.appendChild(empty);
-    return;
+  if (els.btnGenerate) {
+    els.btnGenerate.addEventListener("click", handleGenerate);
+  }
+  if (els.btnCancel) {
+    els.btnCancel.addEventListener("click", handleCancel);
+  }
+  if (els.btnClear) {
+    els.btnClear.addEventListener("click", handleClear);
+  }
+  if (els.themeGrid) {
+    els.themeGrid.addEventListener("click", handleThemeClick);
   }
 
-  clipboardHistory.forEach(txt => {
-    const entry = document.createElement("div");
-    entry.className = "history-entry";
-
-    const span = document.createElement("span");
-    span.className = "history-text";
-    span.textContent = txt;
-
-    const btn = document.createElement("button");
-    btn.className = "copy-btn";
-    btn.textContent = "copy";
-    btn.dataset.text = txt;
-
-    entry.appendChild(span);
-    entry.appendChild(btn);
-    historyEl.appendChild(entry);
-  });
-}
-
-clearHistoryBtn.addEventListener("click", () => {
-  clipboardHistory = [];
-  renderHistory();
-});
-
-renderHistory();
-
-// ---------- Global click handler: copy + reroll ----------
-
-document.addEventListener("click", async e => {
-  const target = e.target;
-
-  // copy (native or EN or history)
-  if (target.classList.contains("copy-btn")) {
-    const text = target.dataset.text || "";
-    if (!text) return;
-
-    try {
-      await navigator.clipboard.writeText(text);
-      pushHistory(text);
-
-      const old = target.textContent;
-      target.textContent = "copied";
-      target.disabled = true;
-      setTimeout(() => {
-        target.textContent = old;
-        target.disabled = false;
-      }, 900);
-    } catch (err) {
-      console.error("Copy failed", err);
-    }
-    return;
-  }
-
-  // per-tweet re-roll (single button per tweet)
-  if (target.classList.contains("reroll-btn")) {
-    const url = target.dataset.url;
-    if (!url) return;
-
-    const block = target.closest(".result-block");
-    if (!block) return;
-
-    target.disabled = true;
-    const oldLabel = target.textContent;
-    target.textContent = "re-rolling...";
-
-    const tempIndicator = document.createElement("div");
-    tempIndicator.className = "typing-indicator";
-    tempIndicator.innerHTML =
-      `refreshing<span class="typing-dots"><span></span><span></span><span></span></span>`;
-    block.appendChild(tempIndicator);
-
-    try {
-      const res = await fetch(rerollURL, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ url, theme: currentCommentTheme })
-      });
-      const data = await res.json();
-
-      if (data && !data.error) {
-        fillResultBlock(block, {
-          url: data.url || url,
-          comments: data.comments,
-          comment: data.comment,
-          meta: data.meta
-        });
+  if (els.historyToggleBtn) {
+    els.historyToggleBtn.addEventListener("click", () => {
+      if (els.historyDrawer && els.historyDrawer.classList.contains("is-open")) {
+        closeHistoryDrawer();
       } else {
-        console.error("Reroll failed", data && data.error);
+        openHistoryDrawer();
       }
-    } catch (err) {
-      console.error("Reroll network error", err);
-    } finally {
-      target.disabled = false;
-      target.textContent = oldLabel;
-      tempIndicator.remove();
-    }
+    });
   }
-});
+
+  if (els.historyCloseBtn) {
+    els.historyCloseBtn.addEventListener("click", closeHistoryDrawer);
+  }
+
+  if (els.historyClearBtn) {
+    els.historyClearBtn.addEventListener("click", () => {
+      clipboardHistory = [];
+      renderClipboardHistory();
+    });
+  }
+
+  // ESC closes history
+  window.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") closeHistoryDrawer();
+  });
+
+  renderClipboardHistory();
+  setStatus("Ready", "ok");
+  setProgress(0, "Idle");
+}
+
+document.addEventListener("DOMContentLoaded", init);
