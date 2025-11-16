@@ -37,21 +37,23 @@ body {
 
 .ct-root {
   min-height: 100vh;
-  padding: 20px 16px 24px;
+  /* extra top padding so header sits nicely under the crown */
+  padding: 140px 16px 24px;
   max-width: 1120px;
   margin: 0 auto;
   position: relative;
   overflow-x: hidden;
 }
 
-/* Floating logo */
+/* Floating logo (centered at top) */
 
 .ct-logo-orbit {
   position: fixed;
-  inset-inline-start: 18px;
-  inset-block-start: 18px;
-  width: 70px;
-  height: 70px;
+  inset-block-start: 24px;
+  inset-inline: 0;
+  margin-inline: auto;
+  width: 80px;
+  height: 80px;
   pointer-events: none;
   z-index: 30;
 }
@@ -77,20 +79,21 @@ body {
   animation: ct-logo-float 4.6s infinite ease-in-out;
 }
 
-/* Header */
+/* Header (centered hero under crown) */
 
 .ct-header {
   display: flex;
-  flex-wrap: wrap;
-  align-items: flex-end;
-  justify-content: space-between;
-  gap: 16px;
-  padding-inline-start: 86px;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  text-align: center;
+  padding-inline-start: 0;
   margin-block-end: 20px;
 }
 
 .ct-header-main {
-  max-width: 540px;
+  max-width: 640px;
 }
 
 .ct-title {
@@ -120,9 +123,10 @@ body {
 
 .ct-header-meta {
   display: flex;
-  flex-direction: column;
+  flex-wrap: wrap;
   gap: 8px;
-  align-items: flex-end;
+  justify-content: center;
+  align-items: center;
 }
 
 .ct-pill {
@@ -234,7 +238,7 @@ body {
   box-shadow: 0 0 0 1px rgba(255, 204, 77, 0.6);
 }
 
-/* Theme grid */
+/* Theme grid / language split */
 
 .ct-section-split {
   display: grid;
@@ -780,7 +784,7 @@ body {
 
 @media (max-width: 900px) {
   .ct-header {
-    padding-inline-start: 76px;
+    padding-inline-start: 0;
   }
   .ct-main {
     grid-template-columns: minmax(0, 1fr);
@@ -798,11 +802,12 @@ body {
   }
 
   .ct-logo-orbit {
-    position: absolute;
-    inset-inline-start: 10px;
-    inset-block-start: 10px;
-    width: 58px;
-    height: 58px;
+    position: fixed;
+    inset-inline: 0;
+    inset-block-start: 16px;
+    margin-inline: auto;
+    width: 64px;
+    height: 64px;
   }
 
   .ct-section-split {
@@ -824,91 +829,3 @@ body {
     width: auto;
   }
 }
-
-/* COMMENT THEME (tone buttons) --------------------------- */
-
-.comment-theme-group {
-  margin-top: 10px;
-  margin-bottom: 4px;
-}
-
-.comment-theme-label-row {
-  display: flex;
-  align-items: baseline;
-  justify-content: space-between;
-  gap: 8px;
-}
-
-.comment-theme-hint {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
-.comment-theme-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin-top: 6px;
-}
-
-.comment-theme-btn {
-  padding: 4px 10px;
-  font-size: 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(148,163,184,0.5);
-  background: rgba(15,23,42,0.4);
-  color: var(--text-muted);
-}
-
-.comment-theme-btn.active {
-  background: var(--accent-soft-strong);
-  color: #f9fafb;
-  border-color: var(--accent);
-}
-
-/* META CHIPS + TWEET PREVIEW ----------------------------- */
-
-.meta-row {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 6px;
-  margin: 2px 0 4px;
-}
-
-.meta-chip {
-  font-size: 11px;
-  padding: 2px 8px;
-  border-radius: 999px;
-  background: var(--chip-bg);
-  border: 1px solid rgba(148,163,184,0.55);
-  color: var(--text-muted);
-}
-
-.theme-chip {
-  border-color: var(--accent);
-}
-
-.mood-chip {
-  border-color: rgba(250,204,21,0.8);
-}
-
-.tweet-preview {
-  font-size: 12px;
-  color: var(--text-muted);
-  margin-bottom: 4px;
-  line-height: 1.4;
-}
-
-.tweet-preview::before {
-  content: "Tweet: ";
-  font-weight: 500;
-  color: var(--text-main);
-}
-
-/* mobile: let chips wrap nicely */
-@media (max-width: 720px) {
-  .comment-theme-row {
-    justify-content: flex-start;
-  }
-}
-
