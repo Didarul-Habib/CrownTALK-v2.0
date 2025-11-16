@@ -125,7 +125,7 @@ generateBtn.addEventListener("click", async () => {
     const data = await res.json();
     if (cancelled) return;
 
-    const batches = data.batches || [];
+    const batches = (data && data.batches) || [];
 
     let totalResults = 0;
     let totalFailed = 0;
@@ -305,6 +305,12 @@ function fillResultBlock(block, item) {
     line.appendChild(buttonGroup);
     block.appendChild(line);
   });
+
+  // trigger highlight animation (initial + reroll)
+  block.classList.remove("flash-highlight");
+  // force reflow so animation can restart
+  void block.offsetWidth;
+  block.classList.add("flash-highlight");
 }
 
 function renderFailed(item) {
