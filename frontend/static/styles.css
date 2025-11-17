@@ -768,50 +768,205 @@ button {
   gap: 6px;
 }
 
-/* Buttons on tweet */
+/* Tweet copy buttons (results list) ---------------------- */
+/* Uses CSS-only animation: "Copy" -> "Copied" */
+
 .copy-btn,
-.copy-btn-en,
-.reroll-btn {
+.copy-btn-en {
+  position: relative;
+  min-width: 78px;
+  height: 26px;
+  padding: 0;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.9);
-  padding: 4px 9px;
-  background: rgba(15, 23, 42, 0.01);
-  color: var(--text-muted);
-  font-size: 11px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
+  border: none;
   cursor: pointer;
+  overflow: hidden;
+  background-color: #f2f7fa;
+  color: transparent; /* hide original text, we render via ::before/::after */
+  font-size: 11px;
+  font-weight: 600;
+  text-transform: none;
+  letter-spacing: 0;
   display: inline-flex;
   align-items: center;
-  gap: 4px;
+  justify-content: center;
+  outline: none;
+  transition:
+    background-color 0.4s ease,
+    transform 0.08s ease,
+    box-shadow 0.2s ease;
 }
 
-.copy-btn-en {
-  border-style: dashed;
+/* default state label */
+.copy-btn::before,
+.copy-btn-en::before {
+  content: "Copy";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  color: #0e418f;
+  white-space: nowrap;
+  transition:
+    transform 0.5s ease,
+    opacity 0.5s ease;
+  opacity: 1;
 }
 
+/* "Copied" label, hidden initially */
+.copy-btn::after,
+.copy-btn-en::after {
+  content: "Copied";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, 100%);
+  color: #b5ccf3;
+  white-space: nowrap;
+  opacity: 0;
+  transition:
+    transform 0.5s ease,
+    opacity 0.5s ease 0.2s;
+}
+
+/* hover = subtle lift */
 .copy-btn:hover,
-.copy-btn-en:hover,
-.reroll-btn:hover {
-  background: rgba(15, 23, 42, 0.06);
+.copy-btn-en:hover {
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.4);
+  transform: translateY(-0.5px);
 }
 
-.reroll-btn {
-  border-color: rgba(96, 165, 250, 0.8);
+/* click/focus = animate to "Copied" */
+.copy-btn:focus,
+.copy-btn-en:focus {
+  background-color: #0e418f;
 }
 
-.copy-btn,
-.copy-btn-en {
-  transition: transform 0.1s ease, box-shadow 0.15s ease;
+/* move "Copy" up + fade out */
+.copy-btn:focus::before,
+.copy-btn-en:focus::before {
+  transform: translate(-50%, -150%);
+  opacity: 0;
 }
 
+/* bring "Copied" into center */
+.copy-btn:focus::after,
+.copy-btn-en:focus::after {
+  transform: translate(-50%, -50%);
+  opacity: 1;
+}
+
+/* tiny press effect */
 .copy-btn:active,
 .copy-btn-en:active {
-  transform: scale(0.96) translateY(1px);
-  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.5);
+  transform: translateY(1px) scale(0.98);
+  box-shadow: none;
 }
 
+/* REROLL button (round 3D "Re-roll") -------------------- */
+/* Still uses class="reroll-btn" so your JS keeps working */
 
+.reroll-btn {
+  --primary: 96, 165, 250;   /* outer glow color (blueish) */
+  --secondary: 37, 99, 235;  /* inner darker color */
+
+  position: relative;
+  width: 60px;
+  height: 46px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  cursor: pointer;
+  user-select: none;
+  touch-action: manipulation;
+  background: transparent;
+  outline: 8px solid rgba(var(--primary), 0.3);
+  transition:
+    outline-color 0.3s ease,
+    transform 0.15s ease;
+}
+
+/* back circle */
+.reroll-btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: 50%;
+  background: rgb(var(--secondary));
+}
+
+/* front circle + text */
+.reroll-btn::after {
+  content: "Re-roll";
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  border-radius: 50%;
+  background: linear-gradient(
+    0deg,
+    rgba(var(--primary), 0.6) 20%,
+    rgba(var(--primary), 1) 50%
+  );
+  box-shadow: 0 0.5em 1em -0.2em rgba(var(--secondary), 0.5);
+  border: 1px solid rgb(var(--secondary));
+  transform: translateY(-15%);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-size: 0.65rem;
+  font-weight: 600;
+  font-family: inherit;
+  color: rgb(var(--secondary));
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  transition:
+    transform 0.15s ease,
+    box-shadow 0.15s ease;
+}
+
+/* hover: stronger outline glow */
+.reroll-btn:hover {
+  outline-color: rgba(var(--primary), 0.6);
+}
+
+/* press: drop down, remove shadow */
+.reroll-btn:active::after {
+  transform: translateY(0%);
+  box-shadow: none;
+}
+
+/* Reroll also gets tiny press movement on the button */
+.reroll-btn:active {
+  transform: translateY(1px);
+}
+
+/* Clipboard history copy button ------------------------- */
+/* Keep this simpler pill style, separate from fancy ones */
+
+.history-copy-btn {
+  border-radius: 999px;
+  border: 1px solid rgba(148, 163, 184, 0.8);
+  padding: 3px 8px;
+  font-size: 10px;
+  background: rgba(15, 23, 42, 0.01);
+  color: var(--text-muted);
+  cursor: pointer;
+  transition:
+    background-color 0.15s ease,
+    transform 0.08s ease,
+    box-shadow 0.15s ease;
+}
+
+.history-copy-btn:hover {
+  background: rgba(15, 23, 42, 0.08);
+  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.45);
+  transform: translateY(-0.5px);
+}
+
+.history-copy-btn:active {
+  transform: translateY(1px) scale(0.97);
+  box-shadow: none;
+}
 
 
 /* Comments */
