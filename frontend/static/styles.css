@@ -881,6 +881,24 @@ button {
   color: var(--text-muted);
   cursor: pointer;
 }
+/* Tweet Card fade animation ----------------------------*/
+@keyframes tweetFadeIn {
+  from {
+    opacity: 0;
+    transform: translateY(4px);
+  }
+  to {
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+.tweet {
+  animation: tweetFadeIn 0.25s ease-out;
+}
+
+/* Tweet Card fade animation ----------------------------*/
+
 
 /* FOOTER ------------------------------------------------- */
 
