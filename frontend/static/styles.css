@@ -215,17 +215,19 @@ html[data-theme="texture"] body {
   width: 76px;
   height: 76px;
   border-radius: 999px;
-  background: radial-gradient(circle at 30% 20%, #111827, #020617 70%);
+  /* remove inner gradient so we don't see a rectangle edge */
+  background: transparent;
   display: flex;
   align-items: center;
   justify-content: center;
-  overflow: hidden;
+  overflow: hidden; /* crops image into a circle */
 }
 
 .hero-orbit-inner img {
-  width: 70px;
-  height: 70px;
-  object-fit: contain;
+  width: 120%;
+  height: 120%;
+  object-fit: cover;  /* fill the circle */
+  border-radius: 50%; /* extra safety */
   display: block;
 }
 
