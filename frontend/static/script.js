@@ -1,698 +1,602 @@
-// CrownTALK EXTREME v3 – Frontend
-// - Up to 2 comments per tweet
-// - Each comment has its own copy button
-// - Comments based on tweet context, respecting multi-language logic (handled by backend)
-// - Links inside comments clickable + shortened
-// - Comment length clamped to 5–12 words
-// - Global color skin (gold / obsidian / emerald / violet)
+// ------------------------
+// Backend endpoints
+// ------------------------
+const backendBase = "https://crowntalk-v2-0.onrender.com";
+const commentURL = `${backendBase}/comment`;
+const rerollURL = `${backendBase}/reroll`;
 
-// ------------------ Backend config ------------------
+// ------------------------
+// DOM elements
+// ------------------------
+const urlInput = document.getElementById("urlInput");
+const generateBtn = document.getElementById("generateBtn");
+const cancelBtn = document.getElementById("cancelBtn");
+const clearBtn = document.getElementById("clearBtn");
 
-const BACKEND_BASE = "https://crowntalk-v2-0.onrender.com";
-const BACKEND_URL = `${BACKEND_BASE}/api/generate`;
+const progressEl = document.getElementById("progress");
+const progressBarFill = document.getElementById("progressBarFill");
 
-/** @type {AbortController | null} */
-let currentController = null;
+const resultsEl = document.getElementById("results");
+const failedEl = document.getElementById("failed");
+const resultCountEl = document.getElementById("resultCount");
+const failedCountEl = document.getElementById("failedCount");
 
-/** Clipboard history in memory */
-const clipboardHistory = [];
+const historyEl = document.getElementById("history");
+const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 
-/** DOM refs */
-const els = {
-  backendUrl: document.getElementById("ct-backend-url"),
-  urlsInput: document.getElementById("ct-urls-input"),
-  themeGrid: document.getElementById("ct-theme-grid"),
-  btnGenerate: document.getElementById("ct-generate-btn"),
-  btnCancel: document.getElementById("ct-cancel-btn"),
-  btnClear: document.getElementById("ct-clear-btn"),
-  progressFill: document.getElementById("ct-progress-fill"),
-  progressLabel: document.getElementById("ct-progress-label"),
-  statusPill: document.getElementById("ct-status-pill"),
-  skeletonContainer: document.getElementById("ct-skeleton-container"),
-  resultsList: document.getElementById("ct-results-list"),
-  historyDrawer: document.getElementById("ct-history-drawer"),
-  historyBody: document.getElementById("ct-history-body"),
-  historyCloseBtn: document.getElementById("ct-history-close-btn"),
-  historyClearBtn: document.getElementById("ct-history-clear-btn"),
-  historyToggleBtn: document.getElementById("ct-collapse-history-btn"),
-  colorThemeSwitcher: document.getElementById("ct-color-theme-switcher"),
-};
+const yearEl = document.getElementById("year");
 
-// Color theme config
-const COLOR_THEME_KEY = "crowntalk-color-theme";
-const ALLOWED_COLOR_THEMES = ["gold", "obsidian", "emerald", "violet"];
-const DEFAULT_COLOR_THEME = "gold";
+// theme dots
+const themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 
-// Frontend safety filters – avoid generic spammy talk
-const BANNED_PHRASES = [
-  "as an ai",
-  "in this digital age",
-  "slay",
-  "yass",
-  "bestie",
-  "queen",
-  "thoughts",
-  "agree",
-  "who's with me",
-  "whos with me",
-  "game changer",
-  "transformative",
-  "love this",
-  "love that",
-  "love it",
-  "amazing",
-  "awesome",
-  "incredible",
-  "finally",
-  "excited",
-];
+// ------------------------
+// State
+// ------------------------
+let cancelled = false;
+let historyItems = [];
 
-// ------------------ Helper functions ------------------
-
-function setStatus(status, type) {
-  if (!els.statusPill) return;
-  els.statusPill.textContent = status;
-  els.statusPill.classList.remove("ct-status-pill--ok", "ct-status-pill--error");
-  if (type === "ok") els.statusPill.classList.add("ct-status-pill--ok");
-  if (type === "error") els.statusPill.classList.add("ct-status-pill--error");
+// ------------------------
+// Utilities
+// ------------------------
+function parseURLs(raw) {
+  if (!raw) return [];
+  return raw
+    .split(/\r?\n/)
+    .map((line) => line.trim())
+    .filter(Boolean)
+    .map((line) => {
+      // remove "1. https://..."
+      line = line.replace(/^\s*\d+\.\s*/, "");
+      return line.trim();
+    });
 }
 
-function setProgress(percent, label) {
-  if (els.progressFill) {
-    const clamped = Math.max(0, Math.min(100, percent));
-    els.progressFill.style.width = `${clamped}%`;
-  }
-  if (label && els.progressLabel) {
-    els.progressLabel.textContent = label;
-  }
+function setProgressText(text) {
+  if (progressEl) progressEl.textContent = text || "";
 }
 
-function parseUrls(raw) {
-  const lines = raw.split(/\r?\n/).map((l) => l.trim());
-  const cleaned = [];
-  const seen = new Set();
-  for (const line of lines) {
-    if (!line) continue;
-    if (seen.has(line)) continue;
-    seen.add(line);
-    cleaned.push(line);
-  }
-  return cleaned;
+function setProgressRatio(ratio) {
+  if (!progressBarFill) return;
+  const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
+  progressBarFill.style.transform = `scaleX(${clamped})`;
 }
 
-function getActiveThemeId() {
-  if (!els.themeGrid) return "default";
-  const btn = els.themeGrid.querySelector(".ct-theme-btn.is-active");
-  return btn ? btn.dataset.themeId || "default" : "default";
+function resetProgress() {
+  setProgressText("");
+  setProgressRatio(0);
 }
 
-// HTML escaping + link formatting
-function escapeHtml(str) {
-  return str
-    .replace(/&/g, "&amp;")
-    .replace(/</g, "&lt;")
-    .replace(/>/g, "&gt;")
-    .replace(/"/g, "&quot;")
-    .replace(/'/g, "&#39;");
+function resetResults() {
+  resultsEl.innerHTML = "";
+  failedEl.innerHTML = "";
+  resultCountEl.textContent = "0 tweets";
+  failedCountEl.textContent = "0";
 }
 
-function shortenUrlLabel(url) {
-  if (!url) return "";
-  const noProto = url.replace(/^https?:\/\//, "");
-  if (noProto.length <= 42) return noProto;
-  return noProto.slice(0, 39) + "…";
-}
-
-function displayUrlLabel(url) {
-  if (!url) return "";
-  return shortenUrlLabel(url);
-}
-
-function formatCommentHtml(text) {
-  if (!text) return "";
-  const escaped = escapeHtml(text);
-  const withBreaks = escaped.replace(/\n/g, "<br>");
-  const urlRegex = /(https?:\/\/[^\s<]+)/g;
-  return withBreaks.replace(urlRegex, (match) => {
-    const label = shortenUrlLabel(match);
-    return `<a href="${match}" target="_blank" rel="noopener noreferrer">${label}</a>`;
-  });
-}
-
-// Remove banned phrases (case-insensitive) but keep rest of the text
-function stripBanned(text) {
-  if (!text) return "";
-  let result = text;
-  for (const phrase of BANNED_PHRASES) {
-    const safe = phrase.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
-    const re = new RegExp(safe, "gi");
-    result = result.replace(re, "");
-  }
-  return result.replace(/\s+/g, " ").trim();
-}
-
-// Enforce word count limits
-function clampWords(text, min = 5, max = 12) {
-  if (!text) return "";
-  const words = text.split(/\s+/).filter(Boolean);
-  if (!words.length) return "";
-
-  if (words.length > max) {
-    return words.slice(0, max).join(" ");
-  }
-
-  if (words.length < min) {
-    // pad by repeating last word so we never fall under min
-    const lastWord = words[words.length - 1];
-    while (words.length < min) {
-      words.push(lastWord);
+async function copyToClipboard(text) {
+  if (!text) return;
+  try {
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+      await navigator.clipboard.writeText(text);
+    } else {
+      const ta = document.createElement("textarea");
+      ta.value = text;
+      ta.style.position = "fixed";
+      ta.style.opacity = "0";
+      document.body.appendChild(ta);
+      ta.focus();
+      ta.select();
+      document.execCommand("copy");
+      document.body.removeChild(ta);
     }
+  } catch (err) {
+    console.error("Clipboard error", err);
   }
-
-  return words.join(" ");
 }
 
-// Full preprocessing step for a single comment string
-function preprocessComment(raw) {
-  const stripped = stripBanned(raw || "");
-  return clampWords(stripped, 5, 12);
+function formatTweetCount(count) {
+  const n = Number(count) || 0;
+  return `${n} tweet${n === 1 ? "" : "s"}`;
 }
 
-function setSkeletonVisible(visible) {
-  if (!els.skeletonContainer) return;
-  els.skeletonContainer.classList.toggle("is-hidden", !visible);
+// Textarea auto-grow: fixed base, grows with content
+function autoResizeTextarea() {
+  if (!urlInput) return;
+  urlInput.style.height = "auto";
+  const base = 180; // matches CSS min-height baseline
+  const newHeight = Math.max(base, urlInput.scrollHeight);
+  urlInput.style.height = newHeight + "px";
 }
 
-function clearResults() {
-  if (els.resultsList) els.resultsList.innerHTML = "";
+// ------------------------
+// History
+// ------------------------
+function addToHistory(text) {
+  if (!text) return;
+  const timestamp = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
+  historyItems.push({ text, timestamp });
+  renderHistory();
 }
 
-// ------------------ Clipboard history ------------------
-
-function pushClipboardHistory(entry) {
-  const timestamp = new Date();
-  clipboardHistory.unshift({ ...entry, time: timestamp });
-  if (clipboardHistory.length > 40) clipboardHistory.pop();
-  renderClipboardHistory();
-}
-
-function renderClipboardHistory() {
-  if (!els.historyBody) return;
-  const container = els.historyBody;
-  container.innerHTML = "";
-
-  if (!clipboardHistory.length) {
-    const p = document.createElement("p");
-    p.className = "ct-history-empty";
-    p.textContent = "Nothing copied yet. Copy a comment to see it here.";
-    container.appendChild(p);
+function renderHistory() {
+  historyEl.innerHTML = "";
+  if (!historyItems.length) {
+    historyEl.textContent = "Copied comments will show up here.";
     return;
   }
 
-  clipboardHistory.forEach((item) => {
-    const wrap = document.createElement("div");
-    wrap.className = "ct-history-item";
+  const items = [...historyItems].reverse();
 
-    const header = document.createElement("div");
-    header.className = "ct-history-item-header";
+  items.forEach((item) => {
+    const entry = document.createElement("div");
+    entry.className = "history-entry";
 
-    const themeSpan = document.createElement("span");
-    themeSpan.className = "ct-history-item-theme";
-    themeSpan.textContent = item.label || item.source || "Comment";
+    const textSpan = document.createElement("div");
+    textSpan.className = "history-text";
+    textSpan.textContent = item.text;
 
-    const timeSpan = document.createElement("span");
-    timeSpan.className = "ct-history-item-time";
-    timeSpan.textContent = item.time.toLocaleTimeString([], {
-      hour: "2-digit",
-      minute: "2-digit",
-    });
+    const right = document.createElement("div");
+    right.style.display = "flex";
+    right.style.flexDirection = "column";
+    right.style.alignItems = "flex-end";
+    right.style.gap = "4px";
 
-    const body = document.createElement("div");
-    body.className = "ct-history-item-body";
-    body.textContent = item.text || "";
+    const meta = document.createElement("div");
+    meta.className = "history-meta";
+    meta.textContent = item.timestamp;
 
-    header.appendChild(themeSpan);
-    header.appendChild(timeSpan);
-    wrap.appendChild(header);
-    wrap.appendChild(body);
-    container.appendChild(wrap);
+    const btn = document.createElement("button");
+    btn.className = "history-copy-btn";
+    btn.textContent = "Copy";
+    btn.dataset.text = item.text;
+
+    right.appendChild(meta);
+    right.appendChild(btn);
+
+    entry.appendChild(textSpan);
+    entry.appendChild(right);
+
+    historyEl.appendChild(entry);
   });
 }
 
-function copyText(text, meta) {
-  if (!text) return;
-  navigator.clipboard
-    .writeText(text)
-    .then(() => {
-      pushClipboardHistory({ text, ...meta });
-      setStatus("Copied to clipboard", "ok");
-    })
-    .catch(() => {
-      setStatus("Copy failed (clipboard blocked)", "error");
-    });
-}
+// ------------------------
+// Rendering helpers
+// ------------------------
+function buildTweetBlock(result) {
+  const url = result.url || "";
+  const comments = Array.isArray(result.comments) ? result.comments : [];
 
-// ------------------ History drawer ------------------
+  const tweet = document.createElement("div");
+  tweet.className = "tweet";
+  tweet.dataset.url = url;
 
-function openHistoryDrawer() {
-  if (!els.historyDrawer) return;
-  els.historyDrawer.classList.add("is-open");
-}
-
-function closeHistoryDrawer() {
-  if (!els.historyDrawer) return;
-  els.historyDrawer.classList.remove("is-open");
-}
-
-// ------------------ Color theme handling ------------------
-
-function applyColorTheme(themeId) {
-  if (!ALLOWED_COLOR_THEMES.includes(themeId)) {
-    themeId = DEFAULT_COLOR_THEME;
-  }
-
-  document.body.setAttribute("data-color-theme", themeId);
-
-  if (els.colorThemeSwitcher) {
-    const dots = els.colorThemeSwitcher.querySelectorAll("[data-color-theme]");
-    dots.forEach((btn) => {
-      const active = btn.getAttribute("data-color-theme") === themeId;
-      btn.classList.toggle("is-active", active);
-    });
-  }
-
-  try {
-    localStorage.setItem(COLOR_THEME_KEY, themeId);
-  } catch {
-    // ignore if storage not available
-  }
-}
-
-// ------------------ Comment collection + rendering ------------------
-
-// Supports multiple formats from backend:
-// - item.comments = [ "c1", "c2" ]
-// - item.comment = { en: "...", native: "...", ... }
-// - item.comment = "single string"
-function collectCommentsFromItem(item) {
-  const result = [];
-
-  if (Array.isArray(item.comments)) {
-    for (const c of item.comments) {
-      if (typeof c === "string") result.push(c);
-    }
-  }
-
-  const cObj = item.comment;
-  if (typeof cObj === "string") {
-    result.push(cObj);
-  } else if (cObj && typeof cObj === "object") {
-    Object.values(cObj).forEach((val) => {
-      if (typeof val === "string") result.push(val);
-    });
-  }
-
-  const unique = [];
-  const seen = new Set();
-  for (const raw of result) {
-    const trimmed = (raw || "").trim();
-    if (!trimmed) continue;
-    const key = trimmed.toLowerCase();
-    if (seen.has(key)) continue;
-    seen.add(key);
-    unique.push(trimmed);
-  }
-
-  // Up to 2 comments per tweet
-  return unique.slice(0, 2);
-}
-
-function renderCommentBlock(index, text, themeLabel, mood) {
-  if (!text) return null;
-
-  const block = document.createElement("div");
-  block.className = "ct-comment-block";
-
-  const labelRow = document.createElement("div");
-  labelRow.style.display = "flex";
-  labelRow.style.justifyContent = "space-between";
-  labelRow.style.alignItems = "center";
-  labelRow.style.gap = "6px";
-
-  const labelEl = document.createElement("div");
-  labelEl.className = "ct-comment-label";
-  labelEl.textContent = `Comment ${index}`;
-
-  const actions = document.createElement("div");
-  actions.className = "ct-card-actions";
-
-  const btnCopy = document.createElement("button");
-  btnCopy.className = "ct-card-btn";
-  btnCopy.textContent = "⧉ Copy";
-  btnCopy.addEventListener("click", () => {
-    copyText(text, {
-      label: `Comment ${index}`,
-      theme: themeLabel,
-      mood,
-    });
-  });
-
-  actions.appendChild(btnCopy);
-  labelRow.appendChild(labelEl);
-  labelRow.appendChild(actions);
-  block.appendChild(labelRow);
-
-  const p = document.createElement("p");
-  p.className = "ct-comment-text";
-  p.innerHTML = formatCommentHtml(text);
-  block.appendChild(p);
-
-  return block;
-}
-
-function fillCardFromItem(card, item) {
-  card.innerHTML = "";
-
-  const hasError = !!item.error;
-  const themeLabel =
-    (item.meta && (item.meta.theme_label || item.meta.theme_id)) ||
-    getActiveThemeId();
-  const mood = (item.meta && item.meta.mood) || "neutral";
-  const keywords = (item.meta && item.meta.keywords) || [];
-  const excerpt = (item.meta && item.meta.excerpt) || "";
-  const authorName = (item.meta && item.meta.author_name) || "";
-
-  // Header
+  // header
   const header = document.createElement("div");
-  header.className = "ct-card-header";
+  header.className = "tweet-header";
 
-  const urlEl = document.createElement("a");
-  urlEl.className = "ct-card-url";
-  urlEl.href = item.url || "#";
-  urlEl.target = "_blank";
-  urlEl.rel = "noopener noreferrer";
-  urlEl.textContent = displayUrlLabel(item.url || "");
-  header.appendChild(urlEl);
+  const link = document.createElement("a");
+  link.className = "tweet-link";
+  link.href = url;
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = url;
 
-  const chipRow = document.createElement("div");
-  chipRow.className = "ct-card-chip-row";
-
-  const chipTheme = document.createElement("span");
-  chipTheme.className = "ct-chip ct-chip--theme";
-  chipTheme.textContent = `Theme: ${themeLabel}`;
-  chipRow.appendChild(chipTheme);
-
-  const chipMood = document.createElement("span");
-  chipMood.className = "ct-chip ct-chip--mood";
-  chipMood.textContent = `Mood: ${mood}`;
-  chipRow.appendChild(chipMood);
-
-  if (hasError) {
-    const chipErr = document.createElement("span");
-    chipErr.className = "ct-chip";
-    chipErr.textContent = `Error: ${item.error}`;
-    chipRow.appendChild(chipErr);
-  }
-
-  header.appendChild(chipRow);
-
-  // Body
-  const body = document.createElement("div");
-  body.className = "ct-card-body";
-
-  if (hasError) {
-    const p = document.createElement("p");
-    p.className = "ct-comment-text ct-comment-text--faded";
-    p.textContent = item.message || "Something went wrong for this URL.";
-    body.appendChild(p);
-  } else {
-    const rawComments = collectCommentsFromItem(item);
-
-    if (!rawComments.length) {
-      const p = document.createElement("p");
-      p.className = "ct-comment-text ct-comment-text--faded";
-      p.textContent = "No comment returned for this tweet.";
-      body.appendChild(p);
-    } else {
-      rawComments.forEach((raw, idx) => {
-        const processed = preprocessComment(raw);
-        const block = renderCommentBlock(idx + 1, processed, themeLabel, mood);
-        if (block) body.appendChild(block);
-      });
-    }
-  }
-
-  // Meta footer
-  const metaFooter = document.createElement("div");
-  metaFooter.className = "ct-meta-footer";
-
-  const keywordsText = keywords.length ? keywords.join(", ") : "—";
-  const metaLeft = document.createElement("span");
-  metaLeft.className = "ct-meta-keywords";
-  metaLeft.textContent = `Keywords: ${keywordsText}`;
-
-  const metaRight = document.createElement("span");
-  const shortExcerpt =
-    excerpt && excerpt.length > 120 ? `${excerpt.slice(0, 117)}…` : excerpt;
-  metaRight.textContent =
-    (authorName ? `@${authorName}` : "unknown") +
-    (shortExcerpt ? ` · “${shortExcerpt}”` : "");
-
-  metaFooter.appendChild(metaLeft);
-  metaFooter.appendChild(metaRight);
-
-  // Footer actions (reroll)
   const actions = document.createElement("div");
-  actions.className = "ct-card-actions";
+  actions.className = "tweet-actions";
 
-  const btnReroll = document.createElement("button");
-  btnReroll.className = "ct-card-btn";
-  btnReroll.textContent = "🔁 Reroll";
-  btnReroll.addEventListener("click", () => {
-    rerollSingle(item.url, card);
-  });
-  actions.appendChild(btnReroll);
+  const rerollBtn = document.createElement("button");
+  rerollBtn.className = "reroll-btn";
+  rerollBtn.textContent = "Reroll";
 
-  card.appendChild(header);
-  card.appendChild(body);
-  card.appendChild(metaFooter);
-  card.appendChild(actions);
-}
+  actions.appendChild(rerollBtn);
+  header.appendChild(link);
+  header.appendChild(actions);
+  tweet.appendChild(header);
 
-function renderResultItem(item) {
-  if (!els.resultsList) return;
-  const card = document.createElement("article");
-  card.className = "ct-card";
-  fillCardFromItem(card, item);
-  els.resultsList.appendChild(card);
-}
+  const commentsWrap = document.createElement("div");
+  commentsWrap.className = "comments";
 
-// ------------------ Reroll logic ------------------
+  const hasNative = comments.some((c) => c && c.lang && c.lang !== "en");
+  const multilingual = hasNative;
 
-async function rerollSingle(url, cardNode) {
-  if (!url) return;
-  const theme = getActiveThemeId();
+  comments.forEach((comment, idx) => {
+    if (!comment || !comment.text) return;
 
-  const controller = new AbortController();
-
-  try {
-    setStatus("Rerolling…", "ok");
-    cardNode.style.opacity = "0.5";
-
-    const payload = {
-      urls: [url],
-      theme,
-    };
-
-    const res = await fetch(BACKEND_URL, {
-      method: "POST",
-      signal: controller.signal,
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
-    });
-
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-    const json = await res.json();
-    const batches = json.batches || [];
-    if (!batches.length || !batches[0].items || !batches[0].items[0]) {
-      throw new Error("Invalid reroll response");
+    const line = document.createElement("div");
+    line.className = "comment-line";
+    if (comment.lang) {
+      line.dataset.lang = comment.lang;
     }
-    const freshItem = batches[0].items[0];
-    fillCardFromItem(cardNode, freshItem);
-    setStatus("Reroll done", "ok");
-  } catch (err) {
-    console.error("Reroll failed", err);
-    setStatus("Reroll failed", "error");
-  } finally {
-    cardNode.style.opacity = "1";
+
+    const tag = document.createElement("span");
+    tag.className = "comment-tag";
+
+    if (multilingual) {
+      tag.textContent =
+        comment.lang === "en"
+          ? "EN"
+          : (comment.lang || "native").toUpperCase();
+    } else {
+      tag.textContent = `EN #${idx + 1}`;
+    }
+
+    const bubble = document.createElement("span");
+    bubble.className = "comment-text";
+    bubble.textContent = comment.text;
+
+    const copyBtn = document.createElement("button");
+    if (multilingual) {
+      if (comment.lang === "en") {
+        copyBtn.className = "copy-btn-en";
+        copyBtn.textContent = "Copy EN";
+      } else {
+        copyBtn.className = "copy-btn";
+        copyBtn.textContent = "Copy";
+      }
+    } else {
+      copyBtn.className = "copy-btn";
+      copyBtn.textContent = "Copy";
+    }
+    copyBtn.dataset.text = comment.text;
+
+    line.appendChild(tag);
+    line.appendChild(bubble);
+    line.appendChild(copyBtn);
+
+    commentsWrap.appendChild(line);
+  });
+
+  tweet.appendChild(commentsWrap);
+  return tweet;
+}
+
+function appendResultBlock(result) {
+  const block = buildTweetBlock(result);
+  resultsEl.appendChild(block);
+}
+
+function updateTweetBlock(tweetEl, result) {
+  if (!tweetEl) return;
+  tweetEl.dataset.url = result.url || tweetEl.dataset.url || "";
+
+  const oldComments = tweetEl.querySelector(".comments");
+  if (oldComments) oldComments.remove();
+
+  const newComments = buildTweetBlock(result).querySelector(".comments");
+  if (newComments) tweetEl.appendChild(newComments);
+
+  // highlight animation after reroll
+  tweetEl.style.transition = "box-shadow 0.25s ease, transform 0.25s ease";
+  const oldShadow = tweetEl.style.boxShadow;
+  const oldTransform = tweetEl.style.transform;
+  tweetEl.style.boxShadow = "0 0 0 2px rgba(56,189,248,0.9)";
+  tweetEl.style.transform = "translateY(-1px)";
+  setTimeout(() => {
+    tweetEl.style.boxShadow = oldShadow;
+    tweetEl.style.transform = oldTransform;
+  }, 420);
+}
+
+function appendFailedItem(failure) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "failed-item";
+
+  const urlSpan = document.createElement("div");
+  urlSpan.className = "failed-url";
+  urlSpan.textContent = failure.url || "(unknown URL)";
+
+  const reasonSpan = document.createElement("div");
+  reasonSpan.className = "failed-reason";
+  reasonSpan.textContent = failure.reason || "Unknown error";
+
+  wrapper.appendChild(urlSpan);
+  wrapper.appendChild(reasonSpan);
+  failedEl.appendChild(wrapper);
+}
+
+// Skeletons while waiting
+function showSkeletons(count) {
+  resultsEl.innerHTML = "";
+  const num = Math.min(Math.max(count, 1), 6);
+  for (let i = 0; i < num; i++) {
+    const sk = document.createElement("div");
+    sk.className = "tweet-skeleton";
+
+    for (let j = 0; j < 3; j++) {
+      const line = document.createElement("div");
+      line.className = "tweet-skeleton-line";
+      sk.appendChild(line);
+    }
+    resultsEl.appendChild(sk);
   }
 }
 
-// ------------------ Main generate flow ------------------
-
+// ------------------------
+// Generate flow
+// ------------------------
 async function handleGenerate() {
-  const rawUrls = els.urlsInput ? els.urlsInput.value : "";
-  const urls = parseUrls(rawUrls);
+  const raw = urlInput.value;
+  const urls = parseURLs(raw);
 
   if (!urls.length) {
-    setStatus("Paste at least one URL", "error");
+    alert("Please paste at least one tweet URL.");
     return;
   }
 
-  if (currentController) {
-    setStatus("Already running, cancel first", "error");
-    return;
-  }
+  cancelled = false;
+  document.body.classList.add("is-generating");
 
-  const theme = getActiveThemeId();
+  generateBtn.disabled = true;
+  cancelBtn.disabled = false;
+  resetResults();
+  resetProgress();
 
-  clearResults();
-  setSkeletonVisible(true);
-  setProgress(8, "Preparing batch…");
-  setStatus("Contacting backend…", "ok");
-
-  if (els.btnGenerate) els.btnGenerate.disabled = true;
-  if (els.btnCancel) els.btnCancel.disabled = false;
-  if (els.btnClear) els.btnClear.disabled = true;
-
-  const controller = new AbortController();
-  currentController = controller;
+  setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
+  setProgressRatio(0.03);
+  showSkeletons(urls.length);
 
   try {
-    const payload = { urls, theme };
-
-    const res = await fetch(BACKEND_URL, {
+    const res = await fetch(commentURL, {
       method: "POST",
-      signal: controller.signal,
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: JSON.stringify({ urls }),
     });
 
-    if (!res.ok) throw new Error(`HTTP ${res.status}`);
-
-    setProgress(30, "Processing…");
-    const json = await res.json();
-
-    const batches = json.batches || [];
-    const totalUrls = (json.meta && json.meta.total_urls) || urls.length || 1;
-    let processed = 0;
-
-    setSkeletonVisible(false);
-
-    batches.forEach((batch) => {
-      const items = batch.items || batch.results || [];
-      items.forEach((item) => {
-        processed += 1;
-        const percent = 30 + Math.round((processed / totalUrls) * 70);
-        setProgress(percent, `Rendering ${processed}/${totalUrls}…`);
-        renderResultItem(item);
-      });
-    });
-
-    setStatus("Done", "ok");
-    setProgress(100, "Completed");
-  } catch (err) {
-    if (err.name === "AbortError") {
-      setStatus("Run cancelled", "error");
-      setSkeletonVisible(false);
-      setProgress(0, "Cancelled");
-    } else {
-      console.error("Generate failed", err);
-      setStatus("Backend error, try again", "error");
-      setSkeletonVisible(false);
-      setProgress(0, "Error");
+    if (!res.ok) {
+      throw new Error(`Backend error: ${res.status}`);
     }
-  } finally {
-    currentController = null;
-    if (els.btnGenerate) els.btnGenerate.disabled = false;
-    if (els.btnCancel) els.btnCancel.disabled = true;
-    if (els.btnClear) els.btnClear.disabled = false;
+
+    const data = await res.json();
+    if (cancelled) return;
+
+    const results = Array.isArray(data.results) ? data.results : [];
+    const failed = Array.isArray(data.failed) ? data.failed : [];
+
+    resultsEl.innerHTML = "";
+    failedEl.innerHTML = "";
+
+    let processed = 0;
+    const total = results.length || urls.length;
+
+    // show results one by one (not all at once)
+    let delay = 50;
+    results.forEach((item, idx) => {
+      setTimeout(() => {
+        if (cancelled) return;
+
+        appendResultBlock(item);
+        processed += 1;
+        const ratio = total ? processed / total : 1;
+        setProgressRatio(ratio);
+        setProgressText(`Processed ${processed}/${total} tweets…`);
+        resultCountEl.textContent = formatTweetCount(processed);
+
+        if (processed === total) {
+          setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
+          document.body.classList.remove("is-generating");
+          generateBtn.disabled = false;
+          cancelBtn.disabled = true;
+        }
+      }, delay);
+      delay += 120;
+    });
+
+    // failed URLs
+    failed.forEach((f) => appendFailedItem(f));
+    failedCountEl.textContent = String(failed.length);
+
+    // if no results at all
+    if (!results.length) {
+      document.body.classList.remove("is-generating");
+      generateBtn.disabled = false;
+      cancelBtn.disabled = true;
+      if (failed.length) {
+        setProgressText("All URLs failed to process.");
+      } else {
+        setProgressText("No comments returned.");
+      }
+      setProgressRatio(1);
+    }
+  } catch (err) {
+    console.error("Generate error", err);
+    document.body.classList.remove("is-generating");
+    generateBtn.disabled = false;
+    cancelBtn.disabled = true;
+    setProgressText("Error contacting CrownTALK backend.");
+    setProgressRatio(0);
   }
 }
 
-// ------------------ Simple handlers ------------------
-
+// ------------------------
+// Cancel & Clear
+// ------------------------
 function handleCancel() {
-  if (currentController) {
-    currentController.abort();
-  }
+  cancelled = true;
+  document.body.classList.remove("is-generating");
+  generateBtn.disabled = false;
+  cancelBtn.disabled = true;
+  setProgressText("Cancelled.");
+  setProgressRatio(0);
 }
 
 function handleClear() {
-  if (els.urlsInput) els.urlsInput.value = "";
-  setStatus("Input cleared", "ok");
+  urlInput.value = "";
+  resetResults();
+  resetProgress();
+  autoResizeTextarea();
 }
 
-function handleThemeClick(event) {
-  const btn = event.target.closest(".ct-theme-btn");
-  if (!btn || !els.themeGrid) return;
-  const all = els.themeGrid.querySelectorAll(".ct-theme-btn");
-  all.forEach((b) => b.classList.remove("is-active"));
-  btn.classList.add("is-active");
-}
+// ------------------------
+// Reroll
+// ------------------------
+async function handleReroll(tweetEl) {
+  const url = tweetEl && tweetEl.dataset.url;
+  if (!url) return;
 
-// ------------------ Init ------------------
+  const button = tweetEl.querySelector(".reroll-btn");
+  if (!button) return;
 
-function init() {
-  if (els.backendUrl) {
-    els.backendUrl.textContent = BACKEND_BASE;
+  const oldLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Rerolling…";
+
+  const commentsWrap = tweetEl.querySelector(".comments");
+  if (commentsWrap) {
+    commentsWrap.innerHTML = "";
+    const sk1 = document.createElement("div");
+    sk1.className = "tweet-skeleton-line";
+    const sk2 = document.createElement("div");
+    sk2.className = "tweet-skeleton-line";
+    commentsWrap.appendChild(sk1);
+    commentsWrap.appendChild(sk2);
   }
 
-  // Initialize color theme from storage
-  let savedTheme = DEFAULT_COLOR_THEME;
   try {
-    const stored = localStorage.getItem(COLOR_THEME_KEY);
-    if (stored && ALLOWED_COLOR_THEMES.includes(stored)) {
-      savedTheme = stored;
+    const res = await fetch(rerollURL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
+    if (!res.ok) {
+      throw new Error(`Reroll failed: ${res.status}`);
     }
-  } catch {
-    // ignore
+    const data = await res.json();
+    if (data && Array.isArray(data.comments)) {
+      updateTweetBlock(tweetEl, {
+        url: data.url || url,
+        comments: data.comments,
+      });
+    } else {
+      setProgressText("Reroll failed for this tweet.");
+    }
+  } catch (err) {
+    console.error("Reroll error", err);
+    setProgressText("Network error during reroll.");
+  } finally {
+    button.disabled = false;
+    button.textContent = oldLabel;
   }
-  applyColorTheme(savedTheme);
+}
 
-  if (els.colorThemeSwitcher) {
-    els.colorThemeSwitcher.addEventListener("click", (e) => {
-      const btn = e.target.closest("[data-color-theme]");
-      if (!btn) return;
-      const themeId = btn.getAttribute("data-color-theme") || DEFAULT_COLOR_THEME;
-      applyColorTheme(themeId);
-    });
-  }
+// ------------------------
+// Theme
+// ------------------------
+const THEME_STORAGE_KEY = "crowntalk_theme";
 
-  // Wire buttons
-  if (els.btnGenerate) els.btnGenerate.addEventListener("click", handleGenerate);
-  if (els.btnCancel) els.btnCancel.addEventListener("click", handleCancel);
-  if (els.btnClear) els.btnClear.addEventListener("click", handleClear);
-  if (els.themeGrid) els.themeGrid.addEventListener("click", handleThemeClick);
+function applyTheme(themeName) {
+  const html = document.documentElement;
+  html.setAttribute("data-theme", themeName);
 
-  // History drawer
-  if (els.historyToggleBtn) {
-    els.historyToggleBtn.addEventListener("click", () => {
-      if (els.historyDrawer && els.historyDrawer.classList.contains("is-open")) {
-        closeHistoryDrawer();
-      } else {
-        openHistoryDrawer();
-      }
-    });
-  }
-  if (els.historyCloseBtn) {
-    els.historyCloseBtn.addEventListener("click", closeHistoryDrawer);
-  }
-  if (els.historyClearBtn) {
-    els.historyClearBtn.addEventListener("click", () => {
-      clipboardHistory.length = 0;
-      renderClipboardHistory();
-    });
-  }
-
-  // ESC closes history
-  window.addEventListener("keydown", (e) => {
-    if (e.key === "Escape") closeHistoryDrawer();
+  themeDots.forEach((dot) => {
+    if (dot.dataset.theme === themeName) {
+      dot.classList.add("is-active");
+    } else {
+      dot.classList.remove("is-active");
+    }
   });
 
-  renderClipboardHistory();
-  setStatus("Ready", "ok");
-  setProgress(0, "Idle");
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, themeName);
+  } catch (e) {
+    // ignore
+  }
 }
 
-document.addEventListener("DOMContentLoaded", init);
+function initTheme() {
+  let theme = "white";
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored) theme = stored;
+  } catch (e) {
+    // ignore
+  }
+  applyTheme(theme);
+}
+
+// ------------------------
+// Event bindings
+// ------------------------
+document.addEventListener("DOMContentLoaded", () => {
+  if (yearEl) {
+    yearEl.textContent = String(new Date().getFullYear());
+  }
+
+  initTheme();
+  renderHistory();
+  autoResizeTextarea();
+
+  if (urlInput) {
+    urlInput.addEventListener("input", autoResizeTextarea);
+  }
+
+  generateBtn.addEventListener("click", () => {
+    if (document.body.classList.contains("is-generating")) return;
+    handleGenerate();
+  });
+
+  cancelBtn.addEventListener("click", handleCancel);
+  clearBtn.addEventListener("click", handleClear);
+
+  clearHistoryBtn.addEventListener("click", () => {
+    historyItems = [];
+    renderHistory();
+  });
+
+  // Copy / reroll in results
+  resultsEl.addEventListener("click", async (event) => {
+    const copyBtn = event.target.closest(".copy-btn, .copy-btn-en");
+    const rerollBtn = event.target.closest(".reroll-btn");
+
+    if (copyBtn) {
+      const text = copyBtn.dataset.text || "";
+      if (!text) return;
+
+      await copyToClipboard(text);
+      addToHistory(text);
+
+      const old = copyBtn.textContent;
+      copyBtn.textContent = "Copied";
+      copyBtn.disabled = true;
+      setTimeout(() => {
+        copyBtn.textContent = old;
+        copyBtn.disabled = false;
+      }, 700);
+    }
+
+    if (rerollBtn) {
+      const tweetEl = rerollBtn.closest(".tweet");
+      if (!tweetEl) return;
+      handleReroll(tweetEl);
+    }
+  });
+
+  // History copy
+  historyEl.addEventListener("click", async (event) => {
+    const btn = event.target.closest(".history-copy-btn");
+    if (!btn) return;
+    const text = btn.dataset.text || "";
+    if (!text) return;
+
+    await copyToClipboard(text);
+    const old = btn.textContent;
+    btn.textContent = "Copied";
+    btn.disabled = true;
+    setTimeout(() => {
+      btn.textContent = old;
+      btn.disabled = false;
+    }, 700);
+  });
+
+  // theme dots
+  themeDots.forEach((dot) => {
+    dot.addEventListener("click", () => {
+      const t = dot.dataset.theme;
+      if (!t) return;
+      applyTheme(t);
+    });
+  });
+});
