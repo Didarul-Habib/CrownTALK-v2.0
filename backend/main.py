@@ -334,18 +334,41 @@ class OfflineCommentGenerator:
 
         return ratio_ascii > 0.5
 
-    def _make_native_comment(self, text: str, key_tokens: list[str]) -> str:
+        def _make_native_comment(self, text: str, key_tokens: list[str]) -> str:
+        """
+        Create a native-language comment.
+        - For CJK: pick a short sentence-like fragment.
+        - For other languages: pick a 5–12 word window around a focus token.
+        """
         cleaned = re.sub(r"https?://\S+", "", text)
         cleaned = re.sub(r"[@#]\S+", "", cleaned).strip()
 
-        # CJK mode
-        if any('\u4e00' <= c <= '\u9fff' for c in cleaned) \
-           or any('\u3040' <= c <= '\u30ff' for c in cleaned) \
-           or any('\uac00' <= c <= '\ud7af' for c in cleaned):
+        # Detect CJK
+        has_cjk = (
+            any('\u4e00' <= c <= '\u9fff' for c in cleaned) or
+            any('\u3040' <= c <= '\u30ff' for c in cleaned) or
+            any('\uac00' <= c <= '\ud7af' for c in cleaned)
+        )
 
-            return cleaned[:20].strip()
+        # CJK mode: try to grab a sentence fragment instead of full tweet
+        if has_cjk:
+            for sep in ["。", "！", "？", "!", "?", "\n"]:
+                parts = [p.strip() for p in cleaned.split(sep) if p.strip()]
+                if parts:
+                    snippet = random.choice(parts)
+                    if len(snippet) > 24:
+                        snippet = snippet[:24]
+                    return snippet.strip()
 
-        # normal space-split fallback
+            # fallback: middle slice
+            if len(cleaned) > 24:
+                start = max(0, (len(cleaned) // 2) - 12)
+                snippet = cleaned[start:start + 24]
+                return snippet.strip()
+
+            return cleaned
+
+        # Non-CJK native: build a short window around a focus token
         words = cleaned.split()
         words = [w for w in words if not w.startswith("@")]
 
@@ -353,12 +376,26 @@ class OfflineCommentGenerator:
             focus = pick_focus_token(key_tokens)
             return focus or "不错"
 
+        # Make sure we have at least 5 tokens so _tidy_comment doesn't inject EN fillers
         if len(words) < 5:
-            words += words * 2
-        if len(words) > 12:
-            words = words[:12]
+            while len(words) < 5:
+                words.extend(words)
+            words = words[:5]
 
-        return " ".join(words)
+        # choose focus index
+        focus_token = pick_focus_token(key_tokens) if key_tokens else None
+        if focus_token and focus_token in words:
+            center_idx = words.index(focus_token)
+        else:
+            center_idx = len(words) // 2
+
+        window_size = min(max(5, len(words)), 12)
+        start = max(0, min(center_idx - window_size // 2, len(words) - window_size))
+        snippet_words = words[start:start + window_size]
+        native_comment = " ".join(snippet_words)
+
+        # tidy: remove emojis / urls / trailing punctuation, enforce 5–12 words
+        return self._tidy_comment(native_comment)
 
     # PUBLIC GENERATOR ENTRY
     def generate_comments(self, text: str, author: str | None, lang_hint: str | None = None):
