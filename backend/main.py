@@ -12,7 +12,7 @@ import hashlib
 app = Flask(__name__)
 
 # Public URL of this backend (for keep-alive)
-BACKEND_PUBLIC_URL = "https://crowntalk-v2-0.onrender.com"
+BACKEND_PUBLIC_URL = "https://crowntalk.onrender.com"
 VX_API_BASE = "https://api.vxtwitter.com"
 
 BATCH_SIZE = 2
