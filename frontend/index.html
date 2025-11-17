@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en">
+<html lang="en" data-theme="white">
 <head>
   <meta charset="UTF-8" />
   <title>CrownTALK Comment Generator</title>
@@ -12,32 +12,34 @@
     <header class="hero">
       <div class="theme-switcher">
         <span class="theme-label">Theme</span>
-        <!-- add labels for hover tooltip -->
         <button class="theme-dot" data-theme="white" data-label="Light"></button>
         <button class="theme-dot" data-theme="dark-purple" data-label="Purple"></button>
         <button class="theme-dot" data-theme="gold" data-label="Gold"></button>
         <button class="theme-dot" data-theme="blue" data-label="Blue"></button>
-        <button class="theme-dot" data-theme="neon" data-label="Neon"></button>
         <button class="theme-dot" data-theme="emerald" data-label="Emerald"></button>
         <button class="theme-dot" data-theme="black" data-label="Black"></button>
         <button class="theme-dot" data-theme="texture" data-label="Texture"></button>
+        <button class="theme-dot" data-theme="neon" data-label="Neon"></button>
       </div>
 
       <div class="hero-main">
         <img src="static/logo.png" alt="CrownTALK logo" class="hero-logo" />
-        <h1>CrownTALK</h1>
-        <p class="hero-subtitle">Humanlike comment engine powered by CrownDEX 👑</p>
+        <h1>CROWNTALK</h1>
+        <p class="hero-subtitle">HUMANLIKE COMMENT ENGINE POWERED BY CROWNDEX</p>
       </div>
     </header>
 
     <main>
-      <section class="card input-card">
-        <label for="urlInput" class="label">Tweet URLs</label>
-        <textarea
-          id="urlInput"
-          placeholder="1. https://x.com/user/status/123...
-2. https://x.com/user/status/456..."
-        ></textarea>
+      <!-- INPUT CARD -->
+      <section class="card">
+        <div class="card-header-row">
+          <h2>TWEET URLS</h2>
+          <span class="count-pill muted" id="resultCount">0 tweets</span>
+        </div>
+
+        <label class="label" for="urlInput">Paste up to many tweet URLs (one per line)</label>
+        <textarea id="urlInput" placeholder="https://x.com/user/status/123...
+https://x.com/user/status/456..."></textarea>
 
         <div class="controls">
           <button id="generateBtn">Generate Comments</button>
@@ -46,32 +48,35 @@
         </div>
 
         <div class="progress-row">
-          <div class="progress-text" id="progress"></div>
           <div class="progress-bar">
             <div id="progressBarFill"></div>
           </div>
+          <div id="progress" class="progress-text"></div>
         </div>
       </section>
 
+      <!-- RESULTS -->
       <section class="card results-card">
         <div class="card-header-row">
-          <h2>Results</h2>
-          <span id="resultCount" class="count-pill">0 tweets</span>
+          <h2>RESULTS</h2>
+          <span class="count-pill" id="resultCountDisplay">0 tweets</span>
         </div>
         <div id="results"></div>
       </section>
 
+      <!-- FAILED URLS -->
       <section class="card failed-card">
         <div class="card-header-row">
-          <h2>Failed URLs</h2>
-          <span id="failedCount" class="count-pill muted">0</span>
+          <h2>FAILED URLS</h2>
+          <span class="count-pill" id="failedCount">0</span>
         </div>
         <div id="failed"></div>
       </section>
 
+      <!-- CLIPBOARD HISTORY -->
       <section class="card history-card">
         <div class="card-header-row">
-          <h2>Clipboard history</h2>
+          <h2>CLIPBOARD HISTORY</h2>
           <button id="clearHistoryBtn" class="secondary small">Clear history</button>
         </div>
         <div id="history"></div>
@@ -79,12 +84,9 @@
     </main>
 
     <footer class="footer">
-      <span
-        >© <span id="year"></span> CrownTALK — Built by
-        <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer"
-          >CrownDEX</a
-        ></span
-      >
+      <span>© <span id="year"></span> CrownTALK — Built by
+        <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a>
+      </span>
     </footer>
   </div>
 
