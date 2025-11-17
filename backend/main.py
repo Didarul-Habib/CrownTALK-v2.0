@@ -4,8 +4,10 @@ import requests
 import time
 import re
 import random
-from collections import Counter, deque
+from collections import Counter
 from urllib.parse import urlparse, urlunparse
+import sqlite3
+import hashlib
 
 app = Flask(__name__)
 
@@ -17,28 +19,63 @@ BATCH_SIZE = 2
 KEEP_ALIVE_INTERVAL = 600  # seconds
 
 # -------------------------------------------------------------------
-# GLOBAL COMMENT MEMORY (avoid repeating same comments)
+# SHARED COMMENT STORE (SQLite - OTP style comments)
 # -------------------------------------------------------------------
-RECENT_COMMENTS_MAX = 3000
-_recent_comment_buffer = deque(maxlen=RECENT_COMMENTS_MAX)
+DB_PATH = "comments.db"
+_db_lock = threading.Lock()
+
+
+def init_db():
+    global _db_conn
+    _db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
+    _db_conn.execute(
+        """
+        CREATE TABLE IF NOT EXISTS comments_seen (
+            hash TEXT PRIMARY KEY,
+            created_at INTEGER
+        )
+        """
+    )
+    _db_conn.commit()
 
 
 def _normalize_for_memory(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
 
+def _hash_comment(norm_text: str) -> str:
+    return hashlib.sha256(norm_text.encode("utf-8")).hexdigest()
+
+
 def comment_seen(text: str) -> bool:
     norm = _normalize_for_memory(text)
     if not norm:
         return False
-    return norm in _recent_comment_buffer
+    h = _hash_comment(norm)
+    with _db_lock:
+        cur = _db_conn.execute(
+            "SELECT 1 FROM comments_seen WHERE hash = ? LIMIT 1", (h,)
+        )
+        row = cur.fetchone()
+    return row is not None
 
 
 def remember_comment(text: str) -> None:
     norm = _normalize_for_memory(text)
     if not norm:
         return
-    _recent_comment_buffer.append(norm)
+    h = _hash_comment(norm)
+    now = int(time.time())
+    with _db_lock:
+        try:
+            _db_conn.execute(
+                "INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES (?, ?)",
+                (h, now),
+            )
+            _db_conn.commit()
+        except Exception:
+            # best-effort; don't break comment generation on DB issues
+            pass
 
 
 # ---------------------------------------------------------
@@ -349,11 +386,9 @@ class OfflineCommentGenerator:
 
     def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
         """
-        Stronger language detection.
-        Decide if tweet is English.
+        Stronger language detection for English vs non-English.
         """
 
-        # strip URLs / mentions – they are ASCII noise
         stripped = re.sub(r"https?://\S+", "", text)
         stripped = re.sub(r"[@#]\S+", "", stripped)
 
@@ -366,86 +401,70 @@ class OfflineCommentGenerator:
             or '\u3040' <= c <= '\u30ff'
             or '\uac00' <= c <= '\ud7af'
         ]
-
-        # If ≥2 CJK chars → definitely non-English
         if len(cjk) >= 2:
             return False
 
-        # ASCII ratio check
         ascii_letters = [c for c in chars if c.isascii() and c.isalpha()]
         ratio_ascii = len(ascii_letters) / max(len(chars), 1)
 
-        # high ASCII → English
         if ratio_ascii > 0.7:
             return True
 
-        # if we have lang hint
         if lang_hint:
             lh = lang_hint.lower()
             if not lh.startswith("en"):
                 return False
-            # Only trust EN hint if there is some ASCII
             return ratio_ascii > 0.3
 
-        # fallback
         return ratio_ascii > 0.5
 
     # ---------- native comment ----------
 
     def _make_native_comment(self, text: str, key_tokens: list[str]) -> str:
         """
-        Create a native-language comment.
-        - For CJK: pick a short sentence-like fragment.
-        - For other languages: pick a 5–12 word window around a focus token.
-        - Avoid reusing recent comments globally.
+        Create a native-language comment that feels like a reply, not
+        just the original tweet trimmed.
         """
         cleaned = re.sub(r"https?://\S+", "", text)
         cleaned = re.sub(r"[@#]\S+", "", cleaned).strip()
 
-        # Detect CJK
         has_cjk = (
-            any('\u4e00' <= c <= '\u9fff' for c in cleaned) or
-            any('\u3040' <= c <= '\u30ff' for c in cleaned) or
-            any('\uac00' <= c <= '\ud7af' for c in cleaned)
+            any('\u4e00' <= c <= '\u9fff' for c in cleaned)
+            or any('\u3040' <= c <= '\u30ff' for c in cleaned)
+            or any('\uac00' <= c <= '\ud7af' for c in cleaned)
         )
 
         last_candidate = ""
 
         for _ in range(20):
             if has_cjk:
-                # CJK: pick a sentence-like fragment
-                parts = []
+                # Split into rough "sentences"
+                segments = []
                 for sep in ["。", "！", "？", "!", "?", "\n"]:
-                    segments = [p.strip() for p in cleaned.split(sep) if p.strip()]
-                    if segments:
-                        parts.extend(segments)
+                    parts = [p.strip() for p in cleaned.split(sep) if p.strip()]
+                    if parts:
+                        segments.extend(parts)
 
-                if not parts:
-                    parts = [cleaned]
+                if not segments:
+                    segments = [cleaned]
 
-                snippet = random.choice(parts)
-
-                # if too long, take a random 24-char window
+                snippet = self.random.choice(segments)
                 if len(snippet) > 24:
                     if len(snippet) <= 24:
                         start = 0
                     else:
-                        start = random.randint(0, len(snippet) - 24)
+                        start = self.random.randint(0, len(snippet) - 24)
                     snippet = snippet[start:start + 24]
 
-                candidate = snippet.strip()
-                candidate = EMOJI_PATTERN.sub("", candidate)
-                candidate = candidate.strip()
+                candidate = EMOJI_PATTERN.sub("", snippet).strip()
             else:
-                # Non-CJK native: build a window around a focus token
                 words = cleaned.split()
                 words = [w for w in words if not w.startswith("@")]
 
                 if not words:
                     focus = pick_focus_token(key_tokens)
-                    candidate = focus or "不错"
+                    candidate = focus or "不错"  # generic "nice" fallback (Chinese)
                 else:
-                    # ensure at least 5 tokens before tidying
                     if len(words) < 5:
                         while len(words) < 5:
                             words.extend(words)
@@ -478,9 +497,9 @@ class OfflineCommentGenerator:
             remember_comment(candidate)
             return candidate
 
-        # fallback if everything was already used
+        # Fallback if everything is already used
         if not last_candidate:
-            last_candidate = "不错"  # generic "nice" in Chinese
+            last_candidate = "不错"
         remember_comment(last_candidate)
         return last_candidate
 
@@ -495,13 +514,19 @@ class OfflineCommentGenerator:
 
         if is_english:
             c1 = self._make_english_comment(
-                text=text, author=author, topic=topic,
-                is_crypto=crypto, key_tokens=key_tokens,
+                text=text,
+                author=author,
+                topic=topic,
+                is_crypto=crypto,
+                key_tokens=key_tokens,
                 used_kinds=set(),
             )
             c2 = self._make_english_comment(
-                text=text, author=author, topic=topic,
-                is_crypto=crypto, key_tokens=key_tokens,
+                text=text,
+                author=author,
+                topic=topic,
+                is_crypto=crypto,
+                key_tokens=key_tokens,
                 used_kinds={c1["kind"]},
             )
             return [
@@ -511,20 +536,20 @@ class OfflineCommentGenerator:
 
         native = self._make_native_comment(text, key_tokens)
         en = self._make_english_comment(
-            text=text, author=author,
-            topic=topic, is_crypto=crypto,
+            text=text,
+            author=author,
+            topic=topic,
+            is_crypto=crypto,
             key_tokens=key_tokens,
             used_kinds=set(),
         )
-
         return [
             {"lang": "native", "text": native},
             {"lang": "en", "text": en["text"]},
         ]
 
-    # -----------------------------------------
-    # ENGLISH COMMENT GENERATION
-    # -----------------------------------------
+    # ---------- ENGLISH COMMENT GENERATION ----------
+
     def _tidy_comment(self, text: str) -> str:
         """
         - remove emojis
@@ -564,8 +589,14 @@ class OfflineCommentGenerator:
         return False
 
     def _make_english_comment(
-        self, text, author, topic, is_crypto, key_tokens, used_kinds
-    ):
+        self,
+        text: str,
+        author: str | None,
+        topic: str,
+        is_crypto: bool,
+        key_tokens: list[str],
+        used_kinds: set,
+    ) -> dict:
         focus = pick_focus_token(key_tokens) or "this"
 
         author_ref = None
@@ -575,10 +606,10 @@ class OfflineCommentGenerator:
 
         buckets = self._get_template_buckets(topic, is_crypto)
 
-        available = [k for k in buckets if k not in used_kinds]
-        if not available:
-            available = list(buckets.keys())
-        kind = random.choice(available)
+        available_kinds = [k for k in buckets if k not in used_kinds]
+        if not available_kinds:
+            available_kinds = list(buckets.keys())
+        kind = random.choice(available_kinds)
 
         last_candidate = ""
 
@@ -592,27 +623,26 @@ class OfflineCommentGenerator:
             if self._violates_ai_blocklist(out):
                 continue
             if comment_seen(out):
+                last_candidate = out
                 continue
 
             remember_comment(out)
             return {"kind": kind, "text": out}
 
-            # store last good candidate even if seen
-            last_candidate = out
-
-        # fallback: something safe and short
+        # fallback if all variants are used
         fallback = self._tidy_comment(f"Pretty solid points on {focus}")
         if not fallback:
             fallback = "Pretty solid points on this"
         remember_comment(fallback)
         return {"kind": kind, "text": fallback}
 
-    def _get_template_buckets(self, topic, is_crypto):
+    def _get_template_buckets(self, topic: str, is_crypto: bool) -> dict:
         """
         Returns {kind: [templates]}.
         Templates use {author} and {focus}.
         Voice target: casual, grounded, Twitter human.
         """
+
         base_react = [
             "{focus} take actually feels pretty grounded",
             "Hard to disagree with this view on {focus}",
@@ -633,11 +663,11 @@ class OfflineCommentGenerator:
             "Chill sober take on {focus} which I like",
             "Sensible breakdown of {focus} without extra drama",
             "Grounded way of walking through {focus} step by step",
-            "This keeps {focus} in perspective instead of hype",
+            "Helps keep {focus} in perspective instead of hype",
             "Good reminder not to overreact to {focus} stuff",
         ]
 
-        # new variety buckets
+        # extra variety
         vibe_flavor = [
             "{focus} feels very timeline core right now",
             "The vibe around {focus} here is pretty real",
@@ -740,7 +770,6 @@ class OfflineCommentGenerator:
         if is_crypto:
             buckets["crypto"] = crypto_extra
 
-        # author bucket sometimes available
         if random.random() < 0.5:
             buckets["author"] = author_flavor
 
@@ -865,5 +894,10 @@ def keep_alive():
 # MAIN ENTRY
 # ---------------------------------------------------------
 if __name__ == "__main__":
+    init_db()
     threading.Thread(target=keep_alive, daemon=True).start()
     app.run(host="0.0.0.0", port=10000)
+else:
+    # When run by gunicorn, module is imported, so init DB here too.
+    init_db()
+    threading.Thread(target=keep_alive, daemon=True).start()
