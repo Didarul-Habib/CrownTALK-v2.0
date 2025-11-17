@@ -1,92 +1,225 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="white">
+<html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <title>CrownTALK Comment Generator</title>
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CrownTALK EXTREME v3</title>
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0" />
   <link rel="stylesheet" href="static/styles.css" />
 </head>
-<body>
-  <div class="page">
-    <!-- HERO -->
-    <header class="hero">
-      <div class="theme-switcher">
-        <span class="theme-label">Theme</span>
-        <button class="theme-dot" data-theme="white" data-label="Light"></button>
-        <button class="theme-dot" data-theme="dark-purple" data-label="Purple"></button>
-        <button class="theme-dot" data-theme="gold" data-label="Gold"></button>
-        <button class="theme-dot" data-theme="blue" data-label="Blue"></button>
-        <button class="theme-dot" data-theme="emerald" data-label="Emerald"></button>
-        <button class="theme-dot" data-theme="black" data-label="Black"></button>
-        <button class="theme-dot" data-theme="texture" data-label="Texture"></button>
-        <button class="theme-dot" data-theme="neon" data-label="Neon"></button>
+<body data-color-theme="gold">
+  <div class="ct-root">
+    <!-- Floating logo -->
+    <div class="ct-logo-orbit">
+      <div class="ct-logo-ring"></div>
+      <img src="static/logo.png" alt="CrownTALK Logo" class="ct-logo-img" />
+    </div>
+
+    <!-- Header -->
+    <header class="ct-header">
+      <div class="ct-header-main">
+        <h1 class="ct-title">
+          CrownTALK
+          <span class="ct-badge">EXTREME v3</span>
+        </h1>
+        <p class="ct-subtitle">
+          Humanlike comment engine powered by CrownDEX 👑<br />
+          Drop X / Twitter links. Comments stay based on tweet context &amp; support multi-language.
+        </p>
       </div>
 
-      <div class="hero-main">
-        <img src="static/logo.png" alt="CrownTALK logo" class="hero-logo" />
-        <h1>CROWNTALK</h1>
-        <p class="hero-subtitle">HUMANLIKE COMMENT ENGINE POWERED BY CROWNDEX</p>
+      <div class="ct-header-meta">
+        <div class="ct-pill">
+          Backend:
+          <span id="ct-backend-url">https://crowntalk-v2-0.onrender.com</span>
+        </div>
+        <div class="ct-pill ct-pill-soft">
+          Batch: <span>2 per run</span>
+        </div>
+
+        <!-- Global color skin switcher -->
+        <div class="ct-color-theme-switcher" id="ct-color-theme-switcher">
+          <span class="ct-color-theme-label">Skin:</span>
+          <button
+            class="ct-color-theme-dot is-active"
+            data-color-theme="gold"
+            title="Gold skin"
+          ></button>
+          <button
+            class="ct-color-theme-dot"
+            data-color-theme="obsidian"
+            title="Obsidian skin"
+          ></button>
+          <button
+            class="ct-color-theme-dot"
+            data-color-theme="emerald"
+            title="Emerald skin"
+          ></button>
+          <button
+            class="ct-color-theme-dot"
+            data-color-theme="violet"
+            title="Violet skin"
+          ></button>
+        </div>
       </div>
     </header>
 
-    <main>
-      <!-- INPUT CARD -->
-      <section class="card">
-        <div class="card-header-row">
-          <h2>TWEET URLS</h2>
-          <span class="count-pill muted" id="resultCount">0 tweets</span>
-        </div>
+    <main class="ct-main">
+      <!-- Left: Input & controls -->
+      <section class="ct-panel ct-panel--primary">
+        <h2 class="ct-section-title">1. Paste your tweet links</h2>
+        <p class="ct-section-help">
+          One URL per line. We’ll clean duplicates and weird formatting automatically.
+        </p>
 
-        <label class="label" for="urlInput">Paste up to many tweet URLs (one per line)</label>
-        <textarea id="urlInput" placeholder="https://x.com/user/status/123...
-https://x.com/user/status/456..."></textarea>
+        <textarea
+          id="ct-urls-input"
+          class="ct-textarea"
+          placeholder="https://x.com/user/status/12345&#10;https://twitter.com/another/status/67890"
+        ></textarea>
 
-        <div class="controls">
-          <button id="generateBtn">Generate Comments</button>
-          <button id="cancelBtn" class="secondary subtle" disabled>Cancel</button>
-          <button id="clearBtn" class="secondary">Clear</button>
-        </div>
-
-        <div class="progress-row">
-          <div class="progress-bar">
-            <div id="progressBarFill"></div>
+        <!-- Comment theme picker (Default / Hype / Savage / etc.) -->
+        <div class="ct-section-split">
+          <div class="ct-section-block">
+            <h3 class="ct-section-subtitle">Comment theme</h3>
+            <div class="ct-theme-grid" id="ct-theme-grid">
+              <button
+                class="ct-theme-btn is-active"
+                data-theme-id="default"
+                title="Supportive and lightly hyped"
+              >
+                <span class="ct-theme-emoji">👑</span>
+                <span class="ct-theme-label">Default</span>
+              </button>
+              <button
+                class="ct-theme-btn"
+                data-theme-id="hype"
+                title="Hyper-energetic, loud hype"
+              >
+                <span class="ct-theme-emoji">🚀</span>
+                <span class="ct-theme-label">Hype</span>
+              </button>
+              <button
+                class="ct-theme-btn"
+                data-theme-id="savage"
+                title="Playfully savage, not cruel"
+              >
+                <span class="ct-theme-emoji">🔥</span>
+                <span class="ct-theme-label">Savage</span>
+              </button>
+              <button
+                class="ct-theme-btn"
+                data-theme-id="wholesome"
+                title="Soft, kind, gentle"
+              >
+                <span class="ct-theme-emoji">🌸</span>
+                <span class="ct-theme-label">Wholesome</span>
+              </button>
+              <button
+                class="ct-theme-btn"
+                data-theme-id="sarcastic"
+                title="Dry, witty, not hateful"
+              >
+                <span class="ct-theme-emoji">🙃</span>
+                <span class="ct-theme-label">Sarcastic</span>
+              </button>
+              <button
+                class="ct-theme-btn"
+                data-theme-id="poetic"
+                title="Lyrical, cinematic, reflective"
+              >
+                <span class="ct-theme-emoji">🎭</span>
+                <span class="ct-theme-label">Poetic</span>
+              </button>
+              <button
+                class="ct-theme-btn"
+                data-theme-id="minimal"
+                title="Short, punchy, minimal words"
+              >
+                <span class="ct-theme-emoji">✨</span>
+                <span class="ct-theme-label">Minimal</span>
+              </button>
+            </div>
           </div>
-          <div id="progress" class="progress-text"></div>
+
+          <!-- Second block reserved (was language mode, now empty on purpose) -->
+          <div class="ct-section-block ct-section-block--placeholder">
+            <h3 class="ct-section-subtitle">Tips</h3>
+            <p class="ct-section-help">
+              Paste noisy URLs; CrownTALK auto-cleans, de-dupes and generates up to two comments
+              per tweet in context.
+            </p>
+          </div>
+        </div>
+
+        <!-- Controls -->
+        <div class="ct-controls-row">
+          <button id="ct-generate-btn" class="ct-btn ct-btn-primary">
+            <span class="ct-btn-main">Generate</span>
+            <span class="ct-btn-sub">Batch-safe, offline NLP</span>
+          </button>
+          <button id="ct-cancel-btn" class="ct-btn ct-btn-ghost" disabled>
+            Cancel run
+          </button>
+          <button id="ct-clear-btn" class="ct-btn ct-btn-soft">
+            Clear input
+          </button>
+        </div>
+
+        <!-- Progress + status -->
+        <div class="ct-status-bar">
+          <div class="ct-progress-wrapper">
+            <div class="ct-progress-track">
+              <div class="ct-progress-fill" id="ct-progress-fill"></div>
+            </div>
+            <span class="ct-progress-label" id="ct-progress-label">Idle</span>
+          </div>
+          <div class="ct-status-pill" id="ct-status-pill">Ready</div>
         </div>
       </section>
 
-      <!-- RESULTS -->
-      <section class="card results-card">
-        <div class="card-header-row">
-          <h2>RESULTS</h2>
-          <span class="count-pill" id="resultCountDisplay">0 tweets</span>
+      <!-- Right: Results & clipboard history -->
+      <section class="ct-panel ct-panel--secondary">
+        <div class="ct-results-header">
+          <div>
+            <h2 class="ct-section-title">2. Generated comments</h2>
+            <p class="ct-section-help">
+              Batches render live as they arrive. Each tweet gets up to two context-aware
+              comments with one-click copy.
+            </p>
+          </div>
+          <button id="ct-collapse-history-btn" class="ct-history-toggle">
+            Clipboard history
+          </button>
         </div>
-        <div id="results"></div>
-      </section>
 
-      <!-- FAILED URLS -->
-      <section class="card failed-card">
-        <div class="card-header-row">
-          <h2>FAILED URLS</h2>
-          <span class="count-pill" id="failedCount">0</span>
+        <!-- Skeleton loading -->
+        <div id="ct-skeleton-container" class="ct-skeleton-container is-hidden">
+          <div class="ct-skeleton-card"></div>
+          <div class="ct-skeleton-card"></div>
         </div>
-        <div id="failed"></div>
-      </section>
 
-      <!-- CLIPBOARD HISTORY -->
-      <section class="card history-card">
-        <div class="card-header-row">
-          <h2>CLIPBOARD HISTORY</h2>
-          <button id="clearHistoryBtn" class="secondary small">Clear history</button>
-        </div>
-        <div id="history"></div>
+        <!-- Results -->
+        <div id="ct-results-list" class="ct-results-list"></div>
       </section>
     </main>
 
-    <footer class="footer">
-      <span>© <span id="year"></span> CrownTALK — Built by
-        <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a>
-      </span>
+    <!-- Clipboard history drawer -->
+    <aside class="ct-history-drawer" id="ct-history-drawer">
+      <div class="ct-history-header">
+        <h3>Clipboard history</h3>
+        <button id="ct-history-close-btn" class="ct-history-close">×</button>
+      </div>
+      <div id="ct-history-body" class="ct-history-body">
+        <p class="ct-history-empty">Nothing copied yet. Copy a comment to see it here.</p>
+      </div>
+      <button id="ct-history-clear-btn" class="ct-history-clear-btn">
+        Clear history
+      </button>
+    </aside>
+
+    <!-- Footer from older version -->
+    <footer class="ct-footer">
+      <span>CrownTALK — Built by CrownDEX 👑</span>
     </footer>
   </div>
 
