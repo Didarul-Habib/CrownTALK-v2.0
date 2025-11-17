@@ -4,7 +4,7 @@ import requests
 import time
 import re
 import random
-from collections import Counter
+from collections import Counter, deque
 from urllib.parse import urlparse, urlunparse
 
 app = Flask(__name__)
@@ -15,6 +15,30 @@ VX_API_BASE = "https://api.vxtwitter.com"
 
 BATCH_SIZE = 2
 KEEP_ALIVE_INTERVAL = 600  # seconds
+
+# -------------------------------------------------------------------
+# GLOBAL COMMENT MEMORY (avoid repeating same comments)
+# -------------------------------------------------------------------
+RECENT_COMMENTS_MAX = 3000
+_recent_comment_buffer = deque(maxlen=RECENT_COMMENTS_MAX)
+
+
+def _normalize_for_memory(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def comment_seen(text: str) -> bool:
+    norm = _normalize_for_memory(text)
+    if not norm:
+        return False
+    return norm in _recent_comment_buffer
+
+
+def remember_comment(text: str) -> None:
+    norm = _normalize_for_memory(text)
+    if not norm:
+        return
+    _recent_comment_buffer.append(norm)
 
 
 # ---------------------------------------------------------
@@ -321,7 +345,7 @@ class OfflineCommentGenerator:
     def __init__(self):
         self.random = random.Random()
 
-    # ---------- internals ----------
+    # ---------- language detection ----------
 
     def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
         """
@@ -366,11 +390,14 @@ class OfflineCommentGenerator:
         # fallback
         return ratio_ascii > 0.5
 
+    # ---------- native comment ----------
+
     def _make_native_comment(self, text: str, key_tokens: list[str]) -> str:
         """
         Create a native-language comment.
         - For CJK: pick a short sentence-like fragment.
         - For other languages: pick a 5–12 word window around a focus token.
+        - Avoid reusing recent comments globally.
         """
         cleaned = re.sub(r"https?://\S+", "", text)
         cleaned = re.sub(r"[@#]\S+", "", cleaned).strip()
@@ -382,54 +409,83 @@ class OfflineCommentGenerator:
             any('\uac00' <= c <= '\ud7af' for c in cleaned)
         )
 
-        # CJK mode: try to grab a sentence fragment instead of full tweet
-        if has_cjk:
-            for sep in ["。", "！", "？", "!", "?", "\n"]:
-                parts = [p.strip() for p in cleaned.split(sep) if p.strip()]
-                if parts:
-                    snippet = random.choice(parts)
-                    if len(snippet) > 24:
-                        snippet = snippet[:24]
-                    return snippet.strip()
+        last_candidate = ""
 
-            # fallback: middle slice
-            if len(cleaned) > 24:
-                start = max(0, (len(cleaned) // 2) - 12)
-                snippet = cleaned[start:start + 24]
-                return snippet.strip()
+        for _ in range(20):
+            if has_cjk:
+                # CJK: pick a sentence-like fragment
+                parts = []
+                for sep in ["。", "！", "？", "!", "?", "\n"]:
+                    segments = [p.strip() for p in cleaned.split(sep) if p.strip()]
+                    if segments:
+                        parts.extend(segments)
 
-            return cleaned
+                if not parts:
+                    parts = [cleaned]
 
-        # Non-CJK native: build a short window around a focus token
-        words = cleaned.split()
-        words = [w for w in words if not w.startswith("@")]
+                snippet = random.choice(parts)
 
-        if not words:
-            focus = pick_focus_token(key_tokens)
-            return focus or "不错"  # fallback Chinese: "nice"
+                # if too long, take a random 24-char window
+                if len(snippet) > 24:
+                    if len(snippet) <= 24:
+                        start = 0
+                    else:
+                        start = random.randint(0, len(snippet) - 24)
+                    snippet = snippet[start:start + 24]
 
-        # Make sure we have at least 5 tokens so _tidy_comment doesn't inject EN fillers
-        if len(words) < 5:
-            while len(words) < 5:
-                words.extend(words)
-            words = words[:5]
+                candidate = snippet.strip()
+                candidate = EMOJI_PATTERN.sub("", candidate)
+                candidate = candidate.strip()
+            else:
+                # Non-CJK native: build a window around a focus token
+                words = cleaned.split()
+                words = [w for w in words if not w.startswith("@")]
 
-        # choose focus index
-        focus_token = pick_focus_token(key_tokens) if key_tokens else None
-        if focus_token and focus_token in words:
-            center_idx = words.index(focus_token)
-        else:
-            center_idx = len(words) // 2
+                if not words:
+                    focus = pick_focus_token(key_tokens)
+                    candidate = focus or "不错"
+                else:
+                    # ensure at least 5 tokens before tidying
+                    if len(words) < 5:
+                        while len(words) < 5:
+                            words.extend(words)
+                        words = words[:5]
 
-        window_size = min(max(5, len(words)), 12)
-        start = max(0, min(center_idx - window_size // 2, len(words) - window_size))
-        snippet_words = words[start:start + window_size]
-        native_comment = " ".join(snippet_words)
+                    focus_token = pick_focus_token(key_tokens) if key_tokens else None
+                    if focus_token and focus_token in words:
+                        center_idx = words.index(focus_token)
+                    else:
+                        center_idx = len(words) // 2
 
-        # tidy: remove emojis / urls / trailing punctuation, enforce 5–12 words
-        return self._tidy_comment(native_comment)
+                    window_size = min(max(5, len(words)), 12)
+                    start = max(
+                        0,
+                        min(center_idx - window_size // 2, len(words) - window_size),
+                    )
+                    snippet_words = words[start:start + window_size]
+                    candidate = " ".join(snippet_words)
 
-    # PUBLIC GENERATOR ENTRY
+                candidate = self._tidy_comment(candidate)
+
+            if not candidate:
+                continue
+
+            last_candidate = candidate
+
+            if comment_seen(candidate):
+                continue
+
+            remember_comment(candidate)
+            return candidate
+
+        # fallback if everything was already used
+        if not last_candidate:
+            last_candidate = "不错"  # generic "nice" in Chinese
+        remember_comment(last_candidate)
+        return last_candidate
+
+    # ---------- public API ----------
+
     def generate_comments(self, text: str, author: str | None, lang_hint: str | None = None):
         is_english = self._is_probably_english(text, lang_hint)
 
@@ -524,15 +580,31 @@ class OfflineCommentGenerator:
             available = list(buckets.keys())
         kind = random.choice(available)
 
-        for _ in range(10):
+        last_candidate = ""
+
+        for _ in range(25):
             tmpl = random.choice(buckets[kind])
             out = tmpl.format(author=author_ref or "", focus=focus)
             out = self._tidy_comment(out)
 
-            if out and not self._violates_ai_blocklist(out):
-                return {"kind": kind, "text": out}
+            if not out:
+                continue
+            if self._violates_ai_blocklist(out):
+                continue
+            if comment_seen(out):
+                continue
 
+            remember_comment(out)
+            return {"kind": kind, "text": out}
+
+            # store last good candidate even if seen
+            last_candidate = out
+
+        # fallback: something safe and short
         fallback = self._tidy_comment(f"Pretty solid points on {focus}")
+        if not fallback:
+            fallback = "Pretty solid points on this"
+        remember_comment(fallback)
         return {"kind": kind, "text": fallback}
 
     def _get_template_buckets(self, topic, is_crypto):
