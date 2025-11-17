@@ -487,7 +487,12 @@ class OfflineCommentGenerator:
         fallback = self._tidy_comment(f"Pretty solid points on {focus}")
         return {"kind": kind, "text": fallback}
 
-    def _get_template_buckets(self, topic, is_crypto):
+        def _get_template_buckets(self, topic, is_crypto):
+        """
+        Returns {kind: [templates]}.
+        Templates use {author} and {focus}.
+        Voice target: casual, grounded, Twitter human.
+        """
         base_react = [
             "{focus} take actually feels pretty grounded",
             "Hard to disagree with this view on {focus}",
@@ -510,6 +515,28 @@ class OfflineCommentGenerator:
             "Grounded way of walking through {focus} step by step",
             "This keeps {focus} in perspective instead of hype",
             "Good reminder not to overreact to {focus} stuff",
+        ]
+
+        # new variety buckets
+        vibe_flavor = [
+            "{focus} feels very timeline core right now",
+            "The vibe around {focus} here is pretty real",
+            "This hits the everyday side of {focus} nicely",
+            "Quietly one of the better posts on {focus}",
+        ]
+
+        nuance_flavor = [
+            "Appreciate that {focus} is handled without yelling",
+            "Nice to see some nuance instead of pure takes on {focus}",
+            "Not pushing an extreme angle on {focus} actually helps",
+            "Good mix of context and restraint around {focus}",
+        ]
+
+        quick_react = [
+            "Yeah this tracks for {focus} tbh",
+            "Honestly this is how {focus} tends to go",
+            "Kind of exactly what {focus} looks like in practice",
+            "Hard not to recognise {focus} in this",
         ]
 
         author_flavor = [
@@ -572,6 +599,9 @@ class OfflineCommentGenerator:
             "react": base_react,
             "conversation": base_convo,
             "calm": base_calm,
+            "vibe": vibe_flavor,
+            "nuanced": nuance_flavor,
+            "quick": quick_react,
         }
 
         if topic == "chart":
@@ -590,6 +620,7 @@ class OfflineCommentGenerator:
         if is_crypto:
             buckets["crypto"] = crypto_extra
 
+        # author bucket sometimes available
         if random.random() < 0.5:
             buckets["author"] = author_flavor
 
