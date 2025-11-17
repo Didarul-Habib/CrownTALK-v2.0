@@ -158,11 +158,19 @@ NUMBERING_RE = re.compile(r"^\s*\d+[\.\)]\s*")
 
 
 def clean_url(raw: str) -> str:
+    """
+    - strip whitespace
+    - remove leading numbering like '1. https://...'
+    - strip query params
+    - normalize x.com + mobile.twitter.com to twitter.com
+    """
     if not raw:
         return ""
+
     raw = raw.strip()
     raw = NUMBERING_RE.sub("", raw).strip()
 
+    # extract first http(s) URL if text contains other stuff
     match = re.search(r"https?://\S+", raw)
     if match:
         raw = match.group(0)
@@ -186,10 +194,15 @@ def clean_url(raw: str) -> str:
 def chunked(seq, size):
     size = max(1, int(size))
     for i in range(0, len(seq), size):
-        yield seq[i:i + size]
+        yield seq[i: i + size]
 
 
 def fetch_tweet(url: str) -> dict:
+    """
+    Use VXTwitter:
+      tweet URL: https://twitter.com/user/status/123
+      API URL:   https://api.vxtwitter.com/user/status/123
+    """
     parsed = urlparse(url)
     path = (parsed.path or "").lstrip("/")
 
@@ -238,6 +251,7 @@ EN_STOPWORDS = {
     "just", "so", "very", "too", "up", "down", "out", "off", "again",
 }
 
+# Expanded "sounds like an AI" / hype / cringe blocklist
 AI_BLOCKLIST = {
     "amazing",
     "awesome",
@@ -295,6 +309,15 @@ EMOJI_PATTERN = re.compile(
 
 
 class OfflineCommentGenerator:
+    """
+    Offline generator:
+      - topics: chart, complaint, announcement, meme, thread, one-liner, generic
+      - crypto awareness
+      - multilingual: non-English => native + English
+      - avoids AI-y language
+      - respects 5–12 words, no emojis, no hashtags, no ending punctuation
+    """
+
     def __init__(self):
         self.random = random.Random()
 
@@ -303,13 +326,16 @@ class OfflineCommentGenerator:
     def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
         """
         Stronger language detection.
+        Decide if tweet is English.
         """
 
+        # strip URLs / mentions – they are ASCII noise
         stripped = re.sub(r"https?://\S+", "", text)
         stripped = re.sub(r"[@#]\S+", "", stripped)
+
         chars = [c for c in stripped if not c.isspace()]
 
-        # Detect CJK
+        # Detect CJK characters
         cjk = [
             c for c in chars
             if '\u4e00' <= c <= '\u9fff'
@@ -317,24 +343,30 @@ class OfflineCommentGenerator:
             or '\uac00' <= c <= '\ud7af'
         ]
 
+        # If ≥2 CJK chars → definitely non-English
         if len(cjk) >= 2:
             return False
 
+        # ASCII ratio check
         ascii_letters = [c for c in chars if c.isascii() and c.isalpha()]
         ratio_ascii = len(ascii_letters) / max(len(chars), 1)
 
+        # high ASCII → English
         if ratio_ascii > 0.7:
             return True
 
+        # if we have lang hint
         if lang_hint:
-            lang_hint = lang_hint.lower()
-            if not lang_hint.startswith("en"):
+            lh = lang_hint.lower()
+            if not lh.startswith("en"):
                 return False
+            # Only trust EN hint if there is some ASCII
             return ratio_ascii > 0.3
 
+        # fallback
         return ratio_ascii > 0.5
 
-        def _make_native_comment(self, text: str, key_tokens: list[str]) -> str:
+    def _make_native_comment(self, text: str, key_tokens: list[str]) -> str:
         """
         Create a native-language comment.
         - For CJK: pick a short sentence-like fragment.
@@ -374,7 +406,7 @@ class OfflineCommentGenerator:
 
         if not words:
             focus = pick_focus_token(key_tokens)
-            return focus or "不错"
+            return focus or "不错"  # fallback Chinese: "nice"
 
         # Make sure we have at least 5 tokens so _tidy_comment doesn't inject EN fillers
         if len(words) < 5:
@@ -435,9 +467,18 @@ class OfflineCommentGenerator:
         ]
 
     # -----------------------------------------
-    # ENGLISH COMMENT GENERATION (unchanged)
+    # ENGLISH COMMENT GENERATION
     # -----------------------------------------
     def _tidy_comment(self, text: str) -> str:
+        """
+        - remove emojis
+        - remove URLs / hashtags
+        - strip trailing punctuation
+        - enforce 5–12 tokens
+        """
+        if not text:
+            return ""
+
         text = EMOJI_PATTERN.sub("", text)
         text = re.sub(r"https?://\S+", "", text)
         text = re.sub(r"#\w+", "", text)
@@ -445,6 +486,9 @@ class OfflineCommentGenerator:
         text = re.sub(r"[.!?;:…]+$", "", text).strip()
 
         words = text.split()
+        if not words:
+            return ""
+
         if len(words) < 5:
             fillers = ["right", "honestly", "tbh", "still", "though"]
             while len(words) < 5 and fillers:
@@ -452,12 +496,16 @@ class OfflineCommentGenerator:
         elif len(words) > 12:
             words = words[:12]
 
-        final = " ".join(words)
-        return re.sub(r"[.!?;:…]+$", "", final).strip()
+        final = " ".join(words).strip()
+        final = re.sub(r"[.!?;:…]+$", "", final).strip()
+        return final
 
     def _violates_ai_blocklist(self, text: str) -> bool:
         low = text.lower()
-        return any(phrase in low for phrase in AI_BLOCKLIST)
+        for phrase in AI_BLOCKLIST:
+            if phrase in low:
+                return True
+        return False
 
     def _make_english_comment(
         self, text, author, topic, is_crypto, key_tokens, used_kinds
@@ -487,7 +535,7 @@ class OfflineCommentGenerator:
         fallback = self._tidy_comment(f"Pretty solid points on {focus}")
         return {"kind": kind, "text": fallback}
 
-        def _get_template_buckets(self, topic, is_crypto):
+    def _get_template_buckets(self, topic, is_crypto):
         """
         Returns {kind: [templates]}.
         Templates use {author} and {focus}.
@@ -652,14 +700,31 @@ def detect_topic(text: str) -> str:
     return "generic"
 
 
-
 def is_crypto_tweet(text: str) -> bool:
     t = text.lower()
     crypto_keywords = [
-        "crypto", "defi", "nft", "airdrop", "token", "coin", "chain",
-        "l1", "l2", "staking", "yield", "dex", "cex", "onchain",
-        "on-chain", "gas fees", "btc", "eth", "sol", "arb",
-        "layer two", "mainnet",
+        "crypto",
+        "defi",
+        "nft",
+        "airdrop",
+        "token",
+        "coin",
+        "chain",
+        "l1",
+        "l2",
+        "staking",
+        "yield",
+        "dex",
+        "cex",
+        "onchain",
+        "on-chain",
+        "gas fees",
+        "btc",
+        "eth",
+        "sol",
+        "arb",
+        "layer two",
+        "mainnet",
     ]
     if any(k in t for k in crypto_keywords):
         return True
@@ -669,6 +734,9 @@ def is_crypto_tweet(text: str) -> bool:
 
 
 def extract_keywords(text: str) -> list[str]:
+    """
+    Extract semi-meaningful tokens to use as {focus}.
+    """
     cleaned = re.sub(r"https?://\S+", "", text)
     cleaned = re.sub(r"[@#]\S+", "", cleaned)
 
@@ -677,21 +745,17 @@ def extract_keywords(text: str) -> list[str]:
         return []
 
     tokens_lower = [tok.lower() for tok in tokens]
-
     filtered = [
         tok
         for tok, low in zip(tokens, tokens_lower)
         if low not in EN_STOPWORDS and len(low) > 2
     ]
+
     if not filtered:
         filtered = tokens
 
     counts = Counter([t.lower() for t in filtered])
-
-    sorted_tokens = sorted(
-        filtered,
-        key=lambda w: (-counts[w.lower()], -len(w)),
-    )
+    sorted_tokens = sorted(filtered, key=lambda w: (-counts[w.lower()], -len(w)))
     seen = set()
     result = []
     for w in sorted_tokens:
@@ -699,7 +763,6 @@ def extract_keywords(text: str) -> list[str]:
         if lw not in seen:
             seen.add(lw)
             result.append(w)
-
     return result[:10]
 
 
@@ -707,7 +770,9 @@ def pick_focus_token(tokens: list[str]) -> str | None:
     if not tokens:
         return None
     upperish = [t for t in tokens if t.isupper() or t[0].isupper()]
-    return random.choice(upperish) if upperish else random.choice(tokens)
+    if upperish:
+        return random.choice(upperish)
+    return random.choice(tokens)
 
 
 # ---------------------------------------------------------
