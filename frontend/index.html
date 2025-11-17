@@ -1,99 +1,184 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="white">
-<head>
-  <meta charset="UTF-8" />
-  <title>CrownTALK Comment Generator</title>
-   <!-- Favicon -->
-  <link rel="icon" type="image/png" href="static/logo.png" />
-  <!-- optional fallback -->
-  <link rel="shortcut icon" href="static/logo.png" type="image/png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <link rel="stylesheet" href="static/styles.css" />
-</head>
-<body>
-  <div class="page">
-    <!-- HERO -->
-    <header class="hero">
-      <div class="theme-switcher">
-        <span class="theme-label">Theme</span>
-        <button class="theme-dot" data-theme="white" data-label="Light"></button>
-        <button class="theme-dot" data-theme="dark-purple" data-label="Purple"></button>
-        <button class="theme-dot" data-theme="gold" data-label="Gold"></button>
-        <button class="theme-dot" data-theme="blue" data-label="Blue"></button>
-        <button class="theme-dot" data-theme="emerald" data-label="Emerald"></button>
-        <button class="theme-dot" data-theme="black" data-label="Black"></button>
-        <button class="theme-dot" data-theme="texture" data-label="Texture"></button>
-        <button class="theme-dot" data-theme="neon" data-label="Neon"></button>
-      </div>
-
-      <div class="hero-main">
-        <img src="static/logo.png" alt="CrownTALK logo" class="hero-logo" />
-        <h1>CROWNTALK</h1>
-        <p class="hero-subtitle">HUMANLIKE COMMENT ENGINE POWERED BY CROWNDEX</p>
-      </div>
-    </header>
-
-    <main>
-      <!-- INPUT CARD -->
-      <section class="card">
-        <div class="card-header-row">
-          <h2>TWEET URLS</h2>
-          <span class="count-pill muted" id="resultCount">0 tweets</span>
-        </div>
-
-        <label class="label" for="urlInput">Paste up to many tweet URLs (one per line)</label>
-        <textarea id="urlInput" placeholder="https://x.com/user/status/123...
-https://x.com/user/status/456..."></textarea>
-
-        <div class="controls">
-          <button id="generateBtn">Generate Comments</button>
-          <button id="cancelBtn" class="secondary subtle" disabled>Cancel</button>
-          <button id="clearBtn" class="secondary">Clear</button>
-        </div>
-
-        <div class="progress-row">
-          <div class="progress-bar">
-            <div id="progressBarFill"></div>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <title>CrownTALK</title>
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <link rel="stylesheet" href="static/styles.css" />
+    <link rel="icon" type="image/png" href="static/logo.png" />
+  </head>
+  <body class="theme-dark-purple">
+    <div class="app-shell">
+      <!-- Theme switcher -->
+      <header class="app-header">
+        <div class="logo-cluster">
+          <div class="logo-orbit">
+            <img src="static/logo.png" alt="CrownTALK logo" class="logo-img" />
           </div>
-          <div id="progress" class="progress-text"></div>
+          <div class="logo-text">
+            <h1 class="app-title">CROWNTALK</h1>
+            <p class="app-subtitle">
+              Humanlike comment engine powered by CrownDEX 👑
+            </p>
+          </div>
         </div>
-      </section>
 
-      <!-- RESULTS -->
-      <section class="card results-card">
-        <div class="card-header-row">
-          <h2>RESULTS</h2>
-          <span class="count-pill" id="resultCountDisplay">0 tweets</span>
+        <div class="theme-switcher">
+          <span class="theme-label">Theme</span>
+          <div class="theme-dots">
+            <button class="theme-dot is-active" data-theme="white"></button>
+            <button class="theme-dot" data-theme="dark-purple"></button>
+            <button class="theme-dot" data-theme="gold"></button>
+            <button class="theme-dot" data-theme="blue"></button>
+            <button class="theme-dot" data-theme="black"></button>
+            <button class="theme-dot" data-theme="emerald"></button>
+            <button class="theme-dot" data-theme="texture"></button>
+            <button class="theme-dot" data-theme="neon"></button>
+          </div>
         </div>
-        <div id="results"></div>
-      </section>
+      </header>
 
-      <!-- FAILED URLS -->
-      <section class="card failed-card">
-        <div class="card-header-row">
-          <h2>FAILED URLS</h2>
-          <span class="count-pill" id="failedCount">0</span>
-        </div>
-        <div id="failed"></div>
-      </section>
+      <main class="app-main">
+        <!-- Left column: URLs + progress -->
+        <section class="column column-left">
+          <!-- URL input card -->
+          <div class="card card-input">
+            <div class="card-header">
+              <h2 class="card-title">TWEET URLS</h2>
+              <p class="card-subtitle">
+                Paste up to many tweet URLs (one per line)
+              </p>
+            </div>
 
-      <!-- CLIPBOARD HISTORY -->
-      <section class="card history-card">
-        <div class="card-header-row">
-          <h2>CLIPBOARD HISTORY</h2>
-          <button id="clearHistoryBtn" class="secondary small">Clear history</button>
-        </div>
-        <div id="history"></div>
-      </section>
-    </main>
+            <div class="card-body">
+              <div class="textarea-wrapper">
+                <textarea
+                  id="urlInput"
+                  class="url-textarea"
+                  placeholder="https://x.com/username/status/123&#10;https://x.com/another/status/456"
+                  spellcheck="false"
+                ></textarea>
+                <div class="textarea-footer">
+                  <span id="urlCount" class="helper-text">0 URLs</span>
+                  <button id="pasteBtn" class="text-btn">Paste from clipboard</button>
+                </div>
+              </div>
 
-    <footer class="footer">
-      <span>© <span id="year"></span> CrownTALK — Built by
-        <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a>
-      </span>
-    </footer>
-  </div>
+              <!-- Controls with Uiverse Generate button -->
+              <div class="controls">
+                <!-- Uiverse Generate button -->
+                <div class="btn-wrapper">
+                  <button class="btn" id="generateBtn" type="button">
+                    <svg
+                      class="btn-svg"
+                      xmlns="http://www.w3.org/2000/svg"
+                      viewBox="0 0 24 24"
+                    >
+                      <path
+                        stroke-linecap="round"
+                        stroke-linejoin="round"
+                        d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z"
+                      ></path>
+                    </svg>
 
-  <script src="static/script.js"></script>
-</body>
+                    <div class="txt-wrapper">
+                      <div class="txt-1">
+                        <span class="btn-letter">G</span>
+                        <span class="btn-letter">e</span>
+                        <span class="btn-letter">n</span>
+                        <span class="btn-letter">e</span>
+                        <span class="btn-letter">r</span>
+                        <span class="btn-letter">a</span>
+                        <span class="btn-letter">t</span>
+                        <span class="btn-letter">e</span>
+                      </div>
+                      <div class="txt-2">
+                        <span class="btn-letter">G</span>
+                        <span class="btn-letter">e</span>
+                        <span class="btn-letter">n</span>
+                        <span class="btn-letter">e</span>
+                        <span class="btn-letter">r</span>
+                        <span class="btn-letter">a</span>
+                        <span class="btn-letter">t</span>
+                        <span class="btn-letter">i</span>
+                        <span class="btn-letter">n</span>
+                        <span class="btn-letter">g</span>
+                      </div>
+                    </div>
+                  </button>
+                </div>
+
+                <!-- Existing secondary buttons -->
+                <button id="cancelBtn" class="btn-secondary subtle" type="button" disabled>
+                  Cancel
+                </button>
+                <button id="clearBtn" class="btn-secondary" type="button">
+                  Clear
+                </button>
+              </div>
+
+              <!-- Progress area -->
+              <div class="progress-row">
+                <span id="progressText" class="helper-text">
+                  Waiting for URLs…
+                </span>
+                <div class="progress-bar-outer">
+                  <div id="progressBar" class="progress-bar-inner"></div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Right column: results / failed / history -->
+        <section class="column column-right">
+          <!-- Results card -->
+          <div class="card card-results">
+            <div class="card-header">
+              <h2 class="card-title">RESULTS</h2>
+            </div>
+            <div class="card-body">
+              <div id="resultsContainer" class="results-list">
+                <!-- Filled by script.js -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Failed URLs card -->
+          <div class="card card-failed">
+            <div class="card-header">
+              <h2 class="card-title">FAILED URLS</h2>
+              <span id="failedCountBadge" class="badge">0</span>
+            </div>
+            <div class="card-body">
+              <div id="failedContainer" class="failed-list">
+                <!-- Filled by script.js -->
+              </div>
+            </div>
+          </div>
+
+          <!-- Clipboard history card -->
+          <div class="card card-history">
+            <div class="card-header">
+              <h2 class="card-title">CLIPBOARD HISTORY</h2>
+              <button id="clearHistoryBtn" class="text-btn small">
+                Clear history
+              </button>
+            </div>
+            <div class="card-body">
+              <div id="historyContainer" class="history-list">
+                <!-- Filled by script.js -->
+              </div>
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <footer class="app-footer">
+        <span>© <span id="yearEl"></span> CrownTALK · CrownDEX</span>
+      </footer>
+    </div>
+
+    <script src="static/script.js"></script>
+  </body>
 </html>
