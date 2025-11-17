@@ -50,7 +50,7 @@ def _hash_comment(norm_text: str) -> str:
 
 
 def comment_seen(text: str) -> bool:
-    """Check if a comment has ever been used before."""
+    """Check if a comment has ever been used before (best-effort)."""
     norm = _normalize_for_memory(text)
     if not norm:
         return False
@@ -66,12 +66,12 @@ def comment_seen(text: str) -> bool:
             conn.close()
         return row is not None
     except Exception:
-        # If DB is locked / unavailable, fail open (treat as unseen)
+        # If DB fails/locks, don't break generation – treat as unseen
         return False
 
 
 def remember_comment(text: str) -> None:
-    """Record that we have used this comment text globally."""
+    """Record that we have used this comment text globally (best-effort)."""
     norm = _normalize_for_memory(text)
     if not norm:
         return
@@ -88,7 +88,7 @@ def remember_comment(text: str) -> None:
         finally:
             conn.close()
     except Exception:
-        # Best effort only – don't break comment generation on DB issues
+        # best-effort, ignore errors
         pass
 
 
@@ -268,7 +268,7 @@ def clean_url(raw: str) -> str:
 def chunked(seq, size):
     size = max(1, int(size))
     for i in range(0, len(seq), size):
-        yield seq[i: i + size]
+        yield seq[i : i + size]
 
 
 def fetch_tweet(url: str) -> dict:
@@ -397,7 +397,7 @@ class OfflineCommentGenerator:
 
     # ---------- language detection ----------
 
-        def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
+    def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
         """
         Decide if tweet is English.
 
@@ -416,10 +416,11 @@ class OfflineCommentGenerator:
 
         # Detect CJK characters
         cjk_chars = [
-            c for c in chars
-            if ("\u4e00" <= c <= "\u9fff")   # CJK Unified
-            or ("\u3040" <= c <= "\u30ff")   # Japanese Hiragana/Katakana
-            or ("\uac00" <= c <= "\ud7af")   # Korean Hangul
+            c
+            for c in chars
+            if ("\u4e00" <= c <= "\u9fff")  # CJK Unified
+            or ("\u3040" <= c <= "\u30ff")  # Japanese Hiragana/Katakana
+            or ("\uac00" <= c <= "\ud7af")  # Korean Hangul
         ]
 
         ascii_letters = [c for c in chars if c.isascii() and c.isalpha()]
@@ -437,8 +438,7 @@ class OfflineCommentGenerator:
                     return False
                 return True
 
-            # Any *non-English* hint → treat as non-English
-            # (we want native + EN comments for those)
+            # Any non-English hint → treat as non-English
             return False
 
         # 2) No hint: rely on characters
@@ -464,9 +464,9 @@ class OfflineCommentGenerator:
         cleaned = re.sub(r"[@#]\S+", "", cleaned).strip()
 
         has_cjk = (
-            any('\u4e00' <= c <= '\u9fff' for c in cleaned)
-            or any('\u3040' <= c <= '\u30ff' for c in cleaned)
-            or any('\uac00' <= c <= '\ud7af' for c in cleaned)
+            any("\u4e00" <= c <= "\u9fff" for c in cleaned)
+            or any("\u3040" <= c <= "\u30ff" for c in cleaned)
+            or any("\uac00" <= c <= "\ud7af" for c in cleaned)
         )
 
         last_candidate = ""
@@ -489,7 +489,7 @@ class OfflineCommentGenerator:
                         start = 0
                     else:
                         start = self.random.randint(0, len(snippet) - 24)
-                    snippet = snippet[start:start + 24]
+                    snippet = snippet[start : start + 24]
 
                 candidate = EMOJI_PATTERN.sub("", snippet).strip()
             else:
@@ -498,7 +498,7 @@ class OfflineCommentGenerator:
 
                 if not words:
                     focus = pick_focus_token(key_tokens)
-                    candidate = focus or "不错"  # generic "nice" fallback (Chinese)
+                    candidate = focus or "不错"  # “nice” fallback in Chinese
                 else:
                     if len(words) < 5:
                         while len(words) < 5:
@@ -516,7 +516,7 @@ class OfflineCommentGenerator:
                         0,
                         min(center_idx - window_size // 2, len(words) - window_size),
                     )
-                    snippet_words = words[start:start + window_size]
+                    snippet_words = words[start : start + window_size]
                     candidate = " ".join(snippet_words)
 
                 candidate = self._tidy_comment(candidate)
@@ -540,7 +540,9 @@ class OfflineCommentGenerator:
 
     # ---------- public API ----------
 
-    def generate_comments(self, text: str, author: str | None, lang_hint: str | None = None):
+    def generate_comments(
+        self, text: str, author: str | None, lang_hint: str | None = None
+    ):
         is_english = self._is_probably_english(text, lang_hint)
 
         topic = detect_topic(text)
@@ -569,6 +571,7 @@ class OfflineCommentGenerator:
                 {"lang": "en", "text": c2["text"]},
             ]
 
+        # non-english: native + english
         native = self._make_native_comment(text, key_tokens)
         en = self._make_english_comment(
             text=text,
