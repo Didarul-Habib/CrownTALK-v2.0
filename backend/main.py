@@ -575,13 +575,14 @@ def detect_topic(text: str) -> str:
         return "complaint"
     if any(k in t for k in ("announcing", "announcement", "we're live", "we are live", "launching", "we shipped")):
         return "announcement"
-    if any(k in t for k in ("meme", "shitpost", "ratioed", "memeing"))) or "lol" in t:
+    if any(k in t for k in ("meme", "shitpost", "ratioed", "memeing")) or "lol" in t:
         return "meme"
     if "🧵" in text or len(text) > 220:
         return "thread"
     if len(text) < 80:
         return "one_liner"
     return "generic"
+
 
 
 def is_crypto_tweet(text: str) -> bool:
