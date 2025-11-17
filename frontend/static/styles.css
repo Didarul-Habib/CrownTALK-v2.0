@@ -701,6 +701,20 @@ button {
   border-color: rgba(96, 165, 250, 0.8);
 }
 
+.copy-btn,
+.copy-btn-en {
+  transition: transform 0.1s ease, box-shadow 0.15s ease;
+}
+
+.copy-btn:active,
+.copy-btn-en:active {
+  transform: scale(0.96) translateY(1px);
+  box-shadow: 0 0 0 1px rgba(148, 163, 184, 0.5);
+}
+
+
+
+
 /* Comments */
 .comments {
   display: flex;
