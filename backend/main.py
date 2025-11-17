@@ -397,39 +397,61 @@ class OfflineCommentGenerator:
 
     # ---------- language detection ----------
 
-    def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
+        def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
         """
-        Stronger language detection for English vs non-English.
+        Decide if tweet is English.
+
+        Rules:
+        - If VXTwitter says language is non-English (es, pt, ja, etc) → treat as NON-English,
+          even if the characters are ASCII.
+        - If VXTwitter says "en" but the text is full of CJK → force NON-English.
+        - If there is no hint, fall back to character heuristics.
         """
 
+        # Strip URLs & mentions – they’re noisy but ASCII
         stripped = re.sub(r"https?://\S+", "", text)
         stripped = re.sub(r"[@#]\S+", "", stripped)
 
         chars = [c for c in stripped if not c.isspace()]
 
         # Detect CJK characters
-        cjk = [
+        cjk_chars = [
             c for c in chars
-            if '\u4e00' <= c <= '\u9fff'
-            or '\u3040' <= c <= '\u30ff'
-            or '\uac00' <= c <= '\ud7af'
+            if ("\u4e00" <= c <= "\u9fff")   # CJK Unified
+            or ("\u3040" <= c <= "\u30ff")   # Japanese Hiragana/Katakana
+            or ("\uac00" <= c <= "\ud7af")   # Korean Hangul
         ]
-        if len(cjk) >= 2:
-            return False
 
         ascii_letters = [c for c in chars if c.isascii() and c.isalpha()]
-        ratio_ascii = len(ascii_letters) / max(len(chars), 1)
+        total = max(len(chars), 1)
+        ratio_ascii_letters = len(ascii_letters) / total
 
-        if ratio_ascii > 0.7:
-            return True
-
+        # 1) Trust lang_hint FIRST
         if lang_hint:
             lh = lang_hint.lower()
-            if not lh.startswith("en"):
-                return False
-            return ratio_ascii > 0.3
 
-        return ratio_ascii > 0.5
+            # If API hint is explicitly English
+            if lh.startswith("en"):
+                # But if text clearly looks CJK, override
+                if len(cjk_chars) >= 2 and ratio_ascii_letters < 0.7:
+                    return False
+                return True
+
+            # Any *non-English* hint → treat as non-English
+            # (we want native + EN comments for those)
+            return False
+
+        # 2) No hint: rely on characters
+        # If lots of CJK and not many ASCII letters → non-English
+        if len(cjk_chars) >= 2 and ratio_ascii_letters < 0.7:
+            return False
+
+        # Mostly ASCII letters → probably English
+        if ratio_ascii_letters > 0.75:
+            return True
+
+        # Otherwise, slightly biased toward English but flexible
+        return ratio_ascii_letters > 0.55
 
     # ---------- native comment ----------
 
