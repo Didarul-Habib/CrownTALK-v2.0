@@ -9,11 +9,13 @@ from urllib.parse import urlparse, urlunparse
 
 app = Flask(__name__)
 
+# Public URL of this backend (for keep-alive)
 BACKEND_PUBLIC_URL = "https://crowntalk-v2-0.onrender.com"
 VX_API_BASE = "https://api.vxtwitter.com"
 
 BATCH_SIZE = 2
 KEEP_ALIVE_INTERVAL = 600  # seconds
+
 
 # ---------------------------------------------------------
 # Manual CORS
@@ -26,11 +28,17 @@ def add_cors_headers(response):
     return response
 
 
+# ---------------------------------------------------------
+# HEALTH
+# ---------------------------------------------------------
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
 
 
+# ---------------------------------------------------------
+# COMMENT ENDPOINT
+# ---------------------------------------------------------
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
     if request.method == "OPTIONS":
@@ -76,6 +84,7 @@ def comment_endpoint():
                     author=author,
                     lang_hint=lang_hint,
                 )
+
                 results.append(
                     {
                         "url": url,
@@ -93,6 +102,9 @@ def comment_endpoint():
     return jsonify({"results": results, "failed": failed}), 200
 
 
+# ---------------------------------------------------------
+# REROLL ENDPOINT
+# ---------------------------------------------------------
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
     if request.method == "OPTIONS":
@@ -157,7 +169,7 @@ def clean_url(raw: str) -> str:
     raw = raw.strip()
     raw = NUMBERING_RE.sub("", raw).strip()
 
-    # try to extract first http(s) URL if line has extra text
+    # extract first http(s) URL if text contains other stuff
     match = re.search(r"https?://\S+", raw)
     if match:
         raw = match.group(0)
@@ -298,8 +310,9 @@ EMOJI_PATTERN = re.compile(
 class OfflineCommentGenerator:
     """
     Offline generator:
-      - topics: chart, rant/complaint, announcement, meme, thread, one-liner, generic
+      - topics: chart, complaint, announcement, meme, thread, one-liner, generic
       - crypto awareness
+      - multilingual: non-English => native + English
       - avoids AI-y language
       - respects 5–12 words, no emojis, no hashtags, no ending punctuation
     """
@@ -356,20 +369,43 @@ class OfflineCommentGenerator:
     # ---------- internals ----------
 
     def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
-        if lang_hint:
-            return lang_hint.lower().startswith("en")
+        """
+        Decide if tweet is English.
+        - Trust lang_hint unless it clearly conflicts with characters.
+        - If a lot of non-ASCII chars (Chinese/Japanese/etc), treat as non-English
+          even when the hint says "en".
+        """
 
+        # strip URLs / mentions – they are ASCII noise
         stripped = re.sub(r"https?://\S+", "", text)
         stripped = re.sub(r"[@#]\S+", "", stripped)
+
         chars = [c for c in stripped if not c.isspace()]
-        if not chars:
+        non_ascii = [c for c in chars if ord(c) > 127]
+        ascii_letters = [c for c in chars if ord(c) < 128 and c.isalpha()]
+        total = max(len(chars), 1)
+        ratio_ascii_letters = len(ascii_letters) / total
+
+        # 1) language hint from API
+        if lang_hint:
+            lh = lang_hint.lower()
+
+            # any non-english hint => non-english
+            if not lh.startswith("en"):
+                return False
+
+            # hint says english but text looks mostly CJK / non-ASCII
+            if len(non_ascii) >= 3 and ratio_ascii_letters < 0.5:
+                return False
+
+            # otherwise accept English hint
             return True
 
-        ascii_chars = [c for c in chars if ord(c) < 128]
-        ratio = len(ascii_chars) / max(len(chars), 1)
-        if ratio < 0.75:
+        # 2) no hint: decide based on characters alone
+        if len(non_ascii) >= 3 and ratio_ascii_letters < 0.5:
             return False
 
+        # default to english
         return True
 
     def _make_english_comment(
