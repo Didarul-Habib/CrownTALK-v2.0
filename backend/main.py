@@ -22,21 +22,23 @@ KEEP_ALIVE_INTERVAL = 600  # seconds
 # SHARED COMMENT STORE (SQLite - OTP style comments)
 # -------------------------------------------------------------------
 DB_PATH = "comments.db"
-_db_lock = threading.Lock()
 
 
 def init_db():
-    global _db_conn
-    _db_conn = sqlite3.connect(DB_PATH, check_same_thread=False)
-    _db_conn.execute(
-        """
-        CREATE TABLE IF NOT EXISTS comments_seen (
-            hash TEXT PRIMARY KEY,
-            created_at INTEGER
+    """Create comments_seen table if it doesn't exist."""
+    conn = sqlite3.connect(DB_PATH)
+    try:
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS comments_seen (
+                hash TEXT PRIMARY KEY,
+                created_at INTEGER
+            )
+            """
         )
-        """
-    )
-    _db_conn.commit()
+        conn.commit()
+    finally:
+        conn.close()
 
 
 def _normalize_for_memory(text: str) -> str:
@@ -48,34 +50,46 @@ def _hash_comment(norm_text: str) -> str:
 
 
 def comment_seen(text: str) -> bool:
+    """Check if a comment has ever been used before."""
     norm = _normalize_for_memory(text)
     if not norm:
         return False
     h = _hash_comment(norm)
-    with _db_lock:
-        cur = _db_conn.execute(
-            "SELECT 1 FROM comments_seen WHERE hash = ? LIMIT 1", (h,)
-        )
-        row = cur.fetchone()
-    return row is not None
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=0.5)
+        try:
+            cur = conn.execute(
+                "SELECT 1 FROM comments_seen WHERE hash = ? LIMIT 1", (h,)
+            )
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        return row is not None
+    except Exception:
+        # If DB is locked / unavailable, fail open (treat as unseen)
+        return False
 
 
 def remember_comment(text: str) -> None:
+    """Record that we have used this comment text globally."""
     norm = _normalize_for_memory(text)
     if not norm:
         return
     h = _hash_comment(norm)
     now = int(time.time())
-    with _db_lock:
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=0.5)
         try:
-            _db_conn.execute(
+            conn.execute(
                 "INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES (?, ?)",
                 (h, now),
             )
-            _db_conn.commit()
-        except Exception:
-            # best-effort; don't break comment generation on DB issues
-            pass
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        # Best effort only – don't break comment generation on DB issues
+        pass
 
 
 # ---------------------------------------------------------
@@ -185,7 +199,6 @@ def reroll_endpoint():
         return jsonify({"error": "Invalid URL", "comments": []}), 400
 
     generator = OfflineCommentGenerator()
-
     try:
         tweet_data = fetch_tweet(url)
         if not tweet_data or not tweet_data.get("text"):
