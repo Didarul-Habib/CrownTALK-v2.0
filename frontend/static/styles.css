@@ -11,6 +11,9 @@
   --chip-bg: #f3f4f6;
   --hero-glow-from: rgba(15, 23, 42, 0.65);
   --hero-glow-to: rgba(250, 204, 21, 0.55);
+  --reroll-primary: 96, 165, 250;   /* default blue */
+  --reroll-secondary: 37, 99, 235;
+
 }
 
 /* THEMES ------------------------------------------------- */
@@ -28,6 +31,11 @@
   --chip-bg: #f3f4f6;
   --hero-glow-from: rgba(15, 23, 42, 0.65);
   --hero-glow-to: rgba(250, 204, 21, 0.55);
+  [data-theme="white"] {
+  /* ...existing vars... */
+  --reroll-primary: 96, 165, 250;
+  --reroll-secondary: 37, 99, 235;
+}
 }
 
 [data-theme="dark-purple"] {
@@ -43,6 +51,11 @@
   --chip-bg: #020617;
   --hero-glow-from: rgba(88, 28, 135, 0.75);
   --hero-glow-to: rgba(168, 85, 247, 0.7);
+  [data-theme="dark-purple"] {
+  /* ... */
+  --reroll-primary: 129, 140, 248;
+  --reroll-secondary: 88, 28, 135;
+}
 }
 
 [data-theme="gold"] {
@@ -58,6 +71,11 @@
   --chip-bg: #020617;
   --hero-glow-from: rgba(180, 83, 9, 0.9);
   --hero-glow-to: rgba(250, 204, 21, 0.9);
+  [data-theme="gold"] {
+  /* ... */
+  --reroll-primary: 251, 191, 36;
+  --reroll-secondary: 180, 83, 9;
+}
 }
 
 [data-theme="blue"] {
@@ -73,6 +91,11 @@
   --chip-bg: rgba(15, 23, 42, 0.8);
   --hero-glow-from: rgba(37, 99, 235, 0.8);
   --hero-glow-to: rgba(59, 130, 246, 0.8);
+  [data-theme="blue"] {
+  /* ... */
+  --reroll-primary: 56, 189, 248;
+  --reroll-secondary: 37, 99, 235;
+}
 }
 
 [data-theme="black"] {
@@ -88,6 +111,11 @@
   --chip-bg: rgba(15, 23, 42, 0.9);
   --hero-glow-from: rgba(15, 23, 42, 0.9);
   --hero-glow-to: rgba(249, 115, 22, 0.7);
+[data-theme="black"] {
+  /* ... */
+  --reroll-primary: 249, 250, 251;
+  --reroll-secondary: 31, 41, 55;
+}
 }
 
 [data-theme="emerald"] {
@@ -103,6 +131,11 @@
   --chip-bg: rgba(6, 78, 59, 0.95);
   --hero-glow-from: rgba(16, 185, 129, 0.75);
   --hero-glow-to: rgba(52, 211, 153, 0.85);
+  [data-theme="emerald"] {
+  /* ... */
+  --reroll-primary: 52, 211, 153;
+  --reroll-secondary: 4, 120, 87;
+}
 }
 
 [data-theme="texture"] {
@@ -118,6 +151,11 @@
   --chip-bg: rgba(15, 23, 42, 0.9);
   --hero-glow-from: rgba(15, 23, 42, 0.9);
   --hero-glow-to: rgba(250, 204, 21, 0.9);
+  [data-theme="texture"] {
+  /* ... */
+  --reroll-primary: 168, 85, 247;
+  --reroll-secondary: 109, 40, 217;
+}
 }
 
 [data-theme="neon"] {
@@ -133,6 +171,11 @@
   --chip-bg: #020617;
   --hero-glow-from: rgba(15, 23, 42, 0.9);
   --hero-glow-to: rgba(244, 63, 94, 0.9);
+  [data-theme="neon"] {
+  /* ... */
+  --reroll-primary: 34, 197, 94;
+  --reroll-secondary: 5, 150, 105;
+}
 }
 
 /* GLOBAL ------------------------------------------------- */
@@ -863,16 +906,12 @@ button {
   box-shadow: none;
 }
 
-/* REROLL button (round 3D "Re-roll") -------------------- */
-/* Still uses class="reroll-btn" so your JS keeps working */
+/* REROLL button (round 3D "Re-roll", theme-aware) ------- */
 
 .reroll-btn {
-  --primary: 96, 165, 250;   /* outer glow color (blueish) */
-  --secondary: 37, 99, 235;  /* inner darker color */
-
   position: relative;
-  width: 60px;
-  height: 46px;
+  width: 46px;   /* smaller */
+  height: 38px;  /* smaller */
   padding: 0;
   border: none;
   border-radius: 50%;
@@ -880,7 +919,7 @@ button {
   user-select: none;
   touch-action: manipulation;
   background: transparent;
-  outline: 8px solid rgba(var(--primary), 0.3);
+  outline: 6px solid rgba(var(--reroll-primary), 0.3);
   transition:
     outline-color 0.3s ease,
     transform 0.15s ease;
@@ -892,7 +931,7 @@ button {
   position: absolute;
   inset: 0;
   border-radius: 50%;
-  background: rgb(var(--secondary));
+  background: rgb(var(--reroll-secondary));
 }
 
 /* front circle + text */
@@ -900,23 +939,22 @@ button {
   content: "Re-roll";
   position: absolute;
   inset: 0;
-  margin: 0;
   border-radius: 50%;
   background: linear-gradient(
     0deg,
-    rgba(var(--primary), 0.6) 20%,
-    rgba(var(--primary), 1) 50%
+    rgba(var(--reroll-primary), 0.6) 20%,
+    rgba(var(--reroll-primary), 1) 50%
   );
-  box-shadow: 0 0.5em 1em -0.2em rgba(var(--secondary), 0.5);
-  border: 1px solid rgb(var(--secondary));
+  box-shadow: 0 0.45em 0.9em -0.2em rgba(var(--reroll-secondary), 0.5);
+  border: 1px solid rgb(var(--reroll-secondary));
   transform: translateY(-15%);
   display: flex;
   align-items: center;
   justify-content: center;
-  font-size: 0.65rem;
+  font-size: 0.55rem; /* smaller text */
   font-weight: 600;
   font-family: inherit;
-  color: rgb(var(--secondary));
+  color: rgb(var(--reroll-secondary));
   text-transform: uppercase;
   letter-spacing: 0.08em;
   transition:
@@ -926,7 +964,7 @@ button {
 
 /* hover: stronger outline glow */
 .reroll-btn:hover {
-  outline-color: rgba(var(--primary), 0.6);
+  outline-color: rgba(var(--reroll-primary), 0.7);
 }
 
 /* press: drop down, remove shadow */
@@ -935,38 +973,60 @@ button {
   box-shadow: none;
 }
 
-/* Reroll also gets tiny press movement on the button */
+/* tiny press movement */
 .reroll-btn:active {
   transform: translateY(1px);
 }
 
-/* Clipboard history copy button ------------------------- */
-/* Keep this simpler pill style, separate from fancy ones */
+/* Clear History button (mini Uiverse-style) ------------- */
 
-.history-copy-btn {
+#clearHistoryBtn {
+  position: relative;
+  padding: 4px 12px;
   border-radius: 999px;
-  border: 1px solid rgba(148, 163, 184, 0.8);
-  padding: 3px 8px;
-  font-size: 10px;
-  background: rgba(15, 23, 42, 0.01);
-  color: var(--text-muted);
+  border: none;
   cursor: pointer;
+  background-color: #f2f7fa;
+  color: #0e418f;
+  font-size: 10px;
+  font-weight: 600;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 6px;
+  overflow: hidden;
   transition:
-    background-color 0.15s ease,
-    transform 0.08s ease,
-    box-shadow 0.15s ease;
+    background-color 0.3s ease,
+    box-shadow 0.3s ease,
+    transform 0.1s ease;
 }
 
-.history-copy-btn:hover {
-  background: rgba(15, 23, 42, 0.08);
-  box-shadow: 0 4px 12px rgba(15, 23, 42, 0.45);
+/* optional tiny icon vibe using a dot */
+#clearHistoryBtn::before {
+  content: "";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background-color: #0e418f;
+  opacity: 0.8;
+}
+
+/* hover */
+#clearHistoryBtn:hover {
+  background-color: #0e418f;
+  color: #b5ccf3;
+  box-shadow: 0 6px 18px rgba(15, 23, 42, 0.45);
   transform: translateY(-0.5px);
 }
 
-.history-copy-btn:active {
+/* press */
+#clearHistoryBtn:active {
   transform: translateY(1px) scale(0.97);
   box-shadow: none;
 }
+
 
 
 /* Comments */
