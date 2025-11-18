@@ -138,3 +138,24 @@ body.is-generating .btn {
 
 /* make sure letters inside txt spans don't wrap weirdly */
 .btn-letter { display: inline-block; }
+
+
+/* Align the "Generate" icon and text perfectly */
+.btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  line-height: 1;
+}
+
+.btn-svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.txt-wrapper { display: flex; align-items: center; }
+.txt-1, .txt-2 { display: inline-flex; gap: 1px; line-height: 1; }
+
