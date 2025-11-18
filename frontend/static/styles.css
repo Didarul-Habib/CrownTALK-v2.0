@@ -1341,79 +1341,98 @@ body {
   box-shadow: 0 -12px 18px 0 rgba(0,0,0,.04) inset, 0 1px 0 rgba(0,0,0,.05);
 }
 
-/* --- Card Border Halo Ring --- */
+/* =========================================================
+   Uiverse ring: thin rotating halo that hugs the card border
+   Works on every .uiverse-card (Tweet URLs, Results, Failed, History)
+   ========================================================= */
 
-/* host */
 .uiverse-card {
   position: relative;
-  isolation: isolate; /* keep pseudo elements behind content */
+  isolation: isolate;                /* keeps halo inside the card */
+  border-radius: 16px;
 }
 
-/* container for the animated ring */
+/* the container for the ring */
 .uiverse-card .card__border {
   position: absolute;
-  inset: 0;
-  border-radius: 1rem;
+  inset: 0;                          /* exactly on the edges */
+  border-radius: inherit;
   pointer-events: none;
-  z-index: 0;
-  overflow: hidden; /* keeps the ring clipped to rounded corners */
+  z-index: 1;                        /* under the content but over background */
 }
 
-/* the rotating ring itself, masked to ~2px stroke */
+/* the actual rotating ring */
 .uiverse-card .card__border::before {
   content: "";
   position: absolute;
-  inset: -2px;                 /* tiny overscan so corners look crisp */
+  inset: -2px;                       /* lets the glow breathe slightly */
   border-radius: inherit;
-  z-index: 0;
 
-  /* colorful sweep that rotates */
-  background: conic-gradient(
-    from 0deg,
-    var(--ui-accent-1),
-    var(--ui-accent-2),
-    var(--ui-accent-3),
-    var(--ui-accent-2),
-    var(--ui-accent-1)
-  );
+  /* a short arc on a conic gradient; everything else transparent */
+  background:
+    conic-gradient(
+      from var(--ring-angle, 0deg),
+      transparent 0 330deg,
+      color-mix(in oklab, var(--ui-accent-1) 88%, white 12%) 330deg 356deg,
+      transparent 356deg 360deg
+    );
 
-  /* mask so only a thin ring shows (2px “stroke”) */
+  /* mask to keep only a 3px border-wide ring (no fill in the middle) */
+  --ring-w: 3px;
   -webkit-mask:
-    radial-gradient(farthest-side, #000  calc(100% - 2px), transparent calc(100% - 2px));
-          mask:
-    radial-gradient(farthest-side, #000  calc(100% - 2px), transparent calc(100% - 2px));
+    /* cut the inner area so only a ring remains */
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-w)), #000 0)
+    ,
+    /* keep everything inside the rounded box */
+    linear-gradient(#000 0 0);
+  -webkit-mask-composite: source-in;     /* chrome/safari */
+          mask-composite: intersect;     /* firefox */
 
-  animation: uiverse-ring-rotate 9s linear infinite;
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-1) 60%, transparent))
+          drop-shadow(0 0 18px color-mix(in oklab, var(--ui-accent-2) 40%, transparent));
+
+  animation: crowntalk-ring-spin 8s linear infinite;
 }
 
-@keyframes uiverse-ring-rotate {
-  to { transform: rotate(360deg); }
+@keyframes crowntalk-ring-spin {
+  to { --ring-angle: 360deg; }
 }
 
-/* keep actual card content above the ring */
-.uiverse-card > *:not(.card__border) {
-  position: relative;
-  z-index: 1;
+/* tweak per-theme brightness (optional but nice) */
+:root[data-theme="crimson"] .uiverse-card .card__border::before {
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-1) 60%, transparent))
+          drop-shadow(0 0 24px rgba(255 40 80 / .35));
 }
 
-
-/* Keep sparkle + text snug and centered in the generate button */
-#generateBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;             /* space between icon and label */
+/* =========================================================
+   Generate button icon/text micro-alignment (final hard fix)
+   ========================================================= */
+#generateBtn,
+.btn-generate {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center;
+  gap: 10px;
   line-height: 1;
 }
 
-#generateBtn svg {
+#generateBtn svg,
+.btn-generate svg,
+#generateBtn .btn-svg,
+.btn-generate .btn-svg,
+#generateBtn .sparkle,
+.btn-generate .sparkle {
   width: 16px;
   height: 16px;
-  flex: 0 0 auto;
   display: block;
-  translate: 0 0.5px;    /* tiny optical nudge for vertical centering */
+  flex: 0 0 16px;
+  translate: 0 .5px;                 /* tiny optical nudge */
 }
 
-/* Stop the original Uiverse demo strip when the card has BOTH classes */
-.card.uiverse-card .card__border::before {
-  content: none !important;
+#generateBtn .txt-wrapper,
+.btn-generate .txt-wrapper {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
 }
+
