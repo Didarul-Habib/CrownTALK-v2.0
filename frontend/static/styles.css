@@ -863,3 +863,69 @@ body {
   position: relative;
   z-index: 2;
 }
+
+
+/* === Copied state (theme-aware) ======================== */
+.comment-line.copied {
+  background: linear-gradient(
+    90deg,
+    rgba(129, 140, 248, 0.10),
+    rgba(129, 140, 248, 0.06)
+  );
+  border-color: var(--accent-soft-strong);
+  box-shadow:
+    0 0 0 1px var(--accent-soft-strong),
+    0 8px 22px rgba(129, 140, 248, 0.25);
+}
+
+.copy-btn.is-copied,
+.copy-btn-en.is-copied {
+  background-color: rgba(129, 140, 248, 0.15);
+  outline: 1px dashed var(--accent-soft-strong);
+}
+.copy-btn.is-copied span:first-child,
+.copy-btn-en.is-copied span:first-child {
+  color: var(--accent);
+}
+
+/* === Tweet link affordance ============================= */
+.tweet-link {
+  text-decoration: underline;
+  text-decoration-style: dotted;
+  text-underline-offset: 3px;
+  opacity: 0.92;
+  transition: color .15s ease, opacity .15s ease, filter .15s ease;
+  position: relative;
+  padding-right: 14px; /* room for ↗ icon */
+}
+
+.tweet-link:hover {
+  color: var(--accent);
+  opacity: 1;
+  filter: drop-shadow(0 0 10px rgba(129, 140, 248, .25));
+}
+
+/* small external-link glyph, no extra markup needed */
+.tweet-link::after {
+  content: "↗";
+  position: absolute;
+  right: 0;
+  top: 0;
+  font-size: 10px;
+  line-height: 1;
+  opacity: .8;
+}
+
+/* optional: subtle “Open tweet” hint on hover for desktop */
+@media (pointer: fine) {
+  .tweet-header:hover .tweet-link::before {
+    content: "Open tweet";
+    position: absolute;
+    left: 0;
+    top: -18px;
+    font-size: 10px;
+    letter-spacing: .06em;
+    text-transform: uppercase;
+    color: var(--text-muted);
+  }
+}
