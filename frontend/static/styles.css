@@ -1346,29 +1346,24 @@ body {
    Works on every .uiverse-card (Tweet URLs, Results, Failed, History)
    ========================================================= */
 
-.uiverse-card {
-  position: relative;
-  isolation: isolate;                /* keeps halo inside the card */
-  border-radius: 16px;
+.card.uiverse-card .card__border {
+  position: absolute !important;
+  inset: 0 !important;
+  border-radius: inherit !important;
+  overflow: visible !important;
+  background: none !important;
+  pointer-events: none !important;
+  z-index: 1 !important;  /* below content but above bg */
 }
 
-/* the container for the ring */
-.uiverse-card .card__border {
-  position: absolute;
-  inset: 0;                          /* exactly on the edges */
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 1;                        /* under the content but over background */
-}
+/* completely replace the ::before stripe with a thin rotating ring */
+.card.uiverse-card .card__border::before {
+  content: "" !important;
+  position: absolute !important;
+  inset: -2px !important;              /* slight breathing room */
+  border-radius: inherit !important;
 
-/* the actual rotating ring */
-.uiverse-card .card__border::before {
-  content: "";
-  position: absolute;
-  inset: -2px;                       /* lets the glow breathe slightly */
-  border-radius: inherit;
-
-  /* a short arc on a conic gradient; everything else transparent */
+  /* ring: short bright arc on a conic gradient */
   background:
     conic-gradient(
       from var(--ring-angle, 0deg),
@@ -1377,62 +1372,70 @@ body {
       transparent 356deg 360deg
     );
 
-  /* mask to keep only a 3px border-wide ring (no fill in the middle) */
+  /* mask so only a ~3px border remains (no fill in the middle) */
   --ring-w: 3px;
   -webkit-mask:
-    /* cut the inner area so only a ring remains */
     radial-gradient(farthest-side, transparent calc(100% - var(--ring-w)), #000 0)
     ,
-    /* keep everything inside the rounded box */
     linear-gradient(#000 0 0);
-  -webkit-mask-composite: source-in;     /* chrome/safari */
-          mask-composite: intersect;     /* firefox */
+  -webkit-mask-composite: source-in;   /* chrome/safari */
+          mask-composite: intersect;   /* firefox */
 
-  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-1) 60%, transparent))
-          drop-shadow(0 0 18px color-mix(in oklab, var(--ui-accent-2) 40%, transparent));
+  filter:
+    drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-1) 60%, transparent))
+    drop-shadow(0 0 18px color-mix(in oklab, var(--ui-accent-2) 40%, transparent));
 
-  animation: crowntalk-ring-spin 8s linear infinite;
+  animation: ring-spin 8s linear infinite;
 }
 
-@keyframes crowntalk-ring-spin {
-  to { --ring-angle: 360deg; }
-}
+@keyframes ring-spin { to { --ring-angle: 360deg; } }
 
-/* tweak per-theme brightness (optional but nice) */
-:root[data-theme="crimson"] .uiverse-card .card__border::before {
-  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-1) 60%, transparent))
-          drop-shadow(0 0 24px rgba(255 40 80 / .35));
+/* optional: theme tune for crimson glow */
+:root[data-theme="crimson"] .card.uiverse-card .card__border::before {
+  filter:
+    drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-1) 60%, transparent))
+    drop-shadow(0 0 24px rgba(255 40 80 / .35));
 }
 
 /* =========================================================
-   Generate button icon/text micro-alignment (final hard fix)
+   FIX 2 — sparkle + text alignment on Generate button
    ========================================================= */
 #generateBtn,
 .btn-generate {
   display: inline-flex !important;
   align-items: center !important;
-  justify-content: center;
-  gap: 10px;
-  line-height: 1;
+  justify-content: center !important;
+  gap: 10px !important;
+  line-height: 1 !important;
 }
 
-#generateBtn svg,
-.btn-generate svg,
+/* hard-size the sparkle (works whether it's .btn-svg or plain svg) */
 #generateBtn .btn-svg,
 .btn-generate .btn-svg,
-#generateBtn .sparkle,
-.btn-generate .sparkle {
-  width: 16px;
-  height: 16px;
-  display: block;
-  flex: 0 0 16px;
-  translate: 0 .5px;                 /* tiny optical nudge */
+#generateBtn svg,
+.btn-generate svg {
+  width: 18px !important;
+  height: 18px !important;
+  display: block !important;
+  flex: 0 0 18px !important;
+  stroke-width: 1.5 !important;
+  translate: 0 .5px;      /* tiny optical nudge */
 }
 
+/* slightly larger sparkle? uncomment:
+#generateBtn svg, .btn-generate svg { width: 20px !important; height: 20px !important; }
+*/
+
+/* keep the animated label stack aligned */
 #generateBtn .txt-wrapper,
 .btn-generate .txt-wrapper {
-  display: inline-flex;
-  align-items: center;
-  line-height: 1;
+  display: inline-flex !important;
+  align-items: center !important;
 }
 
+/* ensure crimson button uses red tones (not blue) */
+:root[data-theme="crimson"] {
+  --btn-base: #e23b59;
+  --btn-edge: #a81e37;
+  --btn-glow: 255, 90, 115;  /* r,g,b */
+}
