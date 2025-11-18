@@ -11,7 +11,9 @@
   position: relative;
 }
 
-.btn {
+/* Base style (alias .btn and .btn-generate) */
+.btn,
+.btn-generate {
   --_base: var(--btn-base);
   --_edge: var(--btn-edge);
   --_glow: var(--btn-glow);
@@ -45,9 +47,16 @@
     box-shadow .18s ease,
     filter .18s ease,
     background .18s ease;
+
+  /* Align the "Generate" icon/text perfectly even if there's no icon */
+  display: inline-flex;
+  justify-content: center;
+  line-height: 1;
 }
 
-.btn:hover:not(:disabled) {
+/* Hover */
+.btn:hover:not(:disabled),
+.btn-generate:hover:not(:disabled) {
   box-shadow:
     0 0 0 1px rgba(var(--_glow), 0.7) inset,
     0 10px 28px rgba(var(--_glow), 0.38),
@@ -56,53 +65,26 @@
   filter: saturate(1.08);
 }
 
-.btn:active:not(:disabled) {
+/* Active */
+.btn:active:not(:disabled),
+.btn-generate:active:not(:disabled) {
   transform: translateY(1px);
   box-shadow:
     0 0 0 1px rgba(var(--_glow), 0.55) inset,
     0 4px 12px rgba(var(--_glow), 0.25) inset;
 }
 
-.btn:disabled {
+/* Disabled */
+.btn:disabled,
+.btn-generate:disabled {
   opacity: 0.55;
   cursor: default;
   filter: grayscale(0.15);
 }
 
-/* left icon (sparkle) */
-.btn-svg {
-  width: 18px;
-  height: 18px;
-  stroke: #e8ecff;
-  fill: none;
-  stroke-width: 1.5;
-  filter: drop-shadow(0 0 4px rgba(var(--_glow), .45));
-  transition: transform .25s ease;
-}
-
-.btn:hover .btn-svg { transform: rotate(-8deg) scale(1.03); }
-
-/* text swap (Generate -> Generating) */
-.txt-wrapper {
-  position: relative;
-  display: grid;
-  overflow: hidden;
-}
-
-.txt-1, .txt-2 {
-  display: inline-block;
-  white-space: nowrap;
-  transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s ease;
-}
-
-body.is-generating .txt-1 { transform: translateY(-120%); opacity: 0; }
-body.is-generating .txt-2 { transform: translateY(-100%); opacity: 1; }
-
-/* default states so only generating moves txt-2 into view */
-.txt-2 { transform: translateY(0); opacity: 0; }
-
-/* subtle ring around button to match theme */
-.btn::after {
+/* Subtle ring */
+.btn::after,
+.btn-generate::after {
   content: "";
   position: absolute;
   inset: -3px;
@@ -112,50 +94,56 @@ body.is-generating .txt-2 { transform: translateY(-100%); opacity: 1; }
   opacity: .9;
 }
 
-/* keyboard focus */
-.btn:focus-visible {
+/* Focus */
+.btn:focus-visible,
+.btn-generate:focus-visible {
   outline: none;
   box-shadow:
     0 0 0 2px rgba(255,255,255, .85),
     0 0 0 5px rgba(var(--_glow), .45);
 }
 
-/* small dotted preview pulse while generating */
-body.is-generating .btn {
+/* Generating pulse */
+body.is-generating .btn,
+body.is-generating .btn-generate {
   animation: gen-pulse 1.4s ease-in-out infinite;
 }
 
 @keyframes gen-pulse {
-  0%, 100% { box-shadow:
+  0%, 100% {
+    box-shadow:
       0 0 0 1px rgba(var(--_glow), .55) inset,
       0 8px 24px rgba(var(--_glow), .28),
-      0 1px 0 rgba(255,255,255,.18) inset; }
-  50% { box-shadow:
+      0 1px 0 rgba(255,255,255,.18) inset;
+  }
+  50% {
+    box-shadow:
       0 0 0 1px rgba(var(--_glow), .75) inset,
       0 12px 32px rgba(var(--_glow), .38),
-      0 1px 0 rgba(255,255,255,.22) inset; }
+      0 1px 0 rgba(255,255,255,.22) inset;
+  }
 }
 
-/* make sure letters inside txt spans don't wrap weirdly */
-.btn-letter { display: inline-block; }
-
-
-/* Align the "Generate" icon and text perfectly */
-.btn {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 10px;
-  line-height: 1;
-}
-
+/* Optional icon/text helpers (safe even if not used) */
 .btn-svg {
   width: 18px;
   height: 18px;
-  display: block;
-  flex: 0 0 auto;
+  stroke: #e8ecff;
+  fill: none;
+  stroke-width: 1.5;
+  filter: drop-shadow(0 0 4px rgba(var(--_glow), .45));
+  transition: transform .25s ease;
 }
+.btn:hover .btn-svg,
+.btn-generate:hover .btn-svg { transform: rotate(-8deg) scale(1.03); }
 
-.txt-wrapper { display: flex; align-items: center; }
-.txt-1, .txt-2 { display: inline-flex; gap: 1px; line-height: 1; }
-
+.txt-wrapper { position: relative; display: grid; overflow: hidden; }
+.txt-1, .txt-2 {
+  display: inline-block;
+  white-space: nowrap;
+  transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s ease;
+}
+body.is-generating .txt-1 { transform: translateY(-120%); opacity: 0; }
+body.is-generating .txt-2 { transform: translateY(-100%); opacity: 1; }
+.txt-2 { transform: translateY(0); opacity: 0; }
+.btn-letter { display: inline-block; }
