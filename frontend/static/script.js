@@ -654,3 +654,22 @@ document.addEventListener("DOMContentLoaded", () => {
     });
   });
 });
+
+
+
+/* ===== CrownTALK: minimal add-on (default theme = dark-purple) =====
+   Drop this at the very bottom of static/script.js.
+   It safely redefines initTheme to prefer 'dark-purple' on first load.
+*/
+
+function initTheme() {
+  let theme = "dark-purple"; // default for first-time visitors
+  try {
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored) theme = stored; // respect user’s previous choice
+  } catch {
+    // ignore storage errors
+  }
+  applyTheme(theme);
+}
+
