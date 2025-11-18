@@ -212,7 +212,6 @@ function buildTweetBlock(result) {
   link.textContent = url || "(no url)";
   link.title = "Open tweet (tap to open)";
 
-
   const actions = document.createElement("div");
   actions.className = "tweet-actions";
 
@@ -539,10 +538,10 @@ const ALLOWED_THEMES = [
   "blue",
   "black",
   "emerald",
-  "neon",
+  "crimson", // replaced "neon"
 ];
 
-// sanitize dots: remove texture, coerce unknown "green" -> neon
+// sanitize dots: remove texture, coerce unknown "green" -> crimson
 function sanitizeThemeDots() {
   themeDots.forEach((dot) => {
     if (!dot || !dot.dataset) return;
@@ -551,8 +550,8 @@ function sanitizeThemeDots() {
     if (t === "texture") {
       dot.parentElement && dot.parentElement.removeChild(dot);
     } else if (!ALLOWED_THEMES.includes(t)) {
-      // some builds had a stray "green" — treat as neon
-      dot.dataset.theme = "neon";
+      // some builds had a stray "green" — treat as crimson
+      dot.dataset.theme = "crimson";
     }
   });
   // refresh node list after potential removals
@@ -581,9 +580,12 @@ function initTheme() {
   let theme = "dark-purple"; // default first-run = purple
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored && ALLOWED_THEMES.includes(stored)) {
-      theme = stored;
+    if (stored) {
+      // migrate old "neon" -> "crimson"
+      theme = stored === "neon" ? "crimson" : stored;
+      if (stored === "neon") localStorage.setItem(THEME_STORAGE_KEY, "crimson");
     }
+    if (!ALLOWED_THEMES.includes(theme)) theme = "dark-purple";
   } catch {
     // ignore
   }
@@ -631,11 +633,10 @@ document.addEventListener("DOMContentLoaded", () => {
       await copyToClipboard(text);
       addToHistory(text);
 
-       // NEW: mark this comment as copied (visual feedback)
+      // mark this comment as copied (visual feedback)
       const line = copyBtn.closest(".comment-line");
       if (line) line.classList.add("copied");
       copyBtn.classList.add("is-copied");
-
 
       const old = copyBtn.textContent;
       copyBtn.textContent = "Copied";
