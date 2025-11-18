@@ -26,8 +26,8 @@ const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 
 const yearEl = document.getElementById("year");
 
-// theme dots
-const themeDots = Array.from(document.querySelectorAll(".theme-dot"));
+// theme dots (live node list -> array)
+let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 
 // ------------------------
 // State
@@ -45,7 +45,6 @@ function parseURLs(raw) {
     .map((line) => line.trim())
     .filter(Boolean)
     .map((line) => {
-      // remove "1. https://..."
       line = line.replace(/^\s*\d+\.\s*/, "");
       return line.trim();
     });
@@ -99,11 +98,10 @@ function formatTweetCount(count) {
   return `${n} tweet${n === 1 ? "" : "s"}`;
 }
 
-// Textarea auto-grow
 function autoResizeTextarea() {
   if (!urlInput) return;
   urlInput.style.height = "auto";
-  const base = 180; // matches CSS min-height baseline
+  const base = 180;
   const newHeight = Math.max(base, urlInput.scrollHeight);
   urlInput.style.height = newHeight + "px";
 }
@@ -203,7 +201,6 @@ function buildTweetBlock(result) {
   tweet.className = "tweet";
   tweet.dataset.url = url;
 
-  // header
   const header = document.createElement("div");
   header.className = "tweet-header";
 
@@ -322,7 +319,6 @@ function updateTweetBlock(tweetEl, result) {
   const newComments = buildTweetBlock(result).querySelector(".comments");
   if (newComments) tweetEl.appendChild(newComments);
 
-  // highlight animation after reroll
   tweetEl.style.transition = "box-shadow 0.25s ease, transform 0.25s ease";
   const oldShadow = tweetEl.style.boxShadow;
   const oldTransform = tweetEl.style.transform;
@@ -351,14 +347,12 @@ function appendFailedItem(failure) {
   failedEl.appendChild(wrapper);
 }
 
-// Skeletons while waiting
 function showSkeletons(count) {
   resultsEl.innerHTML = "";
   const num = Math.min(Math.max(count, 1), 6);
   for (let i = 0; i < num; i++) {
     const sk = document.createElement("div");
     sk.className = "tweet-skeleton";
-
     for (let j = 0; j < 3; j++) {
       const line = document.createElement("div");
       line.className = "tweet-skeleton-line";
@@ -415,7 +409,6 @@ async function handleGenerate() {
     let processed = 0;
     const total = results.length || urls.length;
 
-    // show results one by one (not all at once)
     let delay = 50;
     results.forEach((item) => {
       setTimeout(() => {
@@ -438,11 +431,9 @@ async function handleGenerate() {
       delay += 120;
     });
 
-    // failed URLs
     failed.forEach((f) => appendFailedItem(f));
     failedCountEl.textContent = String(failed.length);
 
-    // if no results at all
     if (!results.length) {
       document.body.classList.remove("is-generating");
       generateBtn.disabled = false;
@@ -539,56 +530,60 @@ async function handleReroll(tweetEl) {
 // Theme
 // ------------------------
 const THEME_STORAGE_KEY = "crowntalk_theme";
+const ALLOWED_THEMES = [
+  "white",
+  "dark-purple",
+  "gold",
+  "blue",
+  "black",
+  "emerald",
+  "neon",
+];
+
+// sanitize dots: remove texture, coerce unknown "green" -> neon
+function sanitizeThemeDots() {
+  themeDots.forEach((dot) => {
+    if (!dot || !dot.dataset) return;
+    const t = (dot.dataset.theme || "").trim();
+
+    if (t === "texture") {
+      dot.parentElement && dot.parentElement.removeChild(dot);
+    } else if (!ALLOWED_THEMES.includes(t)) {
+      // some builds had a stray "green" — treat as neon
+      dot.dataset.theme = "neon";
+    }
+  });
+  // refresh node list after potential removals
+  themeDots = Array.from(document.querySelectorAll(".theme-dot"));
+}
 
 function applyTheme(themeName) {
   const html = document.documentElement;
-  html.setAttribute("data-theme", themeName);
+  const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
+  html.setAttribute("data-theme", t);
 
   themeDots.forEach((dot) => {
-    if (dot.dataset.theme === themeName) {
-      dot.classList.add("is-active");
-    } else {
-      dot.classList.remove("is-active");
-    }
+    dot.classList.toggle("is-active", dot.dataset.theme === t);
   });
 
   try {
-    localStorage.setItem(THEME_STORAGE_KEY, themeName);
+    localStorage.setItem(THEME_STORAGE_KEY, t);
   } catch {
-    // ignore
+    // ignore storage errors
   }
 }
 
-function sanitizeStoredTheme(value) {
-  // map any removed/legacy names to supported themes
-  if (value === "texture") return "dark-purple"; // texture removed
-  if (value === "green") return "neon"; // legacy -> neon
-  return value;
-}
-
 function initTheme() {
-  let theme = "dark-purple"; // default (purple) on first visit
+  sanitizeThemeDots();
+
+  let theme = "dark-purple"; // default first-run = purple
   try {
-    const storedRaw = localStorage.getItem(THEME_STORAGE_KEY);
-    if (storedRaw) {
-      const sanitized = sanitizeStoredTheme(storedRaw);
-      // fallback to default if unknown
-      const allowed = new Set([
-        "white",
-        "dark-purple",
-        "gold",
-        "blue",
-        "black",
-        "emerald",
-        "neon"
-      ]);
-      theme = allowed.has(sanitized) ? sanitized : "dark-purple";
-    } else {
-      // persist default so subsequent loads keep it until user changes
-      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored && ALLOWED_THEMES.includes(stored)) {
+      theme = stored;
     }
   } catch {
-    // ignore storage errors, keep default
+    // ignore
   }
   applyTheme(theme);
 }
@@ -672,9 +667,7 @@ document.addEventListener("DOMContentLoaded", () => {
     dot.addEventListener("click", () => {
       const t = dot.dataset.theme;
       if (!t) return;
-      // if a removed theme dot somehow exists, redirect to default
-      const picked = sanitizeStoredTheme(t);
-      applyTheme(picked);
+      applyTheme(t);
     });
   });
 });
