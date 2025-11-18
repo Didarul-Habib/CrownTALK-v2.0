@@ -1,161 +1,137 @@
-<!doctype html>
+<!DOCTYPE html>
 <html lang="en" data-theme="dark-purple">
-  <head>
-    <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width,initial-scale=1" />
-    <title>CrownTALK — Offline Comment Generator</title>
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>CrownTALK —Comment Generator</title>
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  <link rel="stylesheet" href="styles.css" />
+</head>
+<body>
 
-    <!-- Styles -->
-    <link rel="stylesheet" href="styles.css" />
-    <link rel="preconnect" href="https://fonts.googleapis.com" />
-    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
-  </head>
+  <!-- HEADER / HERO -->
+  <header class="site-header">
+    <div class="hero">
+      <!-- glossy sheen UNDER the logo -->
+      <div class="hero-gloss" aria-hidden="true"></div>
 
-  <body>
-    <div class="app">
-      <!-- Hero -->
-      <header class="hero">
-        <div class="logo" aria-hidden="true">
-          <!-- If you have an image logo, drop it here -->
-          <!-- <img src="logo.svg" alt="CrownTALK" height="56" /> -->
-        </div>
-        <h1 class="hero-title">CrownTALK</h1>
-      </header>
-
-      <!-- Theme switcher -->
-      <section class="panel" aria-label="Theme">
-        <div class="ct-card">
-          <div class="ct-card__border" aria-hidden="true"></div>
-          <div class="theme-switcher" role="listbox" aria-label="Choose theme">
-            <span class="section-title">Theme</span>
-            <div class="theme-dot" data-theme="dark-purple" role="option" title="Dark Purple"></div>
-            <div class="theme-dot" data-theme="emerald" role="option" title="Emerald"></div>
-            <div class="theme-dot" data-theme="crimson" role="option" title="Crimson"></div>
-            <div class="theme-dot" data-theme="gold" role="option" title="Gold"></div>
-            <div class="theme-dot" data-theme="blue" role="option" title="Blue"></div>
-            <div class="theme-dot" data-theme="black" role="option" title="Black"></div>
-            <div class="theme-dot" data-theme="white" role="option" title="White"></div>
-          </div>
-        </div>
-      </section>
-
-      <!-- Dashboard (2x2 on large screens) -->
-      <main class="dashboard" aria-live="polite">
-        <!-- 1) URL Input / Controls -->
-        <section class="panel" aria-label="Tweet URLs">
-          <div class="ct-card">
-            <div class="ct-card__border" aria-hidden="true"></div>
-
-            <div>
-              <div class="ct-card__title">Tweet URLs</div>
-              <div class="ct-card__subtitle">
-                Paste one URL per line. We’ll fetch and generate two comments for each.
-              </div>
-            </div>
-
-            <hr class="ct-card__line" />
-
-            <label for="urlInput" class="section-title">List</label>
-            <textarea
-              id="urlInput"
-              class="url-input mono"
-              spellcheck="false"
-              placeholder="https://x.com/username/status/1234567890&#10;https://x.com/another/status/0987654321"
-              aria-label="Tweet URLs input"
-            ></textarea>
-
-            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
-              <button id="generateBtn" class="copy-btn" type="button" title="Generate comments">Generate</button>
-              <button id="cancelBtn" class="reroll-btn" type="button" title="Cancel current job" disabled>Cancel</button>
-              <button id="clearBtn" class="history-copy-btn" type="button" title="Clear input">Clear</button>
-            </div>
-
-            <div style="margin-top:10px;">
-              <div id="progress" class="section-title" aria-live="polite"></div>
-              <div class="progress" aria-hidden="true">
-                <div id="progressBarFill" class="progress__fill"></div>
-              </div>
-            </div>
-          </div>
-        </section>
-
-        <!-- 2) Results -->
-        <section class="panel" aria-label="Results">
-          <div class="ct-card">
-            <div class="ct-card__border" aria-hidden="true"></div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <div>
-                <div class="ct-card__title">Results</div>
-                <div class="ct-card__subtitle">Click the tweet URL to open it. Use the Copy buttons to collect lines.</div>
-              </div>
-              <div class="ct-card__text" title="Processed count">
-                <strong id="resultCount">0 tweets</strong>
-              </div>
-            </div>
-
-            <hr class="ct-card__line" />
-
-            <div id="results" aria-live="polite">
-              <!-- Tweets get injected here -->
-            </div>
-          </div>
-        </section>
-
-        <!-- 3) Failed URLs -->
-        <section class="panel" aria-label="Failed URLs">
-          <div class="ct-card">
-            <div class="ct-card__border" aria-hidden="true"></div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <div>
-                <div class="ct-card__title">Failed</div>
-                <div class="ct-card__subtitle">Errors, rate limits (429), or invalid links show up here.</div>
-              </div>
-              <div class="ct-card__text" title="Failed count">
-                <strong id="failedCount">0</strong>
-              </div>
-            </div>
-
-            <hr class="ct-card__line" />
-
-            <div id="failed" aria-live="polite">
-              <!-- Failures injected here -->
-            </div>
-          </div>
-        </section>
-
-        <!-- 4) Clipboard History -->
-        <section class="panel" aria-label="Clipboard History">
-          <div class="ct-card">
-            <div class="ct-card__border" aria-hidden="true"></div>
-
-            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
-              <div>
-                <div class="ct-card__title">Clipboard History</div>
-                <div class="ct-card__subtitle">We keep recent copied lines here for quick reuse.</div>
-              </div>
-              <button id="clearHistoryBtn" class="history-copy-btn" type="button" title="Clear copied history">
-                Clear History
-              </button>
-            </div>
-
-            <hr class="ct-card__line" />
-
-            <div id="history" aria-live="polite">
-              Copied comments will show up here.
-            </div>
-          </div>
-        </section>
-      </main>
-
-      <!-- Footer -->
-      <footer class="footer">
-        <div>© <span id="year"></span> CrownTALK. All rights reserved.</div>
-      </footer>
+      <div class="hero-inner">
+        <h1 class="hero-logo" aria-label="CrownTALK">
+          <span class="logo-word">Crown</span><span class="logo-accent">TALK</span>
+        </h1>
+        <p class="hero-sub">Paste X/Twitter links. We’ll craft clean, reusable comments — fast.</p>
+      </div>
     </div>
 
-    <!-- Scripts -->
-    <script src="script.js" defer></script>
-  </body>
+    <!-- THEME PICKER -->
+    <div class="theme-picker">
+      <div class="theme-label">Theme</div>
+      <div class="theme-dots">
+        <button class="theme-dot is-active" data-theme="dark-purple" title="Dark Purple"></button>
+        <button class="theme-dot" data-theme="gold" title="Gold"></button>
+        <button class="theme-dot" data-theme="blue" title="Blue"></button>
+        <button class="theme-dot" data-theme="black" title="Black"></button>
+        <button class="theme-dot" data-theme="emerald" title="Emerald"></button>
+        <button class="theme-dot" data-theme="white" title="White"></button>
+        <button class="theme-dot" data-theme="crimson" title="Crimson"></button>
+      </div>
+    </div>
+  </header>
+
+  <!-- MAIN GRID (4 CARDS) -->
+  <main class="shell">
+
+    <!-- INPUT / PROGRESS -->
+    <section class="ct-card" aria-labelledby="urls-title">
+      <div class="ct-card__border" aria-hidden="true"></div>
+
+      <header class="ct-card__header">
+        <h2 id="urls-title" class="ct-card__title">Tweet URLs</h2>
+        <p class="ct-card__sub">One URL per line. We’ll batch and dedupe automatically.</p>
+      </header>
+
+      <div class="ct-card__body">
+        <label for="urlInput" class="sr-only">Paste X/Twitter URLs</label>
+        <textarea id="urlInput" class="url-textarea" placeholder="https://x.com/user/status/12345"></textarea>
+
+        <div class="actions-row">
+          <button id="generateBtn" class="generate-btn">
+            <span class="sparkle" aria-hidden="true"></span>
+            <span>Generate</span>
+          </button>
+          <button id="cancelBtn" class="secondary-btn" disabled>Cancel</button>
+          <button id="clearBtn" class="ghost-btn">Clear</button>
+        </div>
+
+        <!-- Progress -->
+        <div class="progress">
+          <div class="progress-track">
+            <div id="progressBarFill" class="progress-fill" style="transform:scaleX(0)"></div>
+          </div>
+          <div id="progress" class="progress-text" aria-live="polite"></div>
+        </div>
+      </div>
+    </section>
+
+    <!-- RESULTS -->
+    <section class="ct-card" aria-labelledby="results-title">
+      <div class="ct-card__border" aria-hidden="true"></div>
+
+      <header class="ct-card__header">
+        <h2 id="results-title" class="ct-card__title">Results</h2>
+        <div class="ct-card__meta"><span id="resultCount">0 tweets</span></div>
+      </header>
+
+      <!-- the list is filled by JS (buildTweetBlock/appendResultBlock) -->
+      <div id="results" class="ct-card__body results-list"></div>
+    </section>
+
+    <!-- FAILED -->
+    <section class="ct-card" aria-labelledby="failed-title">
+      <div class="ct-card__border" aria-hidden="true"></div>
+
+      <header class="ct-card__header">
+        <h2 id="failed-title" class="ct-card__title">Failed</h2>
+        <div class="ct-card__meta"><span id="failedCount">0</span></div>
+      </header>
+
+      <div id="failed" class="ct-card__body failed-list"></div>
+    </section>
+
+    <!-- HISTORY -->
+    <section class="ct-card" aria-labelledby="history-title">
+      <div class="ct-card__border" aria-hidden="true"></div>
+
+      <header class="ct-card__header">
+        <h2 id="history-title" class="ct-card__title">Clipboard History</h2>
+        <div class="ct-card__meta">
+          <button id="clearHistoryBtn" class="ghost-btn small">Clear history</button>
+        </div>
+      </header>
+
+      <div id="history" class="ct-card__body history-list">
+        Copied comments will show up here.
+      </div>
+    </section>
+
+  </main>
+
+ <footer id="siteFooter" class="site-footer">
+  <div class="footer-inner">
+    <p class="footer-text">
+      © <span id="year"></span> • CrownTALK by <strong>CrownDEX</strong>
+      · <a class="footer-link" href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer" aria-label="Visit my X profile">
+        <svg class="x-icon" viewBox="0 0 1200 1227" aria-hidden="true">
+          <path d="M714 519 1160 0H1037L663 436 375 0H0l468 684L0 1227h123l398-463 309 463h375L714 519Zm-140 162-46-66-326 379h-86l362-421-420-575h203l270 384 40 57 346-399h86L574 681l440 626H811L574 681Z"/>
+        </svg>
+        @_CrownDEX
+      </a>
+    </p>
+  </div>
+</footer>
+
+
+  <!-- SCRIPTS -->
+  <script src="script.js" defer></script>
+</body>
 </html>
