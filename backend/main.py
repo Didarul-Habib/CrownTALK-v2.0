@@ -8,7 +8,103 @@ from collections import Counter
 import sqlite3
 import hashlib
 import logging
+import os
 
+# -----------------------------
+# SQLite config + safe startup
+# -----------------------------
+DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")  # one source of truth
+
+# File lock support (Render/Linux has fcntl)
+try:
+    import fcntl
+    _HAS_FCNTL = True
+except Exception:
+    _HAS_FCNTL = False
+
+
+def get_conn():
+    """
+    Connect with a generous busy timeout and autocommit (isolation_level=None),
+    so concurrent workers wait instead of failing with 'database is locked'.
+    """
+    return sqlite3.connect(
+        DB_PATH,
+        timeout=30,               # wait up to 30s for locks
+        isolation_level=None,     # autocommit mode
+        check_same_thread=False,  # safe for threaded workers
+    )
+
+
+def _locked_init(fn):
+    """Serialize first-time init across processes using a file lock (best effort)."""
+    if not _HAS_FCNTL:
+        return fn()
+    lock_path = "/tmp/crowntalk.db.lock"
+    with open(lock_path, "w") as lockf:
+        fcntl.flock(lockf, fcntl.LOCK_EX)
+        try:
+            return fn()
+        finally:
+            fcntl.flock(lockf, fcntl.LOCK_UN)
+
+
+def _do_init():
+    with get_conn() as conn:
+        # If another worker is doing work, wait politely.
+        conn.execute("PRAGMA busy_timeout=5000;")
+
+        # Set WAL once (ignore error if another worker already set it).
+        try:
+            conn.execute("PRAGMA journal_mode=WAL;")
+        except sqlite3.OperationalError:
+            pass
+
+        # Create idempotent schema used by the app.
+        conn.executescript("""
+        -- stores all produced comments if you want (optional, keep if you use it)
+        CREATE TABLE IF NOT EXISTS comments (
+            id INTEGER PRIMARY KEY,
+            url TEXT NOT NULL,
+            lang TEXT,
+            text TEXT NOT NULL,
+            created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+        );
+        CREATE INDEX IF NOT EXISTS idx_comments_url ON comments(url);
+
+        -- de-dup memory used by OfflineCommentGenerator
+        CREATE TABLE IF NOT EXISTS comments_seen (
+            hash TEXT PRIMARY KEY,
+            created_at INTEGER
+        );
+        """)
+
+
+def init_db():
+    """
+    Safe, idempotent initialization.
+    - One process performs the first init (file lock).
+    - Others wait or retry instead of crashing.
+    """
+    def _safe():
+        try:
+            _do_init()
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                time.sleep(1.0)
+                _do_init()
+            else:
+                raise
+
+    if _HAS_FCNTL:
+        _locked_init(_safe)
+    else:
+        _safe()
+
+
+# -----------------------------
+# App wiring
+# -----------------------------
 # Import shared helpers (use these instead of duplicating)
 from utils import (
     CrownTALKError,
@@ -26,31 +122,10 @@ BACKEND_PUBLIC_URL = "https://crowntalk.onrender.com"
 BATCH_SIZE = 2
 KEEP_ALIVE_INTERVAL = 600  # seconds
 
-# -------------------------------------------------------------------
-# SHARED COMMENT STORE (SQLite - OTP style comments)
-# -------------------------------------------------------------------
-DB_PATH = "comments.db"
 
-
-def init_db():
-    """Create comments_seen table if it doesn't exist, enable WAL for concurrency."""
-    conn = sqlite3.connect(DB_PATH)
-    try:
-        # WAL improves concurrent reads/writes for gthread workers
-        conn.execute("PRAGMA journal_mode=WAL;")
-        conn.execute(
-            """
-            CREATE TABLE IF NOT EXISTS comments_seen (
-                hash TEXT PRIMARY KEY,
-                created_at INTEGER
-            )
-            """
-        )
-        conn.commit()
-    finally:
-        conn.close()
-
-
+# ---------------------------------------------------------
+# De-dup helpers used by the generator
+# ---------------------------------------------------------
 def _normalize_for_memory(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
 
@@ -66,14 +141,11 @@ def comment_seen(text: str) -> bool:
         return False
     h = _hash_comment(norm)
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=3.0)  # a bit higher than 0.5s
-        try:
+        with get_conn() as conn:
             cur = conn.execute(
                 "SELECT 1 FROM comments_seen WHERE hash = ? LIMIT 1", (h,)
             )
             row = cur.fetchone()
-        finally:
-            conn.close()
         return row is not None
     except Exception:
         # If DB fails/locks, don't break generation – treat as unseen
@@ -88,15 +160,11 @@ def remember_comment(text: str) -> None:
     h = _hash_comment(norm)
     now = int(time.time())
     try:
-        conn = sqlite3.connect(DB_PATH, timeout=3.0)
-        try:
+        with get_conn() as conn:
             conn.execute(
                 "INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES (?, ?)",
                 (h, now),
             )
-            conn.commit()
-        finally:
-            conn.close()
     except Exception:
         # best-effort, ignore errors
         pass
@@ -208,11 +276,11 @@ def reroll_endpoint():
 def chunked(seq, size):
     size = max(1, int(size))
     for i in range(0, len(seq), size):
-        yield seq[i : i + size]
+        yield seq[i: i + size]
 
 
 # ---------------------------------------------------------
-# OFFLINE COMMENT GENERATOR (unchanged behavior; small safety nits)
+# OFFLINE COMMENT GENERATOR
 # ---------------------------------------------------------
 EN_STOPWORDS = {
     "the", "a", "an", "and", "or", "but", "if", "when", "where", "how",
@@ -293,7 +361,7 @@ class OfflineCommentGenerator:
         has_cjk = (
             any("\u4e00" <= c <= "\u9fff" for c in cleaned)
             or any("\u3040" <= c <= "\u30ff" for c in cleaned)
-            or any("\uac00" <= c <= "\ud7af" for c in cleaned)
+            or any("\uac00" <= c <= "\ud7af")
         )
 
         last_candidate = ""
@@ -311,7 +379,7 @@ class OfflineCommentGenerator:
                 snippet = self.random.choice(segments)
                 if len(snippet) > 24:
                     start = 0 if len(snippet) <= 24 else self.random.randint(0, len(snippet) - 24)
-                    snippet = snippet[start : start + 24]
+                    snippet = snippet[start: start + 24]
 
                 candidate = EMOJI_PATTERN.sub("", snippet).strip()
             else:
@@ -333,7 +401,7 @@ class OfflineCommentGenerator:
 
                     window_size = min(max(5, len(words)), 12)
                     start = max(0, min(center_idx - window_size // 2, len(words) - window_size))
-                    snippet_words = words[start : start + window_size]
+                    snippet_words = words[start: start + window_size]
                     candidate = " ".join(snippet_words)
 
                 candidate = self._tidy_comment(candidate)
@@ -476,8 +544,8 @@ class OfflineCommentGenerator:
         ]
         author_flavor = [
             "{author} always finds a plain language angle on {focus}",
-            "Feels like {author} actually lived through this {focus} mess",
             "{author} explaining {focus} hits different from the usual threads",
+            "Feels like {author} actually lived through this {focus} mess",
             "Trust {author} more on {focus} after posts like this",
         ]
         chart_flavor = [
