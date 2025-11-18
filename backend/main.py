@@ -1,3 +1,4 @@
+# main.py
 from flask import Flask, request, jsonify
 import threading
 import requests
@@ -10,34 +11,27 @@ import hashlib
 import logging
 import os
 
-# -----------------------------
-# SQLite config + safe startup
-# -----------------------------
-DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")  # one source of truth
+# ---------------------------------------------------------
+# DB location (used by lightweight comment memory below)
+# ---------------------------------------------------------
+DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
 
-# File lock support (Render/Linux has fcntl)
+# File lock for safe one-time init on multi-proc hosts (Render)
 try:
     import fcntl
     _HAS_FCNTL = True
 except Exception:
     _HAS_FCNTL = False
 
-
 def get_conn():
-    """
-    Connect with a generous busy timeout and autocommit (isolation_level=None),
-    so concurrent workers wait instead of failing with 'database is locked'.
-    """
     return sqlite3.connect(
         DB_PATH,
-        timeout=30,               # wait up to 30s for locks
-        isolation_level=None,     # autocommit mode
-        check_same_thread=False,  # safe for threaded workers
+        timeout=30,
+        isolation_level=None,   # autocommit
+        check_same_thread=False,
     )
 
-
 def _locked_init(fn):
-    """Serialize first-time init across processes using a file lock (best effort)."""
     if not _HAS_FCNTL:
         return fn()
     lock_path = "/tmp/crowntalk.db.lock"
@@ -48,21 +42,14 @@ def _locked_init(fn):
         finally:
             fcntl.flock(lockf, fcntl.LOCK_UN)
 
-
 def _do_init():
     with get_conn() as conn:
-        # If another worker is doing work, wait politely.
         conn.execute("PRAGMA busy_timeout=5000;")
-
-        # Set WAL once (ignore error if another worker already set it).
         try:
             conn.execute("PRAGMA journal_mode=WAL;")
         except sqlite3.OperationalError:
             pass
-
-        # Create idempotent schema used by the app.
         conn.executescript("""
-        -- stores all produced comments if you want (optional, keep if you use it)
         CREATE TABLE IF NOT EXISTS comments (
             id INTEGER PRIMARY KEY,
             url TEXT NOT NULL,
@@ -72,106 +59,78 @@ def _do_init():
         );
         CREATE INDEX IF NOT EXISTS idx_comments_url ON comments(url);
 
-        -- de-dup memory used by OfflineCommentGenerator
-        CREATE TABLE IF NOT EXISTS comments_seen (
+        CREATE TABLE IF NOT EXISTS comments_seen(
             hash TEXT PRIMARY KEY,
             created_at INTEGER
         );
         """)
 
-
-def init_db():
-    """
-    Safe, idempotent initialization.
-    - One process performs the first init (file lock).
-    - Others wait or retry instead of crashing.
-    """
-    def _safe():
-        try:
-            _do_init()
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower():
-                time.sleep(1.0)
-                _do_init()
-            else:
-                raise
-
-    if _HAS_FCNTL:
-        _locked_init(_safe)
-    else:
-        _safe()
-
-
-# -----------------------------
-# App wiring
-# -----------------------------
-# Import shared helpers (use these instead of duplicating)
+# ---------------------------------------------------------
+# Shared helpers from utils.py
+# ---------------------------------------------------------
 from utils import (
     CrownTALKError,
-    fetch_tweet_data,
-    clean_and_normalize_urls,
+    fetch_tweet_data,          # now rate-limited + retry + fallback
+    clean_and_normalize_urls,  # url cleaner
 )
 
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crowntalk")
 
-# Public URL of this backend (optional self-ping for free tier cold starts)
 BACKEND_PUBLIC_URL = "https://crowntalk.onrender.com"
 
 BATCH_SIZE = 2
 KEEP_ALIVE_INTERVAL = 600  # seconds
 
+# ---------------------------------------------------------
+# Lightweight global memory for duplicates (best-effort)
+# ---------------------------------------------------------
+MEM_DB_PATH = DB_PATH  # reuse same file
 
-# ---------------------------------------------------------
-# De-dup helpers used by the generator
-# ---------------------------------------------------------
 def _normalize_for_memory(text: str) -> str:
     return re.sub(r"\s+", " ", text.strip().lower())
-
 
 def _hash_comment(norm_text: str) -> str:
     return hashlib.sha256(norm_text.encode("utf-8")).hexdigest()
 
-
 def comment_seen(text: str) -> bool:
-    """Check if a comment has ever been used before (best-effort)."""
     norm = _normalize_for_memory(text)
     if not norm:
         return False
     h = _hash_comment(norm)
     try:
-        with get_conn() as conn:
-            cur = conn.execute(
-                "SELECT 1 FROM comments_seen WHERE hash = ? LIMIT 1", (h,)
-            )
+        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
+        try:
+            cur = conn.execute("SELECT 1 FROM comments_seen WHERE hash=? LIMIT 1", (h,))
             row = cur.fetchone()
+        finally:
+            conn.close()
         return row is not None
     except Exception:
-        # If DB fails/locks, don't break generation – treat as unseen
         return False
 
-
 def remember_comment(text: str) -> None:
-    """Record that we have used this comment text globally (best-effort)."""
     norm = _normalize_for_memory(text)
     if not norm:
         return
     h = _hash_comment(norm)
     now = int(time.time())
     try:
-        with get_conn() as conn:
+        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
+        try:
             conn.execute(
-                "INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES (?, ?)",
+                "INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES(?,?)",
                 (h, now),
             )
+            conn.commit()
+        finally:
+            conn.close()
     except Exception:
-        # best-effort, ignore errors
         pass
 
-
 # ---------------------------------------------------------
-# Manual CORS (permissive; tighten if you want)
+# CORS
 # ---------------------------------------------------------
 @app.after_request
 def add_cors_headers(response):
@@ -180,14 +139,12 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-
 # ---------------------------------------------------------
 # HEALTH
 # ---------------------------------------------------------
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
-
 
 # ---------------------------------------------------------
 # COMMENT ENDPOINT
@@ -213,15 +170,13 @@ def comment_endpoint():
     except Exception:
         return jsonify({"error": "Failed to clean URLs", "code": "url_clean_error"}), 400
 
-    results = []
-    failed = []
-
+    results, failed = [], []
     generator = OfflineCommentGenerator()
 
     for batch in chunked(cleaned_urls, BATCH_SIZE):
         for url in batch:
             try:
-                t = fetch_tweet_data(url)  # from utils.py
+                t = fetch_tweet_data(url)
                 comments = generator.generate_comments(
                     text=t.text,
                     author=t.author_name or None,
@@ -230,12 +185,14 @@ def comment_endpoint():
                 results.append({"url": url, "comments": comments})
             except CrownTALKError as e:
                 failed.append({"url": url, "reason": str(e), "code": e.code})
-            except Exception as e:
+            except Exception:
                 logger.exception("Unhandled error while processing %s", url)
                 failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
 
-    return jsonify({"results": results, "failed": failed}), 200
+            # tiny yield to avoid burst spikes against upstream API
+            time.sleep(0.05)
 
+    return jsonify({"results": results, "failed": failed}), 200
 
 # ---------------------------------------------------------
 # REROLL ENDPOINT
@@ -265,10 +222,9 @@ def reroll_endpoint():
         return jsonify({"url": url, "comments": comments}), 200
     except CrownTALKError as e:
         return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
-    except Exception as e:
+    except Exception:
         logger.exception("Unhandled error during reroll for %s", url)
         return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
-
 
 # ---------------------------------------------------------
 # CHUNKER
@@ -276,52 +232,33 @@ def reroll_endpoint():
 def chunked(seq, size):
     size = max(1, int(size))
     for i in range(0, len(seq), size):
-        yield seq[i: i + size]
-
+        yield seq[i:i+size]
 
 # ---------------------------------------------------------
 # OFFLINE COMMENT GENERATOR
 # ---------------------------------------------------------
 EN_STOPWORDS = {
-    "the", "a", "an", "and", "or", "but", "if", "when", "where", "how",
-    "this", "that", "those", "these", "it", "its", "is", "are", "was",
-    "were", "be", "been", "being", "for", "to", "of", "in", "on", "at",
-    "with", "by", "from", "as", "about", "into", "over", "after", "before",
-    "your", "my", "our", "their", "his", "her", "you", "we", "they", "i",
-    "just", "so", "very", "too", "up", "down", "out", "off", "again",
+    "the","a","an","and","or","but","if","when","where","how","this","that","those","these",
+    "it","its","is","are","was","were","be","been","being","for","to","of","in","on","at",
+    "with","by","from","as","about","into","over","after","before","your","my","our","their",
+    "his","her","you","we","they","i","just","so","very","too","up","down","out","off","again",
 }
 
 AI_BLOCKLIST = {
-    "amazing", "awesome", "incredible", "empowering",
-    "game changer", "game-changing", "transformative", "paradigm shift",
-    "in this digital age", "as an ai", "as a language model",
-    "in conclusion", "in summary", "furthermore", "moreover",
-    "navigate this landscape", "ever-evolving landscape", "leverage this insight",
-    "cutting edge", "state of the art", "unprecedented",
-    "unleash", "unleashing", "unlock the power", "harness the power",
-    "embark on this journey", "embark on a journey", "our journey",
-    "empower", "revolutionize", "disruptive",
-    "slay", "yass", "yas", "queen", "bestie",
-    "like and retweet", "thoughts?", "thoughts ?", "agree?", "agree ?",
-    "who's with me", "drop your thoughts", "smash that like button", "link in bio",
+    "amazing","awesome","incredible","empowering","game changer","game-changing","transformative",
+    "paradigm shift","in this digital age","as an ai","as a language model","in conclusion",
+    "in summary","furthermore","moreover","navigate this landscape","ever-evolving landscape",
+    "leverage this insight","cutting edge","state of the art","unprecedented","unleash","unleashing",
+    "unlock the power","harness the power","embark on this journey","empower","revolutionize",
+    "disruptive","slay","yass","yas","queen","bestie","like and retweet","thoughts?","thoughts ?",
+    "agree?","agree ?","who's with me","drop your thoughts","smash that like button","link in bio",
 }
 
 EMOJI_PATTERN = re.compile(
-    "[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
-    flags=re.UNICODE,
+    "[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", flags=re.UNICODE
 )
 
-
 class OfflineCommentGenerator:
-    """
-    Offline generator:
-      - topics: chart, complaint, announcement, meme, thread, one-liner, generic
-      - crypto awareness
-      - multilingual: non-English => native + English
-      - avoids AI-y language
-      - respects 5–12 words, no emojis, no hashtags, no ending punctuation
-    """
-
     def __init__(self):
         self.random = random.Random()
 
@@ -361,7 +298,7 @@ class OfflineCommentGenerator:
         has_cjk = (
             any("\u4e00" <= c <= "\u9fff" for c in cleaned)
             or any("\u3040" <= c <= "\u30ff" for c in cleaned)
-            or any("\uac00" <= c <= "\ud7af")
+            or any("\uac00" <= c <= "\ud7af" for c in cleaned)
         )
 
         last_candidate = ""
@@ -379,7 +316,7 @@ class OfflineCommentGenerator:
                 snippet = self.random.choice(segments)
                 if len(snippet) > 24:
                     start = 0 if len(snippet) <= 24 else self.random.randint(0, len(snippet) - 24)
-                    snippet = snippet[start: start + 24]
+                    snippet = snippet[start:start+24]
 
                 candidate = EMOJI_PATTERN.sub("", snippet).strip()
             else:
@@ -401,7 +338,7 @@ class OfflineCommentGenerator:
 
                     window_size = min(max(5, len(words)), 12)
                     start = max(0, min(center_idx - window_size // 2, len(words) - window_size))
-                    snippet_words = words[start: start + window_size]
+                    snippet_words = words[start:start+window_size]
                     candidate = " ".join(snippet_words)
 
                 candidate = self._tidy_comment(candidate)
@@ -544,8 +481,8 @@ class OfflineCommentGenerator:
         ]
         author_flavor = [
             "{author} always finds a plain language angle on {focus}",
-            "{author} explaining {focus} hits different from the usual threads",
             "Feels like {author} actually lived through this {focus} mess",
+            "{author} explaining {focus} hits different from the usual threads",
             "Trust {author} more on {focus} after posts like this",
         ]
         chart_flavor = [
@@ -621,9 +558,8 @@ class OfflineCommentGenerator:
 
         return buckets
 
-
 # ---------------------------------------------------------
-# TOPIC / KEYWORD HELPERS
+# Topic / keyword helpers
 # ---------------------------------------------------------
 def detect_topic(text: str) -> str:
     t = text.lower()
@@ -631,13 +567,13 @@ def detect_topic(text: str) -> str:
         return "greeting"
     if any(k in t for k in ("airdrop", "whitelist", "wl spot", "mint is live")):
         return "giveaway"
-    if any(k in t for k in ("chart", "support", "resistance", "ath", "price target", "%", "market cap", "mc")):
+    if any(k in t for k in ("chart","support","resistance","ath","price target","%","market cap","mc")):
         return "chart"
-    if any(k in t for k in ("bug", "issue", "broken", "down again", "wtf", "why is", "tired of")):
+    if any(k in t for k in ("bug","issue","broken","down again","wtf","why is","tired of")):
         return "complaint"
-    if any(k in t for k in ("announcing", "announcement", "we're live", "we are live", "launching", "we shipped")):
+    if any(k in t for k in ("announcing","announcement","we're live","we are live","launching","we shipped")):
         return "announcement"
-    if any(k in t for k in ("meme", "shitpost", "ratioed", "memeing")) or "lol" in t:
+    if any(k in t for k in ("meme","shitpost","ratioed","memeing")) or "lol" in t:
         return "meme"
     if "🧵" in text or len(text) > 220:
         return "thread"
@@ -645,20 +581,17 @@ def detect_topic(text: str) -> str:
         return "one_liner"
     return "generic"
 
-
 def is_crypto_tweet(text: str) -> bool:
     t = text.lower()
     crypto_keywords = [
-        "crypto", "defi", "nft", "airdrop", "token", "coin", "chain", "l1", "l2",
-        "staking", "yield", "dex", "cex", "onchain", "on-chain", "gas fees",
-        "btc", "eth", "sol", "arb", "layer two", "mainnet",
+        "crypto","defi","nft","airdrop","token","coin","chain","l1","l2","staking","yield",
+        "dex","cex","onchain","on-chain","gas fees","btc","eth","sol","arb","layer two","mainnet",
     ]
     if any(k in t for k in crypto_keywords):
         return True
     if re.search(r"\$\w{2,8}", text):
         return True
     return False
-
 
 def extract_keywords(text: str) -> list[str]:
     cleaned = re.sub(r"https?://\S+", "", text)
@@ -667,23 +600,18 @@ def extract_keywords(text: str) -> list[str]:
     if not tokens:
         return []
     tokens_lower = [tok.lower() for tok in tokens]
-    filtered = [
-        tok for tok, low in zip(tokens, tokens_lower)
-        if low not in EN_STOPWORDS and len(low) > 2
-    ]
+    filtered = [tok for tok, low in zip(tokens, tokens_lower) if low not in EN_STOPWORDS and len(low) > 2]
     if not filtered:
         filtered = tokens
     counts = Counter([t.lower() for t in filtered])
     sorted_tokens = sorted(filtered, key=lambda w: (-counts[w.lower()], -len(w)))
-    seen = set()
-    result = []
+    seen, result = set(), []
     for w in sorted_tokens:
         lw = w.lower()
         if lw not in seen:
             seen.add(lw)
             result.append(w)
     return result[:10]
-
 
 def pick_focus_token(tokens: list[str]) -> str | None:
     if not tokens:
@@ -693,9 +621,8 @@ def pick_focus_token(tokens: list[str]) -> str | None:
         return random.choice(upperish)
     return random.choice(tokens)
 
-
 # ---------------------------------------------------------
-# KEEP ALIVE THREAD (only when running directly)
+# Keep-alive pinger (optional)
 # ---------------------------------------------------------
 def keep_alive():
     if not BACKEND_PUBLIC_URL:
@@ -707,15 +634,27 @@ def keep_alive():
             pass
         time.sleep(KEEP_ALIVE_INTERVAL)
 
+# ---------------------------------------------------------
+# Entrypoint
+# ---------------------------------------------------------
+def init_db():
+    def _safe():
+        try:
+            _do_init()
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                time.sleep(1.0)
+                _do_init()
+            else:
+                raise
+    if _HAS_FCNTL:
+        _locked_init(_safe)
+    else:
+        _safe()
 
-# ---------------------------------------------------------
-# MAIN ENTRY
-# ---------------------------------------------------------
 if __name__ == "__main__":
     init_db()
-    # Optional: self-ping only in dev/direct run (avoid multiple threads under gunicorn)
     threading.Thread(target=keep_alive, daemon=True).start()
     app.run(host="0.0.0.0", port=10000)
 else:
-    # When run by gunicorn, module is imported. Init DB but DO NOT start keep_alive here.
     init_db()
