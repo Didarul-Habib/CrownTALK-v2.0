@@ -1,5 +1,5 @@
 /* ================================
-   CrownTALK - styles.css (fixed)
+   CrownTALK - styles.css (updated)
    ================================ */
 
 /* ROOT VARIABLES */
@@ -17,9 +17,20 @@
   --hero-glow-from: rgba(15, 23, 42, 0.65);
   --hero-glow-to: rgba(250, 204, 21, 0.55);
 
-  /* default reroll colors (overridden by themes below) */
+  /* reroll colors (overridden by themes) */
   --reroll-primary: 96, 165, 250;
   --reroll-secondary: 37, 99, 235;
+
+  /* glossy title defaults (override per theme) */
+  --title-grad: linear-gradient(120deg,#2dd4bf,#a78bfa,#f472b6);
+  --title-glow-1: 0 0 18px rgba(167,139,250,.45);
+  --title-glow-2: 0 0 32px rgba(45,212,191,.35);
+
+  /* Generate button theme vars (will be used in generate-button.css) */
+  --btn-ring: rgba(129,140,248,.5);
+  --btn-bg-1: #0f172a;
+  --btn-bg-2: #1f2937;
+  --btn-glow: 0 0 24px rgba(129,140,248,.45);
 }
 
 /* THEMES ------------------------------------------------- */
@@ -38,6 +49,15 @@
 
   --reroll-primary: 96, 165, 250;
   --reroll-secondary: 37, 99, 235;
+
+  --title-grad: linear-gradient(120deg,#111827,#6b7280,#111827);
+  --title-glow-1: 0 0 16px rgba(17,24,39,.25);
+  --title-glow-2: 0 0 24px rgba(156,163,175,.25);
+
+  --btn-ring: rgba(17,24,39,.25);
+  --btn-bg-1: #f3f4f6;
+  --btn-bg-2: #e5e7eb;
+  --btn-glow: 0 0 18px rgba(17,24,39,.15);
 }
 
 [data-theme="dark-purple"] {
@@ -55,6 +75,15 @@
 
   --reroll-primary: 129, 140, 248;
   --reroll-secondary: 88, 28, 135;
+
+  --title-grad: linear-gradient(120deg,#a78bfa,#f472b6,#22d3ee);
+  --title-glow-1: 0 0 18px rgba(167,139,250,.7);
+  --title-glow-2: 0 0 42px rgba(34,211,238,.35);
+
+  --btn-ring: rgba(129,140,248,.55);
+  --btn-bg-1: #342153;
+  --btn-bg-2: #1b1233;
+  --btn-glow: 0 0 28px rgba(129,140,248,.55);
 }
 
 [data-theme="gold"] {
@@ -72,6 +101,15 @@
 
   --reroll-primary: 251, 191, 36;
   --reroll-secondary: 180, 83, 9;
+
+  --title-grad: linear-gradient(120deg,#fde68a,#fbbf24,#f59e0b);
+  --title-glow-1: 0 0 18px rgba(251,191,36,.65);
+  --title-glow-2: 0 0 42px rgba(245,158,11,.35);
+
+  --btn-ring: rgba(251,191,36,.6);
+  --btn-bg-1: #3b2a07;
+  --btn-bg-2: #1e1604;
+  --btn-glow: 0 0 26px rgba(251,191,36,.55);
 }
 
 [data-theme="blue"] {
@@ -89,6 +127,15 @@
 
   --reroll-primary: 56, 189, 248;
   --reroll-secondary: 37, 99, 235;
+
+  --title-grad: linear-gradient(120deg,#93c5fd,#38bdf8,#22d3ee);
+  --title-glow-1: 0 0 18px rgba(59,130,246,.55);
+  --title-glow-2: 0 0 42px rgba(56,189,248,.35);
+
+  --btn-ring: rgba(59,130,246,.55);
+  --btn-bg-1: #0b234a;
+  --btn-bg-2: #0a1b34;
+  --btn-glow: 0 0 28px rgba(59,130,246,.5);
 }
 
 [data-theme="black"] {
@@ -106,6 +153,15 @@
 
   --reroll-primary: 249, 250, 251;
   --reroll-secondary: 31, 41, 55;
+
+  --title-grad: linear-gradient(120deg,#f9fafb,#9ca3af,#f9fafb);
+  --title-glow-1: 0 0 18px rgba(249,250,251,.35);
+  --title-glow-2: 0 0 42px rgba(156,163,175,.25);
+
+  --btn-ring: rgba(229,231,235,.45);
+  --btn-bg-1: #0b0f16;
+  --btn-bg-2: #0b0f16;
+  --btn-glow: 0 0 20px rgba(229,231,235,.25);
 }
 
 [data-theme="emerald"] {
@@ -123,23 +179,15 @@
 
   --reroll-primary: 52, 211, 153;
   --reroll-secondary: 4, 120, 87;
-}
 
-[data-theme="texture"] {
-  --bg: #050816;
-  --card-bg: rgba(15, 23, 42, 0.94);
-  --card-border: rgba(148, 163, 184, 0.4);
-  --text-main: #e5e7eb;
-  --text-muted: #9ca3af;
-  --accent: #a855f7;
-  --accent-soft: rgba(168, 85, 247, 0.22);
-  --accent-soft-strong: rgba(168, 85, 247, 0.5);
-  --chip-bg: rgba(15, 23, 42, 0.9);
-  --hero-glow-from: rgba(129, 140, 248, 0.8);
-  --hero-glow-to: rgba(244, 114, 182, 0.55);
+  --title-grad: linear-gradient(120deg,#6ee7b7,#34d399,#22c55e);
+  --title-glow-1: 0 0 18px rgba(52,211,153,.6);
+  --title-glow-2: 0 0 42px rgba(34,197,94,.35);
 
-  --reroll-primary: 168, 85, 247;
-  --reroll-secondary: 109, 40, 217;
+  --btn-ring: rgba(52,211,153,.55);
+  --btn-bg-1: #052e25;
+  --btn-bg-2: #06221c;
+  --btn-glow: 0 0 26px rgba(16,185,129,.55);
 }
 
 [data-theme="neon"] {
@@ -157,21 +205,26 @@
 
   --reroll-primary: 34, 197, 94;
   --reroll-secondary: 5, 150, 105;
+
+  --title-grad: linear-gradient(120deg,#67e8f9,#22c55e,#a78bfa);
+  --title-glow-1: 0 0 18px rgba(34,197,94,.6);
+  --title-glow-2: 0 0 42px rgba(103,232,249,.4);
+
+  --btn-ring: rgba(34,197,94,.55);
+  --btn-bg-1: #062d18;
+  --btn-bg-2: #0a1f2a;
+  --btn-glow: 0 0 30px rgba(34,197,94,.55);
 }
 
 /* GLOBAL LAYOUT ----------------------------------------- */
 *,
 *::before,
-*::after {
-  box-sizing: border-box;
-}
+*::after { box-sizing: border-box; }
 
-html,
-body {
+html, body {
   margin: 0;
   padding: 0;
-  font-family: system-ui, -apple-system, BlinkMacSystemFont, "SF Pro Text",
-    "Segoe UI", sans-serif;
+  font-family: system-ui,-apple-system,BlinkMacSystemFont,"SF Pro Text","Segoe UI",sans-serif;
   color: var(--text-main);
   background: var(--bg);
   min-height: 100%;
@@ -184,24 +237,24 @@ body {
   padding: 24px;
 }
 
-/* Ensure outer page wrapper has width */
-.page {
-  width: 100%;
-  max-width: 1200px;
-}
+.app-shell { width: 100%; max-width: 1200px; }
 
 /* HEADER / HERO ----------------------------------------- */
 .hero {
+  position: relative;
+  z-index: 0;                /* lower stack than main */
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 16px;
+  margin-bottom: 10px;       /* spacing to avoid touch */
 }
 
 .hero-main {
   display: flex;
   align-items: center;
   gap: 16px;
+  margin: 0 auto;            /* center hero group */
 }
 
 .hero-orbit {
@@ -242,17 +295,23 @@ body {
   display: flex;
   flex-direction: column;
   gap: 4px;
+  align-items: flex-start;
 }
 
-.hero-copy h1 {
+/* GLOSSY, THEME-REACTIVE TITLE */
+.app-title {
   margin: 0;
   letter-spacing: 0.32em;
-  font-size: 20px;
+  font-size: 22px;
   text-transform: uppercase;
-  background: linear-gradient(120deg, #fef9c3, #facc15, #f97316, #fb7185);
+  background: var(--title-grad);
   -webkit-background-clip: text;
   background-clip: text;
   color: transparent;
+  text-shadow:
+    var(--title-glow-1),
+    var(--title-glow-2);
+  filter: saturate(1.15);
 }
 
 .hero-copy p {
@@ -262,8 +321,7 @@ body {
 }
 
 @keyframes hero-glow-pulse {
-  0%,
-  100% {
+  0%, 100% {
     box-shadow:
       0 0 32px var(--hero-glow-from),
       0 0 70px var(--hero-glow-to);
@@ -278,18 +336,8 @@ body {
 }
 
 /* THEME SWITCHER ---------------------------------------- */
-.theme-switcher {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.theme-label {
-  font-size: 12px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: var(--text-muted);
-}
+.theme-switcher { display: flex; align-items: center; gap: 8px; }
+.theme-label { font-size: 12px; text-transform: uppercase; letter-spacing: 0.12em; color: var(--text-muted); }
 
 .theme-dots {
   display: flex;
@@ -314,38 +362,13 @@ body {
     border-color 0.16s ease;
 }
 
-.theme-dot[data-theme="white"] {
-  background: radial-gradient(circle at 30% 20%, #f9fafb, #9ca3af);
-}
-
-.theme-dot[data-theme="dark-purple"] {
-  background: radial-gradient(circle at 30% 20%, #a855f7, #4c1d95);
-}
-
-.theme-dot[data-theme="gold"] {
-  background: radial-gradient(circle at 30% 20%, #facc15, #92400e);
-}
-
-.theme-dot[data-theme="blue"] {
-  background: radial-gradient(circle at 30% 20%, #60a5fa, #1d4ed8);
-}
-
-.theme-dot[data-theme="black"] {
-  background: radial-gradient(circle at 30% 20%, #f9fafb, #020617);
-}
-
-.theme-dot[data-theme="emerald"] {
-  background: radial-gradient(circle at 30% 20%, #34d399, #047857);
-}
-
-.theme-dot[data-theme="texture"] {
-  background-image: url("../static/texture.jpg");
-  background-size: cover;
-}
-
-.theme-dot[data-theme="neon"] {
-  background: radial-gradient(circle at 30% 20%, #22c55e, #0f172a);
-}
+.theme-dot[data-theme="white"] { background: radial-gradient(circle at 30% 20%, #f9fafb, #9ca3af); }
+.theme-dot[data-theme="dark-purple"] { background: radial-gradient(circle at 30% 20%, #a855f7, #4c1d95); }
+.theme-dot[data-theme="gold"] { background: radial-gradient(circle at 30% 20%, #facc15, #92400e); }
+.theme-dot[data-theme="blue"] { background: radial-gradient(circle at 30% 20%, #60a5fa, #1d4ed8); }
+.theme-dot[data-theme="black"] { background: radial-gradient(circle at 30% 20%, #f9fafb, #020617); }
+.theme-dot[data-theme="emerald"] { background: radial-gradient(circle at 30% 20%, #34d399, #047857); }
+.theme-dot[data-theme="neon"] { background: radial-gradient(circle at 30% 20%, #22c55e, #0f172a); }
 
 .theme-dot:hover {
   transform: scale(1.1) translateY(-1px);
@@ -365,17 +388,15 @@ body {
 
 /* MAIN LAYOUT ------------------------------------------- */
 .app-main {
+  position: relative;
+  z-index: 1; /* sits above hero shadows */
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.3fr);
   gap: 16px;
   flex: 1;
 }
 
-.column {
-  display: flex;
-  flex-direction: column;
-  gap: 14px;
-}
+.column { display: flex; flex-direction: column; gap: 14px; }
 
 /* CARDS ------------------------------------------------- */
 .card {
@@ -389,7 +410,7 @@ body {
   gap: 10px;
 }
 
-.card-input { min-height: 260px; }
+.card-input { min-height: 240px; }
 .card-results { min-height: 220px; }
 .card-failed { min-height: 100px; }
 .card-history { min-height: 140px; }
@@ -445,8 +466,6 @@ button { font-family: inherit; }
 
 .controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 
-/* Your original secondary style name was .btn-secondary,
-   but HTML uses .secondary. Support both. */
 .btn-secondary,
 .secondary {
   border-radius: 999px;
@@ -533,7 +552,6 @@ button { font-family: inherit; }
 .progress-row { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
 .helper-text { font-size: 11px; color: var(--text-muted); }
 
-/* New: match the HTML/JS */
 .progress-bar {
   width: 100%;
   height: 6px;
@@ -550,7 +568,6 @@ button { font-family: inherit; }
   transition: transform 0.2s ease-out;
 }
 
-/* Keep old names for compatibility if needed */
 .progress-bar-outer {
   width: 100%;
   height: 5px;
@@ -566,7 +583,7 @@ button { font-family: inherit; }
   transition: width 0.2s ease-out;
 }
 
-/* RESULTS (generic styles that existed) ------------------ */
+/* RESULTS ----------------------------------------------- */
 .results-list {
   display: flex;
   flex-direction: column;
@@ -619,9 +636,7 @@ button { font-family: inherit; }
 .badge-success { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.8); color: #a7f3d0; }
 .badge-failed { background: rgba(239, 68, 68, 0.12); border-color: rgba(248, 113, 113, 0.9); color: #fecaca; }
 
-/* ===== NEW: STYLES THAT MATCH YOUR JS-EMITTED CLASSES ===== */
-
-/* Each result block that JS creates as ".tweet" */
+/* JS-EMITTED CLASSES ----------------------------------- */
 .tweet {
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.45);
@@ -636,7 +651,6 @@ button { font-family: inherit; }
   gap: 6px;
 }
 
-/* Header of a tweet block */
 .tweet-header {
   display: flex;
   align-items: center;
@@ -644,7 +658,6 @@ button { font-family: inherit; }
   gap: 8px;
 }
 
-/* The URL in the tweet header */
 .tweet-link {
   font-size: 11px;
   color: #e5e7eb;
@@ -653,10 +666,8 @@ button { font-family: inherit; }
 }
 .tweet-link:hover { text-decoration: underline; }
 
-/* Actions container (reroll button sits here) */
 .tweet-actions { display: flex; align-items: center; gap: 8px; }
 
-/* Comments wrapper for each tweet */
 .comments {
   display: flex;
   flex-direction: column;
@@ -664,7 +675,6 @@ button { font-family: inherit; }
   margin-top: 4px;
 }
 
-/* Single comment line with label, text and copy button */
 .comment-line {
   display: grid;
   grid-template-columns: auto 1fr auto;
@@ -691,9 +701,7 @@ button { font-family: inherit; }
   text-overflow: ellipsis;
 }
 
-/* Copy buttons already have visuals via .copy-btn/.copy-btn-en rules below */
-
-/* Uiverse-style Copy buttons (comments + history) ------- */
+/* Copy buttons look is defined elsewhere, keep base sizes */
 .copy-btn,
 .copy-btn-en,
 .history-copy-btn {
@@ -710,14 +718,8 @@ button { font-family: inherit; }
   font-size: 11px;
 }
 
-/* History version slightly smaller */
-.history-copy-btn {
-  width: 90px;
-  height: 26px;
-  font-size: 10px;
-}
+.history-copy-btn { width: 90px; height: 26px; font-size: 10px; }
 
-/* First span = icon + "Copy" / "Copy EN" */
 .copy-btn span:first-child,
 .copy-btn-en span:first-child,
 .history-copy-btn span:first-child {
@@ -731,7 +733,6 @@ button { font-family: inherit; }
   gap: 6px;
 }
 
-/* Second span = "Copied" */
 .copy-btn span:last-child,
 .copy-btn-en span:last-child,
 .history-copy-btn span:last-child {
@@ -745,7 +746,6 @@ button { font-family: inherit; }
   line-height: 13px;
 }
 
-/* On click/focus: expand + invert colors */
 .copy-btn:focus,
 .copy-btn-en:focus,
 .history-copy-btn:focus {
@@ -756,10 +756,8 @@ button { font-family: inherit; }
   transition-duration: 500ms;
 }
 
-/* History grows a bit less */
 .history-copy-btn:focus { width: 110px; height: 34px; }
 
-/* Move "Copy" up and fade it */
 .copy-btn:focus span:first-child,
 .copy-btn-en:focus span:first-child,
 .history-copy-btn:focus span:first-child {
@@ -769,7 +767,6 @@ button { font-family: inherit; }
   transition-duration: 500ms;
 }
 
-/* Bring "Copied" into center */
 .copy-btn:focus span:last-child,
 .copy-btn-en:focus span:last-child,
 .history-copy-btn:focus span:last-child {
@@ -779,7 +776,7 @@ button { font-family: inherit; }
   transition-duration: 500ms;
 }
 
-/* REROLL button (round 3D "Re-roll", theme-aware) ------- */
+/* REROLL button ---------------------------------------- */
 .reroll-btn {
   position: relative;
   width: 46px;
@@ -797,7 +794,6 @@ button { font-family: inherit; }
     transform 0.15s ease;
 }
 
-/* back circle */
 .reroll-btn::before {
   content: "";
   position: absolute;
@@ -806,7 +802,6 @@ button { font-family: inherit; }
   background: rgb(var(--reroll-secondary));
 }
 
-/* front circle + text */
 .reroll-btn::after {
   content: "Re-roll";
   position: absolute;
@@ -834,13 +829,8 @@ button { font-family: inherit; }
     box-shadow 0.15s ease;
 }
 
-/* hover: stronger outline glow */
 .reroll-btn:hover { outline-color: rgba(var(--reroll-primary), 0.7); }
-
-/* press: drop down, remove shadow */
 .reroll-btn:active::after { transform: translateY(0%); box-shadow: none; }
-
-/* tiny press movement */
 .reroll-btn:active { transform: translateY(1px); }
 
 /* FAILED ------------------------------------------------ */
@@ -910,9 +900,7 @@ button { font-family: inherit; }
 /* SCROLLBARS -------------------------------------------- */
 .results-list::-webkit-scrollbar,
 .failed-list::-webkit-scrollbar,
-.history-list::-webkit-scrollbar {
-  width: 4px;
-}
+.history-list::-webkit-scrollbar { width: 4px; }
 
 .results-list::-webkit-scrollbar-thumb,
 .failed-list::-webkit-scrollbar-thumb,
@@ -922,29 +910,7 @@ button { font-family: inherit; }
 }
 
 /* SKELETON / LOADING ------------------------------------ */
-/* Keep original names... */
-.result-skeleton {
-  border-radius: 14px;
-  border: 1px solid rgba(148, 163, 184, 0.3);
-  padding: 10px 10px 8px;
-  background: linear-gradient(
-    90deg,
-    rgba(15, 23, 42, 0.9) 0%,
-    rgba(30, 64, 175, 0.85) 50%,
-    rgba(15, 23, 42, 0.9) 100%
-  );
-  background-size: 200% 100%;
-  animation: shimmer 1.3s infinite linear;
-}
-.skeleton-line {
-  height: 8px;
-  border-radius: 999px;
-  background-color: rgba(15, 23, 42, 0.75);
-  margin-bottom: 6px;
-}
-.skeleton-line:last-child { width: 80%; }
-
-/* ...and add the names your JS actually emits */
+.result-skeleton,
 .tweet-skeleton {
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.3);
@@ -958,12 +924,14 @@ button { font-family: inherit; }
   background-size: 200% 100%;
   animation: shimmer 1.3s infinite linear;
 }
+.skeleton-line,
 .tweet-skeleton-line {
   height: 8px;
   border-radius: 999px;
   background-color: rgba(15, 23, 42, 0.75);
   margin-bottom: 6px;
 }
+.skeleton-line:last-child,
 .tweet-skeleton-line:last-child { width: 80%; }
 
 @keyframes shimmer {
@@ -971,97 +939,37 @@ button { font-family: inherit; }
   100% { background-position: 200% 0; }
 }
 
-/* RESPONSIVE -------------------------------------------- */
+/* RESPONSIVE / VIEWPORT-FIT ----------------------------- */
+@media (max-width: 1100px) {
+  .app-main { grid-template-columns: minmax(0, 1fr); }
+  .hero { flex-direction: column; align-items: stretch; gap: 12px; }
+  .hero-main { margin: 0 auto; }
+}
+
 @media (max-width: 900px) {
   body { padding: 16px; }
-  .app-shell { max-width: 100%; }
-  .app-main { grid-template-columns: minmax(0, 1fr); }
-  .hero { flex-direction: column; align-items: flex-start; gap: 12px; }
-  .hero-main { width: 100%; }
+  .app-main { grid-template-columns: minmax(0, 1fr); gap: 12px; }
 }
 
 @media (max-width: 640px) {
   body { padding: 12px; }
   .controls { flex-wrap: wrap; }
+  .hero-copy { align-items: center; }
+  .app-title { text-align: center; letter-spacing: 0.28em; }
 }
 
-
-/* ===== CrownTALK: minimal add-ons (safe overrides) ===== */
-
-/* 1) Keep hero glow under cards / inputs */
-.hero,
-.hero-orbit,
-.hero-orbit-inner { position: relative; z-index: 0; }
-.card,
-.url-textarea { position: relative; z-index: 2; }
-
-/* 2) Center hero (logo + copy) without touching your markup */
-.hero { position: relative; justify-content: center; }
-.hero-main { margin: 0 auto; }
-.theme-switcher { position: absolute; right: 0; top: 0; }
-
-/* 3) Hide only the texture theme dot (bar stays) */
-.theme-dot[data-theme="texture"] { display: none !important; }
-
-/* 4) Theme-driven headline (CROWNTALK) + subtle premium glow */
-.hero-copy h1 {
-  background: linear-gradient(120deg, var(--headline-1), var(--headline-2));
-  -webkit-background-clip: text;
-  background-clip: text;
-  color: transparent;
-  text-shadow:
-    0 0 6px var(--headline-glow),
-    0 0 16px var(--headline-glow);
+/* Make layout fit on short screens (less scrolling) */
+@media (max-height: 800px) {
+  .card { padding: 12px 12px 10px; }
+  .card-input { min-height: 210px; }
+  .url-textarea { min-height: 130px; }
+  .results-list { max-height: 300px; }
+  .failed-list { max-height: 120px; }
+  .history-list { max-height: 140px; }
 }
 
-/* Headline tokens per theme (defaults already look fine in light) */
-:root,
-[data-theme="white"] {
-  --headline-1: #111827;
-  --headline-2: #6b7280;
-  --headline-glow: rgba(99, 102, 241, 0.18);
-}
-[data-theme="dark-purple"] {
-  --headline-1: #c4b5fd; /* soft purple */
-  --headline-2: #f472b6; /* pink accent */
-  --headline-glow: rgba(196, 181, 253, 0.55);
-}
-[data-theme="gold"] {
-  --headline-1: #fde68a;
-  --headline-2: #f59e0b;
-  --headline-glow: rgba(251, 191, 36, 0.5);
-}
-[data-theme="blue"] {
-  --headline-1: #93c5fd;
-  --headline-2: #38bdf8;
-  --headline-glow: rgba(96, 165, 250, 0.5);
-}
-[data-theme="black"] {
-  --headline-1: #f3f4f6;
-  --headline-2: #d1d5db;
-  --headline-glow: rgba(243, 244, 246, 0.4);
-}
-[data-theme="emerald"] {
-  --headline-1: #6ee7b7;
-  --headline-2: #34d399;
-  --headline-glow: rgba(16, 185, 129, 0.5);
-}
-[data-theme="neon"] {
-  --headline-1: #67e8f9;
-  --headline-2: #22c55e;
-  --headline-glow: rgba(52, 211, 153, 0.55);
+@media (max-height: 700px) {
+  .url-textarea { min-height: 110px; }
+  .results-list { max-height: 240px; }
 }
 
-/* 5) Make Generate button follow the active theme (keeps Uiverse structure) */
-#generateBtn.btn {
-  background: linear-gradient(135deg, var(--accent), var(--accent-soft-strong)) !important;
-  border: 1px solid var(--accent) !important;
-  color: #ffffff !important;
-  box-shadow: 0 10px 28px rgba(0,0,0,0.35), 0 0 18px var(--accent-soft) !important;
-}
-#generateBtn.btn:hover { transform: translateY(-1px); }
-#generateBtn.btn:active { transform: translateY(0); }
-#generateBtn .btn-svg path { stroke: currentColor; }
-
-/* Keep hero elements from ever overlapping inputs due to shadows */
-.hero-orbit { pointer-events: none; }
