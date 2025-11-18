@@ -1,247 +1,653 @@
-import logging
-import re
-from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Sequence
-from urllib.parse import urlparse, urlunparse
-
+from flask import Flask, request, jsonify
+import threading
 import requests
+import time
+import re
+import random
+from collections import Counter
+import sqlite3
+import hashlib
+import logging
 
-logger = logging.getLogger(__name__)
+# Import shared helpers (use these instead of duplicating)
+from utils import (
+    CrownTALKError,
+    fetch_tweet_data,
+    clean_and_normalize_urls,
+)
 
+app = Flask(__name__)
+logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("crowntalk")
 
-VX_BASE = "https://api.vxtwitter.com"
-DEFAULT_TIMEOUT = 8.0
+# Public URL of this backend (optional self-ping for free tier cold starts)
+BACKEND_PUBLIC_URL = "https://crowntalk.onrender.com"
 
+BATCH_SIZE = 2
+KEEP_ALIVE_INTERVAL = 600  # seconds
 
-class CrownTALKError(Exception):
-    """
-    Custom error to bubble up controlled failures.
-
-    `code` should be a short string that the frontend can branch on.
-    """
-
-    def __init__(self, message: str, code: str = "crawling_error") -> None:
-        super().__init__(message)
-        self.code = code
-
-
-@dataclass
-class TweetData:
-    url: str
-    text: str
-    author_name: str
-    lang: str
-    raw: Dict[str, Any]
-
-
-def _ensure_scheme(url: str) -> str:
-    url = url.strip()
-    if not url:
-        raise CrownTALKError("Empty URL.", code="empty_url")
-    if not re.match(r"^https?://", url, flags=re.IGNORECASE):
-        url = "https://" + url
-    return url
+# -------------------------------------------------------------------
+# SHARED COMMENT STORE (SQLite - OTP style comments)
+# -------------------------------------------------------------------
+DB_PATH = "comments.db"
 
 
-def _normalize_domain(netloc: str) -> str:
-    netloc = netloc.lower()
-    # Accept multiple Twitter/X mirrors and normalize internally
-    replacements = {
-        "www.twitter.com": "twitter.com",
-        "www.x.com": "x.com",
-    }
-    if netloc in replacements:
-        return replacements[netloc]
-    return netloc
-
-
-def normalize_tweet_url(url: str) -> str:
-    """
-    Normalize a Twitter/X/VX URL so it can be fed into VXTwitter API.
-
-    We keep the path and build:
-    https://api.vxtwitter.com{path}
-    """
-    url = _ensure_scheme(url)
-    parsed = urlparse(url)
-    netloc = _normalize_domain(parsed.netloc)
-
-    if not parsed.path or parsed.path == "/":
-        raise CrownTALKError("URL does not look like a tweet.", code="not_tweet")
-
-    if netloc not in {
-        "twitter.com",
-        "x.com",
-        "vxtwitter.com",
-        "fixvx.com",
-        "fxtwitter.com",
-    }:
-        raise CrownTALKError("Unsupported domain for tweet extraction.", code="unsupported_domain")
-
-    api_url = VX_BASE + parsed.path
-    if parsed.query:
-        api_url += "?" + parsed.query
-
-    return api_url
-
-
-def fetch_tweet_data(url: str, timeout: float = DEFAULT_TIMEOUT) -> TweetData:
-    """
-    Fetch tweet data from VXTwitter.
-
-    Returns a TweetData object with text, author_name, lang, and raw JSON.
-    """
-    api_url = normalize_tweet_url(url)
-    logger.info("Fetching VXTwitter data for %s -> %s", url, api_url)
-
+def init_db():
+    """Create comments_seen table if it doesn't exist, enable WAL for concurrency."""
+    conn = sqlite3.connect(DB_PATH)
     try:
-        resp = requests.get(
-            api_url,
-            timeout=timeout,
-            headers={"User-Agent": "CrownTALK/EXTREME-v3"},
-        )
-    except Exception as e:
-        logger.exception("Network error while contacting VXTwitter")
-        raise CrownTALKError("Failed to contact VXTwitter API.", code="network_error") from e
-
-    if resp.status_code != 200:
-        logger.warning("VXTwitter non-200 status: %s", resp.status_code)
-        raise CrownTALKError(
-            f"VXTwitter returned status {resp.status_code}.",
-            code="vx_http_error",
-        )
-
-    try:
-        data: Dict[str, Any] = resp.json()
-    except Exception as e:
-        logger.exception("Failed to parse VXTwitter JSON")
-        raise CrownTALKError("Invalid response from VXTwitter.", code="vx_invalid_json") from e
-
-    text = (
-        data.get("tweet", {}).get("text")
-        or data.get("full_text")
-        or data.get("text")
-        or ""
-    ).strip()
-    if not text:
-        raise CrownTALKError("Could not extract tweet text.", code="no_text")
-
-    author_name = (
-        data.get("tweet", {}).get("user", {}).get("name")
-        or data.get("user", {}).get("name")
-        or ""
-    ).strip()
-
-    lang = (
-        data.get("tweet", {}).get("lang")
-        or data.get("lang")
-        or "und"
-    )
-
-    return TweetData(
-        url=url,
-        text=text,
-        author_name=author_name,
-        lang=lang,
-        raw=data,
-    )
-
-
-def naive_lang_detect(text: str) -> str:
-    """
-    Tiny offline heuristic language detection.
-
-    Returns: "en", "bn", "hi", "zh", or "other".
-
-    - bn: Bangla (Bengali block)
-    - hi: Devanagari-ish (Hindi-ish)
-    - zh: CJK-ish (Chinese/Japanese-ish)
-    """
-    s = text.strip()
-    if not s:
-        return "other"
-
-    bengali_chars = re.findall(r"[\u0980-\u09FF]", s)
-    devanagari_chars = re.findall(r"[\u0900-\u097F]", s)
-    cjk_chars = re.findall(r"[\u3040-\u30FF\u4E00-\u9FFF]", s)
-    latin_letters = re.findall(r"[A-Za-z]", s)
-
-    bn = len(bengali_chars)
-    hi = len(devanagari_chars)
-    zh = len(cjk_chars)
-    en = len(latin_letters)
-
-    # Prioritize whichever script dominates with some minimum density
-    if bn >= 4 and bn > hi and bn > zh:
-        return "bn"
-    if hi >= 4 and hi > bn and hi > zh:
-        return "hi"
-    if zh >= 4 and zh > bn and zh > hi:
-        return "zh"
-    if en >= 5:
-        return "en"
-    return "other"
-
-
-def safe_excerpt(text: str, max_len: int = 220) -> str:
-    """
-    Safety cut-down for context metadata.
-    """
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 1].rstrip() + "…"
-
-
-def clean_and_normalize_urls(urls: Sequence[Any]) -> List[str]:
-    """
-    Clean user-provided URLs: trim, dedupe, and basic validation.
-    """
-    seen = set()
-    cleaned: List[str] = []
-    for raw in urls:
-        if not isinstance(raw, str):
-            raise CrownTALKError("All URLs must be strings.", code="invalid_url_type")
-
-        candidate = raw.strip()
-        if not candidate:
-            continue
-
-        candidate = _ensure_scheme(candidate)
-        parsed = urlparse(candidate)
-        normalized = urlunparse(
-            (
-                parsed.scheme.lower(),
-                parsed.netloc.lower(),
-                parsed.path,
-                "",
-                parsed.query,
-                "",
+        # WAL improves concurrent reads/writes for gthread workers
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute(
+            """
+            CREATE TABLE IF NOT EXISTS comments_seen (
+                hash TEXT PRIMARY KEY,
+                created_at INTEGER
             )
+            """
+        )
+        conn.commit()
+    finally:
+        conn.close()
+
+
+def _normalize_for_memory(text: str) -> str:
+    return re.sub(r"\s+", " ", text.strip().lower())
+
+
+def _hash_comment(norm_text: str) -> str:
+    return hashlib.sha256(norm_text.encode("utf-8")).hexdigest()
+
+
+def comment_seen(text: str) -> bool:
+    """Check if a comment has ever been used before (best-effort)."""
+    norm = _normalize_for_memory(text)
+    if not norm:
+        return False
+    h = _hash_comment(norm)
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=3.0)  # a bit higher than 0.5s
+        try:
+            cur = conn.execute(
+                "SELECT 1 FROM comments_seen WHERE hash = ? LIMIT 1", (h,)
+            )
+            row = cur.fetchone()
+        finally:
+            conn.close()
+        return row is not None
+    except Exception:
+        # If DB fails/locks, don't break generation – treat as unseen
+        return False
+
+
+def remember_comment(text: str) -> None:
+    """Record that we have used this comment text globally (best-effort)."""
+    norm = _normalize_for_memory(text)
+    if not norm:
+        return
+    h = _hash_comment(norm)
+    now = int(time.time())
+    try:
+        conn = sqlite3.connect(DB_PATH, timeout=3.0)
+        try:
+            conn.execute(
+                "INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES (?, ?)",
+                (h, now),
+            )
+            conn.commit()
+        finally:
+            conn.close()
+    except Exception:
+        # best-effort, ignore errors
+        pass
+
+
+# ---------------------------------------------------------
+# Manual CORS (permissive; tighten if you want)
+# ---------------------------------------------------------
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+# ---------------------------------------------------------
+# HEALTH
+# ---------------------------------------------------------
+@app.route("/", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+
+# ---------------------------------------------------------
+# COMMENT ENDPOINT
+# ---------------------------------------------------------
+@app.route("/comment", methods=["POST", "OPTIONS"])
+def comment_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON body", "code": "invalid_json"}), 400
+
+    urls = payload.get("urls")
+    if not isinstance(urls, list) or not urls:
+        return jsonify({"error": "Body must contain non-empty 'urls' array", "code": "bad_request"}), 400
+
+    try:
+        cleaned_urls = clean_and_normalize_urls(urls)
+    except CrownTALKError as e:
+        return jsonify({"error": str(e), "code": e.code}), 400
+    except Exception:
+        return jsonify({"error": "Failed to clean URLs", "code": "url_clean_error"}), 400
+
+    results = []
+    failed = []
+
+    generator = OfflineCommentGenerator()
+
+    for batch in chunked(cleaned_urls, BATCH_SIZE):
+        for url in batch:
+            try:
+                t = fetch_tweet_data(url)  # from utils.py
+                comments = generator.generate_comments(
+                    text=t.text,
+                    author=t.author_name or None,
+                    lang_hint=t.lang or None,
+                )
+                results.append({"url": url, "comments": comments})
+            except CrownTALKError as e:
+                failed.append({"url": url, "reason": str(e), "code": e.code})
+            except Exception as e:
+                logger.exception("Unhandled error while processing %s", url)
+                failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
+
+    return jsonify({"results": results, "failed": failed}), 200
+
+
+# ---------------------------------------------------------
+# REROLL ENDPOINT
+# ---------------------------------------------------------
+@app.route("/reroll", methods=["POST", "OPTIONS"])
+def reroll_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return jsonify({"error": "Invalid JSON body", "comments": [], "code": "invalid_json"}), 400
+
+    url = data.get("url") or ""
+    if not url:
+        return jsonify({"error": "Missing 'url' field", "comments": [], "code": "bad_request"}), 400
+
+    try:
+        t = fetch_tweet_data(url)
+        generator = OfflineCommentGenerator()
+        comments = generator.generate_comments(
+            text=t.text,
+            author=t.author_name or None,
+            lang_hint=t.lang or None,
+        )
+        return jsonify({"url": url, "comments": comments}), 200
+    except CrownTALKError as e:
+        return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
+    except Exception as e:
+        logger.exception("Unhandled error during reroll for %s", url)
+        return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
+
+
+# ---------------------------------------------------------
+# CHUNKER
+# ---------------------------------------------------------
+def chunked(seq, size):
+    size = max(1, int(size))
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
+
+# ---------------------------------------------------------
+# OFFLINE COMMENT GENERATOR (unchanged behavior; small safety nits)
+# ---------------------------------------------------------
+EN_STOPWORDS = {
+    "the", "a", "an", "and", "or", "but", "if", "when", "where", "how",
+    "this", "that", "those", "these", "it", "its", "is", "are", "was",
+    "were", "be", "been", "being", "for", "to", "of", "in", "on", "at",
+    "with", "by", "from", "as", "about", "into", "over", "after", "before",
+    "your", "my", "our", "their", "his", "her", "you", "we", "they", "i",
+    "just", "so", "very", "too", "up", "down", "out", "off", "again",
+}
+
+AI_BLOCKLIST = {
+    "amazing", "awesome", "incredible", "empowering",
+    "game changer", "game-changing", "transformative", "paradigm shift",
+    "in this digital age", "as an ai", "as a language model",
+    "in conclusion", "in summary", "furthermore", "moreover",
+    "navigate this landscape", "ever-evolving landscape", "leverage this insight",
+    "cutting edge", "state of the art", "unprecedented",
+    "unleash", "unleashing", "unlock the power", "harness the power",
+    "embark on this journey", "embark on a journey", "our journey",
+    "empower", "revolutionize", "disruptive",
+    "slay", "yass", "yas", "queen", "bestie",
+    "like and retweet", "thoughts?", "thoughts ?", "agree?", "agree ?",
+    "who's with me", "drop your thoughts", "smash that like button", "link in bio",
+}
+
+EMOJI_PATTERN = re.compile(
+    "[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
+    flags=re.UNICODE,
+)
+
+
+class OfflineCommentGenerator:
+    """
+    Offline generator:
+      - topics: chart, complaint, announcement, meme, thread, one-liner, generic
+      - crypto awareness
+      - multilingual: non-English => native + English
+      - avoids AI-y language
+      - respects 5–12 words, no emojis, no hashtags, no ending punctuation
+    """
+
+    def __init__(self):
+        self.random = random.Random()
+
+    def _is_probably_english(self, text: str, lang_hint: str | None) -> bool:
+        stripped = re.sub(r"https?://\S+", "", text)
+        stripped = re.sub(r"[@#]\S+", "", stripped)
+        chars = [c for c in stripped if not c.isspace()]
+
+        cjk_chars = [
+            c for c in chars
+            if ("\u4e00" <= c <= "\u9fff")
+            or ("\u3040" <= c <= "\u30ff")
+            or ("\uac00" <= c <= "\ud7af")
+        ]
+        ascii_letters = [c for c in chars if c.isascii() and c.isalpha()]
+        total = max(len(chars), 1)
+        ratio_ascii_letters = len(ascii_letters) / total
+
+        if lang_hint:
+            lh = lang_hint.lower()
+            if lh.startswith("en"):
+                if len(cjk_chars) >= 2 and ratio_ascii_letters < 0.7:
+                    return False
+                return True
+            return False
+
+        if len(cjk_chars) >= 2 and ratio_ascii_letters < 0.7:
+            return False
+        if ratio_ascii_letters > 0.75:
+            return True
+        return ratio_ascii_letters > 0.55
+
+    def _make_native_comment(self, text: str, key_tokens: list[str]) -> str:
+        cleaned = re.sub(r"https?://\S+", "", text)
+        cleaned = re.sub(r"[@#]\S+", "", cleaned).strip()
+
+        has_cjk = (
+            any("\u4e00" <= c <= "\u9fff" for c in cleaned)
+            or any("\u3040" <= c <= "\u30ff" for c in cleaned)
+            or any("\uac00" <= c <= "\ud7af" for c in cleaned)
         )
 
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        cleaned.append(normalized)
+        last_candidate = ""
 
-    if not cleaned:
-        raise CrownTALKError("No valid URLs after cleaning.", code="no_valid_urls")
+        for _ in range(20):
+            if has_cjk:
+                segments = []
+                for sep in ["。", "！", "？", "!", "?", "\n"]:
+                    parts = [p.strip() for p in cleaned.split(sep) if p.strip()]
+                    if parts:
+                        segments.extend(parts)
+                if not segments:
+                    segments = [cleaned]
 
-    return cleaned
+                snippet = self.random.choice(segments)
+                if len(snippet) > 24:
+                    start = 0 if len(snippet) <= 24 else self.random.randint(0, len(snippet) - 24)
+                    snippet = snippet[start : start + 24]
+
+                candidate = EMOJI_PATTERN.sub("", snippet).strip()
+            else:
+                words = [w for w in cleaned.split() if not w.startswith("@")]
+                if not words:
+                    focus = pick_focus_token(key_tokens)
+                    candidate = focus or "不错"
+                else:
+                    if len(words) < 5:
+                        while len(words) < 5:
+                            words.extend(words)
+                        words = words[:5]
+
+                    focus_token = pick_focus_token(key_tokens) if key_tokens else None
+                    if focus_token and focus_token in words:
+                        center_idx = words.index(focus_token)
+                    else:
+                        center_idx = len(words) // 2
+
+                    window_size = min(max(5, len(words)), 12)
+                    start = max(0, min(center_idx - window_size // 2, len(words) - window_size))
+                    snippet_words = words[start : start + window_size]
+                    candidate = " ".join(snippet_words)
+
+                candidate = self._tidy_comment(candidate)
+
+            if not candidate:
+                continue
+            last_candidate = candidate
+            if comment_seen(candidate):
+                continue
+            remember_comment(candidate)
+            return candidate
+
+        if not last_candidate:
+            last_candidate = "不错"
+        remember_comment(last_candidate)
+        return last_candidate
+
+    def generate_comments(self, text: str, author: str | None, lang_hint: str | None = None):
+        is_english = self._is_probably_english(text, lang_hint)
+        topic = detect_topic(text)
+        crypto = is_crypto_tweet(text)
+        key_tokens = extract_keywords(text)
+
+        if is_english:
+            c1 = self._make_english_comment(text, author, topic, crypto, key_tokens, used_kinds=set())
+            c2 = self._make_english_comment(text, author, topic, crypto, key_tokens, used_kinds={c1["kind"]})
+            return [{"lang": "en", "text": c1["text"]}, {"lang": "en", "text": c2["text"]}]
+
+        native = self._make_native_comment(text, key_tokens)
+        en = self._make_english_comment(text, author, topic, crypto, key_tokens, used_kinds=set())
+        return [{"lang": "native", "text": native}, {"lang": "en", "text": en["text"]}]
+
+    def _tidy_comment(self, text: str) -> str:
+        if not text:
+            return ""
+        text = EMOJI_PATTERN.sub("", text)
+        text = re.sub(r"https?://\S+", "", text)
+        text = re.sub(r"#\w+", "", text)
+        text = re.sub(r"\s+", " ", text).strip()
+        text = re.sub(r"[.!?;:…]+$", "", text).strip()
+
+        words = text.split()
+        if not words:
+            return ""
+
+        if len(words) < 5:
+            fillers = ["right", "honestly", "tbh", "still", "though"]
+            while len(words) < 5 and fillers:
+                words.append(fillers.pop(0))
+        elif len(words) > 12:
+            words = words[:12]
+
+        final = " ".join(words).strip()
+        final = re.sub(r"[.!?;:…]+$", "", final).strip()
+        return final
+
+    def _violates_ai_blocklist(self, text: str) -> bool:
+        low = text.lower()
+        for phrase in AI_BLOCKLIST:
+            if phrase in low:
+                return True
+        return False
+
+    def _make_english_comment(
+        self, text: str, author: str | None, topic: str, is_crypto: bool,
+        key_tokens: list[str], used_kinds: set,
+    ) -> dict:
+        focus = pick_focus_token(key_tokens) or "this"
+        author_ref = None
+        if author and random.random() < 0.6:
+            parts = author.split()
+            author_ref = parts[0] if parts else author
+
+        buckets = self._get_template_buckets(topic, is_crypto)
+
+        available_kinds = [k for k in buckets if k not in used_kinds]
+        if not available_kinds:
+            available_kinds = list(buckets.keys())
+        kind = random.choice(available_kinds)
+
+        last_candidate = ""
+
+        for _ in range(25):
+            tmpl = random.choice(buckets[kind])
+            out = tmpl.format(author=author_ref or "", focus=focus)
+            out = self._tidy_comment(out)
+            if not out:
+                continue
+            if self._violates_ai_blocklist(out):
+                continue
+            if comment_seen(out):
+                last_candidate = out
+                continue
+            remember_comment(out)
+            return {"kind": kind, "text": out}
+
+        fallback = self._tidy_comment(f"Pretty solid points on {focus}") or "Pretty solid points on this"
+        remember_comment(fallback)
+        return {"kind": kind, "text": fallback}
+
+    def _get_template_buckets(self, topic: str, is_crypto: bool) -> dict:
+        base_react = [
+            "{focus} take actually feels pretty grounded",
+            "Hard to disagree with this view on {focus}",
+            "Have been nodding along reading about {focus}",
+            "Kinda lines up with my experience of {focus}",
+            "Nice to see someone phrase {focus} this clearly",
+        ]
+        base_convo = [
+            "Curious where {focus} goes if this plays out",
+            "Feels like a real conversation people have about {focus}",
+            "Been having similar chats around {focus} lately",
+            "Low key everyone is thinking this about {focus}",
+            "Interested to hear more stories around {focus}",
+        ]
+        base_calm = [
+            "Chill sober take on {focus} which I like",
+            "Sensible breakdown of {focus} without extra drama",
+            "Grounded way of walking through {focus} step by step",
+            "Helps keep {focus} in perspective instead of hype",
+            "Good reminder not to overreact to {focus} stuff",
+        ]
+        vibe_flavor = [
+            "{focus} feels very timeline core right now",
+            "The vibe around {focus} here is pretty real",
+            "This hits the everyday side of {focus} nicely",
+            "Quietly one of the better posts on {focus}",
+        ]
+        nuance_flavor = [
+            "Appreciate that {focus} is handled without yelling",
+            "Nice to see some nuance instead of pure takes on {focus}",
+            "Not pushing an extreme angle on {focus} actually helps",
+            "Good mix of context and restraint around {focus}",
+        ]
+        quick_react = [
+            "Yeah this tracks for {focus} tbh",
+            "Honestly this is how {focus} tends to go",
+            "Kind of exactly what {focus} looks like in practice",
+            "Hard not to recognise {focus} in this",
+        ]
+        author_flavor = [
+            "{author} always finds a plain language angle on {focus}",
+            "Feels like {author} actually lived through this {focus} mess",
+            "{author} explaining {focus} hits different from the usual threads",
+            "Trust {author} more on {focus} after posts like this",
+        ]
+        chart_flavor = [
+            "This is how most traders quietly look at {focus}",
+            "Those levels on {focus} line up with price memory",
+            "Risk reward on {focus} is laid out really cleanly",
+            "Helps frame entries and exits around {focus}",
+        ]
+        meme_flavor = [
+            "This is exactly how {focus} feels some days",
+            "Can not unsee this version of {focus} now",
+            "Joke lands because {focus} is way too real",
+            "Every timeline has at least one {focus} meme now",
+        ]
+        complaint_flavor = [
+            "Very normal to be burnt out by {focus}",
+            "Everyone pretending {focus} is fine is kinda wild",
+            "Nice to see someone admit {focus} is exhausting",
+            "Feels like no one in charge understands {focus}",
+        ]
+        announcement_flavor = [
+            "Ship first talk later energy around {focus} is nice",
+            "Cool seeing concrete stuff for {focus} instead of teasers",
+            "Real update on {focus} beats vague roadmaps every time",
+            "Interested to see if they keep shipping on {focus}",
+        ]
+        thread_flavor = [
+            "Thread does a good job layering context on {focus}",
+            "Bookmarking this as a reference for {focus} later",
+            "Clean structure here makes {focus} easy to follow",
+            "Skimming this gives a solid overview of {focus}",
+        ]
+        one_liner_flavor = [
+            "Short line but pretty accurate read on {focus}",
+            "Funny how one sentence sums up {focus} so well",
+            "This is blunt but fair about {focus}",
+            "Straightforward way of framing {focus} without fluff",
+        ]
+        crypto_extra = [
+            "Onchain side of {focus} is finally getting discussed honestly",
+            "Nice blend of risk and conviction for {focus} here",
+            "People trading {focus} will recognise this feeling instantly",
+            "Better than the usual moon talk around {focus}",
+        ]
+
+        buckets = {
+            "react": base_react,
+            "conversation": base_convo,
+            "calm": base_calm,
+            "vibe": vibe_flavor,
+            "nuanced": nuance_flavor,
+            "quick": quick_react,
+        }
+
+        if topic == "chart":
+            buckets["chart"] = chart_flavor
+        elif topic == "meme":
+            buckets["meme"] = meme_flavor
+        elif topic == "complaint":
+            buckets["complaint"] = complaint_flavor
+        elif topic in ("announcement", "update"):
+            buckets["announcement"] = announcement_flavor
+        elif topic == "thread":
+            buckets["thread"] = thread_flavor
+        elif topic == "one_liner":
+            buckets["one_liner"] = one_liner_flavor
+
+        if is_crypto:
+            buckets["crypto"] = crypto_extra
+
+        if random.random() < 0.5:
+            buckets["author"] = author_flavor
+
+        return buckets
 
 
-def chunk_list(seq: Iterable[Any], size: int) -> List[List[Any]]:
-    """
-    Yield chunks of the given size as a concrete list of lists.
-    """
-    bucket: List[Any] = []
-    chunks: List[List[Any]] = []
-    for item in seq:
-        bucket.append(item)
-        if len(bucket) >= size:
-            chunks.append(bucket)
-            bucket = []
-    if bucket:
-        chunks.append(bucket)
-    return chunks
+# ---------------------------------------------------------
+# TOPIC / KEYWORD HELPERS
+# ---------------------------------------------------------
+def detect_topic(text: str) -> str:
+    t = text.lower()
+    if any(k in t for k in ("gm ", "gn ", "good morning", "good night")):
+        return "greeting"
+    if any(k in t for k in ("airdrop", "whitelist", "wl spot", "mint is live")):
+        return "giveaway"
+    if any(k in t for k in ("chart", "support", "resistance", "ath", "price target", "%", "market cap", "mc")):
+        return "chart"
+    if any(k in t for k in ("bug", "issue", "broken", "down again", "wtf", "why is", "tired of")):
+        return "complaint"
+    if any(k in t for k in ("announcing", "announcement", "we're live", "we are live", "launching", "we shipped")):
+        return "announcement"
+    if any(k in t for k in ("meme", "shitpost", "ratioed", "memeing")) or "lol" in t:
+        return "meme"
+    if "🧵" in text or len(text) > 220:
+        return "thread"
+    if len(text) < 80:
+        return "one_liner"
+    return "generic"
+
+
+def is_crypto_tweet(text: str) -> bool:
+    t = text.lower()
+    crypto_keywords = [
+        "crypto", "defi", "nft", "airdrop", "token", "coin", "chain", "l1", "l2",
+        "staking", "yield", "dex", "cex", "onchain", "on-chain", "gas fees",
+        "btc", "eth", "sol", "arb", "layer two", "mainnet",
+    ]
+    if any(k in t for k in crypto_keywords):
+        return True
+    if re.search(r"\$\w{2,8}", text):
+        return True
+    return False
+
+
+def extract_keywords(text: str) -> list[str]:
+    cleaned = re.sub(r"https?://\S+", "", text)
+    cleaned = re.sub(r"[@#]\S+", "", cleaned)
+    tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9_\-]{2,}\b", cleaned)
+    if not tokens:
+        return []
+    tokens_lower = [tok.lower() for tok in tokens]
+    filtered = [
+        tok for tok, low in zip(tokens, tokens_lower)
+        if low not in EN_STOPWORDS and len(low) > 2
+    ]
+    if not filtered:
+        filtered = tokens
+    counts = Counter([t.lower() for t in filtered])
+    sorted_tokens = sorted(filtered, key=lambda w: (-counts[w.lower()], -len(w)))
+    seen = set()
+    result = []
+    for w in sorted_tokens:
+        lw = w.lower()
+        if lw not in seen:
+            seen.add(lw)
+            result.append(w)
+    return result[:10]
+
+
+def pick_focus_token(tokens: list[str]) -> str | None:
+    if not tokens:
+        return None
+    upperish = [t for t in tokens if t.isupper() or t[0].isupper()]
+    if upperish:
+        return random.choice(upperish)
+    return random.choice(tokens)
+
+
+# ---------------------------------------------------------
+# KEEP ALIVE THREAD (only when running directly)
+# ---------------------------------------------------------
+def keep_alive():
+    if not BACKEND_PUBLIC_URL:
+        return
+    while True:
+        try:
+            requests.get(f"{BACKEND_PUBLIC_URL}/", timeout=5)
+        except Exception:
+            pass
+        time.sleep(KEEP_ALIVE_INTERVAL)
+
+
+# ---------------------------------------------------------
+# MAIN ENTRY
+# ---------------------------------------------------------
+if __name__ == "__main__":
+    init_db()
+    # Optional: self-ping only in dev/direct run (avoid multiple threads under gunicorn)
+    threading.Thread(target=keep_alive, daemon=True).start()
+    app.run(host="0.0.0.0", port=10000)
+else:
+    # When run by gunicorn, module is imported. Init DB but DO NOT start keep_alive here.
+    init_db()
