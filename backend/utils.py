@@ -1,210 +1,238 @@
+# utils.py
+from __future__ import annotations
+
 import logging
 import re
+import time
+import threading
 from dataclasses import dataclass
-from typing import Any, Dict, Iterable, List, Sequence
-from urllib.parse import urlparse, urlunparse
-
+from typing import List, Tuple
 import requests
+from urllib.parse import urlparse
 
-logger = logging.getLogger(__name__)
+logger = logging.getLogger("utils")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
 
-VX_BASE = "https://api.vxtwitter.com"
-DEFAULT_TIMEOUT = 8.0
-
-
+# -----------------------------
+# Errors
+# -----------------------------
 class CrownTALKError(Exception):
-    """Custom error to bubble up controlled failures."""
-    def __init__(self, message: str, code: str = "crawling_error") -> None:
+    def __init__(self, message: str, code: str = "error"):
         super().__init__(message)
         self.code = code
 
+# -----------------------------
+# Lightweight global rate-limit
+# (best effort across threads)
+# -----------------------------
+_MIN_GAP_SECONDS = 0.25   # ~4 req/sec cap
+_last_call_ts = 0.0
+_rl_lock = threading.Lock()
 
+def _rate_limit_yield():
+    global _last_call_ts
+    with _rl_lock:
+        now = time.time()
+        wait = _MIN_GAP_SECONDS - (now - _last_call_ts)
+        if wait > 0:
+            time.sleep(wait)
+        _last_call_ts = time.time()
+
+# -----------------------------
+# HTTP session
+# -----------------------------
+_SESSION = requests.Session()
+_SESSION.headers.update({
+    "User-Agent": "CrownTALK/1.0 (+https://crowndex.app)"
+})
+_DEFAULT_TIMEOUT = 12
+
+# -----------------------------
+# URL helpers
+# -----------------------------
+_X_DOMAINS = {"x.com", "twitter.com", "mobile.twitter.com", "m.twitter.com"}
+
+def _extract_handle_and_id(url: str) -> Tuple[str, str]:
+    """
+    Accepts x.com/twitter.com URLs and returns (handle, status_id)
+    """
+    try:
+        u = url.strip()
+        if not u:
+            raise ValueError("empty url")
+        if not u.startswith("http"):
+            u = "https://" + u
+        p = urlparse(u)
+        host = p.netloc.lower().split(":")[0]
+        if host not in _X_DOMAINS:
+            raise ValueError("not an x.com/twitter.com URL")
+
+        parts = [seg for seg in p.path.split("/") if seg]
+        # forms:
+        # /<user>/status/<id>
+        # /i/web/status/<id>  (rare)
+        if len(parts) >= 3 and parts[1] == "status":
+            handle = parts[0]
+            status_id = parts[2]
+        elif len(parts) >= 4 and parts[-2] == "status":
+            handle = parts[-4]
+            status_id = parts[-1]
+        else:
+            raise ValueError("couldn't parse status path")
+
+        status_id = re.sub(r"[^\d]", "", status_id)
+        if not handle or not status_id:
+            raise ValueError("missing handle or id")
+
+        return handle, status_id
+    except Exception as e:
+        raise CrownTALKError(f"Bad tweet URL: {url}", code="bad_tweet_url") from e
+
+def _normalize_x_url(url: str) -> str:
+    """Return canonical https://x.com/<user>/status/<id>"""
+    handle, status_id = _extract_handle_and_id(url)
+    return f"https://x.com/{handle}/status/{status_id}"
+
+def clean_and_normalize_urls(urls: List[str]) -> List[str]:
+    """
+    - accepts an array (possibly multi-line strings)
+    - extracts http(s) lines
+    - keeps only x.com/twitter.com
+    - canonicalizes and de-duplicates
+    """
+    out = []
+    seen = set()
+    for item in urls:
+        if not item:
+            continue
+        # allow text blobs with newlines
+        lines = str(item).splitlines()
+        for raw in lines:
+            raw = raw.strip()
+            if not raw:
+                continue
+            if not raw.startswith("http"):
+                # ignore non-links
+                continue
+            try:
+                canon = _normalize_x_url(raw)
+            except CrownTALKError:
+                # ignore non-x links or malformed links
+                continue
+            if canon not in seen:
+                seen.add(canon)
+                out.append(canon)
+    if not out:
+        raise CrownTALKError("No valid X/Twitter links found", code="no_valid_urls")
+    return out
+
+# -----------------------------
+# Upstream fetch (VX → FX)
+# -----------------------------
 @dataclass
 class TweetData:
-    url: str
     text: str
-    author_name: str
-    lang: str
-    raw: Dict[str, Any]
+    author_name: str | None
+    lang: str | None
 
+_VX_FMT = "https://api.vxtwitter.com/{handle}/status/{status_id}"
+_FX_FMT = "https://api.fxtwitter.com/{handle}/status/{status_id}"
 
-def _ensure_scheme(url: str) -> str:
-    url = url.strip()
-    if not url:
-        raise CrownTALKError("Empty URL.", code="empty_url")
-    if not re.match(r"^https?://", url, flags=re.IGNORECASE):
-        url = "https://" + url
-    return url
+def _backoff_sleep(attempt: int, base: float = 0.35, cap: float = 6.0):
+    sleep = min(cap, base * (2 ** (attempt - 1)))
+    # tiny jitter
+    sleep *= (0.9 + 0.2 * (attempt % 3))
+    time.sleep(sleep)
 
+def _do_get_json(url: str) -> requests.Response:
+    _rate_limit_yield()
+    return _SESSION.get(url, timeout=_DEFAULT_TIMEOUT)
 
-def _normalize_domain(netloc: str) -> str:
-    netloc = netloc.lower()
-    replacements = {
-        "www.twitter.com": "twitter.com",
-        "www.x.com": "x.com",
-    }
-    return replacements.get(netloc, netloc)
-
-
-def normalize_tweet_url(url: str) -> str:
-    """
-    Normalize a Twitter/X/Fx/FixVX URL and map to VX API.
-    """
-    url = _ensure_scheme(url)
-    parsed = urlparse(url)
-    netloc = _normalize_domain(parsed.netloc)
-
-    if not parsed.path or parsed.path == "/":
-        raise CrownTALKError("URL does not look like a tweet.", code="not_tweet")
-
-    if netloc not in {"twitter.com", "x.com", "vxtwitter.com", "fixvx.com", "fxtwitter.com"}:
-        raise CrownTALKError("Unsupported domain for tweet extraction.", code="unsupported_domain")
-
-    api_url = VX_BASE + parsed.path
-    if parsed.query:
-        api_url += "?" + parsed.query
-    return api_url
-
-
-def fetch_tweet_data(url: str, timeout: float = DEFAULT_TIMEOUT) -> TweetData:
-    """
-    Fetch tweet data from VXTwitter.
-    """
-    api_url = normalize_tweet_url(url)
-    logger.info("Fetching VXTwitter data for %s -> %s", url, api_url)
-
+def _read_json_payload(resp: requests.Response) -> dict:
     try:
-        resp = requests.get(
-            api_url,
-            timeout=timeout,
-            headers={"User-Agent": "CrownTALK/EXTREME-v3"},
-        )
-    except Exception as e:
-        logger.exception("Network error while contacting VXTwitter")
-        raise CrownTALKError("Failed to contact VXTwitter API.", code="network_error") from e
+        return resp.json()
+    except Exception:
+        raise CrownTALKError("Bad JSON from upstream", code="upstream_bad_json")
 
-    if resp.status_code != 200:
-        logger.warning("VXTwitter non-200 status: %s", resp.status_code)
-        raise CrownTALKError(f"VXTwitter returned status {resp.status_code}.", code="vx_http_error")
+def _parse_payload(payload: dict) -> TweetData:
+    # VX/FX both expose a twitter-like object. Common fields:
+    #  - text              : string
+    #  - lang              : string (optional)
+    #  - user_screen_name  : or payload["user"]["name"]
+    #  - user_name         : human name (prefer)
+    text = None
+    lang = payload.get("lang") or payload.get("tweet", {}).get("lang")
 
-    try:
-        data: Dict[str, Any] = resp.json()
-    except Exception as e:
-        logger.exception("Failed to parse VXTwitter JSON")
-        raise CrownTALKError("Invalid response from VXTwitter.", code="vx_invalid_json") from e
-
-    text = (
-        data.get("tweet", {}).get("text")
-        or data.get("full_text")
-        or data.get("text")
-        or ""
-    ).strip()
-    if not text:
-        raise CrownTALKError("Could not extract tweet text.", code="no_text")
-
-    author_name = (
-        data.get("tweet", {}).get("user", {}).get("name")
-        or data.get("user", {}).get("name")
-        or ""
-    ).strip()
-
-    lang = (data.get("tweet", {}).get("lang") or data.get("lang") or "und")
-
-    return TweetData(
-        url=url,
-        text=text,
-        author_name=author_name,
-        lang=lang,
-        raw=data,
+    # Try common spots
+    text = payload.get("text") or payload.get("full_text") or payload.get("tweet", {}).get("text") \
+           or payload.get("tweet", {}).get("full_text")
+    user_name = (
+        payload.get("user_name")
+        or payload.get("user", {}).get("name")
+        or payload.get("tweet", {}).get("user", {}).get("name")
     )
 
+    if not text:
+        raise CrownTALKError("Tweet text missing in upstream payload", code="upstream_shape_changed")
 
-def naive_lang_detect(text: str) -> str:
+    return TweetData(text=text, author_name=user_name, lang=lang)
+
+def fetch_tweet_data(x_url: str) -> TweetData:
     """
-    Tiny offline heuristic language detection.
-    Returns: "en", "bn", "hi", "zh", or "other".
+    Fetch tweet contents from VXTwitter; on 429/>=500 or non-200, retry a few times
+    and then try FXTwitter as a fallback.
     """
-    s = text.strip()
-    if not s:
-        return "other"
+    handle, status_id = _extract_handle_and_id(x_url)
 
-    bengali_chars = re.findall(r"[\u0980-\u09FF]", s)
-    devanagari_chars = re.findall(r"[\u0900-\u097F]", s)
-    cjk_chars = re.findall(r"[\u3040-\u30FF\u4E00-\u9FFF]", s)
-    latin_letters = re.findall(r"[A-Za-z]", s)
+    # 1) Try VX
+    vx_url = _VX_FMT.format(handle=handle, status_id=status_id)
+    for attempt in range(1, 4):
+        try:
+            logger.info("Fetching VXTwitter data for %s -> %s", x_url, vx_url)
+            r = _do_get_json(vx_url)
+            if r.status_code == 200:
+                payload = _read_json_payload(r)
+                # VX sometimes wraps in {"tweet": {...}}
+                inner = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+                return _parse_payload(inner)
+            elif r.status_code in (429, 500, 502, 503, 504):
+                logger.warning("VXTwitter non-200 status: %s", r.status_code)
+                # If VX indicates hard rate-limit, break early to try FX after a small wait
+                if r.status_code == 429 and attempt >= 2:
+                    break
+                _backoff_sleep(attempt)
+                continue
+            else:
+                # 404, 410 etc. Try FX next.
+                logger.warning("VXTwitter returned %s, will try FX fallback", r.status_code)
+                break
+        except requests.RequestException:
+            logger.exception("VXTwitter request error")
+            _backoff_sleep(attempt)
 
-    bn = len(bengali_chars)
-    hi = len(devanagari_chars)
-    zh = len(cjk_chars)
-    en = len(latin_letters)
+    # 2) Try FX fallback
+    fx_url = _FX_FMT.format(handle=handle, status_id=status_id)
+    for attempt in range(1, 4):
+        try:
+            logger.info("Fetching FXTwitter data for %s -> %s", x_url, fx_url)
+            r = _do_get_json(fx_url)
+            if r.status_code == 200:
+                payload = _read_json_payload(r)
+                inner = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+                return _parse_payload(inner)
+            elif r.status_code in (429, 500, 502, 503, 504):
+                logger.warning("FXTwitter non-200 status: %s", r.status_code)
+                _backoff_sleep(attempt)
+                continue
+            else:
+                break
+        except requests.RequestException:
+            logger.exception("FXTwitter request error")
+            _backoff_sleep(attempt)
 
-    if bn >= 4 and bn > hi and bn > zh:
-        return "bn"
-    if hi >= 4 and hi > bn and hi > zh:
-        return "hi"
-    if zh >= 4 and zh > bn and zh > hi:
-        return "zh"
-    if en >= 5:
-        return "en"
-    return "other"
-
-
-def safe_excerpt(text: str, max_len: int = 220) -> str:
-    text = re.sub(r"\s+", " ", text).strip()
-    if len(text) <= max_len:
-        return text
-    return text[: max_len - 1].rstrip() + "…"
-
-
-def clean_and_normalize_urls(urls: Sequence[Any]) -> List[str]:
-    """
-    Clean user-provided URLs: trim, dedupe, and basic validation.
-    """
-    seen = set()
-    cleaned: List[str] = []
-    for raw in urls:
-        if not isinstance(raw, str):
-            raise CrownTALKError("All URLs must be strings.", code="invalid_url_type")
-
-        candidate = raw.strip()
-        if not candidate:
-            continue
-
-        candidate = _ensure_scheme(candidate)
-        parsed = urlparse(candidate)
-        normalized = urlunparse(
-            (
-                parsed.scheme.lower(),
-                parsed.netloc.lower(),
-                parsed.path,
-                "",
-                parsed.query,
-                "",
-            )
-        )
-
-        if normalized in seen:
-            continue
-        seen.add(normalized)
-        cleaned.append(normalized)
-
-    if not cleaned:
-        raise CrownTALKError("No valid URLs after cleaning.", code="no_valid_urls")
-
-    return cleaned
-
-
-def chunk_list(seq: Iterable[Any], size: int) -> List[List[Any]]:
-    """
-    Yield chunks of the given size as a concrete list of lists.
-    """
-    bucket: List[Any] = []
-    chunks: List[List[Any]] = []
-    for item in seq:
-        bucket.append(item)
-        if len(bucket) >= size:
-            chunks.append(bucket)
-            bucket = []
-    if bucket:
-        chunks.append(bucket)
-    return chunks
+    # If we reach here, both failed
+    raise CrownTALKError(
+        "Upstream is rate-limiting or unavailable; try fewer links or wait a minute",
+        code="upstream_rate_limited",
+    )
