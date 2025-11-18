@@ -68,10 +68,24 @@ https://x.com/user/status/456..."
           ></textarea>
 
           <div class="controls">
-            <!-- Keep the same IDs so your JS works; the linked CSS skins this -->
-            <button id="generateBtn" class="btn-generate" type="button">Generate</button>
-            <button id="cancelBtn" class="btn-secondary" type="button">Cancel</button>
-            <button id="clearBtn" class="btn-secondary subtle" type="button">Clear</button>
+           <!-- Generate -->
+<button id="generateBtn" class="btn" type="button" aria-live="polite">
+  <!-- sparkle icon -->
+  <svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true">
+    <path d="M12 2l1.8 3.9L18 7.8l-4.2 1.2L12 13l-1.8-4L6 7.8l4.2-1L12 2z"></path>
+  </svg>
+
+  <!-- text swap container -->
+  <span class="txt-wrapper">
+    <span class="txt-1">Generate</span>
+    <span class="txt-2">Generating…</span>
+  </span>
+</button>
+
+<!-- Keep these as-is -->
+<button id="cancelBtn" class="btn-secondary" type="button">Cancel</button>
+<button id="clearBtn" class="btn-secondary subtle" type="button">Clear</button>
+
           </div>
 
           <div class="progress-row">
@@ -123,7 +137,7 @@ https://x.com/user/status/456..."
           <!-- your name / X link lives here; keep your actual href -->
           Built by
           <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer"
-            >Visit My Profile</a
+            >CrownDEX</a
           >
         </div>
       </footer>
