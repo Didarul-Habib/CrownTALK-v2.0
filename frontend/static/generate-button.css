@@ -11,6 +11,9 @@
   position: relative;
 }
 
+.btn-generate .txt-wrapper { margin-left: 2px; }
+
+
 /* Base style (alias .btn and .btn-generate) */
 .btn,
 .btn-generate {
