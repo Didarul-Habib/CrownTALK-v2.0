@@ -154,6 +154,11 @@
   /* reroll button colors */
   --reroll-primary: 244, 63, 94;   /* rgb for gradients */
   --reroll-secondary: 127, 29, 29;
+   
+  /* base/edge are solid colors; glow is RGB for rgba() usage */
+   --btn-base: #D32A4E;   /* rich crimson */
+  --btn-edge: #8F1430;   /* deeper edge */
+  --btn-glow: 255, 64, 96; /* glow (r,g,b) */
 
   /* glossy title gradient (used by your theme-aware heading) */
   --title-grad-1: #fff1f2;  /* very light rose */
