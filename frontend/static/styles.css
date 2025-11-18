@@ -1183,43 +1183,62 @@ body {
 }
 
 /* Constrain the animated halo INSIDE the card */
-.uiverse-card .card__border{
-  pointer-events: none;
-  position: absolute;
-  inset: -1px;                 /* tiny bleed to cover the edge */
-  border-radius: 1rem;
-  overflow: hidden;            /* <— critical: clips the sweep */
-  z-index: 0;
-}
 
-/* The sweep line rotates inside the clipped layer */
-.uiverse-card .card__border::before{
-  content: "";
-  position: absolute;          /* <— was fixed; now constrained */
-  top: 50%;
-  left: 50%;
-  width: 200%;
-  height: 10rem;
-  transform: translate(-50%, -50%) rotate(0deg);
-  transform-origin: left;
-
-  background-image: linear-gradient(
-    0deg,
-    hsl(0 0% 100% / 0) 0%,
-    var(--ui-accent-1) 40%,
-    var(--ui-accent-1) 60%,
-    hsl(0 0% 40% / 0) 100%
-  );
-
-  animation: uiverse-rotate 8s linear infinite;
-  pointer-events: none;
-}
-
-/* keep content above the halo */
-.uiverse-card > *:not(.card__border){
+.uiverse-card {
   position: relative;
-  z-index: 1;
 }
+
+.uiverse-card .card__border {
+  position: absolute;
+  inset: -2px;            /* tiny bleed to hide pixel seams */
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 1;             /* sits above background, below content */
+  overflow: hidden;       /* belt + suspenders */
+}
+
+/* single rotating “line” around the edge (like a satellite orbit) */
+.uiverse-card .card__border::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+
+  /* a thin wedge at the end of a conic gradient = the moving line */
+  background:
+    conic-gradient(
+      from 0deg,
+      transparent 0turn 0.97turn,
+      color-mix(in oklab, var(--ui-accent-1) 85%, white 15%) 1turn
+    );
+
+  /* clip the conic gradient to a ring thickness (the “border”) */
+  --ring: 3px; /* thickness of the orbit line */
+  -webkit-mask:
+    radial-gradient(farthest-side,
+      transparent calc(100% - var(--ring)),
+      #000         calc(100% - var(--ring)));
+  mask:
+    radial-gradient(farthest-side,
+      transparent calc(100% - var(--ring)),
+      #000         calc(100% - var(--ring)));
+
+  /* gentle glow */
+  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--ui-accent-2) 60%, black 40%));
+
+  animation: uiverse-orbit 6s linear infinite;
+}
+
+@keyframes uiverse-orbit {
+  to { transform: rotate(360deg); }
+}
+
+/* keep your actual card content above the orbit */
+.uiverse-card > *:not(.card__border) {
+  position: relative;
+  z-index: 2;
+}
+
 }
 
 @keyframes uiverse-rotate{
