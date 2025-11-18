@@ -169,3 +169,17 @@ body.is-generating .txt-2 { transform: translateY(-100%); opacity: 1; }
 .controls .txt-wrapper { display: inline-grid; align-items: center; }
 .controls .txt-1, .controls .txt-2 { line-height: 1; }
 
+/* icon/text alignment */
+#generateBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+  line-height: 1;
+}
+#generateBtn svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+  translate: 0 .5px; /* tiny optical nudge */
+}
