@@ -1208,7 +1208,7 @@ body {
   background:
     conic-gradient(
       from 0deg,
-      transparent 0turn 0.97turn,
+      transparent 0turn 0.975turn,
       color-mix(in oklab, var(--ui-accent-1) 85%, white 15%) 1turn
     );
 
