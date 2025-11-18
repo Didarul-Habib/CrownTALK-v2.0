@@ -940,3 +940,198 @@ body {
     color: var(--text-muted);
   }
 }
+
+/* =========================
+   CrownTALK Card (ct-card)
+   ========================= */
+
+/* ---- Theme tokens for the card (scoped, safe defaults) ---- */
+:root {
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 78%);
+  --ct-line: hsl(240 9% 17%);
+  --ct-bg: hsl(240 15% 9%);
+  --ct-primary: hsl(266 92% 58%);
+  --ct-accent1: hsl(284 100% 84%);
+  --ct-accent2: hsl(306 100% 57%);
+  --ct-sheen: hsl(277 95% 60%);
+}
+
+/* Map your site themes -> card tokens */
+[data-theme="white"] {
+  --ct-text: hsl(240 10% 10%);
+  --ct-paragraph: hsl(240 6% 35%);
+  --ct-line: hsl(240 10% 90%);
+  --ct-bg: hsl(0 0% 100%);
+  --ct-primary: hsl(222 94% 55%);   /* blue */
+  --ct-accent1: hsl(222 100% 85%);
+  --ct-accent2: hsl(200 100% 70%);
+  --ct-sheen: hsl(222 95% 60%);
+}
+
+[data-theme="dark-purple"] {
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 78%);
+  --ct-line: hsl(260 20% 20%);
+  --ct-bg: hsl(250 20% 12%);
+  --ct-primary: hsl(266 92% 58%);   /* violet */
+  --ct-accent1: hsl(284 100% 84%);  /* pink-ish glow */
+  --ct-accent2: hsl(306 100% 57%);  /* fuchsia */
+  --ct-sheen: hsl(277 95% 60%);
+}
+
+[data-theme="gold"] {
+  --ct-text: hsl(45 20% 95%);
+  --ct-paragraph: hsl(45 15% 78%);
+  --ct-line: hsl(45 25% 25%);
+  --ct-bg: hsl(45 25% 12%);
+  --ct-primary: hsl(43 96% 56%);    /* gold */
+  --ct-accent1: hsl(50 100% 80%);
+  --ct-accent2: hsl(35 100% 65%);
+  --ct-sheen: hsl(44 95% 62%);
+}
+
+[data-theme="blue"] {
+  --ct-text: hsl(210 20% 96%);
+  --ct-paragraph: hsl(210 10% 78%);
+  --ct-line: hsl(210 20% 22%);
+  --ct-bg: hsl(220 22% 12%);
+  --ct-primary: hsl(217 91% 60%);   /* royal blue */
+  --ct-accent1: hsl(200 100% 72%);
+  --ct-accent2: hsl(190 100% 68%);
+  --ct-sheen: hsl(210 100% 66%);
+}
+
+[data-theme="black"] {
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 70%);
+  --ct-line: hsl(0 0% 18%);
+  --ct-bg: hsl(240 15% 6%);
+  --ct-primary: hsl(190 95% 55%);   /* cyan pop */
+  --ct-accent1: hsl(200 100% 72%);
+  --ct-accent2: hsl(160 100% 60%);
+  --ct-sheen: hsl(190 95% 60%);
+}
+
+[data-theme="emerald"] {
+  --ct-text: hsl(150 15% 96%);
+  --ct-paragraph: hsl(150 10% 78%);
+  --ct-line: hsl(155 20% 20%);
+  --ct-bg: hsl(160 25% 12%);
+  --ct-primary: hsl(158 64% 52%);   /* emerald */
+  --ct-accent1: hsl(156 100% 80%);
+  --ct-accent2: hsl(170 100% 70%);
+  --ct-sheen: hsl(158 80% 58%);
+}
+
+[data-theme="crimson"] {
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 80%);
+  --ct-line: hsl(350 22% 22%);
+  --ct-bg: hsl(350 20% 12%);
+  --ct-primary: hsl(356 72% 54%);   /* crimson */
+  --ct-accent1: hsl(340 95% 76%);   /* rose glow */
+  --ct-accent2: hsl(10 100% 62%);   /* warm red/orange */
+  --ct-sheen: hsl(350 90% 60%);
+}
+
+/* ---- Card base ---- */
+.ct-card {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  padding: 1rem;
+  width: 100%;
+  max-width: 22rem;
+
+  color: var(--ct-text);
+  background-color: var(--ct-bg);
+
+  /* stacked radial “nebula” like Uiverse, but theme-driven */
+  background-image:
+    radial-gradient(at 88% 40%, var(--ct-bg) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, var(--ct-bg) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, var(--ct-bg) 0px, transparent 85%),
+    radial-gradient(at 0% 64%, var(--ct-primary) 0px, transparent 85%),
+    radial-gradient(at 41% 94%, var(--ct-accent1) 0px, transparent 85%),
+    radial-gradient(at 100% 99%, var(--ct-accent2) 0px, transparent 85%);
+
+  border-radius: 1rem;
+  box-shadow: 0 -16px 24px 0 inset rgba(255, 255, 255, 0.12);
+  border: 1px solid color-mix(in lab, var(--ct-line) 70%, transparent);
+}
+
+/* border glow layer */
+.ct-card__border {
+  overflow: hidden;
+  pointer-events: none;
+
+  position: absolute;
+  inset: -1px;
+  z-index: 0;
+
+  border-radius: inherit;
+  background-image: linear-gradient(0deg, hsl(0 0% 100% / .7) -50%, hsl(0 0% 40%) 100%);
+}
+
+/* rotating sweep highlight */
+.ct-card__border::before {
+  content: "";
+  position: fixed; /* keep sweep smooth on scroll like the Uiverse snippet */
+  top: 50%;
+  left: 50%;
+  transform-origin: left;
+  width: 200%;
+  height: 10rem;
+  z-index: 1;
+
+  background-image: linear-gradient(
+    0deg,
+    hsl(0 0% 100% / 0) 0%,
+    var(--ct-sheen) 40%,
+    var(--ct-sheen) 60%,
+    hsl(0 0% 40% / 0) 100%
+  );
+
+  animation: ct-rotate 8s linear infinite;
+}
+
+/* motion safety */
+@media (prefers-reduced-motion: reduce) {
+  .ct-card__border::before { animation: none; }
+}
+
+@keyframes ct-rotate {
+  to { transform: rotate(360deg); }
+}
+
+/* content elements (mirrors the Uiverse names, namespaced) */
+.ct-card__title { font-size: 1rem; font-weight: 600; }
+.ct-card__subtitle { margin-top: .25rem; font-size: .75rem; color: var(--ct-paragraph); max-width: 32ch; }
+
+.ct-card__hr {
+  height: .1rem; border: 0; width: 100%;
+  background-color: color-mix(in lab, var(--ct-line) 85%, transparent);
+}
+
+.ct-card__list { display: flex; flex-direction: column; gap: .5rem; }
+.ct-card__item { display: flex; align-items: center; gap: .5rem; }
+
+.ct-card__check {
+  display: inline-flex; justify-content: center; align-items: center;
+  width: 1rem; height: 1rem; background: var(--ct-primary); border-radius: 50%;
+  box-shadow: 0 0 12px color-mix(in lab, var(--ct-primary) 55%, transparent);
+}
+.ct-card__check svg { width: .75rem; height: .75rem; fill: hsl(0 0% 8%); }
+
+.ct-card__text { font-size: .8rem; color: var(--ct-text); }
+
+/* optional: full-bleed header row */
+.ct-card__header { display:flex; align-items:center; justify-content:space-between; gap:.5rem; }
+
+/* responsive nicety */
+@media (min-width: 768px) {
+  .ct-card { max-width: 24rem; }
+}
