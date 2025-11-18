@@ -1,3 +1,8 @@
+/* ================================
+   CrownTALK - styles.css (fixed)
+   ================================ */
+
+/* ROOT VARIABLES */
 :root {
   --bg: #f5f5f7;
   --card-bg: #ffffff;
@@ -18,7 +23,6 @@
 }
 
 /* THEMES ------------------------------------------------- */
-
 [data-theme="white"] {
   --bg: #f5f5f7;
   --card-bg: #ffffff;
@@ -156,7 +160,6 @@
 }
 
 /* GLOBAL LAYOUT ----------------------------------------- */
-
 *,
 *::before,
 *::after {
@@ -181,18 +184,13 @@ body {
   padding: 24px;
 }
 
-.app-shell {
+/* Ensure outer page wrapper has width */
+.page {
   width: 100%;
   max-width: 1200px;
-  min-height: 560px;
-  display: flex;
-  flex-direction: column;
-  gap: 18px;
 }
 
 /* HEADER / HERO ----------------------------------------- */
-
-.app-header,
 .hero {
   display: flex;
   align-items: center;
@@ -200,15 +198,12 @@ body {
   gap: 16px;
 }
 
-.logo-cluster,
 .hero-main {
   display: flex;
   align-items: center;
   gap: 16px;
 }
 
-/* support both old class (logo-orbit) and new (hero-orbit) */
-.logo-orbit,
 .hero-orbit {
   width: 96px;
   height: 96px;
@@ -224,7 +219,6 @@ body {
   animation: hero-glow-pulse 3.4s ease-in-out infinite;
 }
 
-.logo-orbit-inner,
 .hero-orbit-inner {
   width: 76px;
   height: 76px;
@@ -236,7 +230,6 @@ body {
   overflow: hidden;
 }
 
-.logo-img,
 .hero-orbit-inner img {
   width: 120%;
   height: 120%;
@@ -245,14 +238,12 @@ body {
   display: block;
 }
 
-.logo-text,
 .hero-copy {
   display: flex;
   flex-direction: column;
   gap: 4px;
 }
 
-.app-title,
 .hero-copy h1 {
   margin: 0;
   letter-spacing: 0.32em;
@@ -264,7 +255,6 @@ body {
   color: transparent;
 }
 
-.app-subtitle,
 .hero-copy p {
   margin: 0;
   font-size: 13px;
@@ -288,7 +278,6 @@ body {
 }
 
 /* THEME SWITCHER ---------------------------------------- */
-
 .theme-switcher {
   display: flex;
   align-items: center;
@@ -374,9 +363,7 @@ body {
   border-color: rgba(248, 250, 252, 0.95);
 }
 
-
 /* MAIN LAYOUT ------------------------------------------- */
-
 .app-main {
   display: grid;
   grid-template-columns: minmax(0, 1.2fr) minmax(0, 1.3fr);
@@ -391,7 +378,6 @@ body {
 }
 
 /* CARDS ------------------------------------------------- */
-
 .card {
   background: var(--card-bg);
   border-radius: 20px;
@@ -403,28 +389,12 @@ body {
   gap: 10px;
 }
 
-.card-input {
-  min-height: 260px;
-}
+.card-input { min-height: 260px; }
+.card-results { min-height: 220px; }
+.card-failed { min-height: 100px; }
+.card-history { min-height: 140px; }
 
-.card-results {
-  min-height: 220px;
-}
-
-.card-failed {
-  min-height: 100px;
-}
-
-.card-history {
-  min-height: 140px;
-}
-
-.card-header {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
+.card-header { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
 
 .card-title {
   margin: 0;
@@ -435,26 +405,11 @@ body {
   color: var(--text-muted);
 }
 
-.card-subtitle {
-  margin: 0;
-  font-size: 12px;
-  color: var(--text-muted);
-}
-
-.card-body {
-  display: flex;
-  flex-direction: column;
-  gap: 8px;
-}
+.card-subtitle { margin: 0; font-size: 12px; color: var(--text-muted); }
+.card-body { display: flex; flex-direction: column; gap: 8px; }
 
 /* TEXTAREA / INPUT -------------------------------------- */
-
-.textarea-wrapper {
-  position: relative;
-  display: flex;
-  flex-direction: column;
-  gap: 6px;
-}
+.textarea-wrapper { position: relative; display: flex; flex-direction: column; gap: 6px; }
 
 .url-textarea {
   width: 100%;
@@ -474,9 +429,7 @@ body {
   box-shadow: 0 12px 30px rgba(15, 23, 42, 0.4);
 }
 
-.url-textarea::placeholder {
-  color: rgba(148, 163, 184, 0.8);
-}
+.url-textarea::placeholder { color: rgba(148, 163, 184, 0.8); }
 
 .url-textarea:focus {
   border-color: rgba(129, 140, 248, 0.9);
@@ -485,30 +438,17 @@ body {
     0 18px 45px rgba(15, 23, 42, 0.85);
 }
 
-.textarea-footer {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  font-size: 11px;
-  color: var(--text-muted);
-}
+.textarea-footer { display: flex; align-items: center; justify-content: space-between; font-size: 11px; color: var(--text-muted); }
 
 /* BUTTONS ----------------------------------------------- */
+button { font-family: inherit; }
 
-button {
-  font-family: inherit;
-}
+.controls { display: flex; align-items: center; gap: 8px; margin-top: 10px; }
 
-.controls {
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  margin-top: 10px;
-}
-
-/* Secondary buttons (Cancel, Clear, etc.) */
-
-.btn-secondary {
+/* Your original secondary style name was .btn-secondary,
+   but HTML uses .secondary. Support both. */
+.btn-secondary,
+.secondary {
   border-radius: 999px;
   border: 1px solid rgba(148, 163, 184, 0.6);
   background: rgba(15, 23, 42, 0.85);
@@ -526,24 +466,20 @@ button {
     transform 0.08s ease;
 }
 
-.btn-secondary.subtle {
-  background: rgba(15, 23, 42, 0.7);
-  border-style: dashed;
-}
+.btn-secondary.subtle,
+.secondary.subtle { background: rgba(15, 23, 42, 0.7); border-style: dashed; }
 
-.btn-secondary:hover:not(:disabled) {
+.btn-secondary:hover:not(:disabled),
+.secondary:hover:not(:disabled) {
   border-color: rgba(129, 140, 248, 0.9);
   color: #e5e7eb;
   transform: translateY(-0.5px);
 }
 
-.btn-secondary:disabled {
-  opacity: 0.45;
-  cursor: default;
-}
+.btn-secondary:disabled,
+.secondary:disabled { opacity: 0.45; cursor: default; }
 
-/* Clear History button (mini pill) ---------------------- */
-
+/* "Clear history" mini pill */
 #clearHistoryBtn {
   position: relative;
   padding: 4px 12px;
@@ -588,42 +524,33 @@ button {
   box-shadow: none;
 }
 
-/* Text-style links -------------------------------------- */
-
-.text-btn {
-  border: none;
-  background: none;
-  padding: 0;
-  color: var(--accent);
-  font-size: 12px;
-  cursor: pointer;
-  display: inline-flex;
-  align-items: center;
-  gap: 4px;
-}
-
-.text-btn.small {
-  font-size: 11px;
-}
-
-.text-btn:hover {
-  text-decoration: underline;
-}
+/* Text-style links */
+.text-btn { border: none; background: none; padding: 0; color: var(--accent); font-size: 12px; cursor: pointer; display: inline-flex; align-items: center; gap: 4px; }
+.text-btn.small { font-size: 11px; }
+.text-btn:hover { text-decoration: underline; }
 
 /* PROGRESS BAR ------------------------------------------ */
+.progress-row { display: flex; flex-direction: column; gap: 4px; margin-top: 8px; }
+.helper-text { font-size: 11px; color: var(--text-muted); }
 
-.progress-row {
-  display: flex;
-  flex-direction: column;
-  gap: 4px;
-  margin-top: 8px;
+/* New: match the HTML/JS */
+.progress-bar {
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: var(--accent-soft);
+  overflow: hidden;
+}
+#progressBarFill {
+  width: 100%;
+  height: 100%;
+  background: linear-gradient(90deg, #22c55e, #a855f7, #f97316);
+  transform: scaleX(0);
+  transform-origin: left center;
+  transition: transform 0.2s ease-out;
 }
 
-.helper-text {
-  font-size: 11px;
-  color: var(--text-muted);
-}
-
+/* Keep old names for compatibility if needed */
 .progress-bar-outer {
   width: 100%;
   height: 5px;
@@ -631,7 +558,6 @@ button {
   background: rgba(15, 23, 42, 0.7);
   overflow: hidden;
 }
-
 .progress-bar-inner {
   width: 0%;
   height: 100%;
@@ -640,8 +566,7 @@ button {
   transition: width 0.2s ease-out;
 }
 
-/* RESULTS ----------------------------------------------- */
-
+/* RESULTS (generic styles that existed) ------------------ */
 .results-list {
   display: flex;
   flex-direction: column;
@@ -673,30 +598,11 @@ button {
   border-color: rgba(129, 140, 248, 0.9);
 }
 
-.result-url-row {
-  display: flex;
-  align-items: center;
-  justify-content: space-between;
-  gap: 8px;
-}
+.result-url-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
+.result-url { font-size: 11px; color: #e5e7eb; text-decoration: none; word-break: break-all; }
+.result-url:hover { text-decoration: underline; }
 
-.result-url {
-  font-size: 11px;
-  color: #e5e7eb;
-  text-decoration: none;
-  word-break: break-all;
-}
-
-.result-url:hover {
-  text-decoration: underline;
-}
-
-.result-badges {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-}
-
+.result-badges { display: flex; align-items: center; gap: 6px; }
 .badge {
   display: inline-flex;
   align-items: center;
@@ -710,38 +616,73 @@ button {
   letter-spacing: 0.12em;
   color: var(--text-muted);
 }
+.badge-success { background: rgba(16, 185, 129, 0.12); border-color: rgba(16, 185, 129, 0.8); color: #a7f3d0; }
+.badge-failed { background: rgba(239, 68, 68, 0.12); border-color: rgba(248, 113, 113, 0.9); color: #fecaca; }
 
-.badge-success {
-  background: rgba(16, 185, 129, 0.12);
-  border-color: rgba(16, 185, 129, 0.8);
-  color: #a7f3d0;
-}
+/* ===== NEW: STYLES THAT MATCH YOUR JS-EMITTED CLASSES ===== */
 
-.badge-failed {
-  background: rgba(239, 68, 68, 0.12);
-  border-color: rgba(248, 113, 113, 0.9);
-  color: #fecaca;
-}
-
-.comments-row {
+/* Each result block that JS creates as ".tweet" */
+.tweet {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.45);
+  background: linear-gradient(
+    135deg,
+    rgba(15, 23, 42, 0.96),
+    rgba(15, 23, 42, 0.82)
+  );
+  padding: 10px 10px 8px;
   display: flex;
-  flex-wrap: wrap;
+  flex-direction: column;
+  gap: 6px;
+}
+
+/* Header of a tweet block */
+.tweet-header {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+/* The URL in the tweet header */
+.tweet-link {
+  font-size: 11px;
+  color: #e5e7eb;
+  text-decoration: none;
+  word-break: break-all;
+}
+.tweet-link:hover { text-decoration: underline; }
+
+/* Actions container (reroll button sits here) */
+.tweet-actions { display: flex; align-items: center; gap: 8px; }
+
+/* Comments wrapper for each tweet */
+.comments {
+  display: flex;
+  flex-direction: column;
   gap: 6px;
   margin-top: 4px;
 }
 
-.comment-chip {
-  display: inline-flex;
+/* Single comment line with label, text and copy button */
+.comment-line {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  gap: 8px;
   align-items: center;
-  justify-content: space-between;
-  gap: 6px;
-  padding: 5px 7px 5px 9px;
+  padding: 5px 7px;
   border-radius: 999px;
   background: var(--chip-bg);
   border: 1px solid rgba(148, 163, 184, 0.6);
-  font-size: 11px;
   color: var(--text-main);
-  max-width: 100%;
+}
+
+.comment-tag {
+  font-size: 10px;
+  text-transform: uppercase;
+  letter-spacing: 0.12em;
+  color: rgba(55, 65, 81, 0.9);
+  white-space: nowrap;
 }
 
 .comment-text {
@@ -750,15 +691,9 @@ button {
   text-overflow: ellipsis;
 }
 
-.comment-label {
-  font-size: 10px;
-  text-transform: uppercase;
-  letter-spacing: 0.12em;
-  color: rgba(55, 65, 81, 0.9);
-}
+/* Copy buttons already have visuals via .copy-btn/.copy-btn-en rules below */
 
 /* Uiverse-style Copy buttons (comments + history) ------- */
-
 .copy-btn,
 .copy-btn-en,
 .history-copy-btn {
@@ -822,10 +757,7 @@ button {
 }
 
 /* History grows a bit less */
-.history-copy-btn:focus {
-  width: 110px;
-  height: 34px;
-}
+.history-copy-btn:focus { width: 110px; height: 34px; }
 
 /* Move "Copy" up and fade it */
 .copy-btn:focus span:first-child,
@@ -848,7 +780,6 @@ button {
 }
 
 /* REROLL button (round 3D "Re-roll", theme-aware) ------- */
-
 .reroll-btn {
   position: relative;
   width: 46px;
@@ -904,23 +835,15 @@ button {
 }
 
 /* hover: stronger outline glow */
-.reroll-btn:hover {
-  outline-color: rgba(var(--reroll-primary), 0.7);
-}
+.reroll-btn:hover { outline-color: rgba(var(--reroll-primary), 0.7); }
 
 /* press: drop down, remove shadow */
-.reroll-btn:active::after {
-  transform: translateY(0%);
-  box-shadow: none;
-}
+.reroll-btn:active::after { transform: translateY(0%); box-shadow: none; }
 
 /* tiny press movement */
-.reroll-btn:active {
-  transform: translateY(1px);
-}
+.reroll-btn:active { transform: translateY(1px); }
 
 /* FAILED ------------------------------------------------ */
-
 .failed-list {
   display: flex;
   flex-direction: column;
@@ -939,20 +862,10 @@ button {
   color: #fecaca;
 }
 
-.failed-url {
-  display: block;
-  word-break: break-all;
-}
-
-.failed-reason {
-  display: block;
-  margin-top: 2px;
-  font-size: 10px;
-  color: #fca5a5;
-}
+.failed-url { display: block; word-break: break-all; }
+.failed-reason { display: block; margin-top: 2px; font-size: 10px; color: #fca5a5; }
 
 /* HISTORY ----------------------------------------------- */
-
 .history-list {
   display: flex;
   flex-direction: column;
@@ -982,17 +895,11 @@ button {
   white-space: nowrap;
 }
 
-.history-meta {
-  display: flex;
-  align-items: center;
-  gap: 6px;
-  font-size: 10px;
-  color: var(--text-muted);
-}
+.history-meta { display: flex; align-items: center; gap: 6px; font-size: 10px; color: var(--text-muted); }
 
 /* FOOTER ------------------------------------------------ */
-
-.app-footer {
+.app-footer,
+.footer {
   font-size: 11px;
   color: var(--text-muted);
   display: flex;
@@ -1001,7 +908,6 @@ button {
 }
 
 /* SCROLLBARS -------------------------------------------- */
-
 .results-list::-webkit-scrollbar,
 .failed-list::-webkit-scrollbar,
 .history-list::-webkit-scrollbar {
@@ -1016,7 +922,7 @@ button {
 }
 
 /* SKELETON / LOADING ------------------------------------ */
-
+/* Keep original names... */
 .result-skeleton {
   border-radius: 14px;
   border: 1px solid rgba(148, 163, 184, 0.3);
@@ -1030,61 +936,51 @@ button {
   background-size: 200% 100%;
   animation: shimmer 1.3s infinite linear;
 }
-
 .skeleton-line {
   height: 8px;
   border-radius: 999px;
   background-color: rgba(15, 23, 42, 0.75);
   margin-bottom: 6px;
 }
+.skeleton-line:last-child { width: 80%; }
 
-.skeleton-line:last-child {
-  width: 80%;
+/* ...and add the names your JS actually emits */
+.tweet-skeleton {
+  border-radius: 14px;
+  border: 1px solid rgba(148, 163, 184, 0.3);
+  padding: 10px 10px 8px;
+  background: linear-gradient(
+    90deg,
+    rgba(15, 23, 42, 0.9) 0%,
+    rgba(30, 64, 175, 0.85) 50%,
+    rgba(15, 23, 42, 0.9) 100%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.3s infinite linear;
 }
+.tweet-skeleton-line {
+  height: 8px;
+  border-radius: 999px;
+  background-color: rgba(15, 23, 42, 0.75);
+  margin-bottom: 6px;
+}
+.tweet-skeleton-line:last-child { width: 80%; }
 
 @keyframes shimmer {
-  0% {
-    background-position: -200% 0;
-  }
-  100% {
-    background-position: 200% 0;
-  }
+  0% { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
 }
 
 /* RESPONSIVE -------------------------------------------- */
-
 @media (max-width: 900px) {
-  body {
-    padding: 16px;
-  }
-
-  .app-shell {
-    max-width: 100%;
-  }
-
-  .app-main {
-    grid-template-columns: minmax(0, 1fr);
-  }
-
-  .app-header,
-  .hero {
-    flex-direction: column;
-    align-items: flex-start;
-    gap: 12px;
-  }
-
-  .logo-cluster,
-  .hero-main {
-    width: 100%;
-  }
+  body { padding: 16px; }
+  .app-shell { max-width: 100%; }
+  .app-main { grid-template-columns: minmax(0, 1fr); }
+  .hero { flex-direction: column; align-items: flex-start; gap: 12px; }
+  .hero-main { width: 100%; }
 }
 
 @media (max-width: 640px) {
-  body {
-    padding: 12px;
-  }
-
-  .controls {
-    flex-wrap: wrap;
-  }
+  body { padding: 12px; }
+  .controls { flex-wrap: wrap; }
 }
