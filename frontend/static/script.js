@@ -218,7 +218,9 @@ function buildTweetBlock(result) {
 
   const rerollBtn = document.createElement("button");
   rerollBtn.className = "reroll-btn";
-  rerollBtn.textContent = "Reroll";
+  // text is handled via CSS pseudo-element (Re-roll label),
+  // but we keep something accessible here just in case
+  rerollBtn.setAttribute("aria-label", "Re-roll comments");
 
   actions.appendChild(rerollBtn);
   header.appendChild(link);
@@ -252,7 +254,7 @@ function buildTweetBlock(result) {
       tag.textContent = `EN #${idx + 1}`;
     }
 
-        const bubble = document.createElement("span");
+    const bubble = document.createElement("span");
     bubble.className = "comment-text";
     bubble.textContent = comment.text;
 
@@ -271,6 +273,48 @@ function buildTweetBlock(result) {
       copyBtn.className = "copy-btn";
       copyLabel = "Copy";
     }
+
+    // Uiverse-style inner structure: [icon + label] + [Copied]
+    const copyMain = document.createElement("span");
+    copyMain.innerHTML = `
+      <svg
+        width="12"
+        height="12"
+        fill="#0E418F"
+        xmlns="http://www.w3.org/2000/svg"
+        shape-rendering="geometricPrecision"
+        text-rendering="geometricPrecision"
+        image-rendering="optimizeQuality"
+        fill-rule="evenodd"
+        clip-rule="evenodd"
+        viewBox="0 0 467 512.22"
+      >
+        <path
+          fill-rule="nonzero"
+          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z"
+        ></path>
+      </svg>
+      ${copyLabel}
+    `;
+
+    const copyAlt = document.createElement("span");
+    copyAlt.textContent = "Copied";
+
+    copyBtn.appendChild(copyMain);
+    copyBtn.appendChild(copyAlt);
+    copyBtn.dataset.text = comment.text;
+
+    line.appendChild(tag);
+    line.appendChild(bubble);
+    line.appendChild(copyBtn);
+
+    commentsWrap.appendChild(line);
+  });
+
+  tweet.appendChild(commentsWrap);
+  return tweet;
+}
+
 
     // Uiverse-style inner structure: [icon + label] + [Copied]
     const copyMain = document.createElement("span");
@@ -607,48 +651,47 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Copy / reroll in results
   resultsEl.addEventListener("click", async (event) => {
-    const copyBtn = event.target.closest(".copy-btn, .copy-btn-en");
-    const rerollBtn = event.target.closest(".reroll-btn");
+  const copyBtn = event.target.closest(".copy-btn, .copy-btn-en");
+  const rerollBtn = event.target.closest(".reroll-btn");
 
-    if (copyBtn) {
-      const text = copyBtn.dataset.text || "";
-      if (!text) return;
-
-      await copyToClipboard(text);
-      addToHistory(text);
-
-      const old = copyBtn.textContent;
-      copyBtn.textContent = "Copied";
-      copyBtn.disabled = true;
-      setTimeout(() => {
-        copyBtn.textContent = old;
-        copyBtn.disabled = false;
-      }, 700);
-    }
-
-    if (rerollBtn) {
-      const tweetEl = rerollBtn.closest(".tweet");
-      if (!tweetEl) return;
-      handleReroll(tweetEl);
-    }
-  });
-
-  // History copy
-  historyEl.addEventListener("click", async (event) => {
-    const btn = event.target.closest(".history-copy-btn");
-    if (!btn) return;
-    const text = btn.dataset.text || "";
+  if (copyBtn) {
+    const text = copyBtn.dataset.text || "";
     if (!text) return;
 
     await copyToClipboard(text);
-    const old = btn.textContent;
-    btn.textContent = "Copied";
-    btn.disabled = true;
+    addToHistory(text);
+
+    // let the Uiverse button animate via :focus
+    copyBtn.focus();
     setTimeout(() => {
-      btn.textContent = old;
-      btn.disabled = false;
-    }, 700);
-  });
+      copyBtn.blur();
+    }, 800);
+  }
+
+  if (rerollBtn) {
+    const tweetEl = rerollBtn.closest(".tweet");
+    if (!tweetEl) return;
+    handleReroll(tweetEl);
+  }
+});
+
+
+  // History copy
+  historyEl.addEventListener("click", async (event) => {
+  const btn = event.target.closest(".history-copy-btn");
+  if (!btn) return;
+  const text = btn.dataset.text || "";
+  if (!text) return;
+
+  await copyToClipboard(text);
+
+  // same Uiverse-style focus animation
+  btn.focus();
+  setTimeout(() => {
+    btn.blur();
+  }, 800);
+});
+
 
   // theme dots
   themeDots.forEach((dot) => {
