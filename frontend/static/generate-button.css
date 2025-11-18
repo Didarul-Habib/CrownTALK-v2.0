@@ -1,51 +1,39 @@
 /* =========================================================
-   CrownTALK – Generate button (theme aware, element-aligned)
-   Uses existing theme vars: --btn-base, --btn-edge, --btn-glow
-   Works with:
-     <button class="button">…</button>
-     <button id="generateBtn" class="button">…</button>
-   ========================================================= */
+   CrownTALK – Generate button (theme aware, matches HTML)
+   Uses: --btn-base, --btn-edge, --btn-glow (RGB for glow)
+   HTML target: <button id="generateBtn" class="btn"> … </button>
+========================================================= */
 
-.button,
-#generateBtn.button,
-#generateBtn.btn-generate {
-  /* sizing + layout */
+.btn {
   --radius: 9999px;
   --ease: .28s cubic-bezier(.2,.8,.2,1);
-  --offset: 2px;
 
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: .6rem;
+  gap: 10px;
 
-  padding: .9rem 1.4rem;     /* compact + premium */
+  padding: 10px 18px;
   border: 0;
   border-radius: var(--radius);
   background: transparent;
   cursor: pointer;
 
-  /* label */
   font: 700 14px/1 system-ui, -apple-system, Segoe UI, Roboto, "SF Pro Text", sans-serif;
   letter-spacing: .02em;
   color: #fff;
 
-  /* subtle lift */
   transform-origin: center;
-  transition: transform var(--ease), filter var(--ease), box-shadow var(--ease);
+  transition: transform var(--ease), filter var(--ease), box-shadow var(--ease), background var(--ease);
 }
 
-/* base “pill” underlay (dark shell + edge glow) */
-.button::before,
-#generateBtn.button::before,
-#generateBtn.btn-generate::before{
+/* glossy shell driven by theme vars */
+.btn::before{
   content:"";
   position:absolute; inset:0;
   border-radius: var(--radius);
-
-  /* shell uses theme edge tone with a tiny inner bevel */
   background:
-    radial-gradient(140% 180% at 50% -40%, rgba(var(--btn-glow), .26), transparent 55%),
+    radial-gradient(120% 160% at 50% -40%, rgba(var(--btn-glow), .26), transparent 55%),
     linear-gradient(180deg,
       color-mix(in oklab, var(--btn-base) 92%, #fff 8%),
       var(--btn-edge)
@@ -54,20 +42,17 @@
     0 0 0 1px rgba(var(--btn-glow), .55) inset,
     0 8px 24px rgba(var(--btn-glow), .28),
     0 1px 0 rgba(255,255,255,.18) inset;
-  transition: box-shadow var(--ease), filter var(--ease), background var(--ease);
   z-index: 0;
+  transition: box-shadow var(--ease), filter var(--ease), background var(--ease);
 }
 
-/* glossy burst on hover (theme-mixed highlights) */
-.button::after,
-#generateBtn.button::after,
-#generateBtn.btn-generate::after{
+/* sheen on hover */
+.btn::after{
   content:"";
   position:absolute; inset:0;
   border-radius: var(--radius);
   pointer-events:none;
   opacity: 0;
-
   background:
     radial-gradient(70% 120% at 50% 0%,
       color-mix(in oklab, var(--btn-base) 35%, white 65%) 0%,
@@ -79,117 +64,72 @@
   z-index: 1;
 }
 
-/* rotating dotted halo layer (inside the pill’s border) */
-.dots_border{
-  position:absolute;
-  inset:-1px;
-  border-radius: var(--radius);
-  pointer-events:none;
-  z-index: 0;          /* below content, above base */
-  overflow: hidden;    /* keep the sweep inside */
-}
-
-/* the moving “line” (thin rotating band) */
-.dots_border::before{
+/* rotating dotted halo INSIDE the pill border */
+.btn-wrapper{ position:relative; display:inline-flex; }
+.btn-wrapper::before{
   content:"";
-  position:absolute; inset:0; border-radius: inherit;
+  position:absolute; inset:-1px;
+  border-radius: 9999px;
+  pointer-events:none;
 
-  /* draw the orbit line in the border using border-image */
+  /* ring drawn with conic + masked to the edge */
   --angle: 0deg;
-  border: 2px solid transparent;
-  border-image-slice: 1;
-  border-image-source: conic-gradient(
-    from var(--angle),
-    transparent 0deg 350deg,
-    color-mix(in oklab, var(--btn-base) 85%, white 15%) 350deg 360deg
-  );
-
-  box-shadow: 0 0 8px color-mix(in oklab, rgb(var(--btn-glow)) 55%, transparent);
+  padding: 2px; /* ring thickness */
+  background:
+    conic-gradient(from var(--angle),
+      color-mix(in oklab, var(--btn-base) 85%, white 15%) 0 12deg,
+      transparent 12deg 360deg);
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+          mask:
+    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  filter: drop-shadow(0 0 8px color-mix(in oklab, rgb(var(--btn-glow)) 55%, transparent));
   animation: btn-orbit 2.4s linear infinite;
 }
-
 @keyframes btn-orbit { to { --angle: 360deg; } }
 
-/* sparkle icon – keep original element size */
-.button .sparkle,
-#generateBtn.button .sparkle,
-#generateBtn.btn-generate .sparkle{
-  width: 1.75rem;            /* requested original size */
+/* icon (keep original element size) */
+.btn-svg{
+  width: 1.75rem;
   height: 1.75rem;
   display: block;
   flex: 0 0 auto;
+  stroke: #e8ecff;
+  fill: none;
+  stroke-width: 1.5;
   filter: drop-shadow(0 0 4px rgba(var(--btn-glow), .45));
+  transition: transform .25s ease;
 }
+.btn:hover .btn-svg{ transform: rotate(-8deg) scale(1.03); }
 
-.button .sparkle .path{ fill: currentColor; stroke: currentColor; color: #fff; transform-origin: center; }
-.button:hover .sparkle .path,
-#generateBtn.button:hover .sparkle .path,
-#generateBtn.btn-generate:hover .sparkle .path{
-  animation: spark-pop 1.5s linear .4s infinite;
+/* text swap (Generate -> Generating) */
+.txt-wrapper{ position:relative; display:grid; overflow:hidden; }
+.txt-1, .txt-2{
+  display:inline-block;
+  white-space:nowrap;
+  transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s ease;
 }
+body.is-generating .txt-1{ transform: translateY(-120%); opacity:0; }
+body.is-generating .txt-2{ transform: translateY(-100%); opacity:1; }
+.txt-2{ transform: translateY(0); opacity:0; }
 
-@keyframes spark-pop{
-  0%,34%,71%,100%{ transform: scale(1); }
-  17%{ transform: scale(1.18); }
-  49%{ transform: scale(1.18); }
-  83%{ transform: scale(1.18); }
-}
-
-/* label */
-.text_button{
-  position:relative; z-index:2;
-  color:#fff;
-  background-image: linear-gradient(90deg, #fff 0%, rgba(255,255,255, .9) 120%);
-  -webkit-background-clip: text; background-clip: text;
-  color: transparent;
-  font-weight: 800;
-  letter-spacing: .02em;
-}
-
-/* hover / active */
-.button:hover:not(:disabled),
-#generateBtn.button:hover:not(:disabled),
-#generateBtn.btn-generate:hover:not(:disabled){
-  transform: translateY(-1px);
-}
-.button:hover::after,
-#generateBtn.button:hover::after,
-#generateBtn.btn-generate:hover::after{ opacity: 1; }
-
-.button:active:not(:disabled),
-#generateBtn.button:active:not(:disabled),
-#generateBtn.btn-generate:active:not(:disabled){
-  transform: translateY(0);
-  filter: saturate(1.05);
-  /* tighten the shadow a bit */
-  /* (keeps click feel crisp) */
-}
-
-/* focus */
-.button:focus-visible,
-#generateBtn.button:focus-visible,
-#generateBtn.btn-generate:focus-visible{
-  outline: none;
+/* hover/active/focus/disabled */
+.btn:hover:not(:disabled){ transform: translateY(-1px); }
+.btn:hover::after{ opacity:1; }
+.btn:active:not(:disabled){ transform: translateY(0); filter: saturate(1.05); }
+.btn:focus-visible{
+  outline:none;
   box-shadow:
     0 0 0 2px rgba(255,255,255,.85),
     0 0 0 5px rgba(var(--btn-glow), .45);
 }
+.btn:disabled{ opacity:.55; cursor:default; filter: grayscale(.15); }
 
-/* disabled */
-.button:disabled,
-#generateBtn.button:disabled,
-#generateBtn.btn-generate:disabled{
-  opacity:.55; cursor: default; filter: grayscale(.15);
+/* generating pulse (add .is-generating on <body> when running) */
+body.is-generating .btn::before{
+  animation: gen-pulse 1.35s ease-in-out infinite;
 }
-
-/* “Generating…” pulse (if you toggle on body or button) */
-body.is-generating .button::before,
-body.is-generating #generateBtn.button::before,
-body.is-generating #generateBtn.btn-generate::before,
-.button.is-generating::before{
-  animation: btn-pulse 1.35s ease-in-out infinite;
-}
-@keyframes btn-pulse{
+@keyframes gen-pulse{
   0%,100%{ box-shadow:
     0 0 0 1px rgba(var(--btn-glow), .55) inset,
     0 8px 24px rgba(var(--btn-glow), .28),
