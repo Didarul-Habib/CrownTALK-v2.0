@@ -132,6 +132,36 @@
   --btn-glow: 209, 213, 219;
 }
 
+/* === Crimson (semi-dark premium red) === */
+[data-theme="crimson"] {
+  /* background + cards */
+  --bg: radial-gradient(circle at top, #7f1d1d 0, #1b0b0b 45%, #0a0202 100%);
+  --card-bg: rgba(24, 16, 20, 0.94);
+  --card-border: rgba(248, 113, 113, 0.45);
+
+  /* text + accents */
+  --text-main: #ffeaea;
+  --text-muted: #fecaca;
+  --accent: #f43f5e; /* rose-500 */
+  --accent-soft: rgba(244, 63, 94, 0.25);
+  --accent-soft-strong: rgba(244, 63, 94, 0.45);
+  --chip-bg: rgba(24, 16, 20, 0.92);
+
+  /* hero glow */
+  --hero-glow-from: rgba(244, 63, 94, 0.75);
+  --hero-glow-to: rgba(255, 228, 230, 0.45);
+
+  /* reroll button colors */
+  --reroll-primary: 244, 63, 94;   /* rgb for gradients */
+  --reroll-secondary: 127, 29, 29;
+
+  /* glossy title gradient (used by your theme-aware heading) */
+  --title-grad-1: #fff1f2;  /* very light rose */
+  --title-grad-2: #fecdd3;  /* soft pink */
+  --title-grad-3: #f43f5e;  /* rose */
+  --title-grad-4: #fb7185;  /* rose/orange edge */
+}
+
 [data-theme="emerald"] {
   --bg: radial-gradient(circle at 50% -25%, #0f513b 0, #07241c 55%, #041016 100%);
   --card-bg: rgba(6, 32, 28, 0.96);
@@ -151,27 +181,6 @@
   --btn-base: #059669;
   --btn-edge: #065f46;
   --btn-glow: 45, 212, 191;
-}
-
-[data-theme="neon"] {
-  --bg: radial-gradient(circle at 50% -25%, #14d86c 0, #0f172a 42%, #070d1b 100%);
-  --card-bg: rgba(10, 18, 36, 0.92);
-  --card-border: rgba(52, 211, 153, 0.6);
-  --text-main: #ecfeff;
-  --text-muted: #67e8f9;
-  --accent: #22c55e;
-  --accent-soft: rgba(52, 211, 153, 0.3);
-  --accent-soft-strong: rgba(52, 211, 153, 0.55);
-  --chip-bg: rgba(9, 17, 35, 0.9);
-  --hero-glow-from: rgba(34, 197, 94, 0.85);
-  --hero-glow-to: rgba(45, 212, 191, 0.65);
-
-  --reroll-primary: 34, 197, 94;
-  --reroll-secondary: 5, 150, 105;
-
-  --btn-base: #16a34a;
-  --btn-edge: #065f46;
-  --btn-glow: 34, 197, 94;
 }
 
 /* GLOBAL LAYOUT ----------------------------------------- */
@@ -378,10 +387,12 @@ body {
   box-shadow: 0 0 6px rgba(16, 185, 129, 0.45), inset 0 0 4px rgba(4, 120, 87, 0.45);
 }
 
-/* Even more cyan neon */
-.theme-dot[data-theme="neon"] {
-  background: radial-gradient(circle at 30% 20%, #22d3ee 18%, #0ea5e9 55%, #a78bfa 100%);
-  box-shadow: 0 0 10px rgba(34, 211, 238, 0.65), inset 0 0 6px rgba(14, 165, 233, 0.55);
+/* Theme dot for Crimson */
+.theme-dot[data-theme="crimson"] {
+  background: radial-gradient(circle at 30% 20%, #fecdd3 15%, #f43f5e 55%, #7f1d1d 100%);
+  box-shadow:
+    0 0 10px rgba(244, 63, 94, 0.55),
+    inset 0 0 6px rgba(127, 29, 29, 0.5);
 }
 
 
