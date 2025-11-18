@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="en" data-theme="white">
+<html lang="en" data-theme="dark-purple">
 <head>
   <meta charset="UTF-8" />
   <title>CrownTALK Comment Generator</title>
@@ -16,28 +16,28 @@
     <!-- HERO -->
     <header class="hero">
       <div class="hero-main">
-        <div class="hero-orbit">
+        <div class="hero-orbit" aria-hidden="true">
           <div class="hero-orbit-inner">
             <img src="static/logo.png" alt="CrownTALK logo" />
           </div>
         </div>
         <div class="hero-copy">
-          <h1>CROWNTALK</h1>
+          <!-- add class for glossy + theme-reactive styling -->
+          <h1 class="app-title">CROWNTALK</h1>
           <p>Humanlike comment engine powered by CrownDEX 👑</p>
         </div>
       </div>
 
-      <div class="theme-switcher">
+      <div class="theme-switcher" aria-label="Theme picker">
         <span class="theme-label">Theme</span>
         <div class="theme-dots">
-          <button class="theme-dot is-active" data-theme="white"></button>
-          <button class="theme-dot" data-theme="dark-purple"></button>
-          <button class="theme-dot" data-theme="gold"></button>
-          <button class="theme-dot" data-theme="blue"></button>
-          <button class="theme-dot" data-theme="black"></button>
-          <button class="theme-dot" data-theme="emerald"></button>
-          <button class="theme-dot" data-theme="texture"></button>
-          <button class="theme-dot" data-theme="neon"></button>
+          <button class="theme-dot is-active" data-theme="white" aria-label="White"></button>
+          <button class="theme-dot" data-theme="dark-purple" aria-label="Dark Purple"></button>
+          <button class="theme-dot" data-theme="gold" aria-label="Gold"></button>
+          <button class="theme-dot" data-theme="blue" aria-label="Blue"></button>
+          <button class="theme-dot" data-theme="black" aria-label="Black"></button>
+          <button class="theme-dot" data-theme="emerald" aria-label="Emerald"></button>
+          <button class="theme-dot" data-theme="neon" aria-label="Neon"></button>
         </div>
       </div>
     </header>
@@ -61,7 +61,7 @@ https://x.com/user/status/456..."></textarea>
           <!-- Uiverse Generate button -->
           <div class="btn-wrapper">
             <button class="btn" id="generateBtn" type="button" aria-label="Generate comments">
-              <svg class="btn-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
+              <svg class="btn-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" aria-hidden="true">
                 <path
                   stroke-linecap="round"
                   stroke-linejoin="round"
@@ -97,7 +97,6 @@ https://x.com/user/status/456..."></textarea>
         <div class="card-header">
           <h2 class="card-title">Results</h2>
         </div>
-        <!-- Add class so CSS styles apply; JS will fill content -->
         <div id="results" class="results-list"></div>
       </section>
 
@@ -116,7 +115,6 @@ https://x.com/user/status/456..."></textarea>
           <h2 class="card-title">Clipboard History</h2>
           <button id="clearHistoryBtn" class="small" type="button">Clear</button>
         </div>
-        <!-- Add class so CSS styles apply; JS will render .history-item rows -->
         <div id="history" class="history-list"></div>
       </section>
     </main>
