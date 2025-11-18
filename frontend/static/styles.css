@@ -1188,52 +1188,39 @@ body {
   position: relative;
 }
 
-.uiverse-card .card__border {
+/* Orbit ring that actually runs ON the border */
+.uiverse-card .card__border{
   position: absolute;
-  inset: -2px;            /* tiny bleed to hide pixel seams */
+  inset: -1px;                 /* tiny bleed so corners look clean */
   border-radius: inherit;
   pointer-events: none;
-  z-index: 1;             /* sits above background, below content */
-  overflow: hidden;       /* belt + suspenders */
+  z-index: 0;
+
+  /* This is the magic: draw the rotating “line” in the border box itself */
+  --orbit-angle: 0deg;         /* animates 0 → 360deg */
+  border: 2px solid transparent;
+  border-image-slice: 1;
+  border-image-source: conic-gradient(
+    from var(--orbit-angle),
+    /* almost all of the circle is transparent */
+    transparent 0deg 350deg,
+    /* a ~10deg bright segment becomes the “moving line” */
+    color-mix(in oklab, var(--ui-accent-1) 88%, white 12%) 350deg 360deg
+  );
+
+  /* subtle glow */
+  box-shadow: 0 0 10px color-mix(in oklab, var(--ui-accent-2) 55%, transparent);
+  animation: uiverse-orbit-angle 6s linear infinite;
 }
 
-
-/* single rotating “line” around the edge (like a satellite orbit) */
-.uiverse-card .card__border::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  will-change: transform;      /* smoother rotate */
-  contain: strict;             /* keeps paint tightly scoped */
-
-  /* a thin wedge at the end of a conic gradient = the moving line */
-  background:
-    conic-gradient(
-      from 0deg,
-      transparent 0turn 0.975turn,
-      color-mix(in oklab, var(--ui-accent-1) 85%, white 15%) 1turn
-    );
-
-  /* clip the conic gradient to a ring thickness (the “border”) */
-  --ring: 3px; /* thickness of the orbit line */
-  -webkit-mask:
-    radial-gradient(farthest-side,
-      transparent calc(100% - var(--ring)),
-      #000         calc(100% - var(--ring)));
-  mask:
-    radial-gradient(farthest-side,
-      transparent calc(100% - var(--ring)),
-      #000         calc(100% - var(--ring)));
-
-  /* gentle glow */
-  filter: drop-shadow(0 0 6px color-mix(in oklab, var(--ui-accent-2) 60%, black 40%));
-
-  animation: uiverse-orbit 6s linear infinite;
+@keyframes uiverse-orbit-angle {
+  to { --orbit-angle: 360deg; }
 }
 
-@keyframes uiverse-orbit {
-  to { transform: rotate(360deg); }
+/* keep all real content above the ring */
+.uiverse-card > *:not(.card__border){
+  position: relative;
+  z-index: 2;
 }
 
 /* keep your actual card content above the orbit */
