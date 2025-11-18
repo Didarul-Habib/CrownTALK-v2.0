@@ -542,3 +542,48 @@ body {
   box-shadow: var(--ct-focus);
   border-radius: 10px;
 }
+
+
+/* --- Footer (sticky, theme-aware, never clipped) --- */
+.site-footer{
+  margin-top: 24px;
+  border-top: 1px solid color-mix(in oklab, currentColor 14%, transparent);
+  background: color-mix(in oklab, currentColor 6%, transparent);
+  backdrop-filter: saturate(1.2) blur(2px);
+}
+.site-footer .footer-inner{
+  max-width: var(--container-max, 1100px);
+  margin: 0 auto;
+  padding: 16px 20px;
+}
+.site-footer .footer-text{
+  display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  margin: 0;
+  color: color-mix(in oklab, currentColor 74%, #9aa3af);
+  font-size: 14px; line-height: 1.5;
+}
+.site-footer .footer-link{
+  display: inline-flex; align-items: center; gap: 8px;
+  text-decoration: none;
+  color: var(--link, #60a5fa);
+  border-radius: 8px;
+  padding: 4px 8px;
+  background: color-mix(in oklab, var(--link, #60a5fa) 8%, transparent);
+  transition: background .2s ease, color .2s ease, box-shadow .2s ease;
+}
+.site-footer .footer-link:hover{
+  background: color-mix(in oklab, var(--link, #60a5fa) 16%, transparent);
+  box-shadow: 0 0 0 2px color-mix(in oklab, var(--link, #60a5fa) 22%, transparent) inset;
+}
+.site-footer .x-icon{
+  width: 14px; height: 14px; fill: currentColor; display: inline-block;
+}
+
+/* Sticky-footer layout helper: ensure footer visible at 100% zoom */
+:root{ --container-max: 1100px; }
+.page{
+  min-height: 100vh;
+  display: flex; flex-direction: column;
+}
+.page > main{ flex: 1 0 auto; }
+/* if your outer wrapper is named differently, apply these 3 rules to it */
