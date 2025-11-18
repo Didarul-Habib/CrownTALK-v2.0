@@ -1395,3 +1395,21 @@ body {
   position: relative;
   z-index: 1;
 }
+
+
+/* Keep sparkle + text snug and centered in the generate button */
+#generateBtn {
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;             /* space between icon and label */
+  line-height: 1;
+}
+
+#generateBtn svg {
+  width: 16px;
+  height: 16px;
+  flex: 0 0 auto;
+  display: block;
+  translate: 0 0.5px;    /* tiny optical nudge for vertical centering */
+}
+
