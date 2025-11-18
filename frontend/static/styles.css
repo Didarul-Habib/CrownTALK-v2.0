@@ -247,7 +247,7 @@ body {
   align-items: center;
   justify-content: center;
   overflow: hidden;
-  animation: hero-glow-pulse 5s ease-in-out infinite;
+  animation: hero-glow-pulse 7s ease-in-out infinite;
 }
 
 .hero-orbit-inner {
