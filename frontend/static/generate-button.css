@@ -169,17 +169,43 @@ body.is-generating .txt-2 { transform: translateY(-100%); opacity: 1; }
 .controls .txt-wrapper { display: inline-grid; align-items: center; }
 .controls .txt-1, .controls .txt-2 { line-height: 1; }
 
-/* icon/text alignment */
-#generateBtn {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  line-height: 1;
+/* ===== Generate button alignment hard-fix ===== */
+
+/* Make sure the button is laid out with true vertical centering */
+#generateBtn,
+.btn-generate {
+  display: inline-flex !important;
+  align-items: center !important;
+  justify-content: center;
+  gap: 10px;          /* space between sparkle and label */
+  line-height: 1;     /* kill baseline weirdness */
 }
-#generateBtn svg {
+
+/* Normalize the sparkle/icon no matter how it's injected */
+#generateBtn svg,
+.btn-generate svg,
+#generateBtn .btn-svg,
+.btn-generate .btn-svg,
+#generateBtn .sparkle,
+.btn-generate .sparkle {
   width: 16px;
   height: 16px;
-  flex: 0 0 auto;
-  display: block;
-  translate: 0 .5px; /* tiny optical nudge */
+  display: block;     /* removes baseline box from inline SVG */
+  flex: 0 0 16px;     /* prevents stretch */
+  margin: 0;          /* reset any inherited margins */
+  translate: 0 0.5px; /* tiny optical nudge to center perfectly */
+}
+
+/* Ensure the text wrapper can't push the button taller */
+#generateBtn .txt-wrapper,
+.btn-generate .txt-wrapper {
+  display: inline-flex;
+  align-items: center;
+  line-height: 1;
+}
+
+/* If your label is plain text (no txt-wrapper), still center it */
+#generateBtn span,
+.btn-generate span {
+  line-height: 1;
 }
