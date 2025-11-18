@@ -1,20 +1,20 @@
 FROM python:3.11-slim
 
 ENV PYTHONDONTWRITEBYTECODE=1 \
-    PYTHONUNBUFFERED=1
-
-RUN apt-get update && apt-get install -y --no-install-recommends \
-    build-essential curl ca-certificates \
-    && rm -rf /var/lib/apt/lists/*
+    PYTHONUNBUFFERED=1 \
+    PIP_NO_CACHE_DIR=1
 
 WORKDIR /app
 
+# Keep this separate so pip layer caches when only code changes
 COPY requirements.txt /app/requirements.txt
 RUN pip install --upgrade pip \
- && pip install --no-cache-dir -r /app/requirements.txt
+ && pip install -r /app/requirements.txt
 
+# Now copy the app
 COPY . /app
 
 EXPOSE 8080
 
-CMD ["gunicorn", "-w", "2", "-k", "gthread", "--threads", "8", "-b", "0.0.0.0:8080", "main:app"]
+# Free tier: 1 worker, a few threads -> faster boot & less CPU thrash
+CMD ["gunicorn", "--workers", "1", "--threads", "4", "-k", "gthread", "-b", "0.0.0.0:8080", "main:app"]
