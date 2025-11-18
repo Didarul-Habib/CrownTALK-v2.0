@@ -1,131 +1,161 @@
-<!DOCTYPE html>
-<html lang="en" data-theme="dark-purple"> <!-- default to purple -->
-<head>
-  <meta charset="UTF-8" />
-  <title>CrownTALK Comment Generator</title>
-  <link rel="icon" type="image/png" href="static/logo.png" />
-  <link rel="shortcut icon" href="static/logo.png" type="image/png" />
-  <meta name="viewport" content="width=device-width, initial-scale=1" />
-  <!-- Main styles -->
-  <link rel="stylesheet" href="static/styles.css" />
-  <!-- Generate button styles -->
-  <link rel="stylesheet" href="static/generate-button.css" />
-</head>
-<body>
-  <div class="app-shell">
-    <!-- HERO -->
-    <header class="hero">
-      <div class="hero-main">
-        <div class="hero-orbit">
-          <div class="hero-orbit-inner">
-            <img src="static/logo.png" alt="CrownTALK logo" />
+<!doctype html>
+<html lang="en" data-theme="dark-purple">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width,initial-scale=1" />
+    <title>CrownTALK — Offline Comment Generator</title>
+
+    <!-- Styles -->
+    <link rel="stylesheet" href="styles.css" />
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+  </head>
+
+  <body>
+    <div class="app">
+      <!-- Hero -->
+      <header class="hero">
+        <div class="logo" aria-hidden="true">
+          <!-- If you have an image logo, drop it here -->
+          <!-- <img src="logo.svg" alt="CrownTALK" height="56" /> -->
+        </div>
+        <h1 class="hero-title">CrownTALK</h1>
+      </header>
+
+      <!-- Theme switcher -->
+      <section class="panel" aria-label="Theme">
+        <div class="ct-card">
+          <div class="ct-card__border" aria-hidden="true"></div>
+          <div class="theme-switcher" role="listbox" aria-label="Choose theme">
+            <span class="section-title">Theme</span>
+            <div class="theme-dot" data-theme="dark-purple" role="option" title="Dark Purple"></div>
+            <div class="theme-dot" data-theme="emerald" role="option" title="Emerald"></div>
+            <div class="theme-dot" data-theme="crimson" role="option" title="Crimson"></div>
+            <div class="theme-dot" data-theme="gold" role="option" title="Gold"></div>
+            <div class="theme-dot" data-theme="blue" role="option" title="Blue"></div>
+            <div class="theme-dot" data-theme="black" role="option" title="Black"></div>
+            <div class="theme-dot" data-theme="white" role="option" title="White"></div>
           </div>
         </div>
-        <div class="hero-copy">
-          <h1>CROWNTALK</h1>
-          <p>Humanlike comment engine powered by CrownDEX 👑</p>
-        </div>
-      </div>
+      </section>
 
-      <!-- THEME SWITCHER (texture removed, neon kept) -->
-      <div class="theme-switcher">
-        <span class="theme-label">Theme</span>
-        <div class="theme-dots">
-          <button class="theme-dot is-active" data-theme="dark-purple"></button>
-          <button class="theme-dot" data-theme="white"></button>
-          <button class="theme-dot" data-theme="gold"></button>
-          <button class="theme-dot" data-theme="blue"></button>
-          <button class="theme-dot" data-theme="black"></button>
-          <button class="theme-dot" data-theme="emerald"></button>
-          <button class="theme-dot" data-theme="crimson"></button>
-        </div>
-      </div>
-    </header>
+      <!-- Dashboard (2x2 on large screens) -->
+      <main class="dashboard" aria-live="polite">
+        <!-- 1) URL Input / Controls -->
+        <section class="panel" aria-label="Tweet URLs">
+          <div class="ct-card">
+            <div class="ct-card__border" aria-hidden="true"></div>
 
-    <main class="app-main" style="grid-template-columns: 1fr;">
-      <!-- INPUT CARD -->
-      <section class="card card-input">
-        <div class="card-header">
-          <h2 class="card-title">Tweet URLs</h2>
-          <span class="count-pill muted" id="resultCount">0 tweets</span>
-        </div>
-
-        <label class="label" for="urlInput">Paste up to many tweet URLs (one per line)</label>
-        <textarea
-          id="urlInput"
-          class="url-textarea"
-          placeholder="https://x.com/user/status/123...
-https://x.com/user/status/456..."></textarea>
-
-        <div class="controls">
-          <!-- Uiverse Generate button -->
-          <div class="btn-wrapper">
-            <button class="btn" id="generateBtn" type="button" aria-label="Generate comments">
-              <svg class="btn-svg" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24">
-                <path
-                  stroke-linecap="round"
-                  stroke-linejoin="round"
-                  d="M9.813 15.904 9 18.75l-.813-2.846a4.5 4.5 0 0 0-3.09-3.09L2.25 12l2.846-.813a4.5 4.5 0 0 0 3.09-3.09L9 5.25l.813 2.846a4.5 4.5 0 0 0 3.09 3.09L15.75 12l-2.846.813a4.5 4.5 0 0 0-3.09 3.09ZM18.259 8.715 18 9.75l-.259-1.035a3.375 3.375 0 0 0-2.455-2.456L14.25 6l1.036-.259a3.375 3.375 0 0 0 2.455-2.456L18 2.25l.259 1.035a3.375 3.375 0 0 0 2.456 2.456L21.75 6l-1.035.259a3.375 3.375 0 0 0-2.456 2.456ZM16.894 20.567 16.5 21.75l-.394-1.183a2.25 2.25 0 0 0-1.423-1.423L13.5 18.75l1.183-.394a2.25 2.25 0 0 0 1.423-1.423l.394-1.183.394 1.183a2.25 2.25 0 0 0 1.423 1.423l1.183.394-1.183.394a2.25 2.25 0 0 0-1.423 1.423Z"
-                ></path>
-              </svg>
-
-              <div class="txt-wrapper">
-                <div class="txt-1">
-                  <span class="btn-letter">G</span><span class="btn-letter">e</span><span class="btn-letter">n</span><span class="btn-letter">e</span><span class="btn-letter">r</span><span class="btn-letter">a</span><span class="btn-letter">t</span><span class="btn-letter">e</span>
-                </div>
-                <div class="txt-2">
-                  <span class="btn-letter">G</span><span class="btn-letter">e</span><span class="btn-letter">n</span><span class="btn-letter">e</span><span class="btn-letter">r</span><span class="btn-letter">a</span><span class="btn-letter">t</span><span class="btn-letter">i</span><span class="btn-letter">n</span><span class="btn-letter">g</span>
-                </div>
+            <div>
+              <div class="ct-card__title">Tweet URLs</div>
+              <div class="ct-card__subtitle">
+                Paste one URL per line. We’ll fetch and generate two comments for each.
               </div>
-            </button>
+            </div>
+
+            <hr class="ct-card__line" />
+
+            <label for="urlInput" class="section-title">List</label>
+            <textarea
+              id="urlInput"
+              class="url-input mono"
+              spellcheck="false"
+              placeholder="https://x.com/username/status/1234567890&#10;https://x.com/another/status/0987654321"
+              aria-label="Tweet URLs input"
+            ></textarea>
+
+            <div style="display:flex; gap:8px; flex-wrap:wrap; align-items:center; margin-top:8px;">
+              <button id="generateBtn" class="copy-btn" type="button" title="Generate comments">Generate</button>
+              <button id="cancelBtn" class="reroll-btn" type="button" title="Cancel current job" disabled>Cancel</button>
+              <button id="clearBtn" class="history-copy-btn" type="button" title="Clear input">Clear</button>
+            </div>
+
+            <div style="margin-top:10px;">
+              <div id="progress" class="section-title" aria-live="polite"></div>
+              <div class="progress" aria-hidden="true">
+                <div id="progressBarFill" class="progress__fill"></div>
+              </div>
+            </div>
           </div>
+        </section>
 
-          <button id="cancelBtn" class="btn-secondary subtle" disabled>Cancel</button>
-          <button id="clearBtn" class="btn-secondary">Clear</button>
-        </div>
+        <!-- 2) Results -->
+        <section class="panel" aria-label="Results">
+          <div class="ct-card">
+            <div class="ct-card__border" aria-hidden="true"></div>
 
-        <div class="progress-row">
-          <div class="progress-bar-outer">
-            <div id="progressBarFill" class="progress-bar-inner"></div>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+              <div>
+                <div class="ct-card__title">Results</div>
+                <div class="ct-card__subtitle">Click the tweet URL to open it. Use the Copy buttons to collect lines.</div>
+              </div>
+              <div class="ct-card__text" title="Processed count">
+                <strong id="resultCount">0 tweets</strong>
+              </div>
+            </div>
+
+            <hr class="ct-card__line" />
+
+            <div id="results" aria-live="polite">
+              <!-- Tweets get injected here -->
+            </div>
           </div>
-          <div id="progress" class="helper-text"></div>
-        </div>
-      </section>
+        </section>
 
-      <!-- RESULTS -->
-      <section class="card card-results">
-        <div class="card-header">
-          <h2 class="card-title">Results</h2>
-        </div>
-        <div id="results" class="results-list"></div>
-      </section>
+        <!-- 3) Failed URLs -->
+        <section class="panel" aria-label="Failed URLs">
+          <div class="ct-card">
+            <div class="ct-card__border" aria-hidden="true"></div>
 
-      <!-- FAILED URLS -->
-      <section class="card card-failed">
-        <div class="card-header">
-          <h2 class="card-title">Failed URLs</h2>
-          <span class="count-pill" id="failedCount">0</span>
-        </div>
-        <div id="failed" class="failed-list"></div>
-      </section>
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+              <div>
+                <div class="ct-card__title">Failed</div>
+                <div class="ct-card__subtitle">Errors, rate limits (429), or invalid links show up here.</div>
+              </div>
+              <div class="ct-card__text" title="Failed count">
+                <strong id="failedCount">0</strong>
+              </div>
+            </div>
 
-      <!-- CLIPBOARD HISTORY -->
-      <section class="card card-history">
-        <div class="card-header">
-          <h2 class="card-title">Clipboard History</h2>
-          <button id="clearHistoryBtn" class="small" type="button">Clear</button>
-        </div>
-        <div id="history" class="history-list"></div>
-      </section>
-    </main>
+            <hr class="ct-card__line" />
 
-    <footer class="app-footer">
-      <span>© <span id="year"></span> CrownTALK — Built by
-        <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a>
-      </span>
-    </footer>
-  </div>
+            <div id="failed" aria-live="polite">
+              <!-- Failures injected here -->
+            </div>
+          </div>
+        </section>
 
-  <script src="static/script.js"></script>
-</body>
+        <!-- 4) Clipboard History -->
+        <section class="panel" aria-label="Clipboard History">
+          <div class="ct-card">
+            <div class="ct-card__border" aria-hidden="true"></div>
+
+            <div style="display:flex; justify-content:space-between; align-items:center; gap:10px;">
+              <div>
+                <div class="ct-card__title">Clipboard History</div>
+                <div class="ct-card__subtitle">We keep recent copied lines here for quick reuse.</div>
+              </div>
+              <button id="clearHistoryBtn" class="history-copy-btn" type="button" title="Clear copied history">
+                Clear History
+              </button>
+            </div>
+
+            <hr class="ct-card__line" />
+
+            <div id="history" aria-live="polite">
+              Copied comments will show up here.
+            </div>
+          </div>
+        </section>
+      </main>
+
+      <!-- Footer -->
+      <footer class="footer">
+        <div>© <span id="year"></span> CrownTALK. All rights reserved.</div>
+      </footer>
+    </div>
+
+    <!-- Scripts -->
+    <script src="script.js" defer></script>
+  </body>
 </html>
