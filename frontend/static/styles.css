@@ -1334,48 +1334,38 @@ body {
    Works on every .uiverse-card (Tweet URLs, Results, Failed, History)
    ========================================================= */
 
-/* === Orbit ring that matches the Uiverse "rotating line" but stays on the card === */
-.uiverse-card { position: relative; }
+.uiverse-card{ position:relative; overflow:hidden; isolation:isolate; }
 
-/* container for the orbit ring */
 .uiverse-card .card__border{
-  position: absolute;
-  inset: -1px;                     /* tiny bleed so glow doesn't get clipped */
-  border-radius: 1rem;
-  pointer-events: none;
-  z-index: 0;                      /* content stays above */
-  overflow: visible;               /* allow soft glow to show */
-}
-
-/* rotating ring */
-.uiverse-card .card__border::before{
-  content: "";
-  position: absolute;
-  inset: 0;
+  position:absolute;
+  inset:-1px;                  /* tiny bleed */
   border-radius: inherit;
-  /* We draw a solid disc then punch out the middle -> leaves a thin ring */
-  background:
-    conic-gradient(from 0deg,
-      var(--ui-accent-1) 0 10%,      /* the bright "line" segment (10% of full circle) */
-      transparent 10% 100%);         /* rest is invisible */
-  /* keep only the border band with a mask (content-box minus padding-box) */
-  -webkit-mask:
-     radial-gradient(farthest-side, #000  calc(100% - 2px), transparent calc(100% - 2px)) content-box,
-     radial-gradient(farthest-side, #000 100%, transparent) padding-box;
-  -webkit-mask-composite: destination-out;
-  mask:
-     radial-gradient(farthest-side, #000  calc(100% - 2px), transparent calc(100% - 2px)) content-box,
-     radial-gradient(farthest-side, #000 100%, transparent) padding-box;
-  mask-composite: exclude;
-
-  padding: 2px;                    /* ring thickness */
-  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-1) 80%, transparent));
-  transform-origin: 50% 50%;
-  animation: orbit-spin 7s linear infinite;
+  pointer-events:none;
+  z-index:0;
 }
 
-/* smooth rotation (full 360°) */
-@keyframes orbit-spin { to { transform: rotate(360deg); } }
+.uiverse-card .card__border::before{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius: inherit;
 
-/* Optional: make the orbit ring colors adjust per theme automatically (uses your existing accents) */
-/* Already handled by your per-theme --ui-accent-1 etc. */
+  /* thin arc in the border: conic + radial mask */
+  --angle: 0deg;
+  padding: 2px;                /* ring thickness */
+  background:
+    conic-gradient(from var(--angle),
+      color-mix(in oklab, var(--ui-accent-1) 85%, white 15%) 0 12deg,
+      transparent 12deg 360deg);
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+          mask:
+    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--ui-accent-2) 60%, transparent));
+  animation: uiverse-edge-orbit 6s linear infinite;
+}
+
+@keyframes uiverse-edge-orbit{ to { --angle: 360deg; } }
+
+/* keep content above the ring */
+.uiverse-card > *:not(.card__border){ position:relative; z-index:1; }
