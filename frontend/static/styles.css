@@ -1413,3 +1413,7 @@ body {
   translate: 0 0.5px;    /* tiny optical nudge for vertical centering */
 }
 
+/* Stop the original Uiverse demo strip when the card has BOTH classes */
+.card.uiverse-card .card__border::before {
+  content: none !important;
+}
