@@ -134,7 +134,6 @@ function renderHistory() {
 
   items.forEach((item) => {
     const entry = document.createElement("div");
-    // Align with CSS: use .history-item (previously .history-entry)
     entry.className = "history-item";
 
     const textSpan = document.createElement("div");
@@ -302,7 +301,7 @@ function buildTweetBlock(result) {
     line.appendChild(copyBtn);
 
     commentsWrap.appendChild(line);
-  }); // <-- important: close forEach properly
+  });
 
   tweet.appendChild(commentsWrap);
   return tweet;
@@ -560,13 +559,36 @@ function applyTheme(themeName) {
   }
 }
 
+function sanitizeStoredTheme(value) {
+  // map any removed/legacy names to supported themes
+  if (value === "texture") return "dark-purple"; // texture removed
+  if (value === "green") return "neon"; // legacy -> neon
+  return value;
+}
+
 function initTheme() {
-  let theme = "white";
+  let theme = "dark-purple"; // default (purple) on first visit
   try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored) theme = stored;
+    const storedRaw = localStorage.getItem(THEME_STORAGE_KEY);
+    if (storedRaw) {
+      const sanitized = sanitizeStoredTheme(storedRaw);
+      // fallback to default if unknown
+      const allowed = new Set([
+        "white",
+        "dark-purple",
+        "gold",
+        "blue",
+        "black",
+        "emerald",
+        "neon"
+      ]);
+      theme = allowed.has(sanitized) ? sanitized : "dark-purple";
+    } else {
+      // persist default so subsequent loads keep it until user changes
+      localStorage.setItem(THEME_STORAGE_KEY, theme);
+    }
   } catch {
-    // ignore
+    // ignore storage errors, keep default
   }
   applyTheme(theme);
 }
@@ -650,26 +672,9 @@ document.addEventListener("DOMContentLoaded", () => {
     dot.addEventListener("click", () => {
       const t = dot.dataset.theme;
       if (!t) return;
-      applyTheme(t);
+      // if a removed theme dot somehow exists, redirect to default
+      const picked = sanitizeStoredTheme(t);
+      applyTheme(picked);
     });
   });
 });
-
-
-
-/* ===== CrownTALK: minimal add-on (default theme = dark-purple) =====
-   Drop this at the very bottom of static/script.js.
-   It safely redefines initTheme to prefer 'dark-purple' on first load.
-*/
-
-function initTheme() {
-  let theme = "dark-purple"; // default for first-time visitors
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored) theme = stored; // respect user’s previous choice
-  } catch {
-    // ignore storage errors
-  }
-  applyTheme(theme);
-}
-
