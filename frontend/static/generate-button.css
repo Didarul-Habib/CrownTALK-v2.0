@@ -4,7 +4,11 @@
    --btn-base, --btn-edge, --btn-glow  (r,g,b for glow)
    ========================================================= */
 
-/* --- container helper (optional) --- */
+
+/* tweak here if you ever want a larger/smaller sparkle */
+:root { --sparkle-size: 20px; }
+
+/* container helper (optional) */
 .btn-wrapper {
   display: inline-flex;
   align-items: center;
@@ -12,55 +16,49 @@
   position: relative;
 }
 
-/* tiny nudge so text doesn’t crowd the sparkle */
+/* keep tiny nudge if your label uses txt-wrapper */
 .btn-generate .txt-wrapper { margin-left: 2px; }
 
-/* ---------------------------------------------------------
-   Base button   (.btn and .btn-generate behave the same)
-   --------------------------------------------------------- */
+/* ----------------------------------------------------------
+   Base button (applies to #generateBtn and any .btn/.btn-generate)
+   ---------------------------------------------------------- */
 .btn,
 .btn-generate {
+  /* theme-provided tokens */
   --_base: var(--btn-base);
   --_edge: var(--btn-edge);
   --_glow: var(--btn-glow);
 
-  /* layout/alignment */
   position: relative;
-  display: inline-flex;           /* ensure icon + label align */
+  display: inline-flex;                  /* ensure perfect centering */
   align-items: center;
   justify-content: center;
-  gap: 10px;
-  height: 42px;                  /* consistent height */
-  padding: 0 20px;
+  gap: 10px;                             /* space between sparkle and text */
+
+  padding: 12px 20px;                    /* comfy height */
   border: 0;
   border-radius: 999px;
   cursor: pointer;
+
+  color: #f8fafc;
+  font-weight: 700;
+  font-size: 15.5px;                     /* slightly larger label */
+  letter-spacing: 0.02em;
   line-height: 1;
 
-  /* type */
-  color: #f8fafc;
-  font-weight: 800;
-  font-size: 15.5px;             /* larger label per request */
-  letter-spacing: 0.02em;
-
-  /* glossy theme gradient */
+  /* premium glossy stack: soft radial “bloom” + vertical paint */
   background:
-    /* soft top sheen */
-    linear-gradient( to bottom,
-      rgba(255,255,255,.18),
-      rgba(255,255,255,.02) 28%,
-      rgba(0,0,0,.00) 29% ) ,
-    /* main base → edge */
+    radial-gradient(120% 160% at 50% -40%, rgba(var(--_glow), 0.35), transparent 50%),
     linear-gradient(180deg,
       color-mix(in oklab, var(--_base) 92%, #fff 8%),
-      var(--_edge));
+      var(--_edge)
+    );
 
-  /* depth + inner rim that reacts to theme glow */
   box-shadow:
-    0 0 0 1px rgba(var(--_glow), .55) inset,
-    inset 0 1px 0 rgba(255,255,255,.25),
-    inset 0 -2px 10px rgba(0,0,0,.22),
-    0 12px 30px rgba(var(--_glow), .30);
+    0 0 0 1px rgba(var(--_glow), 0.55) inset,
+    0 8px 24px rgba(var(--_glow), 0.30),
+    0 1px 0 rgba(255,255,255,.18) inset;
+
   transition:
     transform .12s ease,
     box-shadow .18s ease,
@@ -68,7 +66,35 @@
     background .18s ease;
 }
 
-/* outer “premium” ring */
+/* Hover lift/sheen */
+.btn:hover:not(:disabled),
+.btn-generate:hover:not(:disabled) {
+  box-shadow:
+    0 0 0 1px rgba(var(--_glow), 0.70) inset,
+    0 10px 28px rgba(var(--_glow), 0.38),
+    0 1px 0 rgba(255,255,255,.22) inset;
+  transform: translateY(-1px);
+  filter: saturate(1.08);
+}
+
+/* Press */
+.btn:active:not(:disabled),
+.btn-generate:active:not(:disabled) {
+  transform: translateY(1px);
+  box-shadow:
+    0 0 0 1px rgba(var(--_glow), 0.55) inset,
+    0 4px 12px rgba(var(--_glow), 0.25) inset;
+}
+
+/* Disabled */
+.btn:disabled,
+.btn-generate:disabled {
+  opacity: 0.55;
+  cursor: default;
+  filter: grayscale(0.15);
+}
+
+/* subtle outer ring to tie into theme glow */
 .btn::after,
 .btn-generate::after {
   content: "";
@@ -76,146 +102,87 @@
   inset: -3px;
   border-radius: 999px;
   pointer-events: none;
-  box-shadow:
-    0 0 0 2px rgba(var(--_glow), .18),
-    0 0 16px rgba(var(--_glow), .20);
-}
-
-/* moving highlight for that glossy feel */
-.btn::before,
-.btn-generate::before {
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  background:
-    radial-gradient(120% 180% at 50% -60%,
-      rgba(255,255,255,.30) 0%,
-      rgba(255,255,255,.06) 40%,
-      transparent 60%);
-  mix-blend-mode: screen;
+  box-shadow: 0 0 0 2px rgba(var(--_glow), 0.15);
   opacity: .9;
-  pointer-events: none;
-  transition: opacity .18s ease, transform .18s ease;
 }
 
-/* Hover state */
-.btn:hover:not(:disabled),
-.btn-generate:hover:not(:disabled) {
-  transform: translateY(-1px);
-  filter: saturate(1.08);
-  box-shadow:
-    0 0 0 1px rgba(var(--_glow), .70) inset,
-    inset 0 1px 0 rgba(255,255,255,.28),
-    inset 0 -2px 10px rgba(0,0,0,.20),
-    0 16px 36px rgba(var(--_glow), .38);
-}
-
-/* Active (press) */
-.btn:active:not(:disabled),
-.btn-generate:active:not(:disabled) {
-  transform: translateY(1px);
-  box-shadow:
-    0 0 0 1px rgba(var(--_glow), .55) inset,
-    inset 0 1px 0 rgba(255,255,255,.22),
-    inset 0 -2px 8px rgba(0,0,0,.28),
-    0 8px 18px rgba(var(--_glow), .22);
-}
-
-/* Disabled */
-.btn:disabled,
-.btn-generate:disabled {
-  opacity: .58;
-  cursor: default;
-  filter: grayscale(.15);
-}
-
-/* Keyboard focus */
+/* focus state */
 .btn:focus-visible,
 .btn-generate:focus-visible {
   outline: none;
   box-shadow:
-    0 0 0 2px rgba(255,255,255,.85),
-    0 0 0 6px rgba(var(--_glow), .45);
+    0 0 0 2px rgba(255,255,255, .85),
+    0 0 0 5px rgba(var(--_glow), .45);
 }
 
-/* ---------------------------------------------------------
-   Generating… pulse + label swap (unchanged behavior)
-   --------------------------------------------------------- */
+/* generating pulse (when body gets .is-generating) */
 body.is-generating .btn,
 body.is-generating .btn-generate {
-  animation: gen-pulse 1.3s ease-in-out infinite;
+  animation: gen-pulse 1.4s ease-in-out infinite;
 }
 @keyframes gen-pulse {
   0%, 100% {
     box-shadow:
       0 0 0 1px rgba(var(--_glow), .55) inset,
-      inset 0 1px 0 rgba(255,255,255,.22),
-      inset 0 -2px 10px rgba(0,0,0,.22),
-      0 12px 30px rgba(var(--_glow), .28);
+      0 8px 24px rgba(var(--_glow), .28),
+      0 1px 0 rgba(255,255,255,.18) inset;
   }
   50% {
     box-shadow:
-      0 0 0 1px rgba(var(--_glow), .80) inset,
-      inset 0 1px 0 rgba(255,255,255,.30),
-      inset 0 -2px 10px rgba(0,0,0,.18),
-      0 20px 42px rgba(var(--_glow), .40);
+      0 0 0 1px rgba(var(--_glow), .75) inset,
+      0 12px 32px rgba(var(--_glow), .38),
+      0 1px 0 rgba(255,255,255,.22) inset;
   }
 }
 
-/* ---------------------------------------------------------
-   Icon + label alignment (sparkle stays the same size)
-   --------------------------------------------------------- */
-#generateBtn,
-.btn-generate {
-  /* keep tight + perfectly centered */
-  align-items: center;
-  justify-content: center;
-}
-
-/* lock sparkle size — original look */
+/* ----------------------------------------------------------
+   Sparkle / icon sizing + alignment (element-like)
+   ---------------------------------------------------------- */
 #generateBtn svg,
 .btn-generate svg,
 #generateBtn .btn-svg,
 .btn-generate .btn-svg,
 #generateBtn .sparkle,
 .btn-generate .sparkle {
-  width: 16px;
-  height: 16px;
-  display: block;     /* removes baseline gap */
-  flex: 0 0 16px;
+  width: var(--sparkle-size);
+  height: var(--sparkle-size);
+  display: block;            /* no baseline gap */
+  flex: 0 0 var(--sparkle-size);
   margin: 0;
-  translate: 0 .5px;  /* tiny optical nudge */
+  translate: 0 .5px;         /* tiny optical nudge to center perfectly */
 }
 
-/* friendly hover twinkle */
+/* sparkle hover wobble */
 .btn:hover .btn-svg,
 .btn-generate:hover .btn-svg,
-.btn:hover svg,
-.btn-generate:hover svg { transform: rotate(-8deg) scale(1.03); }
+.btn:hover .sparkle,
+.btn-generate:hover .sparkle {
+  transform: rotate(-8deg) scale(1.03);
+  transition: transform .25s ease;
+}
 
-/* label swap helpers (Generate -> Generating…) */
+/* ----------------------------------------------------------
+   Generate ⇄ Generating text swap (optional but nice)
+   ---------------------------------------------------------- */
 .txt-wrapper { position: relative; display: grid; overflow: hidden; }
 .txt-1, .txt-2 {
   display: inline-block;
   white-space: nowrap;
+  line-height: 1;
   transition: transform .35s cubic-bezier(.2,.8,.2,1), opacity .25s ease;
 }
+.txt-2 { transform: translateY(0); opacity: 0; }
 body.is-generating .txt-1 { transform: translateY(-120%); opacity: 0; }
 body.is-generating .txt-2 { transform: translateY(-100%); opacity: 1; }
-.txt-2 { transform: translateY(0); opacity: 0; }
+
+/* letters never wrap oddly if you split them */
 .btn-letter { display: inline-block; }
 
-/* if the button ever appears inside .controls, maintain size */
+/* ----------------------------------------------------------
+   Context: inside .controls row (keeps consistent height)
+   ---------------------------------------------------------- */
 .controls .btn,
 .controls .btn-generate {
-  height: 42px;
-  padding: 0 20px;
-}
-
-/* responsive polish */
-@media (max-width: 520px) {
-  .btn, .btn-generate { height: 40px; padding: 0 18px; font-size: 15px; }
-  #generateBtn svg, .btn-generate svg,
-  #generateBtn .btn-svg, .btn-generate .btn-svg { width: 15px; height: 15px; }
+  height: 40px;
+  padding-inline: 20px;
 }
