@@ -210,6 +210,8 @@ function buildTweetBlock(result) {
   link.target = "_blank";
   link.rel = "noopener noreferrer";
   link.textContent = url || "(no url)";
+  link.title = "Open tweet (tap to open)";
+
 
   const actions = document.createElement("div");
   actions.className = "tweet-actions";
@@ -628,6 +630,12 @@ document.addEventListener("DOMContentLoaded", () => {
 
       await copyToClipboard(text);
       addToHistory(text);
+
+       // NEW: mark this comment as copied (visual feedback)
+      const line = copyBtn.closest(".comment-line");
+      if (line) line.classList.add("copied");
+      copyBtn.classList.add("is-copied");
+
 
       const old = copyBtn.textContent;
       copyBtn.textContent = "Copied";
