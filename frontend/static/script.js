@@ -1,7 +1,7 @@
 // ------------------------
 // Backend endpoints
 // ------------------------
-const backendBase = "https://crowntalk-v2-0.onrender.com";
+const backendBase = "https://crowntalk.onrender.com";
 const commentURL = `${backendBase}/comment`;
 const rerollURL = `${backendBase}/reroll`;
 
