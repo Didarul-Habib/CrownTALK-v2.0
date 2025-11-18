@@ -1135,3 +1135,163 @@ body {
 @media (min-width: 768px) {
   .ct-card { max-width: 24rem; }
 }
+
+
+/* ================================
+   Uiverse-style premium cards
+   (non-breaking: new .uiverse-card class)
+   ================================ */
+
+.uiverse-card {
+  --ui-white: hsl(0 0% 100%);
+  --ui-black: hsl(240 15% 9%);
+  --ui-paragraph: hsl(0 0% 83%);
+  --ui-line: hsl(240 9% 17%);
+
+  /* theme-accent defaults (overridden per theme below) */
+  --ui-accent-1: hsl(266 92% 58%);  /* main accent */
+  --ui-accent-2: hsl(284 100% 84%); /* glow */
+  --ui-accent-3: hsl(306 100% 57%); /* glow */
+
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 1rem;
+
+  padding: 1rem;
+  border-radius: 1rem;
+
+  /* base + multi-spot gradient like Uiverse */
+  background-color: hsla(240, 15%, 9%, 1);
+  background-image:
+    radial-gradient(at 88% 40%, hsla(240, 15%, 9%, 1) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, hsla(240, 15%, 9%, 1) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, hsla(240, 15%, 9%, 1) 0px, transparent 85%),
+    radial-gradient(at 0% 64%, var(--ui-accent-1) 0px, transparent 85%),
+    radial-gradient(at 41% 94%, var(--ui-accent-2) 0px, transparent 85%),
+    radial-gradient(at 100% 99%, var(--ui-accent-3) 0px, transparent 85%);
+  box-shadow: 0 -16px 24px 0 rgba(255,255,255,.18) inset;
+}
+
+/* rotating chrome border like the demo */
+.uiverse-card .card__border{
+  pointer-events:none;
+  position:absolute; inset:0; z-index:0;
+  border-radius:1rem;
+}
+.uiverse-card .card__border::before{
+  content:"";
+  position:fixed; z-index:1;
+  top:50%; left:50%;
+  width:200%; height:10rem;
+  transform:translate(-50%,-50%) rotate(0deg);
+  transform-origin:left;
+  background-image: linear-gradient(
+    0deg,
+    hsla(0 0% 100% / 0) 0%,
+    var(--ui-accent-1) 40%,
+    var(--ui-accent-1) 60%,
+    hsla(0 0% 40% / 0) 100%
+  );
+  animation: uiverse-rotate 8s linear infinite;
+}
+@keyframes uiverse-rotate{ to { transform:translate(-50%,-50%) rotate(360deg);} }
+
+/* titles + subtitle like the element */
+.uiverse-card .card_title__container{ position:relative; z-index:2; }
+.uiverse-card .card_title{ font-size:1rem; color:var(--ui-white); }
+.uiverse-card .card_paragraph{
+  margin-top:.25rem; width:min(65ch,65%);
+  font-size:.75rem; line-height:1.25rem; color:var(--ui-paragraph);
+}
+
+/* thin divider */
+.uiverse-card .line{
+  position:relative; z-index:2;
+  width:100%; height:.1rem; border:none;
+  background-color:var(--ui-line);
+  opacity:.9;
+}
+
+/* inner body area (where your textarea / lists live) */
+.uiverse-body{
+  position:relative; z-index:2;
+  background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+  border-radius:.85rem;
+  padding: .75rem;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.06) inset,
+    0 -6px 16px rgba(255,255,255,.08) inset;
+}
+
+/* Make your existing section content breathe inside the new shell */
+.uiverse-body .url-textarea{ margin-top:.25rem; }
+.uiverse-body .controls{ margin-top:.5rem; }
+.uiverse-body .progress-row{ margin-top:.5rem; }
+
+/* Results / Failed / History lists spacing */
+.uiverse-body .results-list,
+.uiverse-body .failed-list,
+.uiverse-body .history-list{ margin-top:.25rem; }
+
+/* -------------------------------------------
+   Theme mappings → reuse your data-theme system
+   (only override accents; everything else stays)
+   ------------------------------------------- */
+:root[data-theme="dark-purple"] .uiverse-card{
+  --ui-accent-1: hsl(266 92% 58%);
+  --ui-accent-2: hsl(284 100% 84%);
+  --ui-accent-3: hsl(306 100% 57%);
+  --ui-line: hsl(268 15% 22%);
+}
+:root[data-theme="gold"] .uiverse-card{
+  --ui-accent-1: hsl(42 95% 62%);
+  --ui-accent-2: hsl(30 100% 72%);
+  --ui-accent-3: hsl(12 90% 64%);
+  --ui-line: hsl(38 20% 24%);
+}
+:root[data-theme="blue"] .uiverse-card{
+  --ui-accent-1: hsl(210 90% 58%);
+  --ui-accent-2: hsl(200 100% 76%);
+  --ui-accent-3: hsl(190 85% 64%);
+  --ui-line: hsl(215 18% 24%);
+}
+:root[data-theme="black"] .uiverse-card{
+  --ui-accent-1: hsl(260 5% 35%);
+  --ui-accent-2: hsl(260 8% 46%);
+  --ui-accent-3: hsl(260 10% 56%);
+  --ui-line: hsl(260 8% 22%);
+}
+:root[data-theme="emerald"] .uiverse-card{
+  --ui-accent-1: hsl(159 64% 45%);
+  --ui-accent-2: hsl(171 77% 60%);
+  --ui-accent-3: hsl(191 97% 55%);
+  --ui-line: hsl(165 18% 22%);
+}
+:root[data-theme="crimson"] .uiverse-card{
+  --ui-accent-1: hsl(350 80% 55%);
+  --ui-accent-2: hsl(338 88% 62%);
+  --ui-accent-3: hsl(320 90% 60%);
+  --ui-line: hsl(350 20% 22%);
+}
+/* softer “white” */
+:root[data-theme="white"] .uiverse-card{
+  --ui-white: hsl(0 0% 98%);
+  --ui-paragraph: hsl(240 9% 40%);
+  --ui-line: hsl(240 9% 88%);
+  --ui-accent-1: hsl(266 92% 58%);
+  --ui-accent-2: hsl(284 100% 84%);
+  --ui-accent-3: hsl(306 100% 57%);
+  background-color: hsl(240 7% 98%);
+  background-image:
+    radial-gradient(at 88% 40%, hsl(240 7% 98%) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, hsl(240 7% 98%) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, hsl(240 7% 98%) 0px, transparent 85%),
+    radial-gradient(at 0% 64%, color-mix(in oklab, var(--ui-accent-1) 20%, white 80%) 0px, transparent 85%),
+    radial-gradient(at 41% 94%, color-mix(in oklab, var(--ui-accent-2) 20%, white 80%) 0px, transparent 85%),
+    radial-gradient(at 100% 99%, color-mix(in oklab, var(--ui-accent-3) 18%, white 82%) 0px, transparent 85%);
+  box-shadow: 0 -12px 18px 0 rgba(0,0,0,.04) inset, 0 1px 0 rgba(0,0,0,.05);
+}
+
+/* Make our cards sit above the rotating border layer */
+.uiverse-card > *:not(.card__border){ position:relative; z-index:2; }
