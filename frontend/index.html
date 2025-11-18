@@ -51,81 +51,101 @@
       <!-- ===== MAIN ===== -->
       <main class="app-main">
         <!-- Tweet URLs card -->
-        <section class="card card-input">
-          <div class="card-header">
-            <h2 class="card-title">Tweet URLs</h2>
-          </div>
-          <p class="card-subtitle">
-            Paste up to many tweet URLs (one per line). We’ll batch and dedupe automatically.
-          </p>
+        <!-- Tweet URLs -->
+<section class="card uiverse-card card-input">
+  <div class="card__border"></div>
 
-          <textarea
-            id="urlInput"
-            class="url-textarea"
-            placeholder="https://x.com/user/status/123...
+  <div class="card_title__container">
+    <span class="card_title">Tweet URLs</span>
+    <p class="card_paragraph">
+      Paste up to many tweet URLs (one per line). We’ll batch and dedupe automatically.
+    </p>
+  </div>
+
+  <hr class="line" />
+
+  <div class="uiverse-body">
+    <textarea
+      id="urlInput"
+      class="url-textarea"
+      placeholder="https://x.com/user/status/123...
 https://x.com/user/status/456..."
-            spellcheck="false"
-          ></textarea>
+      spellcheck="false"
+    ></textarea>
 
-          <div class="controls">
-           <!-- Generate -->
-<button id="generateBtn" class="btn" type="button" aria-live="polite">
-  <!-- sparkle icon -->
-  <svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M12 2l1.8 3.9L18 7.8l-4.2 1.2L12 13l-1.8-4L6 7.8l4.2-1L12 2z"></path>
-  </svg>
+    <div class="controls">
+      <button id="generateBtn" class="btn-generate" type="button">
+        Generate
+      </button>
+      <button id="cancelBtn" class="btn-secondary" type="button">Cancel</button>
+      <button id="clearBtn" class="btn-secondary subtle" type="button">Clear</button>
+    </div>
 
-  <!-- text swap container -->
-  <span class="txt-wrapper">
-    <span class="txt-1">Generate</span>
-    <span class="txt-2">Generating…</span>
-  </span>
-</button>
+    <div class="progress-row">
+      <span id="progress" class="helper-text"></span>
+      <div class="progress-bar-outer">
+        <div id="progressBarFill" class="progress-bar-inner"></div>
+      </div>
+    </div>
+  </div>
+</section>
 
-<!-- Keep these as-is -->
-<button id="cancelBtn" class="btn-secondary" type="button">Cancel</button>
-<button id="clearBtn" class="btn-secondary subtle" type="button">Clear</button>
+<!-- Results -->
+<section class="card uiverse-card card-results">
+  <div class="card__border"></div>
 
-          </div>
+  <div class="card_title__container">
+    <span class="card_title">Results</span>
+    <p class="card_paragraph">Freshly generated comments per tweet.</p>
+  </div>
 
-          <div class="progress-row">
-            <span id="progress" class="helper-text"></span>
-            <div class="progress-bar-outer">
-              <div id="progressBarFill" class="progress-bar-inner"></div>
-            </div>
-          </div>
-        </section>
+  <hr class="line" />
 
-        <!-- Results card -->
-        <section class="card card-results">
-          <div class="card-header">
-            <h2 class="card-title">Results</h2>
-            <span id="resultCount" class="helper-text">0 tweets</span>
-          </div>
+  <div class="uiverse-body">
+    <div class="card-header" style="justify-content: flex-end; margin-bottom:.25rem;">
+      <span id="resultCount" class="helper-text">0 tweets</span>
+    </div>
+    <div id="results" class="results-list"></div>
+  </div>
+</section>
 
-          <div id="results" class="results-list"></div>
-        </section>
+<!-- Failed -->
+<section class="card uiverse-card card-failed">
+  <div class="card__border"></div>
 
-        <!-- Failed card -->
-        <section class="card card-failed">
-          <div class="card-header">
-            <h2 class="card-title">Failed</h2>
-            <span id="failedCount" class="helper-text">0</span>
-          </div>
+  <div class="card_title__container">
+    <span class="card_title">Failed</span>
+    <p class="card_paragraph">URLs that couldn’t be processed will appear here.</p>
+  </div>
 
-          <div id="failed" class="failed-list"></div>
-        </section>
+  <hr class="line" />
 
-        <!-- Clipboard History card -->
-        <section class="card card-history">
-          <div class="card-header">
-            <h2 class="card-title">Clipboard History</h2>
-            <button id="clearHistoryBtn" type="button">Clear history</button>
-          </div>
-          <p class="card-subtitle">Copied comments will show up here.</p>
+  <div class="uiverse-body">
+    <div class="card-header" style="justify-content: flex-end; margin-bottom:.25rem;">
+      <span id="failedCount" class="helper-text">0</span>
+    </div>
+    <div id="failed" class="failed-list"></div>
+  </div>
+</section>
 
-          <div id="history" class="history-list"></div>
-        </section>
+<!-- Clipboard History -->
+<section class="card uiverse-card card-history">
+  <div class="card__border"></div>
+
+  <div class="card_title__container">
+    <span class="card_title">Clipboard History</span>
+    <p class="card_paragraph">Copied comments will show up here.</p>
+  </div>
+
+  <hr class="line" />
+
+  <div class="uiverse-body">
+    <div class="card-header" style="justify-content: flex-end; margin-bottom:.25rem;">
+      <button id="clearHistoryBtn" type="button" class="btn-secondary">● Clear History</button>
+    </div>
+    <div id="history" class="history-list"></div>
+  </div>
+</section>
       </main>
 
       <!-- ===== FOOTER (kept intact) ===== -->
