@@ -150,3 +150,22 @@ body.is-generating .txt-1 { transform: translateY(-120%); opacity: 0; }
 body.is-generating .txt-2 { transform: translateY(-100%); opacity: 1; }
 .txt-2 { transform: translateY(0); opacity: 0; }
 .btn-letter { display: inline-block; }
+
+
+/* Ensure consistent height/centering and no inherited line-height quirks */
+.controls .btn {
+  height: 38px;
+  padding: 0 18px;
+  line-height: 1;
+}
+
+.controls .btn .btn-svg {
+  width: 18px;
+  height: 18px;
+  display: block;
+  flex: 0 0 auto;
+}
+
+.controls .txt-wrapper { display: inline-grid; align-items: center; }
+.controls .txt-1, .controls .txt-2 { line-height: 1; }
+
