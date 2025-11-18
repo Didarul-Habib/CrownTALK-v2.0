@@ -327,3 +327,49 @@
     drop-shadow(0 -4px 6px #0009);
   animation: none;
 }
+
+
+/* ===== CrownTALK: theme-aware Generate button (safe override) =====
+   Drop at the very bottom of static/generate-button.css
+   Makes the Generate button inherit the active theme colors.
+*/
+
+/* map to your theme tokens */
+:root {
+  --gen-fg: var(--accent);
+  --gen-bg: var(--accent-soft);
+  --gen-bg-strong: var(--accent-soft-strong);
+}
+
+/* button foreground & background follow theme */
+.btn {
+  color: var(--gen-fg) !important;
+  background: var(--gen-bg) !important;
+  border: 1px solid var(--gen-bg-strong) !important;
+}
+
+/* hover/active states keep theme vibe */
+.btn:hover {
+  background: var(--gen-bg-strong) !important;
+}
+.btn:active {
+  filter: brightness(0.96);
+}
+
+/* make the icon follow the text color */
+.btn-svg {
+  width: 18px;
+  height: 18px;
+}
+.btn-svg path {
+  stroke: currentColor !important;
+}
+
+/* ensure the animated text uses button color (no hard-coded black) */
+.txt-wrapper,
+.txt-1,
+.txt-2,
+.btn-letter {
+  color: inherit !important;
+  fill: currentColor !important;
+}
