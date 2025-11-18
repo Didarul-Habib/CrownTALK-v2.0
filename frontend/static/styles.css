@@ -1319,3 +1319,85 @@ body {
 
 /* Make our cards sit above the rotating border layer */
 .uiverse-card > *:not(.card__border){ position:relative; z-index:2; }
+
+/* --- Uiverse-like shell: subtle corner glow (not filling the card) --- */
+.uiverse-card {
+  position: relative;
+  overflow: hidden;                  /* keep all effects inside the card */
+  background-color: var(--panel);    /* your theme panel color */
+}
+
+/* Corner glow layer (soft, stays near edges) */
+.uiverse-card::before {
+  content: "";
+  position: absolute;
+  inset: -18px;                      /* tiny bleed for smoother edges */
+  pointer-events: none;
+  z-index: 0;
+
+  /* three soft blobs near top, bottom-left, bottom-right */
+  background:
+    radial-gradient(160px 120px at 50% -10%, var(--ui-accent-2), transparent 70%),
+    radial-gradient(180px 140px at 8% 88%,  var(--ui-accent-1), transparent 70%),
+    radial-gradient(180px 140px at 92% 90%, var(--ui-accent-3), transparent 70%);
+
+  opacity: .35;
+  filter: blur(26px) saturate(1.05);
+}
+
+/* The rotating sheen around the edge (clipped inside card) */
+.uiverse-card .card__border {
+  pointer-events: none;
+  position: absolute;
+  inset: -1px;                       /* cover the rim */
+  border-radius: 1rem;
+  overflow: hidden;                  /* CLIP the rotating sweep to the card */
+  z-index: 1;                        /* above corner glow, below content */
+}
+
+/* Rotating sweep line hugging the perimeter */
+.uiverse-card .card__border::before {
+  content: "";
+  position: absolute;                /* constrain to card (not fixed) */
+  top: 50%;
+  left: 50%;
+  width: 200%;
+  height: 10rem;
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: left;
+
+  background-image: linear-gradient(
+    0deg,
+    rgba(255,255,255,0) 0%,
+    color-mix(in oklab, var(--ui-accent-1) 88%, black 12%) 45%,
+    color-mix(in oklab, var(--ui-accent-1) 88%, black 12%) 55%,
+    rgba(0,0,0,0) 100%
+  );
+
+  opacity: .75;
+  animation: uiverse-rotate 8s linear infinite;
+}
+
+/* keep content above the effects */
+.uiverse-card > *:not(.card__border) {
+  position: relative;
+  z-index: 2;
+}
+
+/* Inner body stays clean and readable */
+.uiverse-body {
+  position: relative;
+  z-index: 2;
+  background: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,.01));
+  border-radius: .85rem;
+  padding: .75rem;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.06) inset,
+    0 -6px 16px rgba(255,255,255,.08) inset;
+}
+
+/* Rotation keyframes (unchanged name) */
+@keyframes uiverse-rotate {
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
+
