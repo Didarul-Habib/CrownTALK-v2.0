@@ -73,25 +73,25 @@ https://x.com/user/status/456..."
       spellcheck="false"
     ></textarea>
 
-    <div class="controls">
-      <button id="generateBtn" class="btn-generate" type="button">
-  <!-- sparkle icon -->
-  <svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true">
-    <path d="M12 3l1.6 3.7L17 8.2l-3.4 1.5L12 13l-1.6-3.3L7 8.2l3.4-1.5L12 3zM5 16l.9 2.2L8 19l-2.1.8L5 22l-.9-2.2L2 19l2.1-.8L5 16zm14-2l1.2 2.8L23 18l-2.8 1.2L19 22l-1.2-2.8L15 18l2.8-1.2L19 14z" fill="currentColor" />
-  </svg>
+<div class="controls">
+  <div class="btn-wrapper">
+    <button id="generateBtn" type="button" class="btn">
+      <svg class="btn-svg" viewBox="0 0 24 24" aria-hidden="true">
+        <path d="M12 2l1.6 3.8L18 7.4l-3.5 2.2.9 4.2L12 11.9l-3.4 1.9.9-4.2L6 7.4l4.4-1.6L12 2z" />
+      </svg>
+      <span class="txt-wrapper">
+        <span class="txt-1">
+          <span class="btn-letter">G</span><span class="btn-letter">e</span><span class="btn-letter">n</span><span class="btn-letter">e</span><span class="btn-letter">r</span><span class="btn-letter">a</span><span class="btn-letter">t</span><span class="btn-letter">e</span>
+        </span>
+        <span class="txt-2">Generating</span>
+      </span>
+    </button>
+  </div>
 
-  <!-- text swap: Generate -> Generating… -->
-  <span class="txt-wrapper">
-    <span class="txt-1">
-      <span class="btn-letter">G</span>enerate
-    </span>
-    <span class="txt-2">Generating…</span>
-  </span>
-</button>
+  <button id="cancelBtn" class="btn-secondary" type="button">Cancel</button>
+  <button id="clearBtn" class="btn-secondary subtle" type="button">Clear</button>
+</div>
 
-      <button id="cancelBtn" class="btn-secondary" type="button">Cancel</button>
-      <button id="clearBtn" class="btn-secondary subtle" type="button">Clear</button>
-    </div>
 
     <div class="progress-row">
       <span id="progress" class="helper-text"></span>
@@ -160,7 +160,7 @@ https://x.com/user/status/456..."
 </section>
       </main>
 
-      <!-- ===== FOOTER (kept intact) ===== -->
+      <!-- ===== FOOTER ===== -->
       <footer class="app-footer">
         <div>
           © <span id="year"></span> – CrownTALK by CrownDEX
@@ -175,7 +175,7 @@ https://x.com/user/status/456..."
       </footer>
     </div>
 
-    <!-- Your main JS (uses the exact IDs/classes above). Adjust path if needed. -->
+    <!-- Main Script.js File Link -->
     <script src="static/script.js"></script>
   </body>
 </html>
