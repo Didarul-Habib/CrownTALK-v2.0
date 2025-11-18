@@ -372,14 +372,18 @@ body {
 .theme-dot[data-theme="black"] {
   background: radial-gradient(circle at 30% 20%, #f9fafb, #111827);
 }
+/* Distinct emerald dot (deeper teal, not neon) */
 .theme-dot[data-theme="emerald"] {
-  background: radial-gradient(circle at 30% 20%, #34d399, #065f46);
+  background: radial-gradient(circle at 30% 20%, #10b981 18%, #047857 55%, #0f766e 100%);
+  box-shadow: 0 0 6px rgba(16, 185, 129, 0.45), inset 0 0 4px rgba(4, 120, 87, 0.45);
 }
-/* distinct NEON: green -> aqua band + halo */
+
+/* Even more cyan neon */
 .theme-dot[data-theme="neon"] {
-  background: radial-gradient(circle at 30% 20%, #22c55e 20%, #10b981 55%, #0ea5e9 100%);
-  box-shadow: 0 0 8px rgba(34, 197, 94, 0.55), inset 0 0 6px rgba(16, 185, 129, 0.55);
+  background: radial-gradient(circle at 30% 20%, #22d3ee 18%, #0ea5e9 55%, #a78bfa 100%);
+  box-shadow: 0 0 10px rgba(34, 211, 238, 0.65), inset 0 0 6px rgba(14, 165, 233, 0.55);
 }
+
 
 .theme-dot:hover {
   transform: scale(1.1) translateY(-1px);
@@ -708,3 +712,128 @@ button { font-family: inherit; }
   .hero { flex-direction: column; align-items: center; gap: 10px; }
   .controls { flex-wrap: wrap; }
 }
+
+/* === Viewport-fit layout pass (non-destructive) === */
+.app-shell{
+  width: min(1200px, 96vw);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100vh;           /* allow footer to stick to bottom */
+}
+.app-main{ flex: 1; }
+.app-footer{ margin-top: auto; }
+
+/* Keep hero centered while the theme switcher stays to the right */
+.hero{
+  position: relative;
+  align-items: center;
+  gap: 16px;
+  padding-block: 8px;
+}
+.hero-main{ margin: 0 auto; }   /* centers the logo + title */
+.theme-switcher{ margin-left: auto; } /* pins dots to the right */
+
+/* Make sure the pulsing glow never overlaps content below */
+.hero-orbit{ z-index: 0; }
+header.hero + .app-main{ position: relative; z-index: 1; }
+
+/* Slightly reduce vertical footprint on short screens */
+@media (max-height: 900px){
+  body{ padding: 16px; }
+  .app-main{ gap: 12px; }
+  .card{ padding: 12px; }
+  .url-textarea{ min-height: 120px; max-height: 280px; }
+  .card-results{ min-height: 180px; }
+  .card-history{ min-height: 120px; }
+}
+
+/* Extra-short laptop displays (e.g., 768p) */
+@media (max-height: 740px){
+  .url-textarea{ min-height: 100px; }
+  .card-results{ min-height: 160px; }
+  .card-failed{ min-height: 80px; }
+}
+
+
+/* === Viewport-fit layout pass (non-destructive) === */
+.app-shell{
+  width: min(1200px, 96vw);
+  margin: 0 auto;
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+  min-height: 100vh;           /* allow footer to stick to bottom */
+}
+.app-main{ flex: 1; }
+.app-footer{ margin-top: auto; }
+
+/* Keep hero centered while the theme switcher stays to the right */
+.hero{
+  position: relative;
+  align-items: center;
+  gap: 16px;
+  padding-block: 8px;
+}
+.hero-main{ margin: 0 auto; }   /* centers the logo + title */
+.theme-switcher{ margin-left: auto; } /* pins dots to the right */
+
+/* Make sure the pulsing glow never overlaps content below */
+.hero-orbit{ z-index: 0; }
+header.hero + .app-main{ position: relative; z-index: 1; }
+
+/* Slightly reduce vertical footprint on short screens */
+@media (max-height: 900px){
+  body{ padding: 16px; }
+  .app-main{ gap: 12px; }
+  .card{ padding: 12px; }
+  .url-textarea{ min-height: 120px; max-height: 280px; }
+  .card-results{ min-height: 180px; }
+  .card-history{ min-height: 120px; }
+}
+
+/* Extra-short laptop displays (e.g., 768p) */
+@media (max-height: 740px){
+  .url-textarea{ min-height: 100px; }
+  .card-results{ min-height: 160px; }
+  .card-failed{ min-height: 80px; }
+}
+
+
+/* ===== Fit everything at 100% zoom (footer always visible) ===== */
+
+/* Make the page a flex column so the footer sits after a flexible main area */
+.app-shell {
+  display: flex;
+  min-height: 100vh;
+  flex-direction: column;
+}
+
+/* Let the main grid flex, but not push the footer off-screen */
+.app-main {
+  flex: 1;
+  min-height: 0; /* critical so inner scroll areas can size correctly */
+}
+
+/* Slightly tighter outer padding so the full layout fits at 100% */
+body {
+  padding: 16px;
+}
+
+/* Nudge minimum sizes down a bit so all cards fit together */
+.card-input   { min-height: 200px; }
+.card-results { min-height: 200px; }
+.card-history { min-height: 120px; }
+
+/* Textarea: a touch shorter by default so it doesn’t crowd the grid */
+.url-textarea {
+  min-height: 130px;
+  max-height: 300px;
+}
+
+/* Keep a little breathing room before the footer */
+.app-footer {
+  margin-top: 12px;
+}
+
