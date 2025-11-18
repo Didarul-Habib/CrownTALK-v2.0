@@ -837,3 +837,29 @@ body {
   margin-top: 12px;
 }
 
+/* Keep the glossy sweep UNDER the hero content/logo */
+.hero {
+  position: relative;
+  /* creates a new stacking context so ::before stays behind */
+  isolation: isolate;
+}
+
+/* If your sheen uses ::before / ::after on .hero, keep it as z-index:0 */
+.hero::before,
+.hero::after {
+  z-index: 0 !important;
+  pointer-events: none;
+}
+
+/* Ensure hero content sits above the sheen */
+.hero-main,
+.theme-switcher {
+  position: relative;
+  z-index: 1;
+}
+
+/* Extra explicit: logo above everything */
+.hero-orbit {
+  position: relative;
+  z-index: 2;
+}
