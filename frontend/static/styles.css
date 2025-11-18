@@ -1177,40 +1177,44 @@ body {
   isolation: isolate;
 }
 
-/* rotating chrome border like the demo, but confined to the card */
+/* Constrain the animated halo INSIDE the card */
 .uiverse-card .card__border{
   pointer-events: none;
   position: absolute;
-  inset: 0;
+  inset: -1px;                 /* tiny bleed to cover the edge */
+  border-radius: 1rem;
+  overflow: hidden;            /* <— critical: clips the sweep */
   z-index: 0;
-  border-radius: inherit;
 }
 
+/* The sweep line rotates inside the clipped layer */
 .uiverse-card .card__border::before{
   content: "";
-  position: absolute;              /* <-- was fixed; now clipped to the card */
-  left: 50%;
+  position: absolute;          /* <— was fixed; now constrained */
   top: 50%;
-  width: 220%;
-  height: 220%;
+  left: 50%;
+  width: 200%;
+  height: 10rem;
   transform: translate(-50%, -50%) rotate(0deg);
-  transform-origin: center;
-  border-radius: 50%;
-  pointer-events: none;
-  z-index: 0;
+  transform-origin: left;
 
   background-image: linear-gradient(
     0deg,
-    hsla(0 0% 100% / 0) 0%,
+    hsl(0 0% 100% / 0) 0%,
     var(--ui-accent-1) 40%,
     var(--ui-accent-1) 60%,
-    hsla(0 0% 40% / 0) 100%
+    hsl(0 0% 40% / 0) 100%
   );
 
-  filter: blur(10px);
-  opacity: .65;
   animation: uiverse-rotate 8s linear infinite;
-  will-change: transform;
+  pointer-events: none;
+}
+
+/* keep content above the halo */
+.uiverse-card > *:not(.card__border){
+  position: relative;
+  z-index: 1;
+}
 }
 
 @keyframes uiverse-rotate{
