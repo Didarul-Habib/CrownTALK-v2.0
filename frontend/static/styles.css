@@ -1171,21 +1171,34 @@ body {
     radial-gradient(at 41% 94%, var(--ui-accent-2) 0px, transparent 85%),
     radial-gradient(at 100% 99%, var(--ui-accent-3) 0px, transparent 85%);
   box-shadow: 0 -16px 24px 0 rgba(255,255,255,.18) inset;
+
+  /* keep sheen inside the card */
+  overflow: hidden;
+  isolation: isolate;
 }
 
-/* rotating chrome border like the demo */
+/* rotating chrome border like the demo, but confined to the card */
 .uiverse-card .card__border{
-  pointer-events:none;
-  position:absolute; inset:0; z-index:0;
-  border-radius:1rem;
+  pointer-events: none;
+  position: absolute;
+  inset: 0;
+  z-index: 0;
+  border-radius: inherit;
 }
+
 .uiverse-card .card__border::before{
-  content:"";
-  position:fixed; z-index:1;
-  top:50%; left:50%;
-  width:200%; height:10rem;
-  transform:translate(-50%,-50%) rotate(0deg);
-  transform-origin:left;
+  content: "";
+  position: absolute;              /* <-- was fixed; now clipped to the card */
+  left: 50%;
+  top: 50%;
+  width: 220%;
+  height: 220%;
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: center;
+  border-radius: 50%;
+  pointer-events: none;
+  z-index: 0;
+
   background-image: linear-gradient(
     0deg,
     hsla(0 0% 100% / 0) 0%,
@@ -1193,9 +1206,16 @@ body {
     var(--ui-accent-1) 60%,
     hsla(0 0% 40% / 0) 100%
   );
+
+  filter: blur(10px);
+  opacity: .65;
   animation: uiverse-rotate 8s linear infinite;
+  will-change: transform;
 }
-@keyframes uiverse-rotate{ to { transform:translate(-50%,-50%) rotate(360deg);} }
+
+@keyframes uiverse-rotate{
+  to { transform: translate(-50%, -50%) rotate(360deg); }
+}
 
 /* titles + subtitle like the element */
 .uiverse-card .card_title__container{ position:relative; z-index:2; }
