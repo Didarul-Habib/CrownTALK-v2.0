@@ -984,3 +984,84 @@ button { font-family: inherit; }
   body { padding: 12px; }
   .controls { flex-wrap: wrap; }
 }
+
+
+/* ===== CrownTALK: minimal add-ons (safe overrides) ===== */
+
+/* 1) Keep hero glow under cards / inputs */
+.hero,
+.hero-orbit,
+.hero-orbit-inner { position: relative; z-index: 0; }
+.card,
+.url-textarea { position: relative; z-index: 2; }
+
+/* 2) Center hero (logo + copy) without touching your markup */
+.hero { position: relative; justify-content: center; }
+.hero-main { margin: 0 auto; }
+.theme-switcher { position: absolute; right: 0; top: 0; }
+
+/* 3) Hide only the texture theme dot (bar stays) */
+.theme-dot[data-theme="texture"] { display: none !important; }
+
+/* 4) Theme-driven headline (CROWNTALK) + subtle premium glow */
+.hero-copy h1 {
+  background: linear-gradient(120deg, var(--headline-1), var(--headline-2));
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  text-shadow:
+    0 0 6px var(--headline-glow),
+    0 0 16px var(--headline-glow);
+}
+
+/* Headline tokens per theme (defaults already look fine in light) */
+:root,
+[data-theme="white"] {
+  --headline-1: #111827;
+  --headline-2: #6b7280;
+  --headline-glow: rgba(99, 102, 241, 0.18);
+}
+[data-theme="dark-purple"] {
+  --headline-1: #c4b5fd; /* soft purple */
+  --headline-2: #f472b6; /* pink accent */
+  --headline-glow: rgba(196, 181, 253, 0.55);
+}
+[data-theme="gold"] {
+  --headline-1: #fde68a;
+  --headline-2: #f59e0b;
+  --headline-glow: rgba(251, 191, 36, 0.5);
+}
+[data-theme="blue"] {
+  --headline-1: #93c5fd;
+  --headline-2: #38bdf8;
+  --headline-glow: rgba(96, 165, 250, 0.5);
+}
+[data-theme="black"] {
+  --headline-1: #f3f4f6;
+  --headline-2: #d1d5db;
+  --headline-glow: rgba(243, 244, 246, 0.4);
+}
+[data-theme="emerald"] {
+  --headline-1: #6ee7b7;
+  --headline-2: #34d399;
+  --headline-glow: rgba(16, 185, 129, 0.5);
+}
+[data-theme="neon"] {
+  --headline-1: #67e8f9;
+  --headline-2: #22c55e;
+  --headline-glow: rgba(52, 211, 153, 0.55);
+}
+
+/* 5) Make Generate button follow the active theme (keeps Uiverse structure) */
+#generateBtn.btn {
+  background: linear-gradient(135deg, var(--accent), var(--accent-soft-strong)) !important;
+  border: 1px solid var(--accent) !important;
+  color: #ffffff !important;
+  box-shadow: 0 10px 28px rgba(0,0,0,0.35), 0 0 18px var(--accent-soft) !important;
+}
+#generateBtn.btn:hover { transform: translateY(-1px); }
+#generateBtn.btn:active { transform: translateY(0); }
+#generateBtn .btn-svg path { stroke: currentColor; }
+
+/* Keep hero elements from ever overlapping inputs due to shadows */
+.hero-orbit { pointer-events: none; }
