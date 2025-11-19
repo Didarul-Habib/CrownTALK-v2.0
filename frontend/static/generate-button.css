@@ -1,19 +1,13 @@
 /* =========================================================
-   CrownTALK – Generate Button
-   Theme-aware via: --btn-base, --btn-edge, --btn-glow (RGB)
-   Target markup (inside .btn-wrapper):
-     <button id="generateBtn" class="btn">
-       <div class="dots_border"></div>
-       <svg class="sparkle">…paths…</svg>
-       <span class="text_button tb-1">Generate</span>
-       <span class="text_button tb-2">Generating</span>
-     </button>
+   CrownTALK – Generate Button (Uiverse "mean-bird-62" adapted)
+   Size-tuned to avoid overlap; hover scale reduced
 ========================================================= */
 
-/* Container (optional) */
 .btn-wrapper{
   display:inline-block;
   position:relative;
+  /* add a little breathing room from Cancel */
+  margin-right: .75rem;
 }
 
 /* Core button */
@@ -27,16 +21,18 @@
   position: relative;
   display: inline-flex;
   align-items: center;
-  gap: .5rem;
+  gap: .45rem;
 
-  padding: 1rem 1.5rem;
+  /* ↓ smaller overall size */
+  padding: .8rem 1.25rem;
   background: transparent;
   border: 0;
   border-radius: var(--border_radius);
   cursor: pointer;
 
   transform-origin: center;
-  transform: scale(calc(1 + (var(--active, 0) * .06)));
+  /* ↓ softer hover scale (from .06 → .04) */
+  transform: scale(calc(1 + (var(--active, 0) * .04)));
   transition: transform var(--transition), filter var(--transition);
   -webkit-tap-highlight-color: transparent;
 }
@@ -108,7 +104,8 @@
 .btn .sparkle{
   position: relative;
   z-index: 10;
-  width: 1.75rem; height: 1.75rem;
+  /* ↓ smaller icon (from 1.75rem → 1.35rem) */
+  width: 1.35rem; height: 1.35rem;
   flex: 0 0 auto;
 }
 .btn .sparkle .path{
@@ -133,7 +130,8 @@
 .btn .text_button{
   position: relative;
   z-index: 10;
-  font-size: 1rem;
+  /* ↓ slightly smaller type (from 1rem → .95rem) */
+  font-size: .95rem;
   font-weight: 600;
   letter-spacing: .2px;
   color: transparent;
