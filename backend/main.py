@@ -561,22 +561,50 @@ class OfflineCommentGenerator:
         return last_candidate or None
 
     def generate_comments(self, text: str, author: Optional[str], handle: Optional[str] = None, lang_hint: Optional[str] = None) -> List[Dict[str, Any]]:
-        ctx = build_context_profile(text, url=None, tweet_author=author, handle=handle)
-        is_non_english = ctx["script"] != "latn"
+    ctx = build_context_profile(text, url=None, tweet_author=author, handle=handle)
+    is_non_english = ctx["script"] != "latn"
 
-        comments = []
-        if is_non_english:
-            native = self._make_native_comment(text, ctx)
-            if native:
-                comments.append({"lang": ctx["script"], "text": native})
-            en = self._make_english_comment(text, author, ctx)
-            if en:
-                comments.append({"lang": "en", "text": en["text"]})
-        else:
-            en = self._make_english_comment(text, author, ctx)
-            if en:
-                comments.append({"lang": "en", "text": en["text"]})
+    comments: List[Dict[str, Any]] = []
+
+    if is_non_english:
+        # 1) Native
+        native = self._make_native_comment(text, ctx)
+        if native:
+            comments.append({"lang": ctx["script"], "text": native})
+
+        # 2) English
+        en = self._make_english_comment(text, author, ctx)
+        if en:
+            comments.append({"lang": "en", "text": en["text"]})
+
         return comments
+
+    # English tweet: return TWO different English lines
+    en1 = self._make_english_comment(text, author, ctx)
+
+    en2 = None
+    # Try a few times to get a second distinct line (anti-dup + burned template helps)
+    for _ in range(6):
+        cand = self._make_english_comment(text, author, ctx)
+        if not cand or not en1:
+            continue
+        if cand["text"].strip().lower() != en1["text"].strip().lower():
+            en2 = cand
+            break
+
+    if en1:
+        comments.append({"lang": "en", "text": en1["text"]})
+    if en2:
+        comments.append({"lang": "en", "text": en2["text"]})
+
+    # If for some reason we only got one, try one last roll (best-effort)
+    if len(comments) == 1:
+        cand = self._make_english_comment(text, author, ctx)
+        if cand and cand["text"].strip().lower() != comments[0]["text"].strip().lower():
+            comments.append({"lang": "en", "text": cand["text"]})
+
+    return comments
+
 
 generator = OfflineCommentGenerator()
 
