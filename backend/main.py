@@ -1,4 +1,6 @@
 # main.py
+from __future__ import annotations
+
 from flask import Flask, request, jsonify
 import threading
 import time
@@ -6,38 +8,53 @@ import os
 import re
 import json
 import random
-import hashlib
 import sqlite3
+import hashlib
 import logging
 from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Tuple
 from urllib.parse import urlparse
 
+# ---- import your existing helpers (kept unchanged) --------------------------
+from utils import (
+    CrownTALKError,
+    fetch_tweet_data,          # your VX/FX fetcher with retry/backoff
+    clean_and_normalize_urls,  # your URL cleaner
+)
+
+# ----------------------------------------------------------------------------
+# APP / CONFIG
+# ----------------------------------------------------------------------------
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
-logger = logging.getLogger("crown")
+logger = logging.getLogger("crowntalk")
 
-# ---------------------------------------------------------
-# CONFIG
-# ---------------------------------------------------------
 PORT = int(os.environ.get("PORT", "10000"))
-MEM_DB_PATH = os.environ.get("MEM_DB_PATH", "comments_mem.sqlite3")
+DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")          # your original DB
+MEM_DB_PATH = os.environ.get("MEM_DB_PATH", DB_PATH)               # reuse same file
 MAX_URLS_PER_REQUEST = 8
-REQUEST_TIMEOUT_SECS = 10
+BATCH_SIZE = 2
+KEEP_ALIVE_INTERVAL = 600  # seconds
+BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "")
 
-# ---------------------------------------------------------
-# LIGHTWEIGHT KEEPALIVE (Render free)
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
+# KEEPALIVE (Render free)
+# ----------------------------------------------------------------------------
 def keep_alive():
+    if not BACKEND_PUBLIC_URL:
+        return
     while True:
         try:
-            time.sleep(25)
+            # ping /
+            import requests  # stddep in your requirements
+            requests.get(f"{BACKEND_PUBLIC_URL}/", timeout=5)
         except Exception:
             pass
+        time.sleep(KEEP_ALIVE_INTERVAL)
 
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
 # UTIL
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
 def now_ts() -> int:
     return int(time.time())
 
@@ -45,8 +62,7 @@ def sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
 def normalize_ws(s: str) -> str:
-    s = re.sub(r"\s+", " ", s or "").strip()
-    return s
+    return re.sub(r"\s+", " ", (s or "")).strip()
 
 def strip_urls(text: str) -> str:
     return re.sub(r"https?://\S+", "", text or "").strip()
@@ -56,134 +72,134 @@ def only_ascii(s: str) -> str:
 
 def _extract_handle_from_url(url: str) -> Optional[str]:
     try:
-        m = re.search(r"https?://(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/([^/]+)/status/", url, re.I)
+        m = re.search(
+            r"https?://(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/([^/]+)/status/",
+            url,
+            re.I,
+        )
         if m:
             return m.group(1)
     except Exception:
         return None
     return None
 
-# ---------------------------------------------------------
-# DB INIT
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
+# DB INIT (safe multi-proc)
+# ----------------------------------------------------------------------------
+try:
+    import fcntl  # Linux on Render ✅
+    _HAS_FCNTL = True
+except Exception:
+    _HAS_FCNTL = False
+
+def get_conn():
+    return sqlite3.connect(
+        DB_PATH, timeout=30, isolation_level=None, check_same_thread=False
+    )
+
+def _locked_init(fn):
+    if not _HAS_FCNTL:
+        return fn()
+    lock_path = "/tmp/crowntalk.db.lock"
+    with open(lock_path, "w") as lockf:
+        fcntl.flock(lockf, fcntl.LOCK_EX)
+        try:
+            return fn()
+        finally:
+            fcntl.flock(lockf, fcntl.LOCK_UN)
+
+def _do_init():
+    with get_conn() as conn:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA busy_timeout=5000;")
+        conn.executescript(
+            """
+            CREATE TABLE IF NOT EXISTS comments (
+                id INTEGER PRIMARY KEY,
+                url TEXT NOT NULL,
+                lang TEXT,
+                text TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_comments_url ON comments(url);
+
+            CREATE TABLE IF NOT EXISTS comments_seen(
+                hash TEXT PRIMARY KEY,
+                created_at INTEGER
+            );
+
+            -- OTP-style guards
+            CREATE TABLE IF NOT EXISTS comments_openers_seen(
+                opener TEXT PRIMARY KEY,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS comments_ngrams_seen(
+                ngram TEXT PRIMARY KEY,
+                created_at INTEGER
+            );
+            CREATE TABLE IF NOT EXISTS comments_templates_seen(
+                thash TEXT PRIMARY KEY,
+                created_at INTEGER
+            );
+            """
+        )
+
 def init_db():
     def _safe():
         try:
-            os.makedirs(os.path.dirname(MEM_DB_PATH) or ".", exist_ok=True)
-        except Exception:
-            pass
-        try:
-            conn = sqlite3.connect(MEM_DB_PATH, timeout=5.0)
-            try:
-                conn.executescript(
-                    """
-                    PRAGMA journal_mode=WAL;
-                    CREATE TABLE IF NOT EXISTS comments(
-                        id INTEGER PRIMARY KEY AUTOINCREMENT,
-                        url TEXT,
-                        lang TEXT,
-                        text TEXT,
-                        created_at INTEGER DEFAULT (strftime('%s','now'))
-                    );
-                    CREATE INDEX IF NOT EXISTS idx_comments_url ON comments(url);
-                    CREATE TABLE IF NOT EXISTS comments_seen(
-                        hash TEXT PRIMARY KEY,
-                        created_at INTEGER
-                    );
-                    -- prevent style and paraphrase repeats ("OTP" feeling)
-                    CREATE TABLE IF NOT EXISTS comments_openers_seen(
-                        opener TEXT PRIMARY KEY,
-                        created_at INTEGER
-                    );
-                    CREATE TABLE IF NOT EXISTS comments_ngrams_seen(
-                        ngram TEXT PRIMARY KEY,
-                        created_at INTEGER
-                    );
-                    CREATE TABLE IF NOT EXISTS comments_templates_seen(
-                        thash TEXT PRIMARY KEY,
-                        created_at INTEGER
-                    );
-                    """
-                )
-                conn.commit()
-            finally:
-                conn.close()
-        except Exception as e:
-            logger.exception("DB init failed: %s", e)
-
-    # fcntl may not be available on Windows; Render is Linux so you're fine
-    try:
-        import fcntl  # noqa: F401
-        _HAS_FCNTL = True
-    except Exception:
-        _HAS_FCNTL = False
-
-    def _locked_init(target):
-        lock_path = MEM_DB_PATH + ".init.lock"
-        with open(lock_path, "a+") as f:
-            f.seek(0)
-            try:
-                fcntl.flock(f, fcntl.LOCK_EX)
-                target()
-            finally:
-                try:
-                    fcntl.flock(f, fcntl.LOCK_UN)
-                except Exception:
-                    pass
-
+            _do_init()
+        except sqlite3.OperationalError as e:
+            if "locked" in str(e).lower():
+                time.sleep(1.0)
+                _do_init()
+            else:
+                raise
     if _HAS_FCNTL:
         _locked_init(_safe)
     else:
         _safe()
 
-# ---------------------------------------------------------
-# MEMORY HELPERS
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
+# LIGHTWEIGHT MEMORY (exact dupes + style memory)
+# ----------------------------------------------------------------------------
 def _normalize_for_memory(text: str) -> str:
     t = normalize_ws(text).lower()
-    # remove punctuation except apostrophes inside words
-    t = re.sub(r"[^\w\s']+", " ", t)
+    t = re.sub(r"[^\w\s']+", " ", t)         # keep word/apostrophes
     t = re.sub(r"\s+", " ", t).strip()
     return t
 
 def comment_seen(text: str) -> bool:
+    norm = _normalize_for_memory(text)
+    if not norm:
+        return False
+    h = sha256(norm)
     try:
-        norm = _normalize_for_memory(text)
-        key = sha256(norm)
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
-            return conn.execute("SELECT 1 FROM comments_seen WHERE hash=? LIMIT 1", (key,)).fetchone() is not None
-        finally:
-            conn.close()
+        with get_conn() as conn:
+            row = conn.execute("SELECT 1 FROM comments_seen WHERE hash=? LIMIT 1", (h,)).fetchone()
+            return row is not None
     except Exception:
         return False
 
-def remember_comment(text: str):
+def remember_comment(text: str, url: str = "", lang: Optional[str] = None) -> None:
     try:
         norm = _normalize_for_memory(text)
-        key = sha256(norm)
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
-            conn.execute("INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES (?,?)", (key, now_ts()))
-            conn.commit()
-        finally:
-            conn.close()
+        if not norm:
+            return
+        h = sha256(norm)
+        with get_conn() as conn:
+            conn.execute("INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES(?,?)", (h, now_ts()))
+            # also store in comments for auditing
+            conn.execute("INSERT INTO comments(url, lang, text) VALUES(?,?,?)", (url, lang, text))
     except Exception:
         pass
-    # extra: remember trigrams + opener + store in comments table (url/lan unknown here)
+    # additional memory
     try:
         remember_ngrams(text)
         remember_opener(_openers(text))
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
-            conn.execute("INSERT INTO comments(url, lang, text) VALUES(?,?,?)", ("", None, text))
-            conn.commit()
-        finally:
-            conn.close()
     except Exception:
         pass
 
-# ---- OTP style memory helpers (openers + trigrams + template burn) ---------
+# ---- OTP helpers: openers, n-grams, and template burn ----------------------
 def _openers(text: str) -> str:
     w = re.findall(r"[A-Za-z0-9']+", (text or "").lower())
     return " ".join(w[:3])
@@ -194,23 +210,15 @@ def _trigrams(text: str) -> List[str]:
 
 def opener_seen(opener: str) -> bool:
     try:
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
-            row = conn.execute("SELECT 1 FROM comments_openers_seen WHERE opener=? LIMIT 1", (opener,)).fetchone()
-            return row is not None
-        finally:
-            conn.close()
+        with get_conn() as conn:
+            return conn.execute("SELECT 1 FROM comments_openers_seen WHERE opener=? LIMIT 1", (opener,)).fetchone() is not None
     except Exception:
         return False
 
 def remember_opener(opener: str):
     try:
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
+        with get_conn() as conn:
             conn.execute("INSERT OR IGNORE INTO comments_openers_seen(opener, created_at) VALUES (?,?)", (opener, now_ts()))
-            conn.commit()
-        finally:
-            conn.close()
     except Exception:
         pass
 
@@ -220,15 +228,12 @@ def trigram_overlap_bad(text: str, threshold: int = 2) -> bool:
         return False
     hits = 0
     try:
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
+        with get_conn() as conn:
             for g in grams:
                 if conn.execute("SELECT 1 FROM comments_ngrams_seen WHERE ngram=? LIMIT 1", (g,)).fetchone():
                     hits += 1
                     if hits >= threshold:
                         return True
-        finally:
-            conn.close()
     except Exception:
         return False
     return False
@@ -239,69 +244,41 @@ def remember_ngrams(text: str):
         return
     now = now_ts()
     try:
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
-            conn.executemany("INSERT OR IGNORE INTO comments_ngrams_seen(ngram, created_at) VALUES (?,?)", [(g, now) for g in grams])
-            conn.commit()
-        finally:
-            conn.close()
+        with get_conn() as conn:
+            conn.executemany(
+                "INSERT OR IGNORE INTO comments_ngrams_seen(ngram, created_at) VALUES (?,?)",
+                [(g, now) for g in grams],
+            )
     except Exception:
         pass
 
 def template_burned(tmpl: str) -> bool:
     thash = sha256(tmpl)
     try:
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
-            row = conn.execute("SELECT 1 FROM comments_templates_seen WHERE thash=? LIMIT 1", (thash,)).fetchone()
-            return row is not None
-        finally:
-            conn.close()
+        with get_conn() as conn:
+            return conn.execute("SELECT 1 FROM comments_templates_seen WHERE thash=? LIMIT 1", (thash,)).fetchone() is not None
     except Exception:
         return False
 
 def remember_template(tmpl: str):
     thash = sha256(tmpl)
     try:
-        conn = sqlite3.connect(MEM_DB_PATH, timeout=3.0)
-        try:
+        with get_conn() as conn:
             conn.execute("INSERT OR IGNORE INTO comments_templates_seen(thash, created_at) VALUES (?,?)", (thash, now_ts()))
-            conn.commit()
-        finally:
-            conn.close()
     except Exception:
         pass
 
-# ---------------------------------------------------------
-# TWEET FETCH PLACEHOLDER (you can swap with your utils)
-# ---------------------------------------------------------
-@dataclass
-class TweetData:
-    url: str
-    text: str
-    author_name: Optional[str]
-    lang: Optional[str]
-
-def fetch_tweet(url: str) -> TweetData:
-    """
-    Replace with your existing VX/FX fetcher. We keep the signature.
-    """
-    # placeholder: derive author from URL, no network calls (offline)
-    handle = _extract_handle_from_url(url)
-    # Use handle as author if nothing else
-    return TweetData(url=url, text=url, author_name=handle, lang=None)
-
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
 # CHUNKER
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
 def chunked(seq, size):
     size = max(1, int(size))
     for i in range(0, len(seq), size):
         yield seq[i:i+size]
 
-# ---------------------------------------------------------
-# OFFLINE COMMENT GENERATOR
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
+# GENERATOR
+# ----------------------------------------------------------------------------
 EN_STOPWORDS = {
     "the","a","an","and","or","but","to","in","on","of","for","with","at","from",
     "by","about","as","into","like","through","after","over","between","out",
@@ -310,15 +287,22 @@ EN_STOPWORDS = {
 }
 
 AI_BLOCKLIST = {
-    "in case you missed it","i think","i believe","great point","amazing",
-    "just saying","according to","in summary","to be honest"
-}
-# expand
-AI_BLOCKLIST.update({
+    # your original + expanded
+    "amazing","awesome","incredible","empowering","game changer","game-changing","transformative",
+    "paradigm shift","in this digital age","as an ai","as a language model","in conclusion",
+    "in summary","furthermore","moreover","navigate this landscape","ever-evolving landscape",
+    "leverage this insight","cutting edge","state of the art","unprecedented","unleash","unleashing",
+    "unlock the power","harness the power","embark on this journey","empower","revolutionize",
+    "disruptive","slay","bestie","like and retweet","thoughts?","agree?","who's with me",
+    "drop your thoughts","smash that like button","link in bio","in case you missed it","i think",
+    "i believe","great point","just saying","according to","to be honest",
+    # new stricter bits
     "actually","literally","personally i think","my take","as someone who",
     "at the end of the day","moving forward","synergy","circle back","bandwidth",
-    "double down","let that sink in","on so many levels","tbh","tracks"
-})
+    "double down","let that sink in","on so many levels","tbh","tracks",
+}
+
+EMOJI_PATTERN = re.compile("[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", flags=re.UNICODE)
 
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
     text = (raw_text or "").strip()
@@ -390,15 +374,15 @@ class OfflineCommentGenerator:
             if phrase in low:
                 return True
         # pattern filters
-        if re.search(r"\b(so|very|really)\s+\1\b", low):
+        if re.search(r"\b(so|very|really)\s+\1\b", low):  # repeated adverbs
             return True
-        if len(re.findall(r"\.\.\.", text)) > 1:
+        if len(re.findall(r"\.\.\.", text)) > 1:          # ellipses abuse
             return True
-        if re.search(r"[🔥🚀✨]{2,}", text):
+        if re.search(r"[🔥🚀✨]{2,}", text):               # emoji clusters
             return True
-        if low.count("—") > 1:
+        if low.count("—") > 1:                            # em-dash spam
             return True
-        if re.search(r"\btracks\b.*\btbh\b", low):
+        if re.search(r"\btracks\b.*\btbh\b", low):        # “tracks … tbh”
             return True
         return False
 
@@ -411,8 +395,7 @@ class OfflineCommentGenerator:
         if trigram_overlap_bad(text, threshold=2):
             return False
         toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
-        blk = {w.lower() for w in AI_BLOCKLIST}
-        novel = [t for t in toks if t not in blk and t not in EN_STOPWORDS]
+        novel = [t for t in toks if t not in EN_STOPWORDS and t not in {w.lower() for w in AI_BLOCKLIST}]
         return len(set(novel)) >= 2
 
     def _length_ok(self, text: str, mode: str) -> bool:
@@ -426,14 +409,13 @@ class OfflineCommentGenerator:
         t = re.sub(r"\s([,.;:?!])", r"\1", t)
         t = t.strip()
         if english:
-            # English: zero emoji
-            t = re.sub(r"[^\x00-\x7F]+", "", t)
+            t = re.sub(r"[^\x00-\x7F]+", "", t)  # English: strip emoji
         if len(t) < 4:
             return ""
         return t
 
     def _english_buckets(self, ctx: Dict[str, Any]) -> Dict[str, List[str]]:
-        # minimal, you can expand with more variants
+        # compact set; anti-repeat rules give variety
         name_pref = ""
         if self.random.random() < 0.30:
             if ctx.get("handle"):
@@ -442,7 +424,7 @@ class OfflineCommentGenerator:
                 first = ctx["author_name"].split()[0]
                 name_pref = f"{first}, "
 
-        focus_slot = "{focus}"  # may be empty
+        focus_slot = "{focus}"
         return {
             "answerish": [
                 f"{name_pref}short answer: that {focus_slot} detail matters most",
@@ -467,7 +449,6 @@ class OfflineCommentGenerator:
         }
 
     def _native_buckets(self, script: str, ctx: Dict[str, Any]) -> List[str]:
-        # lightweight native lines; extend as you like per language
         focus_slot = "{focus}"
         if script == "bn":  # Bengali
             return [
@@ -487,7 +468,7 @@ class OfflineCommentGenerator:
                 f"{focus_slot} هو التفصيل اللي يوضح الصورة",
                 f"لو ركّزنا على {focus_slot} تتّضح الفكرة",
             ]
-        # default: just echo English-like neutral (still counted as native path)
+        # default neutral
         return [
             f"{focus_slot} here is the practical hinge",
             f"Focus on {focus_slot} and the rest aligns",
@@ -505,9 +486,7 @@ class OfflineCommentGenerator:
         tokens += ctx.get("projects", [])
         tokens += ctx.get("keywords", [])
         tokens += ctx.get("numbers", [])
-        # keep cashtags/hashtags as-is
         tokens = [t for t in tokens if t]
-        # avoid duplicates
         seen = set(); out = []
         for t in tokens:
             if t not in seen:
@@ -556,7 +535,6 @@ class OfflineCommentGenerator:
             remember_comment(out)
             return {"kind": kind, "text": out}
 
-        # fallback: minimal specific line
         if last_candidate:
             return {"kind": "fallback", "text": last_candidate}
         return None
@@ -602,101 +580,96 @@ class OfflineCommentGenerator:
 
 generator = OfflineCommentGenerator()
 
-# ---------------------------------------------------------
-# API
-# ---------------------------------------------------------
-@app.route("/comment", methods=["POST"])
-def comment():
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-        urls = data.get("urls") or []
-        if not isinstance(urls, list):
-            return jsonify({"error": "bad_request", "code": "urls_must_be_list"}), 400
-        urls = urls[:MAX_URLS_PER_REQUEST]
+# ----------------------------------------------------------------------------
+# CORS + HEALTH
+# ----------------------------------------------------------------------------
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
 
-        results = []
-        for batch in chunked(urls, 4):
+@app.route("/", methods=["GET"])
+def health():
+    return jsonify({"status": "ok"}), 200
+
+# ----------------------------------------------------------------------------
+# API
+# ----------------------------------------------------------------------------
+@app.route("/comment", methods=["POST", "OPTIONS"])
+def comment_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        urls = payload.get("urls")
+        if not isinstance(urls, list) or not urls:
+            return jsonify({"error": "Body must contain non-empty 'urls' array", "code": "bad_request"}), 400
+        try:
+            cleaned_urls = clean_and_normalize_urls(urls)
+        except CrownTALKError as e:
+            return jsonify({"error": str(e), "code": e.code}), 400
+        except Exception:
+            return jsonify({"error": "Failed to clean URLs", "code": "url_clean_error"}), 400
+
+        results, failed = [], []
+        for batch in chunked(cleaned_urls, BATCH_SIZE):
             for url in batch:
                 try:
-                    t = fetch_tweet(url)
+                    t = fetch_tweet_data(url)  # your robust fetch
                     comments = generator.generate_comments(
                         text=t.text,
                         author=t.author_name or None,
                         handle=_extract_handle_from_url(url),
                         lang_hint=t.lang or None,
                     )
-                    results.append({"url": url, "comments": [{"text": c["text"], "lang": c["lang"]} for c in comments]})
-                except Exception as e:
-                    logger.exception("Error generating for %s: %s", url, e)
-                    results.append({"url": url, "comments": [], "error": "internal_error", "code": "internal_error"})
-        return jsonify({"results": results})
+                    results.append({"url": url, "comments": comments})
+                except CrownTALKError as e:
+                    failed.append({"url": url, "reason": str(e), "code": e.code})
+                except Exception:
+                    logger.exception("Unhandled error while processing %s", url)
+                    failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
+                time.sleep(0.05)  # tiny yield
+        return jsonify({"results": results, "failed": failed}), 200
     except Exception as e:
         logger.exception("Unhandled error: %s", e)
         return jsonify({"error": "internal_error", "code": "internal_error"}), 500
 
-@app.route("/reroll", methods=["POST"])
-def reroll():
+@app.route("/reroll", methods=["POST", "OPTIONS"])
+def reroll_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
     try:
         data = request.get_json(force=True, silent=True) or {}
-        url = data.get("url")
+        url = data.get("url") or ""
         if not url:
-            return jsonify({"error": "bad_request", "code": "missing_url"}), 400
-
+            return jsonify({"error": "Missing 'url' field", "comments": [], "code": "bad_request"}), 400
         try:
-            t = fetch_tweet(url)
+            t = fetch_tweet_data(url)
             comments = generator.generate_comments(
                 text=t.text,
                 author=t.author_name or None,
                 handle=_extract_handle_from_url(url),
                 lang_hint=t.lang or None,
             )
-            return jsonify({"url": url, "comments": [{"text": c["text"], "lang": c["lang"]} for c in comments]})
-        except Exception as e:
-            logger.exception("Error during reroll: %s", e)
+            return jsonify({"url": url, "comments": comments}), 200
+        except CrownTALKError as e:
+            return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
+        except Exception:
+            logger.exception("Unhandled error during reroll for %s", url)
             return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
     except Exception:
-        logger.exception("Unhandled error during reroll for %s", url)
-        return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
+        logger.exception("Unhandled error during reroll")
+        return jsonify({"error": "internal_error", "comments": [], "code": "internal_error"}), 500
 
-# ---------------------------------------------------------
-# CHUNKER
-# ---------------------------------------------------------
-def chunked(seq, size):
-    size = max(1, int(size))
-    for i in range(0, len(seq), size):
-        yield seq[i:i+size]
-
-# ---------------------------------------------------------
-# OFFLINE COMMENT GENERATOR
-# ---------------------------------------------------------
-EN_STOPWORDS = {
-    "the","a","an","and","or","but","to","in","on","of","for","with","at","from",
-    "by","about","as","into","like","through","after","over","between","out",
-    "against","during","without","before","under","around","among","is","are","be",
-    "am","was","were","it","its","that","this"
-}
-
-# (The generator and helpers are already defined above.)
-
-# ---------------------------------------------------------
+# ----------------------------------------------------------------------------
 # BOOT
-# ---------------------------------------------------------
-def _do_init():
-    init_db()
-
-def _safe_boot():
-    try:
-        _do_init()
-    except Exception as e:
-        logger.error("Boot init failed: %s", e)
-
+# ----------------------------------------------------------------------------
 def main():
     init_db()
     threading.Thread(target=keep_alive, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
 
-# WSGI / local
 if __name__ == "__main__":
     main()
-else:
-    _safe_boot()
