@@ -93,3 +93,6 @@ text{
 
 /* Prevent page jump when overlay appears */
 html, body{ height: 100%; }
+
+/* Hide any raster fallback inside the loader (safety) */
+.chip-loader .loader img { display: none !important; }
