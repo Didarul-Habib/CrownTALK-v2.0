@@ -15,6 +15,9 @@
   pointer-events: none; /* blocks click-through visually, but we’ll wrap inner to catch events */
 }
 
+body.is-generating { overflow: hidden; }
+
+
 /* Show while generating */
 body.is-generating .chip-loader{
   display: flex;
