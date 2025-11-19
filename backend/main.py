@@ -6,16 +6,14 @@ import threading
 import time
 import os
 import re
-import json
 import random
 import sqlite3
 import hashlib
 import logging
-from dataclasses import dataclass
 from typing import List, Optional, Dict, Any, Tuple
 from urllib.parse import urlparse
 
-# ---- import your existing helpers (kept unchanged) --------------------------
+# ---- your helpers -----------------------------------------------------------
 from utils import (
     CrownTALKError,
     fetch_tweet_data,          # your VX/FX fetcher with retry/backoff
@@ -30,8 +28,8 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crowntalk")
 
 PORT = int(os.environ.get("PORT", "10000"))
-DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")          # your original DB
-MEM_DB_PATH = os.environ.get("MEM_DB_PATH", DB_PATH)               # reuse same file
+DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
+MEM_DB_PATH = os.environ.get("MEM_DB_PATH", DB_PATH)  # reuse same sqlite file
 MAX_URLS_PER_REQUEST = 8
 BATCH_SIZE = 2
 KEEP_ALIVE_INTERVAL = 600  # seconds
@@ -45,8 +43,7 @@ def keep_alive():
         return
     while True:
         try:
-            # ping /
-            import requests  # stddep in your requirements
+            import requests  # already in your requirements
             requests.get(f"{BACKEND_PUBLIC_URL}/", timeout=5)
         except Exception:
             pass
@@ -287,13 +284,13 @@ EN_STOPWORDS = {
 }
 
 AI_BLOCKLIST = {
-    # your original + expanded
+    # original + expanded
     "amazing","awesome","incredible","empowering","game changer","game-changing","transformative",
     "paradigm shift","in this digital age","as an ai","as a language model","in conclusion",
     "in summary","furthermore","moreover","navigate this landscape","ever-evolving landscape",
     "leverage this insight","cutting edge","state of the art","unprecedented","unleash","unleashing",
     "unlock the power","harness the power","embark on this journey","empower","revolutionize",
-    "disruptive","slay","bestie","like and retweet","thoughts?","agree?","who's with me",
+    "disruptive","bestie","like and retweet","thoughts?","agree?","who's with me",
     "drop your thoughts","smash that like button","link in bio","in case you missed it","i think",
     "i believe","great point","just saying","according to","to be honest",
     # new stricter bits
@@ -304,7 +301,12 @@ AI_BLOCKLIST = {
 
 EMOJI_PATTERN = re.compile("[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", flags=re.UNICODE)
 
-def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
+def build_context_profile(
+    raw_text: str,
+    url: Optional[str] = None,
+    tweet_author: Optional[str] = None,
+    handle: Optional[str] = None,
+) -> Dict[str, Any]:
     text = (raw_text or "").strip()
     projects, keywords, numbers = set(), set(), set()
     is_question = "?" in text
@@ -415,7 +417,6 @@ class OfflineCommentGenerator:
         return t
 
     def _english_buckets(self, ctx: Dict[str, Any]) -> Dict[str, List[str]]:
-        # compact set; anti-repeat rules give variety
         name_pref = ""
         if self.random.random() < 0.30:
             if ctx.get("handle"):
@@ -560,51 +561,52 @@ class OfflineCommentGenerator:
             return candidate
         return last_candidate or None
 
-    def generate_comments(self, text: str, author: Optional[str], handle: Optional[str] = None, lang_hint: Optional[str] = None) -> List[Dict[str, Any]]:
-    ctx = build_context_profile(text, url=None, tweet_author=author, handle=handle)
-    is_non_english = ctx["script"] != "latn"
+    def generate_comments(
+        self,
+        text: str,
+        author: Optional[str],
+        handle: Optional[str] = None,
+        lang_hint: Optional[str] = None,
+    ) -> List[Dict[str, Any]]:
+        ctx = build_context_profile(text, url=None, tweet_author=author, handle=handle)
+        is_non_english = ctx["script"] != "latn"
 
-    comments: List[Dict[str, Any]] = []
+        comments: List[Dict[str, Any]] = []
 
-    if is_non_english:
-        # 1) Native
-        native = self._make_native_comment(text, ctx)
-        if native:
-            comments.append({"lang": ctx["script"], "text": native})
+        if is_non_english:
+            # 1) Native
+            native = self._make_native_comment(text, ctx)
+            if native:
+                comments.append({"lang": ctx["script"], "text": native})
 
-        # 2) English
-        en = self._make_english_comment(text, author, ctx)
-        if en:
-            comments.append({"lang": "en", "text": en["text"]})
+            # 2) English
+            en = self._make_english_comment(text, author, ctx)
+            if en:
+                comments.append({"lang": "en", "text": en["text"]})
+            return comments
+
+        # English tweet: return TWO different English lines
+        en1 = self._make_english_comment(text, author, ctx)
+        en2 = None
+        for _ in range(6):
+            cand = self._make_english_comment(text, author, ctx)
+            if not cand or not en1:
+                continue
+            if cand["text"].strip().lower() != en1["text"].strip().lower():
+                en2 = cand
+                break
+
+        if en1:
+            comments.append({"lang": "en", "text": en1["text"]})
+        if en2:
+            comments.append({"lang": "en", "text": en2["text"]})
+
+        if len(comments) == 1:
+            cand = self._make_english_comment(text, author, ctx)
+            if cand and cand["text"].strip().lower() != comments[0]["text"].strip().lower():
+                comments.append({"lang": "en", "text": cand["text"]})
 
         return comments
-
-    # English tweet: return TWO different English lines
-    en1 = self._make_english_comment(text, author, ctx)
-
-    en2 = None
-    # Try a few times to get a second distinct line (anti-dup + burned template helps)
-    for _ in range(6):
-        cand = self._make_english_comment(text, author, ctx)
-        if not cand or not en1:
-            continue
-        if cand["text"].strip().lower() != en1["text"].strip().lower():
-            en2 = cand
-            break
-
-    if en1:
-        comments.append({"lang": "en", "text": en1["text"]})
-    if en2:
-        comments.append({"lang": "en", "text": en2["text"]})
-
-    # If for some reason we only got one, try one last roll (best-effort)
-    if len(comments) == 1:
-        cand = self._make_english_comment(text, author, ctx)
-        if cand and cand["text"].strip().lower() != comments[0]["text"].strip().lower():
-            comments.append({"lang": "en", "text": cand["text"]})
-
-    return comments
-
 
 generator = OfflineCommentGenerator()
 
@@ -645,7 +647,7 @@ def comment_endpoint():
         for batch in chunked(cleaned_urls, BATCH_SIZE):
             for url in batch:
                 try:
-                    t = fetch_tweet_data(url)  # your robust fetch
+                    t = fetch_tweet_data(url)  # your robust fetcher
                     comments = generator.generate_comments(
                         text=t.text,
                         author=t.author_name or None,
