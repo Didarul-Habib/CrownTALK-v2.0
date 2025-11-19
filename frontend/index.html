@@ -2,16 +2,19 @@
 <html lang="en" data-theme="dark-purple">
   <head>
     <meta charset="utf-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
+    <meta
+      name="viewport"
+      content="width=device-width, initial-scale=1, viewport-fit=cover"
+    />
     <title>CrownTALK- Comment Generator</title>
 
     <!-- Core styles -->
     <link rel="stylesheet" href="static/styles.css" />
     <link rel="stylesheet" href="static/generate-button.css" />
-    <!-- NEW: chip loader styles -->
     <link rel="stylesheet" href="static/loader.css" />
+    <link rel="stylesheet" href="static/inputbox.css" />
 
-    <link rel="shortcut icon" href="static/logo.png" type="image/png">
+    <link rel="shortcut icon" href="static/logo.png" type="image/png" />
   </head>
   <body>
     <div class="app-shell">
@@ -20,7 +23,6 @@
         <div class="hero-main">
           <div class="hero-orbit">
             <div class="hero-orbit-inner">
-              <!-- Your logo image -->
               <img src="static/logo.png" alt="CrownTALK" />
             </div>
           </div>
@@ -34,11 +36,11 @@
         <div class="theme-switcher">
           <span class="theme-label">Theme</span>
           <div class="theme-dots">
-            <button class="theme-dot" data-theme="white"   title="White"></button>
+            <button class="theme-dot" data-theme="white" title="White"></button>
             <button class="theme-dot" data-theme="dark-purple" title="Purple"></button>
-            <button class="theme-dot" data-theme="gold"    title="Gold"></button>
-            <button class="theme-dot" data-theme="blue"    title="Blue"></button>
-            <button class="theme-dot" data-theme="black"   title="Black"></button>
+            <button class="theme-dot" data-theme="gold" title="Gold"></button>
+            <button class="theme-dot" data-theme="blue" title="Blue"></button>
+            <button class="theme-dot" data-theme="black" title="Black"></button>
             <button class="theme-dot" data-theme="emerald" title="Emerald"></button>
             <button class="theme-dot" data-theme="crimson" title="Crimson"></button>
           </div>
@@ -50,51 +52,64 @@
         <section class="card">
           <div class="card-head">
             <h2>Tweet URLs</h2>
-            <p class="muted">Paste one or more X (Twitter) post links (one per line)</p>
           </div>
 
-          <textarea
-            id="urlInput"
-            class="textarea"
-            rows="8"
-            placeholder="https://x.com/user/status/123...
-https://x.com/user/status/456..."
-            spellcheck="false"
-          ></textarea>
+          <!-- NEW: Chat-style input panel WITH header -->
+<div class="ai-chat-input">
+  <div class="chat-container">
+    <div class="chat-header">
+      <div class="status-section">
+        <div class="status-indicator" aria-hidden="true"></div>
+        <span class="status-text">CrownTALK</span>
+      </div>
+      <div class="badges">
+        <span class="badge badge-gpt">TALK-5</span>
+        <span class="badge badge-pro">Pro</span>
+      </div>
+    </div>
+
+    <div class="input-section">
+      <textarea
+        id="urlInput"
+        class="main-input"
+        rows="8"
+        placeholder="Paste one or more X (Twitter) post links — one per line (e.g., https://x.com/user/status/123...)"
+        spellcheck="false"
+      ></textarea>
+      <div class="gradient-overlay"></div>
+    </div>
+
+    <div class="footer-info">
+      <div class="shortcut-info">
+        <svg class="info-icon" fill="currentColor" viewBox="0 0 20 20" aria-hidden="true">
+          <path fill-rule="evenodd" d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z" clip-rule="evenodd"></path>
+        </svg>
+        <span>Press <kbd class="shortcut-key">Enter</kbd> for new line</span>
+      </div>
+
+      <div class="system-status">
+        <div class="system-indicator" aria-hidden="true"></div>
+        <span>All Systems Operational</span>
+      </div>
+    </div>
+
+    <div class="floating-overlay"></div>
+  </div>
+</div>
+
 
           <div class="controls">
             <div class="btn-wrapper">
-              <!-- NEW: Uiverse mean-bird-62 button adapted, but keeping id=generateBtn -->
               <button id="generateBtn" type="button" class="btn">
                 <div class="dots_border"></div>
-                <svg
-                  xmlns="http://www.w3.org/2000/svg"
-                  fill="none"
-                  viewBox="0 0 24 24"
-                  class="sparkle"
-                  aria-hidden="true"
-                >
-                  <path
-                    class="path"
-                    stroke-linejoin="round"
-                    stroke-linecap="round"
-                    d="M14.187 8.096L15 5.25L15.813 8.096C16.0231 8.83114 16.4171 9.50062 16.9577 10.0413C17.4984 10.5819 18.1679 10.9759 18.903 11.186L21.75 12L18.904 12.813C18.1689 13.0231 17.4994 13.4171 16.9587 13.9577C16.4181 14.4984 16.0241 15.1679 15.814 15.903L15 18.75L14.187 15.904C13.9769 15.1689 13.5829 14.4994 13.0423 13.9587C12.5016 13.4181 11.8321 13.0241 11.097 12.814L8.25 12L11.096 11.187C11.8311 10.9769 12.5006 10.5829 13.0413 10.0423C13.5819 9.50162 13.9759 8.83214 14.186 8.097L14.187 8.096Z"
-                  ></path>
-                  <path
-                    class="path"
-                    stroke-linejoin="round"
-                    stroke-linecap="round"
-                    d="M6 14.25L5.741 15.285C5.59267 15.8785 5.28579 16.4206 4.85319 16.8532C4.42059 17.2858 3.87853 17.5927 3.285 17.741L2.25 18L3.285 18.259C3.87853 18.4073 4.42059 18.7142 4.85319 19.1468C5.28579 19.5794 5.59267 20.1215 5.741 20.715L6 21.75L6.259 20.715C6.40725 20.1216 6.71398 19.5796 7.14639 19.147C7.5788 18.7144 8.12065 18.4075 8.714 18.259L9.75 18L8.714 17.741C8.12065 17.5925 7.5788 17.2856 7.14639 16.853C6.71398 16.4204 6.40725 15.8784 6.259 15.285L6 14.25Z"
-                  ></path>
-                  <path
-                    class="path"
-                    stroke-linejoin="round"
-                    stroke-linecap="round"
-                    d="M6.5 4L6.303 4.5915C6.24777 4.75718 6.15472 4.90774 6.03123 5.03123C5.90774 5.15472 5.75718 5.24777 5.5915 5.303L5 5.5L5.5915 5.697C5.75718 5.75223 5.90774 5.84528 6.03123 5.96877C6.15472 6.09226 6.24777 6.24282 6.303 6.4085L6.5 7L6.697 6.4085C6.75223 6.24282 6.84528 6.09226 6.96877 5.96877C7.09226 5.84528 7.24282 5.75223 7.4085 5.697L8 5.5L7.4085 5.303C7.24282 5.24777 7.09226 5.15472 6.96877 5.03123C6.84528 4.90774 6.75223 4.75718 6.697 4.5915L6.5 4Z"
-                  ></path>
+                <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="sparkle" aria-hidden="true">
+                  <path class="path" stroke-linejoin="round" stroke-linecap="round"
+                    d="M14.187 8.096L15 5.25L15.813 8.096C16.0231 8.83114 16.4171 9.50062 16.9577 10.0413C17.4984 10.5819 18.1679 10.9759 18.903 11.186L21.75 12L18.904 12.813C18.1689 13.0231 17.4994 13.4171 16.9587 13.9577C16.4181 14.4984 16.0241 15.1679 15.814 15.903L15 18.75L14.187 15.904C13.9769 15.1689 13.5829 14.4994 13.0423 13.9587C12.5016 13.4181 11.8321 13.0241 11.097 12.814L8.25 12L11.096 11.187C11.8311 10.9769 12.5006 10.5829 13.0413 10.0423C13.5819 9.50162 13.9759 8.83214 14.186 8.097L14.187 8.096Z"></path>
+                  <path class="path" stroke-linejoin="round" stroke-linecap="round"
+                    d="M6 14.25L5.741 15.285C5.59267 15.8785 5.28579 16.4206 4.85319 16.8532C4.42059 17.2858 3.87853 17.5927 3.285 17.741L2.25 18L3.285 18.259C3.87853 18.4073 4.42059 18.7142 4.85319 19.1468C5.28579 19.5794 5.59267 20.1215 5.741 20.715L6 21.75L6.259 20.715C6.40725 20.1216 6.71398 19.5796 7.14639 19.147C7.5788 18.7144 8.12065 18.4075 8.714 18.259L9.75 18L8.714 17.741C8.12065 17.5925 7.5788 17.2856 7.14639 16.853C6.71398 16.4204 6.40725 15.8784 6.259 15.285L6 14.25Z"></path>
+                  <path class="path" stroke-linejoin="round" stroke-linecap="round"
+                    d="M6.5 4L6.303 4.5915C6.24777 4.75718 6.15472 4.90774 6.03123 5.03123C5.90774 5.15472 5.75718 5.24777 5.5915 5.303L5 5.5L5.5915 5.697C5.75718 5.75223 5.90774 5.84528 6.03123 5.96877C6.15472 6.09226 6.24777 6.24282 6.303 6.4085L6.5 7L6.697 6.4085C6.75223 6.24282 6.84528 6.09226 6.96877 5.96877C7.09226 5.84528 7.24282 5.75223 7.4085 5.697L8 5.5L7.4085 5.303C7.24282 5.24777 7.09226 5.15472 6.96877 5.03123C6.84528 4.90774 6.75223 4.75718 6.697 4.5915L6.5 4Z"></path>
                 </svg>
-
-                <!-- Two labels so we can swap on body.is-generating -->
                 <span class="text_button tb-1">Generate</span>
                 <span class="text_button tb-2">Generating</span>
               </button>
@@ -112,25 +127,23 @@ https://x.com/user/status/456..."
           </div>
         </section>
 
-        <!-- ===== RESULTS ===== -->
+        <!-- ===== RESULTS / FAILED / HISTORY ===== -->
         <section class="card">
           <div class="card-head">
             <h2>Results <span id="resultCount" class="chip">0</span></h2>
-            <p class="muted">Human-like comments ready to copy.</p>
+            <p class="muted">Human style smart comments ready to copy</p>
           </div>
           <div id="results" class="tweets"></div>
         </section>
 
-        <!-- ===== FAILED ===== -->
         <section class="card">
           <div class="card-head">
             <h2>Failed <span id="failedCount" class="chip">0</span></h2>
-            <p class="muted">Errors while processing your URLs.</p>
+            <p class="muted">Errors while processing your URLs(Maybe url is broken or tweet is private/broken)</p>
           </div>
           <div id="failed" class="failed-list"></div>
         </section>
 
-        <!-- ===== CLIPBOARD HISTORY ===== -->
         <section class="card">
           <div class="card-head">
             <h2>Clipboard History</h2>
@@ -143,104 +156,24 @@ https://x.com/user/status/456..."
       </main>
 
       <!-- ===== FOOTER ===== -->
-    <footer class="footer">
-      <div>© <span id="year"></span> CrownTALK</div>
-      <div>
-        Built by
-        <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a>
-      </div>
-    </footer>
+      <footer class="footer">
+        <div>© <span id="year"></span> CrownTALK</div>
+        <div>
+          Built by
+          <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a>
+        </div>
+      </footer>
+    </div>
 
-    <!-- ===== NEW: Fullscreen Loading Overlay (auto-shows when body.is-generating) ===== -->
+    <!-- Loader overlay -->
     <div id="chipLoader" class="chip-loader" aria-hidden="true">
       <div class="main-container">
         <div class="loader">
-          <!-- Your provided SVG -->
-          <svg viewBox="0 0 800 500" xmlns="http://www.w3.org/2000/svg" role="img" aria-label="Loading">
-            <defs>
-              <linearGradient id="chipGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#2d2d2d"></stop>
-                <stop offset="100%" stop-color="#0f0f0f"></stop>
-              </linearGradient>
-
-              <linearGradient id="textGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#eeeeee"></stop>
-                <stop offset="100%" stop-color="#888888"></stop>
-              </linearGradient>
-
-              <linearGradient id="pinGradient" x1="1" y1="0" x2="0" y2="0">
-                <stop offset="0%" stop-color="#bbbbbb"></stop>
-                <stop offset="50%" stop-color="#888888"></stop>
-                <stop offset="100%" stop-color="#555555"></stop>
-              </linearGradient>
-            </defs>
-
-            <g id="traces">
-              <path d="M100 100 H200 V210 H326" class="trace-bg"></path>
-              <path d="M100 100 H200 V210 H326" class="trace-flow purple"></path>
-
-              <path d="M80 180 H180 V230 H326" class="trace-bg"></path>
-              <path d="M80 180 H180 V230 H326" class="trace-flow blue"></path>
-
-              <path d="M60 260 H150 V250 H326" class="trace-bg"></path>
-              <path d="M60 260 H150 V250 H326" class="trace-flow yellow"></path>
-
-              <path d="M100 350 H200 V270 H326" class="trace-bg"></path>
-              <path d="M100 350 H200 V270 H326" class="trace-flow green"></path>
-
-              <path d="M700 90 H560 V210 H474" class="trace-bg"></path>
-              <path d="M700 90 H560 V210 H474" class="trace-flow blue"></path>
-
-              <path d="M740 160 H580 V230 H474" class="trace-bg"></path>
-              <path d="M740 160 H580 V230 H474" class="trace-flow green"></path>
-
-              <path d="M720 250 H590 V250 H474" class="trace-bg"></path>
-              <path d="M720 250 H590 V250 H474" class="trace-flow red"></path>
-
-              <path d="M680 340 H570 V270 H474" class="trace-bg"></path>
-              <path d="M680 340 H570 V270 H474" class="trace-flow yellow"></path>
-            </g>
-
-            <rect
-              x="330" y="190" width="140" height="100" rx="20" ry="20"
-              fill="url(#chipGradient)" stroke="#222" stroke-width="3"
-              filter="drop-shadow(0 0 6px rgba(0,0,0,0.8))"
-            ></rect>
-
-            <g>
-              <rect x="322" y="205" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-              <rect x="322" y="225" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-              <rect x="322" y="245" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-              <rect x="322" y="265" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-            </g>
-
-            <g>
-              <rect x="470" y="205" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-              <rect x="470" y="225" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-              <rect x="470" y="245" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-              <rect x="470" y="265" width="8" height="10" fill="url(#pinGradient)" rx="2"></rect>
-            </g>
-
-            <text x="400" y="240" font-family="Arial, sans-serif" font-size="22" fill="url(#textGradient)" text-anchor="middle" alignment-baseline="middle">
-              Loading
-            </text>
-
-            <circle cx="100" cy="100" r="5" fill="black"></circle>
-            <circle cx="80" cy="180" r="5" fill="black"></circle>
-            <circle cx="60" cy="260" r="5" fill="black"></circle>
-            <circle cx="100" cy="350" r="5" fill="black"></circle>
-
-            <circle cx="700" cy="90" r="5" fill="black"></circle>
-            <circle cx="740" cy="160" r="5" fill="black"></circle>
-            <circle cx="720" cy="250" r="5" fill="black"></circle>
-            <circle cx="680" cy="340" r="5" fill="black"></circle>
-          </svg>
+          <img src="/mnt/data/4410320d-f64a-4f1e-8464-5674511cf067.png" alt="Loading" />
         </div>
       </div>
     </div>
-    <!-- ===== /loader overlay ===== -->
 
-    <!-- Main Script.js File Link -->
     <script src="static/script.js"></script>
   </body>
 </html>
