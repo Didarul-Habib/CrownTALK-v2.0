@@ -32,6 +32,8 @@ if USE_GROQ:
     except Exception:
         _groq_client = None
         USE_GROQ = False
+        
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # ----------------------------
 # App & logging
@@ -340,7 +342,7 @@ def offline_two_comments(tweet_text: str, author: str | None) -> list[str]:
 # ----------------------------
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     """
-    Ask Groq for exactly two distinct comments, enforce 6-13 words, human tone.
+    Ask Groq for exactly two distinct comments, enforce 6–13 words, human tone.
     Returns list[str] of length 2 or raises Exception to be caught by caller.
     """
     if not (USE_GROQ and _groq_client):
@@ -356,51 +358,78 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         "- Avoid repetitive templates; vary syntax and rhythm.\n"
         "- Return ONLY JSON array of two strings, no extra text."
     )
-
-    user_prompt = f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\nReturn JSON array of two distinct comments."
-
-    # We ask model to return JSON to avoid parsing hassle, then we still enforce our own rules.
-    resp = _groq_client.chat.completions.create(
-        model="llama-3.1-8b-instant",
-        messages=[
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        n=1,
-        max_tokens=120,
-        temperature=0.8,
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return JSON array of two distinct comments."
     )
 
+    # --- call Groq with small retry & Retry-After support ---
+    resp = None
+    for attempt in range(3):
+        try:
+            resp = _groq_client.chat.completions.create(
+                model=GROQ_MODEL,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                n=1,
+                max_tokens=120,
+                temperature=0.8,
+            )
+            break  # success
+        except Exception as e:
+            # Parse retry-after if available; otherwise progressive backoff
+            wait_secs = 0
+            # Try headers if the SDK exposes them
+            try:
+                hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
+                ra = hdrs.get("Retry-After")
+                if ra:
+                    wait_secs = max(1, int(ra))
+            except Exception:
+                pass
+
+            msg = str(e).lower()
+            if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
+                wait_secs = 2 + attempt  # 2s, 3s, 4s…
+
+            if wait_secs:
+                time.sleep(wait_secs)
+                continue
+            # Not a rate-limit style issue → bubble up
+            raise
+
+    if resp is None:
+        raise RuntimeError("Groq call failed after retries")
+
     raw = resp.choices[0].message.content.strip()
-    # Try to parse JSON array
-    comments = []
+
+    # --- parse JSON array of two strings (fallback to line split) ---
+    comments: list[str] = []
     try:
-        # Find JSON array in content
         m = re.search(r"\[[\s\S]*\]", raw)
         arr_text = m.group(0) if m else raw
         data = json.loads(arr_text)
         if isinstance(data, list):
             comments = [str(x) for x in data][:2]
-        else:
-            comments = []
     except Exception:
-        # If model didn't follow, try to split by lines
         parts = [p.strip("-• ").strip() for p in raw.splitlines() if p.strip()]
         comments = parts[:2]
 
-    # Enforce rules & uniqueness
+    # --- enforce rules & uniqueness; fallback to offline if needed ---
     comments = enforce_unique(comments)
-    # If we didn't get two valid uniques, backfill with offline logic
+
     tries = 0
     while len(comments) < 2 and tries < 2:
         tries += 1
-        fallback = offline_two_comments(tweet_text, author)
-        comments = enforce_unique(comments + fallback)
+        comments = enforce_unique(comments + offline_two_comments(tweet_text, author))
 
     if len(comments) < 2:
         raise RuntimeError("Could not produce two valid comments")
 
     return comments[:2]
+
 
 # ----------------------------
 # Chunking
