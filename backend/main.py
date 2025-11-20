@@ -418,13 +418,15 @@ CLOSERS = [
 
 def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     focus = pick_focus_token(key_tokens) or "this"
-    handle = ctx.get("handle"); author = ctx.get("author_name")
+    handle = ctx.get("handle")
+    author = ctx.get("author_name")
     prefix = ""
     r = random.random()
     if handle and r < 0.25:
         prefix = f"@{handle} "
     elif author and r < 0.40:
         prefix = f"{author.split()[0]}, "
+
     mode = random.choice(["lead+claim", "claim+nuance", "claim+closer", "two"])
     if mode == "lead+claim":
         s = f"{random.choice(LEADINS)} {random.choice(CLAIMS).format(focus=focus)}"
@@ -434,13 +436,15 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
         s = f"{random.choice(CLAIMS).format(focus=focus)}, {random.choice(CLOSERS)}"
     else:
         a = random.choice(CLAIMS).format(focus=focus)
-        b = random.choice(N nuance + CLOSERS) if (N:=[]) else random.choice(NUANCE + CLOSERS)  # guard
+        b = random.choice(NUANCE + CLOSERS)  # ← fixed line
         join = " — " if random.random() < 0.5 else ", "
         s = a + join + b.replace("{focus}", focus)
+
     out = normalize_ws(prefix + s)
     out = re.sub(r"\s([,.;:?!])", r"\1", out)
     out = re.sub(r"[.!?;:…]+$", "", out)
     return out
+
 
 # ------------------------------------------------------------------------------
 # Offline generator (with your OTP guards + 6–13 words enforcement)
