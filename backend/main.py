@@ -6,12 +6,12 @@ from collections import Counter
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 
-# ---- your helpers (unchanged) -----------------------------------------------
+# ---- use your existing helpers (unchanged) -----------------------------------
 from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # APP / CONFIG
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crowntalk")
@@ -23,9 +23,9 @@ BATCH_SIZE = 2
 KEEP_ALIVE_INTERVAL = 600
 MAX_URLS_PER_REQUEST = 8
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # KEEPALIVE (Render free)
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def keep_alive():
     if not BACKEND_PUBLIC_URL:
         return
@@ -37,9 +37,9 @@ def keep_alive():
             pass
         time.sleep(KEEP_ALIVE_INTERVAL)
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # INIT DB (safe across workers)
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 try:
     import fcntl
     _HAS_FCNTL = True
@@ -105,9 +105,9 @@ def init_db():
                 raise
     _locked_init(_safe) if _HAS_FCNTL else _safe()
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # UTIL
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def now_ts() -> int: return int(time.time())
 def sha256(s: str) -> str: return hashlib.sha256(s.encode("utf-8")).hexdigest()
 def normalize_ws(s: str) -> str: return re.sub(r"\s+", " ", (s or "")).strip()
@@ -212,12 +212,12 @@ def remember_template(tmpl: str):
     except Exception:
         pass
 
-# --- NEW: similarity guard against recent comments (Jaccard on word-3grams) --
+# --- similarity guard against recent comments (Jaccard on word-3grams) -------
 def _word_trigrams(s: str) -> set:
     w = re.findall(r"[A-Za-z0-9']+", s.lower())
     return set(" ".join(w[i:i+3]) for i in range(max(0, len(w)-2)))
 
-def too_similar_to_recent(text: str, k: int = 3, threshold: float = 0.62, sample: int = 300) -> bool:
+def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300) -> bool:
     """Reject if Jaccard(word-3grams) with any of the latest N saved comments exceeds threshold."""
     try:
         with get_conn() as c:
@@ -234,9 +234,9 @@ def too_similar_to_recent(text: str, k: int = 3, threshold: float = 0.62, sample
             return True
     return False
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # CORS + HEALTH
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
@@ -248,9 +248,9 @@ def add_cors_headers(response):
 def health():
     return jsonify({"status": "ok"}), 200
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # TOPIC / KEYWORDS
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 EN_STOPWORDS = {
     "the","a","an","and","or","but","to","in","on","of","for","with","at","from",
     "by","about","as","into","like","through","after","over","between","out",
@@ -319,9 +319,9 @@ def pick_focus_token(tokens: List[str]) -> Optional[str]:
     upperish = [t for t in tokens if t.isupper() or t[0].isupper()]
     return random.choice(upperish) if upperish else random.choice(tokens)
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # CONTEXT PROFILE (unchanged)
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
     text = (raw_text or "").strip()
     projects, keywords, numbers = set(), set(), set()
@@ -363,9 +363,9 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
         "script": script,
     }
 
-# -----------------------------------------------------------------------------
-# VARIETY: fixed buckets + huge combinator
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# VARIETY: fixed buckets + combinator
+# ------------------------------------------------------------------------------
 LEADINS = [
     "short answer:","zooming out,","if you're weighing","plainly,","real talk:","on the math,",
     "from experience,","quick take:","low key,","no fluff:","in practice,","gut check:",
@@ -423,9 +423,9 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
         out = " ".join(words[:22])
     return out
 
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # GENERATOR
-# -----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 class OfflineCommentGenerator:
     def __init__(self):
         self.random = random.Random()
@@ -455,7 +455,7 @@ class OfflineCommentGenerator:
         if len(t) < 4: return ""
         return t
 
-    # ----- native short lines (kept simple; expandable) ----------------------
+    # ----- native short lines (expandable) -----------------------------------
     def _native_buckets(self, script: str) -> List[str]:
         f = "{focus}"
         if script == "bn":
@@ -467,8 +467,9 @@ class OfflineCommentGenerator:
         return [f"{f} is the practical bit here", f"keep eyes on {f}, rest follows", f"{f} is where it turns real"]
 
     def _make_native_comment(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
-        key = extract_keywords(text); focus = pick_focus_token(key) or "this"
+        key = extract_keywords(text)
+        focus = pick_focus_token(key) or "this"
         buckets = self._native_buckets(ctx.get("script","latn"))
         last = ""
         for _ in range(32):
-            out = random.choice(buckets).format(focus=focus
+            # FIX: close the format() call correct
