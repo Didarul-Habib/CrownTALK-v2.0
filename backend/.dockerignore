@@ -1,15 +1,43 @@
-.git
+# Python junk
 __pycache__/
-*.pyc
+*.py[cod]
 *.pyo
 *.pyd
-*.log
+*.so
+.Python
 .env
-node_modules/
+.venv/
+venv/
+
+# OS/editor
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+.idea/
+.vscode/
+
+# VCS
+.git/
+.gitignore
+
+# Build & caches
 dist/
 build/
-screenshots/
-*.png
-*.jpg
-*.jpeg
-*.gif
+*.egg-info/
+.cache/
+pytest_cache/
+
+# Logs & data
+*.log
+/tmp/
+*.sqlite
+*.db
+crowntalk.db
+
+# Node stuff (if ever present)
+node_modules/
+
+# Docker
+Dockerfile*
+docker-compose*.yml
