@@ -710,6 +710,103 @@ def _extract_handle_from_url(url: str) -> Optional[str]:
 
 generator = OfflineCommentGenerator()
 
+# --- Minimal helpers used by Groq path ---
+
+WORD_RE = re.compile(r"[A-Za-z0-9’']+(-[A-Za-z0-9’']+)?")
+
+def words(text: str) -> list[str]:
+    return re.findall(r"[A-Za-z0-9']+", text or "")
+
+def _sanitize_comment(raw: str) -> str:
+    # remove urls, hashtags, mentions, emojis, collapse whitespace
+    txt = re.sub(r"https?://\S+", "", raw or "")
+    txt = re.sub(r"[@#]\S+", "", txt)
+    txt = re.sub(r"\s+", " ", txt).strip()
+    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
+    # strip most emoji for EN tone
+    txt = EMOJI_PATTERN.sub("", txt)
+    return txt
+
+def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
+    txt = _sanitize_comment(raw)
+    toks = words(txt)
+    if not toks:
+        return ""
+    if len(toks) > max_w:
+        toks = toks[:max_w]
+    # gently pad if short
+    fillers = ["honestly", "tbh", "still", "though", "right"]
+    i = 0
+    while len(toks) < min_w and i < len(fillers):
+        toks.append(fillers[i])
+        i += 1
+    out = " ".join(toks).strip()
+    # block AI-ish phrases
+    if any(b in out.lower() for b in AI_BLOCKLIST):
+        out = " ".join([t for t in toks if t.lower() not in {"honestly", "tbh"}]) or out
+        out = out.strip()
+    return out
+
+def enforce_unique(candidates: list[str]) -> list[str]:
+    """
+    Dedup against memory tables, record seen variants, keep 6–13 words only.
+    Uses the same memory openers/ngrams you already have.
+    """
+    out: list[str] = []
+    for c in candidates:
+        c = enforce_word_count_natural(c)
+        if not c:
+            continue
+        # reject if opener/ngrams template already burned
+        if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
+            continue
+        if not comment_seen(c):
+            remember_comment(c)
+            remember_opener(_openers(c))
+            remember_ngrams(c)
+            out.append(c)
+        else:
+            # tiny nudge to vary if short enough
+            toks = words(c)
+            if len(toks) < 13:
+                alt = enforce_word_count_natural(c + " today")
+                if alt and not comment_seen(alt):
+                    remember_comment(alt)
+                    remember_opener(_openers(alt))
+                    remember_ngrams(alt)
+                    out.append(alt)
+    return out
+
+
+def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
+    """
+    Adapter so Groq path can fall back to your OfflineCommentGenerator.
+    Always returns up to two EN comments (or best available).
+    """
+    items = generator.generate_comments(
+        text=text,
+        author=author or None,
+        handle=None,
+        lang_hint=None,
+    )  # returns list of {"lang","text"}
+
+    # Prefer EN; if only one EN, try to add any other line as backup
+    en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
+    non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
+
+    result: list[str] = []
+    if en:
+        result.append(en[0])
+    if len(en) >= 2:
+        result.append(en[1])
+    elif non:
+        result.append(non[0])
+
+    # final enforcement so we always return clean 6–13 words and uniqueness
+    result = enforce_unique(result)
+    return result[:2]
+
+
 # ------------------------------------------------------------------------------
 # Groq generator (keeps 6–13 words + fallback)
 # ------------------------------------------------------------------------------
