@@ -337,6 +337,15 @@ STARTER_BLOCKLIST = {
     "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
     "good to see the boring"
 }
+# Emoji / pictograph scrubber used by _sanitize_comment(...)
+try:
+    EMOJI_PATTERN = re.compile(
+        r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
+        flags=re.UNICODE,
+    )
+except re.error:
+    # Fallback for environments that can’t compile the full range
+    EMOJI_PATTERN = re.compile(r"[\u2600-\u27BF]+", flags=re.UNICODE)
 
 def detect_topic(text: str) -> str:
     t = (text or "").lower()
