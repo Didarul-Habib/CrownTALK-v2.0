@@ -726,15 +726,16 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     sys_prompt = (
         "You write extremely short, human comments for social posts.\n"
         "- Output exactly two comments.\n"
-        "- Each comment must be 6–13 words.\n"
+        "- Each comment must be 6-13 words.\n"
         "- Natural conversational tone, as if you just read the post.\n"
         "- The two comments must have different vibes (e.g., supportive vs curious).\n"
         "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
         "- Avoid repetitive templates; vary syntax and rhythm.\n"
         "- Prefer returning a pure JSON array of two strings, like: "
-        '["first comment", "second comment"].\n"
-        "- If you cannot return JSON, return two lines separated by a newline."
+        "[\"first comment\", \"second comment\"].\n"
+        "- If you cannot return JSON, return two lines separated by a newline.\n"
     )
+
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
         "Return exactly two distinct comments (JSON array or two lines)."
@@ -745,7 +746,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     for attempt in range(3):
         try:
             resp = _groq_client.chat.completions.create(
-                model=GROQ_MODEL,                    # e.g., "llama-3.1-8b-instant" or "llama3-8b-8192"
+                model=GROQ_MODEL,  # e.g., "llama-3.1-8b-instant" or "llama3-8b-8192"
                 messages=[
                     {"role": "system", "content": sys_prompt},
                     {"role": "user", "content": user_prompt},
@@ -754,9 +755,8 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
                 max_tokens=160,
                 temperature=0.8,
             )
-            break  # success
+            break
         except Exception as e:
-            # Respect Retry-After if present; else progressive backoff for 429-ish errors
             wait_secs = 0
             try:
                 hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
@@ -781,10 +781,9 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     # ---------- tolerant parsing ----------
     def _parse_two(raw_text: str) -> list[str]:
         out: list[str] = []
-
-        # 1) Try JSON first (array or object with 'comments' key)
+        # 1) Try JSON array first
         try:
-            m = re.search(r"\[[\s\S]*\]", raw_text)  # extract JSON array if surrounded by extra text
+            m = re.search(r"\[[\s\S]*\]", raw_text)
             candidate = m.group(0) if m else raw_text
             data = json.loads(candidate)
             if isinstance(data, dict):
@@ -793,19 +792,18 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
                 out = [str(x).strip() for x in data if str(x).strip()]
         except Exception:
             out = []
-
         if len(out) >= 2:
             return out[:2]
 
-        # 2) Quoted strings like "..." and '...'
+        # 2) Quoted strings
         quoted = re.findall(r'["“](.+?)["”]', raw_text)
         if len(quoted) >= 2:
             return [q.strip() for q in quoted[:2]]
 
-        # 3) Numbered / bulleted lines
-        parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|\-|\•|\*)\s*", raw_text)
+        # 3) Numbered/bulleted lines
+        parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|[-•*])\s*", raw_text)
         parts = [p.strip() for p in parts if p and not p.isspace()]
-        parts = [p for p in parts if len(p.split()) >= 3]  # filter super-short noise
+        parts = [p for p in parts if len(p.split()) >= 3]
         if len(parts) >= 2:
             return parts[:2]
 
@@ -814,7 +812,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         if len(lines) >= 2:
             return lines[:2]
 
-        # 5) Single line with separators like "Comment1 | Comment2"
+        # 5) Separator within a single line
         m2 = re.split(r"\s*[;|/\\]+\s*", raw_text)
         if len(m2) >= 2:
             return [m2[0].strip(), m2[1].strip()]
@@ -825,17 +823,17 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 
     # ---------- enforce rules & uniqueness ----------
     candidates = [enforce_word_count_natural(c) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]  # extra guard
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates)
 
-    # If short, try one more pass by splitting sentences
+    # If still short, try sentence split
     if len(candidates) < 2:
         sents = re.split(r"[.!?]\s+", raw)
         sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
         sents = [s for s in sents if 6 <= len(words(s)) <= 13]
         candidates = enforce_unique(candidates + sents[:2])
 
-    # Fallback: offline generator
+    # Fallback to offline
     tries = 0
     while len(candidates) < 2 and tries < 2:
         tries += 1
