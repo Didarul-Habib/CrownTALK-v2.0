@@ -714,6 +714,12 @@ generator = OfflineCommentGenerator()
 # Groq generator (keeps 6–13 words + fallback)
 # ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
+    """
+    Ask Groq for exactly two distinct comments.
+    - Accepts JSON OR plain text (bullets / numbered / lines).
+    - Enforces 6–13 words, no emojis/links/hashtags, uniqueness.
+    - Small retry for rate limits; falls back to offline generator if needed.
+    """
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
@@ -725,65 +731,120 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         "- The two comments must have different vibes (e.g., supportive vs curious).\n"
         "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
         "- Avoid repetitive templates; vary syntax and rhythm.\n"
-        "- Return ONLY JSON array of two strings, no extra text."
+        "- Prefer returning a pure JSON array of two strings, like: "
+        '["first comment", "second comment"].\n"
+        "- If you cannot return JSON, return two lines separated by a newline."
     )
-    user_prompt = f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\nReturn JSON array of two distinct comments."
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
 
+    # --- call Groq with small retry & Retry-After support ---
     resp = None
     for attempt in range(3):
         try:
             resp = _groq_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[{"role": "system", "content": sys_prompt},
-                          {"role": "user", "content": user_prompt}],
-                n=1, max_tokens=120, temperature=0.8,
+                model=GROQ_MODEL,                    # e.g., "llama-3.1-8b-instant" or "llama3-8b-8192"
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                n=1,
+                max_tokens=160,
+                temperature=0.8,
             )
-            break
+            break  # success
         except Exception as e:
+            # Respect Retry-After if present; else progressive backoff for 429-ish errors
             wait_secs = 0
             try:
                 hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
                 ra = hdrs.get("Retry-After")
-                if ra: wait_secs = max(1, int(ra))
-            except Exception: pass
+                if ra:
+                    wait_secs = max(1, int(ra))
+            except Exception:
+                pass
             msg = str(e).lower()
             if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
-                wait_secs = 2 + attempt
+                wait_secs = 2 + attempt  # 2s, 3s, 4s
             if wait_secs:
-                time.sleep(wait_secs); continue
+                time.sleep(wait_secs)
+                continue
             raise
+
     if resp is None:
         raise RuntimeError("Groq call failed after retries")
 
-    raw = resp.choices[0].message.content.strip()
-    comments: list[str] = []
-    try:
-        m = re.search(r"\[[\s\S]*\]", raw)
-        data = json.loads(m.group(0) if m else raw)
-        if isinstance(data, list):
-            comments = [str(x) for x in data][:2]
-    except Exception:
-        parts = [p.strip("-• ").strip() for p in raw.splitlines() if p.strip()]
-        comments = parts[:2]
+    raw = (resp.choices[0].message.content or "").strip()
 
-    comments = [enforce_word_count_natural(c, 6, 13) for c in comments if c]
-    comments = [c for c in comments if c and not comment_seen(c)]
+    # ---------- tolerant parsing ----------
+    def _parse_two(raw_text: str) -> list[str]:
+        out: list[str] = []
+
+        # 1) Try JSON first (array or object with 'comments' key)
+        try:
+            m = re.search(r"\[[\s\S]*\]", raw_text)  # extract JSON array if surrounded by extra text
+            candidate = m.group(0) if m else raw_text
+            data = json.loads(candidate)
+            if isinstance(data, dict):
+                data = data.get("comments") or data.get("items") or data.get("data")
+            if isinstance(data, list):
+                out = [str(x).strip() for x in data if str(x).strip()]
+        except Exception:
+            out = []
+
+        if len(out) >= 2:
+            return out[:2]
+
+        # 2) Quoted strings like "..." and '...'
+        quoted = re.findall(r'["“](.+?)["”]', raw_text)
+        if len(quoted) >= 2:
+            return [q.strip() for q in quoted[:2]]
+
+        # 3) Numbered / bulleted lines
+        parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|\-|\•|\*)\s*", raw_text)
+        parts = [p.strip() for p in parts if p and not p.isspace()]
+        parts = [p for p in parts if len(p.split()) >= 3]  # filter super-short noise
+        if len(parts) >= 2:
+            return parts[:2]
+
+        # 4) Plain newline split
+        lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+        if len(lines) >= 2:
+            return lines[:2]
+
+        # 5) Single line with separators like "Comment1 | Comment2"
+        m2 = re.split(r"\s*[;|/\\]+\s*", raw_text)
+        if len(m2) >= 2:
+            return [m2[0].strip(), m2[1].strip()]
+
+        return []
+
+    candidates = _parse_two(raw)
+
+    # ---------- enforce rules & uniqueness ----------
+    candidates = [enforce_word_count_natural(c) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]  # extra guard
+    candidates = enforce_unique(candidates)
+
+    # If short, try one more pass by splitting sentences
+    if len(candidates) < 2:
+        sents = re.split(r"[.!?]\s+", raw)
+        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
+        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
+        candidates = enforce_unique(candidates + sents[:2])
+
+    # Fallback: offline generator
     tries = 0
-    while len(comments) < 2 and tries < 4:
+    while len(candidates) < 2 and tries < 2:
         tries += 1
-        more = generator.generate_two(tweet_text, author, None, None)  # offline assist
-        comments += [c["text"] for c in more if c and c.get("text")]
-        comments = [enforce_word_count_natural(c, 6, 13) for c in comments]
-        comments = [c for c in comments if c and not comment_seen(c)]
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
 
-    if len(comments) < 2:
-        comments += _rescue_two(tweet_text)
-        comments = [enforce_word_count_natural(c, 6, 13) for c in comments][:2]
-        comments = [c for c in comments if c]
-
-    if len(comments) < 2:
+    if len(candidates) < 2:
         raise RuntimeError("Could not produce two valid comments")
-    return comments[:2]
+
+    return candidates[:2]
 
 # ------------------------------------------------------------------------------
 # API routes
