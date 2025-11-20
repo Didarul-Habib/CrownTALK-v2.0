@@ -6,6 +6,7 @@ import time
 import threading
 from dataclasses import dataclass
 from typing import List, Tuple
+import os
 import requests
 from urllib.parse import urlparse
 
@@ -25,7 +26,9 @@ class CrownTALKError(Exception):
 # Lightweight global rate-limit
 # (best effort across threads)
 # -----------------------------
-_MIN_GAP_SECONDS = 0.25   # ~4 req/sec cap
+# Default: ~2 req/sec. Tune via env:
+#   UPSTREAM_MIN_GAP_SECONDS=1.0  -> max ~1 req/sec
+_MIN_GAP_SECONDS = float(os.environ.get("UPSTREAM_MIN_GAP_SECONDS", "0.5"))
 _last_call_ts = 0.0
 _rl_lock = threading.Lock()
 
@@ -108,7 +111,8 @@ def clean_and_normalize_urls(urls: List[str]) -> List[str]:
         # allow text blobs with newlines
         lines = str(item).splitlines()
         for raw in lines:
-            raw = raw.strip()
+            raw = strip := raw.strip()
+            raw = strip
             if not raw:
                 continue
             if not raw.startswith("http"):
@@ -164,8 +168,12 @@ def _parse_payload(payload: dict) -> TweetData:
     lang = payload.get("lang") or payload.get("tweet", {}).get("lang")
 
     # Try common spots
-    text = payload.get("text") or payload.get("full_text") or payload.get("tweet", {}).get("text") \
-           or payload.get("tweet", {}).get("full_text")
+    text = (
+        payload.get("text")
+        or payload.get("full_text")
+        or payload.get("tweet", {}).get("text")
+        or payload.get("tweet", {}).get("full_text")
+    )
     user_name = (
         payload.get("user_name")
         or payload.get("user", {}).get("name")
