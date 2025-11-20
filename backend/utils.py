@@ -111,8 +111,7 @@ def clean_and_normalize_urls(urls: List[str]) -> List[str]:
         # allow text blobs with newlines
         lines = str(item).splitlines()
         for raw in lines:
-            raw = strip := raw.strip()
-            raw = strip
+            raw = raw.strip()               # <-- fixed (no walrus here)
             if not raw:
                 continue
             if not raw.startswith("http"):
