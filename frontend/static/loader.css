@@ -1,10 +1,11 @@
 /* =========================================================
-   CrownTALK — Loader Overlay (ULTRA-SMOOTH traces)
-   - Long dash segment + long gap (looks nearly continuous)
-   - Softer glow, mobile-safe, theme-aware
+   CrownTALK — Loader Overlay (fixed center + slower lines)
+   - Uses 100dvh/100dvw to avoid mobile chrome jumps
+   - Locks page scroll while generating
+   - Slower, smoother trace animation
 ========================================================= */
 
-/* -------- loader palette -------- */
+/* -------- palette + motion controls -------- */
 :root {
   --loader-scrim: rgba(0, 0, 0, 0.55);
   --loader-stroke-bg: rgba(255, 255, 255, 0.12);
@@ -15,28 +16,36 @@
   --loader-green:  #34d399;
   --loader-red:    #f87171;
 
-  /* ULTRA-SMOOTH controls */
-  --trace-dash: 220;   /* solid segment length */
-  --trace-gap:  520;   /* gap length */
-  --trace-speed: 2.8s; /* animation speed */
+  /* Smooth + slower */
+  --trace-dash: 260;   /* long solid */
+  --trace-gap:  660;   /* long gap   */
+  --trace-speed: 3.8s; /* slower speed */
 }
 
-[data-theme="dark-purple"] { --loader-scrim: rgba(12, 10, 21, 0.62); --loader-purple: #b6a1ff; }
-[data-theme="gold"]   { --loader-scrim: rgba(18, 12, 4, 0.62); }
-[data-theme="blue"]   { --loader-scrim: rgba(4, 10, 18, 0.62); }
-[data-theme="black"]  { --loader-scrim: rgba(0, 0, 0, 0.65); }
-[data-theme="emerald"]{ --loader-scrim: rgba(4, 18, 12, 0.62); }
-[data-theme="crimson"]{ --loader-scrim: rgba(22, 6, 9, 0.62); }
+[data-theme="dark-purple"] { --loader-scrim: rgba(12,10,21,.62); --loader-purple:#b6a1ff; }
+[data-theme="gold"]   { --loader-scrim: rgba(18,12,4,.62); }
+[data-theme="blue"]   { --loader-scrim: rgba(4,10,18,.62); }
+[data-theme="black"]  { --loader-scrim: rgba(0,0,0,.65); }
+[data-theme="emerald"]{ --loader-scrim: rgba(4,18,12,.62); }
+[data-theme="crimson"]{ --loader-scrim: rgba(22,6,9,.62); }
 
-/* -------- base overlay -------- */
+/* -------- lock page while loading -------- */
+body.is-generating {
+  overflow: hidden;               /* stop scroll */
+  overscroll-behavior: contain;   /* block bounce/refresh */
+}
+
+/* -------- overlay shell (fixed center) -------- */
 .chip-loader {
   visibility: hidden;
   opacity: 0;
   pointer-events: none;
 
   position: fixed;
-  inset: 0;
-  z-index: 9999;
+  left: 0;
+  top: 0;
+  width: 100dvw;
+  height: 100dvh;
 
   display: grid;
   place-items: center;
@@ -51,7 +60,14 @@
   backdrop-filter: blur(2px);
   -webkit-backdrop-filter: blur(2px);
 
+  z-index: 9999;
+  transform: translateZ(0); /* reduce jitter */
   transition: opacity 180ms ease, visibility 0s linear 180ms;
+}
+
+/* Fallback for very old browsers that lack dvh/dvw */
+@supports not (height: 100dvh) {
+  .chip-loader { width: 100vw; height: 100vh; }
 }
 
 body.is-generating .chip-loader {
@@ -64,10 +80,10 @@ body.is-generating .chip-loader {
 /* Hide any accidental nested loader */
 main .chip-loader { display: none !important; }
 
-/* -------- inner container -------- */
+/* -------- inner layout -------- */
 .chip-loader .main-container {
   width: min(92vw, 720px);
-  max-height: 90vh;
+  max-height: 90dvh;
   display: grid;
   place-items: center;
   pointer-events: none;
@@ -81,14 +97,14 @@ main .chip-loader { display: none !important; }
 
 .chip-loader .loader svg {
   width: min(88vw, 560px);
-  max-height: 70vh;
+  max-height: 70dvh;  /* scale down on short viewports */
   height: auto;
   object-fit: contain;
-  filter: drop-shadow(0 10px 24px rgba(0, 0, 0, 0.35));
+  filter: drop-shadow(0 10px 24px rgba(0,0,0,.35));
   shape-rendering: geometricPrecision;
 }
 
-/* -------- SVG strokes (ULTRA-SMOOTH) -------- */
+/* -------- SVG strokes (smooth + slower) -------- */
 .chip-loader svg .trace-bg {
   fill: none;
   stroke: var(--loader-stroke-bg);
@@ -102,8 +118,8 @@ main .chip-loader { display: none !important; }
   stroke-linecap: round;
   stroke-dasharray: var(--trace-dash) var(--trace-gap);
   animation: chip-dash var(--trace-speed) linear infinite;
-  filter: drop-shadow(0 1px 4px rgba(0, 0, 0, 0.25));
-  opacity: 0.95;
+  filter: drop-shadow(0 1px 4px rgba(0,0,0,.25));
+  opacity: .95;
 }
 
 .chip-loader svg .trace-flow.purple { stroke: var(--loader-purple); }
@@ -112,25 +128,25 @@ main .chip-loader { display: none !important; }
 .chip-loader svg .trace-flow.green  { stroke: var(--loader-green); }
 .chip-loader svg .trace-flow.red    { stroke: var(--loader-red); }
 
-/* Slight stagger per color */
-.chip-loader svg .trace-flow.blue   { animation-duration: calc(var(--trace-speed) * 1.05); }
-.chip-loader svg .trace-flow.green  { animation-duration: calc(var(--trace-speed) * 1.1); }
-.chip-loader svg .trace-flow.yellow { animation-duration: calc(var(--trace-speed) * 0.95); }
-.chip-loader svg .trace-flow.red    { animation-duration: calc(var(--trace-speed) * 1.12); }
+/* gentle staggering for natural feel (still slow) */
+.chip-loader svg .trace-flow.blue   { animation-duration: calc(var(--trace-speed) * 1.08); }
+.chip-loader svg .trace-flow.green  { animation-duration: calc(var(--trace-speed) * 1.12); }
+.chip-loader svg .trace-flow.yellow { animation-duration: calc(var(--trace-speed) * 0.98); }
+.chip-loader svg .trace-flow.red    { animation-duration: calc(var(--trace-speed) * 1.16); }
 
 @keyframes chip-dash {
-  to { stroke-dashoffset: -1200; }
+  to { stroke-dashoffset: -1400; }
 }
 
 /* Loading text polish */
 .chip-loader svg text {
-  letter-spacing: 0.6px;
-  text-shadow: 0 0 8px rgba(255, 255, 255, 0.12);
+  letter-spacing: .6px;
+  text-shadow: 0 0 8px rgba(255,255,255,.12);
 }
 
 /* -------- small screens -------- */
 @media (max-width: 480px) {
-  .chip-loader .loader svg { width: min(92vw, 440px); max-height: 60vh; }
+  .chip-loader .loader svg { width: min(92vw, 420px); max-height: 58dvh; }
 }
 
 /* -------- reduced motion -------- */
