@@ -549,3 +549,60 @@ button{ font-family:inherit; }
   .hero{ flex-direction:column; align-items:center; gap:10px; }
   .controls{ flex-wrap:wrap; }
 }
+
+
+
+/* ===== Fix: register animating angle props (enables rotation) ===== */
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --arc-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* If you still have old “animation: rotate …” on these elements, remove it.
+   The rules below already animate the border arc via the custom props. */
+
+/* Card border orbit (works for .card and .uiverse-card) */
+.card::before,
+.uiverse-card .card__border::before {
+  /* use the same animation keyframe for both */
+  animation: ct-card-orbit 6s linear infinite !important;
+}
+@keyframes ct-card-orbit {
+  to { --angle: 360deg; }
+}
+
+/* Theme-dot partial ring */
+.theme-dot.is-active::after {
+  animation: ct-theme-orbit 6s linear infinite !important;
+}
+@keyframes ct-theme-orbit {
+  to { --arc-angle: 360deg; }
+}
+
+/* ===== Fix: trash-can lid sits on the rim, not the middle ===== */
+#clearBtn .bin-bottom {
+  /* body perfectly centered */
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -46%);  /* visually centered */
+}
+
+#clearBtn .bin-top {
+  top: 50%;
+  left: 50%;
+  transform-box: fill-box;     /* use path box for origin */
+  transform-origin: 88% 96%;   /* hinge near back-right corner of lid */
+  /* sit the lid right on the rim (higher than before) */
+  transform: translate(-50%, -120%) rotate(0deg);
+}
+
+#clearBtn.btn-secondary.subtle:hover .bin-top {
+  transform: translate(-50%, -120%) rotate(160deg);
+}
+
