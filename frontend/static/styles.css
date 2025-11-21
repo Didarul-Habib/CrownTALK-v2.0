@@ -1371,59 +1371,171 @@ body {
 .uiverse-card > *:not(.card__border){ position:relative; z-index:1; }
 
 /* =========================================================
-   CrownTALK — Theme dots with FILLED CORE + PARTIAL ORBIT ARC
-   - Keeps your .theme-dots/.theme-dot HTML & .is-active class
-   - Core stays filled; only a thin arc rotates around it
+   CrownTALK — Controls & Theme Dots Patch (drop-in)
+   Place at the END of styles.css
 ========================================================= */
 
-/* container unchanged */
-.theme-switcher { align-items: center; gap: 10px; }
+/* ---------- Guard: never hide Generate's SVGs ---------- */
+.btn .sparkle,
+.btn svg { display: inline-block; }
+
+/* =======================================================
+   CANCEL (red outline → glow on hover, no jump)
+   Keep: id="cancelBtn" class="btn-secondary"
+======================================================= */
+#cancelBtn.btn-secondary{
+  --cancel-col: #ef4444;         /* red-500 */
+  --cancel-rgb: 239, 68, 68;
+
+  border: 2px solid rgba(var(--cancel-rgb), 0.9);
+  background: rgba(15, 23, 42, 0.8);
+  color: #e5e7eb;
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 700;
+  padding: 9px 16px;
+  border-radius: 10px;
+  transition: background-color .2s ease, box-shadow .25s ease, transform .12s ease, color .2s ease, border-color .2s ease;
+}
+
+#cancelBtn.btn-secondary:hover:not(:disabled){
+  background-color: var(--cancel-col);
+  border-color: var(--cancel-col);
+  color: #fff;
+  text-shadow: 0 0 14px #fff;
+  box-shadow:
+    0 0 30px rgba(var(--cancel-rgb), .65),
+    0 0 60px rgba(var(--cancel-rgb), .45),
+    0 0 120px rgba(var(--cancel-rgb), .35);
+  transform: translateY(-1px) scale(1.02);
+}
+
+#cancelBtn.btn-secondary:active{
+  transform: translateY(0) scale(.98);
+  box-shadow: none;
+}
+
+/* =======================================================
+   CLEAR (round trash button with properly aligned lid)
+   Keep: id="clearBtn" class="btn-secondary subtle"
+======================================================= */
+
+/* a11y for hidden "Clear" text inside button if present */
+#clearBtn .sr-only {
+  position:absolute !important; width:1px; height:1px; padding:0; margin:-1px;
+  overflow:hidden; clip:rect(0,0,1px,1px); white-space:nowrap; border:0;
+}
+
+#clearBtn.btn-secondary.subtle{
+  --clear-bg: #141414;
+  --clear-bg-hover: #ff4545;
+  --clear-col: #ffffff;
+
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;                /* kill dashed outline from .subtle */
+  background: var(--clear-bg);
+  color: var(--clear-col);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow: 0 0 20px rgba(0,0,0,.18);
+  transition: background-color .25s ease, transform .15s ease, box-shadow .25s ease;
+  font-size: 0;                /* hide any visible label, keep sr-only */
+  line-height: 0;
+}
+
+#clearBtn .svgIcon{
+  position: absolute;
+  color: var(--clear-col);
+  width: 14px;                 /* slightly larger for readability */
+  height: auto;
+  transition: transform .35s ease, color .25s ease, opacity .25s ease;
+}
+
+/* Align bin body center; put lid just above it with shared axis */
+#clearBtn .bin-bottom{
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -38%);  /* visually centered body */
+}
+
+#clearBtn .bin-top{
+  top: 50%;
+  left: 50%;
+  transform-origin: 70% 100%;        /* hinge at bottom-right-ish */
+  transform: translate(-18%, -95%) rotate(0deg);
+}
+
+/* Hover animation + glow */
+#clearBtn.btn-secondary.subtle:hover{
+  background-color: var(--clear-bg-hover);
+  box-shadow:
+    0 0 30px rgba(255, 69, 69, .75),
+    0 0 60px rgba(255, 69, 69, .45),
+    0 0 120px rgba(255, 69, 69, .35);
+  transform: translateY(-1px);
+}
+
+#clearBtn.btn-secondary.subtle:hover .bin-top{
+  transform: translate(-18%, -95%) rotate(160deg);
+}
+
+#clearBtn.btn-secondary.subtle:active{
+  transform: translateY(0) scale(.97);
+  box-shadow: none;
+}
+
+/* =======================================================
+   THEME DOTS — filled core + rotating arc + tooltip TOP
+   Keep: .theme-dots, .theme-dot, data-theme="..."
+======================================================= */
+
+/* Ensure row shows all dots and labels can overflow upward */
 .theme-dots{
-  display:inline-flex; align-items:center; gap:10px;
-  padding:8px; border-radius:16px;
+  overflow: visible;           /* allow tooltips/rings to show */
+  gap: 10px;
+  padding: 8px;
+  border-radius: 16px;
   background-color: rgba(15,23,42,.55);
   box-shadow: 0 10px 30px rgba(15,23,42,.45);
 }
 
-/* --- base dot ---------------------------------------------------- */
+/* Base dot */
 .theme-dot{
-  /* per-theme vars set below */
   --ring: rgba(148,163,184,.55);
-  --glow: 129,140,248;
-  --arc-angle: 0deg;      /* animated when active */
-  --arc-size: 14deg;      /* size of the bright segment */
-  --ring-thick: 2px;      /* orbit ring thickness */
+  --glow: 129,140,248;         /* per-theme overrides below */
+  --arc-angle: 0deg;           /* animated when active */
+  --arc-size: 16deg;
+  --ring-thick: 2px;
 
   position: relative;
-  width: 16px; height: 16px;
+  width: 16px;
+  height: 16px;
   border-radius: 999px;
   border: 2px solid var(--ring);
   cursor: pointer;
-  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
-
-  /* FILLED CORE */
   background: var(--dot-grad, radial-gradient(circle at 35% 25%, #fff 20%, #bbb 60%, #666 100%));
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, filter .18s ease;
+  overflow: visible;           /* allow arc to render outside */
+  z-index: 0;
 }
 
-/* hover + focus */
-.theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
-.theme-dot:focus-visible{
-  outline: none;
-  box-shadow:
-    0 0 0 2px rgba(255,255,255,.9),
-    0 0 0 6px rgba(var(--glow), .45),
-    0 0 24px rgba(var(--glow), .35);
+.theme-dot:hover{
+  transform: translateY(-1px) scale(1.05);
+  border-color: rgba(248,250,252,.85);
 }
 
-/* --- PARTIAL ORBIT ARC (around the border) ----------------------- */
-/* Draw the moving arc on ::after so the center stays filled */
+/* PARTIAL ORBIT ARC (around core) */
 .theme-dot::after{
   content:"";
   position:absolute;
-  inset: calc(-1 * var(--ring-thick));   /* hug outside of the border */
+  inset: calc(-1 * var(--ring-thick));
   border-radius: 999px;
-
-  /* Thin ring masked, with a bright arc segment */
   padding: var(--ring-thick);
   background:
     conic-gradient(from var(--arc-angle),
@@ -1433,11 +1545,12 @@ body {
     radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
           mask:
     radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
-
-  opacity: 0; /* only visible when active */
+  opacity: 0;                  /* visible only when active */
+  pointer-events: none;
+  z-index: -1;                 /* sit behind tooltip */
 }
 
-/* ACTIVE: start rotation + glow */
+/* ACTIVE state: arc spins + glow; core remains filled */
 .theme-dot.is-active{
   border-color: rgba(var(--glow), .9);
   box-shadow:
@@ -1446,188 +1559,84 @@ body {
 }
 .theme-dot.is-active::after{
   opacity: 1;
-  animation: ct-theme-orbit 7s linear infinite;
+  animation: ct-theme-orbit 6s linear infinite;
 }
-@keyframes ct-theme-orbit { to{ --arc-angle: 360deg; } }
 
-/* --- Tooltip label on hover (names) ------------------------------- */
+@keyframes ct-theme-orbit { to { --arc-angle: 360deg; } }
+
+/* Tooltip ABOVE the dots */
 .theme-dot::before{
-  /* tooltip bubble */
-  position:absolute; left:50%; bottom:-32px;
-  transform: translateX(-50%) translateY(10px);
-  padding:6px 10px; border-radius:8px;
-  font-size:12px; font-weight:700; letter-spacing:.2px; white-space:nowrap;
-  background: rgba(15,23,42,.9); color:#fff;
-  border:1px solid rgba(148,163,184,.35);
-  box-shadow:0 8px 22px rgba(0,0,0,.35);
-  opacity:0; pointer-events:none;
+  position: absolute;
+  left: 50%;
+  bottom: 22px;                             /* show ABOVE, not below */
+  transform: translateX(-50%) translateY(-8px);
+  padding: 6px 10px;
+  border-radius: 8px;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: .2px;
+  white-space: nowrap;
+  background: rgba(15,23,42,.95);
+  color: #fff;
+  border: 1px solid rgba(148,163,184,.35);
+  box-shadow: 0 8px 22px rgba(0,0,0,.35);
+  opacity: 0;
+  pointer-events: none;
   transition: opacity .18s ease, transform .18s ease;
-  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% calc(100% - 8px), 50% 100%, 0 calc(100% - 8px));
-  content: attr(data-label);       /* we’ll set labels via CSS below */
+  clip-path: polygon(8px 8px, calc(100% - 8px) 8px, 100% 100%, 50% calc(100% - 8px), 0 100%); /* arrow on bottom */
+  content: attr(data-label);               /* default: attr if provided */
+  z-index: 10;
 }
-.theme-dot:hover::before{ opacity:1; transform: translateX(-50%) translateY(0); }
 
-/* --- Per-theme fill + glow + label ------------------------------- */
+.theme-dot:hover::before{
+  opacity: 1;
+  transform: translateX(-50%) translateY(-12px);
+}
+
+/* Per-theme: fill gradient + glow + label text */
 .theme-dot[data-theme="dark-purple"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #e879f9 12%, #a855f7 55%, #4c1d95 100%);
   --glow: 167,139,250;
 }
-.theme-dot[data-theme="dark-purple"]::before{ content:"Cygnus Magenta"; }
+.theme-dot[data-theme="dark-purple"]::before{ content: "Cygnus Magenta"; }
 
 .theme-dot[data-theme="blue"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #93c5fd 12%, #3b82f6 55%, #1e3a8a 100%);
   --glow: 59,130,246;
 }
-.theme-dot[data-theme="blue"]::before{ content:"Helios Blue"; }
+.theme-dot[data-theme="blue"]::before{ content: "Helios Blue"; }
 
 .theme-dot[data-theme="emerald"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #86efac 14%, #10b981 52%, #065f46 100%);
   --glow: 16,185,129;
 }
-.theme-dot[data-theme="emerald"]::before{ content:"Orion Lime"; }
+.theme-dot[data-theme="emerald"]::before{ content: "Orion Lime"; }
 
 .theme-dot[data-theme="gold"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #fde68a 12%, #f59e0b 55%, #92400e 100%);
   --glow: 251,191,36;
 }
-.theme-dot[data-theme="gold"]::before{ content:"Solar Gold"; }
+.theme-dot[data-theme="gold"]::before{ content: "Solar Gold"; }
 
 .theme-dot[data-theme="white"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #ffffff 10%, #e5e7eb 55%, #9ca3af 100%);
   --glow: 209,213,219;
 }
-.theme-dot[data-theme="white"]::before{ content:"Polar White"; }
+.theme-dot[data-theme="white"]::before{ content: "Polar White"; }
 
 .theme-dot[data-theme="black"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #e5e7eb 10%, #6b7280 48%, #111827 100%);
   --glow: 209,213,219;
 }
-.theme-dot[data-theme="black"]::before{ content:"Nebula Black"; }
+.theme-dot[data-theme="black"]::before{ content: "Nebula Black"; }
 
 .theme-dot[data-theme="crimson"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #fecdd3 12%, #f43f5e 55%, #7f1d1d 100%);
   --glow: 255,64,96;
 }
-.theme-dot[data-theme="crimson"]::before{ content:"Crimson Nova"; }
+.theme-dot[data-theme="crimson"]::before{ content: "Crimson Nova"; }
 
-/* motion preference */
+/* Motion preference */
 @media (prefers-reduced-motion: reduce){
   .theme-dot.is-active::after{ animation: none; }
-}
-
-
-/* =========================================================
-   Cancel & Clear button upgrades (keep same IDs/classes)
-========================================================= */
-
-/* ---------- A11y helper for the Clear text we hid visually ---------- */
-.sr-only {
-  position: absolute !important;
-  width: 1px; height: 1px;
-  padding: 0; margin: -1px;
-  overflow: hidden; clip: rect(0, 0, 1px, 1px);
-  white-space: nowrap; border: 0;
-}
-
-/* ---------- CANCEL (success-green outline -> glow on hover) ---------- */
-#cancelBtn.btn-secondary {
-  --cancel-col: #2a9149; /* success green */
-  --cancel-col-rgb: 42,145,73;
-
-  border: 2px solid rgba(var(--cancel-col-rgb), 0.9);
-  background: transparent;
-  color: rgba(219, 218, 218, 0.95);
-  text-transform: uppercase;
-  letter-spacing: .12em;
-  font-weight: 600;
-  padding: 9px 16px;
-  border-radius: 10px;
-  transition:
-    transform .12s ease,
-    box-shadow .25s ease,
-    background-color .2s ease,
-    border-color .2s ease,
-    color .2s ease;
-}
-
-#cancelBtn.btn-secondary:hover:not(:disabled) {
-  background-color: var(--cancel-col);
-  border-color: var(--cancel-col);
-  color: #ffffff;
-  text-shadow: 0 0 20px #fff, 0 0 8px #fff;
-  box-shadow:
-    0 0 30px rgba(var(--cancel-col-rgb), .65),
-    0 0 60px rgba(var(--cancel-col-rgb), .45),
-    0 0 120px rgba(var(--cancel-col-rgb), .35);
-  transform: translateY(-1px) scale(1.03);
-}
-
-#cancelBtn.btn-secondary:active {
-  transform: translateY(0) scale(0.98);
-  box-shadow: none;
-}
-
-/* ---------- CLEAR (round trash button with animated lid) ------------- */
-/* Keep the same classes; make it a circular icon button */
-#clearBtn.btn-secondary.subtle {
-  --clear-bg: rgba(20, 20, 20, 1);
-  --clear-bg-hover: #ff4545;   /* danger red */
-  --clear-col: #ffffff;
-
-  width: 50px;
-  height: 50px;
-  padding: 0;
-  border-radius: 50%;
-  border: none;                    /* override dashed border from .subtle */
-  background: var(--clear-bg);
-  color: var(--clear-col);
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  gap: 2px;
-  box-shadow: 0 0 20px rgba(0,0,0,0.2);
-  transition:
-    background-color .25s ease,
-    transform .15s ease,
-    box-shadow .25s ease;
-}
-
-/* hide the original "Clear" text (kept as sr-only for screen readers) */
-#clearBtn.btn-secondary.subtle { font-size: 0; line-height: 0; }
-
-/* SVGs inside the Clear button */
-#clearBtn .svgIcon {
-  width: 12px;
-  height: auto;
-  color: var(--clear-col);
-  transition: transform .35s ease, color .25s ease;
-}
-#clearBtn .bin-top {
-  transform-origin: bottom right;
-}
-
-/* Hover interaction: red bg + rotate lid */
-#clearBtn.btn-secondary.subtle:hover {
-  background-color: var(--clear-bg-hover);
-  box-shadow:
-    0 0 30px rgba(255, 69, 69, .75),
-    0 0 60px rgba(255, 69, 69, .45),
-    0 0 120px rgba(255, 69, 69, .35);
-  transform: translateY(-1px);
-}
-#clearBtn.btn-secondary.subtle:hover .bin-top {
-  transform: rotate(160deg);
-}
-
-/* Press */
-#clearBtn.btn-secondary.subtle:active {
-  transform: translateY(0) scale(0.97);
-  box-shadow: none;
-}
-
-/* Respect reduced motion */
-@media (prefers-reduced-motion: reduce) {
-  #cancelBtn.btn-secondary,
-  #clearBtn.btn-secondary.subtle { transition: none; }
-  #clearBtn .bin-top { transition: none; }
 }
