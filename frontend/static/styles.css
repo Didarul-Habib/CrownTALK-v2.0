@@ -689,3 +689,75 @@ button{ font-family:inherit; }
 /* keep generate icon always visible */
 .btn .sparkle,
 .btn svg{ display:inline-block; }
+
+
+
+/* =========================
+   CARD SPACING + ORBIT TWEAK
+   ========================= */
+:root{
+  /* spacing between stacked cards */
+  --card-gap: 22px;
+
+  /* orbit look (match theme-dot) */
+  --ct-arc-size: 16deg;      /* arc length like .theme-dot */
+  --ct-arc-thick: 2px;       /* arc thickness */
+  --ct-arc-gap: 6px;         /* tiny gap from card edge */
+}
+
+/* give real vertical separation so rings don't overlap */
+.app-main{ gap: var(--card-gap) !important; }
+.app-main > .card{ margin-bottom: var(--card-gap); }
+
+/* keep content clipping but let inner ring breathe; ring sits slightly inside */
+.card{
+  overflow: hidden; /* keep your inner glow contained */
+}
+
+/* orbit ring: same conic arc as theme-dot with small gap from border */
+.card::before{
+  /* draw a 16deg arc, with a tiny inset gap so it doesn’t kiss the edge */
+  --angle: 0deg;
+  --ring: var(--ct-arc-thick);
+  inset: var(--ct-arc-gap) !important;   /* small visible gap from border */
+  padding: var(--ring) !important;
+  background:
+    conic-gradient(from var(--angle),
+      color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 var(--ct-arc-size),
+      transparent var(--ct-arc-size) 360deg) !important;
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring))) !important;
+          mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring))) !important;
+  animation: ct-card-orbit 6s linear infinite !important;
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
+}
+
+/* register animating angle (some browsers need this) */
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@keyframes ct-card-orbit { to { --angle: 360deg; } }
+
+/* =========================
+   THEME DOT TOOLTIP/ARC GAP
+   (keeps dots readable above)
+   ========================= */
+.theme-dots{ gap: 10px; padding: 8px; overflow: visible; }
+.theme-dot{ --ring-thick: 2px; }   /* keep dot arc thickness consistent */
+
+/* =========================
+   TRASH LID RIM ALIGNMENT
+   ========================= */
+#clearBtn .bin-bottom{
+  top:50%; left:50%;
+  transform: translate(-50%, -46%); /* body visually centered */
+}
+#clearBtn .bin-top{
+  top:50%; left:50%;
+  transform-box: fill-box;
+  transform-origin: 88% 96%;         /* hinge on back-right corner */
+  transform: translate(-50%, -120%) rotate(0deg); /* sits on the rim */
+}
+#clearBtn.btn-secondary.subtle:hover .bin-top{
+  transform: translate(-50%, -120%) rotate(160deg);
+}
+
