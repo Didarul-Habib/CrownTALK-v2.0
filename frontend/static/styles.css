@@ -761,3 +761,97 @@ button{ font-family:inherit; }
   transform: translate(-50%, -120%) rotate(160deg);
 }
 
+/* ===== Admin Access Overlay (no Tailwind required) ===== */
+.ct-gate-overlay{
+  position: fixed;
+  inset: 0;
+  z-index: 9999;
+  display: grid;
+  place-items: center;
+  padding: 16px;
+  backdrop-filter: blur(6px);
+  background: rgba(0,0,0,.55);
+}
+
+/* mimic the key tailwind bits used in your element */
+#adminGate .font-mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
+#adminGate .w-full{ width: 100%; }
+#adminGate .max-w-md{ max-width: 28rem; }
+#adminGate .mx-auto{ margin-left:auto; margin-right:auto; }
+#adminGate .relative{ position: relative; }
+#adminGate .absolute{ position: absolute; }
+#adminGate .p-6{ padding: 1.5rem; }
+
+#adminGate .bg-black{ background: #000; }
+#adminGate .bg-green-400{ background-color: #4ade80; }
+#adminGate .bg-green-500\/50{ background-color: rgba(34,197,94,.5); }
+#adminGate .bg-green-500\/30{ background-color: rgba(34,197,94,.3); }
+#adminGate .bg-green-500\/70{ background-color: rgba(34,197,94,.7); }
+#adminGate .bg-green-900\/20{
+  background: linear-gradient(to bottom, transparent, rgba(6,95,70,.2), transparent);
+}
+
+#adminGate .border-2{ border-width: 2px; }
+#adminGate .border-green-400{ border-color: #4ade80; }
+#adminGate .rounded-lg{ border-radius: .75rem; }
+#adminGate .shadow-lg{ box-shadow: 0 20px 60px rgba(0,0,0,.55), 0 0 0 1px rgba(74,222,128,.2) inset; }
+#adminGate .overflow-hidden{ overflow: hidden; }
+
+#adminGate .text-green-600{ color:#16a34a; }
+#adminGate .text-green-500{ color:#22c55e; }
+#adminGate .text-green-400{ color:#4ade80; }
+#adminGate .text-green-300{ color:#86efac; }
+#adminGate .text-red-400{ color:#f87171; }
+#adminGate .text-xs{ font-size:.75rem; line-height: 1rem; }
+#adminGate .text-sm{ font-size:.875rem; line-height: 1.25rem; }
+#adminGate .text-base{ font-size:1rem; line-height: 1.5rem; }
+#adminGate .font-bold{ font-weight:700; }
+#adminGate .opacity-80{ opacity:.8; }
+#adminGate .opacity-75{ opacity:.75; }
+#adminGate .tracking-wider{ letter-spacing: .08em; }
+#adminGate .flex{ display:flex; }
+#adminGate .items-center{ align-items:center; }
+#adminGate .gap-2{ gap:.5rem; }
+#adminGate .mr-2{ margin-right:.5rem; }
+#adminGate .ml-2{ margin-left:.5rem; }
+#adminGate .mt-4{ margin-top:1rem; }
+
+/* input */
+#adminGate input#password{
+  width: 100%;
+  background: transparent;
+  color: #86efac;
+  font-size: 1rem;
+  border: 2px solid #22c55e;
+  border-radius: .5rem;
+  padding: .75rem .75rem;
+  padding-right: 2.25rem; /* room for the lock icon */
+  outline: none;
+  transition: box-shadow .15s ease, border-color .15s ease;
+}
+#adminGate input#password::placeholder{ color: rgba(22,163,74,.6); }
+#adminGate input#password:focus{
+  border-color: #16a34a;
+  box-shadow: 0 0 0 2px rgba(74,222,128,.45);
+}
+
+/* pulse bar ▋ */
+#adminGate .animate-pulse{
+  animation: ct-gate-pulse 1.2s ease-in-out infinite;
+}
+@keyframes ct-gate-pulse{
+  0%,100%{ opacity:.25; }
+  50%{ opacity: .9; }
+}
+
+/* small red dot in warning */
+#adminGate .w-2{ width:.5rem; }
+#adminGate .h-2{ height:.5rem; }
+#adminGate .rounded-full{ border-radius:9999px; }
+
+/* lock icon */
+#adminGate .w-5{ width:1.25rem; }
+#adminGate .h-5{ height:1.25rem; }
+#adminGate .right-3{ right:.75rem; }
+#adminGate .top-1\/2{ top:50%; }
+#adminGate .transform{ transform: translateY(-50%); }
