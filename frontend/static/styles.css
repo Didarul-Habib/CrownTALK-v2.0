@@ -1,5 +1,5 @@
 /* =========================================================
-   CrownTALK — Full Stylesheet (clean, merged)
+   CrownTALK — Full Stylesheet (clean, merged) [FINAL]
    ========================================================= */
 
 /* ---------- ROOT VARIABLES ---------- */
@@ -248,7 +248,7 @@ body{
 .theme-dot{
   --ring: rgba(148,163,184,.55);
   --glow: 129,140,248;
-  --arc-angle: 0deg; --arc-size: 60deg; --ring-thick: 2px;  /* longer arc */
+  --arc-angle: 0deg; --arc-size: 60deg; --ring-thick: 2px;
 
   position:relative; width:16px; height:16px; border-radius:999px;
   border:2px solid var(--ring); cursor:pointer; overflow:visible; z-index:0;
@@ -258,7 +258,6 @@ body{
 }
 .theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
 
-/* partial orbit arc */
 .theme-dot::after{
   content:""; position:absolute; inset: calc(-1 * var(--ring-thick)); border-radius:999px; padding:var(--ring-thick);
   background: conic-gradient(from var(--arc-angle), rgba(var(--glow), .95) 0 var(--arc-size), transparent var(--arc-size) 360deg);
@@ -306,11 +305,16 @@ body{
 
 /* ---------- CARDS (Premium skin applied) ---------- */
 .card{
-  /* layout kept */
-  padding:12px 12px 10px; display:flex; flex-direction:column; gap:8px;
-  position:relative; z-index:2; border-radius:16px; overflow:hidden; isolation:isolate;
+  padding:12px 12px 10px;
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+  position:relative;
+  border-radius:16px;
+  overflow:visible;          /* allow outer ring */
+  isolation:isolate;
+  z-index:0;
 
-  /* premium background */
   background-color: var(--card-bg);
   background-image:
     radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
@@ -324,22 +328,41 @@ body{
   box-shadow: inset 0 -16px 24px rgba(255,255,255,0.12), 0 8px 24px rgba(0,0,0,.25);
 }
 
-/* rotating thin arc hugging the border (CLIPPED, no overflow) */
+/* thin rotating ring OUTSIDE the card edge */
 .card::before{
-  content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none;
-  --ring:2px; padding:var(--ring); --angle:0deg;
-  background: conic-gradient(from var(--angle),
-              color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 14deg,
-              transparent 14deg 360deg);
-  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
-          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
-  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
-  animation: ct-card-orbit 6s linear infinite; z-index:0;
+  content:"";
+  position:absolute;
+  inset:-3px;                         /* ring sits just outside */
+  border-radius:inherit;
+  background: conic-gradient(
+    from 0deg,
+    color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 60deg,
+    transparent 60deg 360deg
+  );
+  filter: blur(.5px);
+  transform-origin: 50% 50%;
+  animation: ct-ring-spin 8s linear infinite;
+  z-index:0;
 }
-@keyframes ct-card-orbit{ to{ --angle: 360deg; } }
+
+/* surface layer so ring never covers content */
+.card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  background: transparent;
+  z-index:1;
+}
 
 /* ensure content stays above effects */
-.card > *{ position:relative; z-index:1; }
+.card > *{ position:relative; z-index:2; }
+
+@keyframes ct-ring-spin { to { transform: rotate(360deg); } }
+
+/* consistent vertical gap between stacked cards */
+.main .card + .card,
+.app-shell .card + .card { margin-top: 26px; }
 
 .card-input{ min-height:200px; }
 .card-results{ min-height:200px; }
@@ -387,7 +410,7 @@ button{ font-family:inherit; }
 /* Guard: never hide Generate's SVG/sparkle */
 .btn .sparkle, .btn svg{ display:inline-block; }
 
-/* CANCEL (red outline → glow on hover) — keep id="cancelBtn" class="btn-secondary" */
+/* CANCEL */
 #cancelBtn.btn-secondary{
   --cancel-col:#ef4444; --cancel-rgb:239,68,68;
   border:2px solid rgba(var(--cancel-rgb),.9);
@@ -404,8 +427,7 @@ button{ font-family:inherit; }
 }
 #cancelBtn.btn-secondary:active{ transform: translateY(0) scale(.98); box-shadow:none; }
 
-/* CLEAR (round trash) — keep id="clearBtn" class="btn-secondary subtle"
-   inside: two SVGs with classes .svgIcon.bin-top / .svgIcon.bin-bottom */
+/* CLEAR (round trash) */
 #clearBtn .sr-only{
   position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,1px,1px); white-space:nowrap; border:0;
 }
@@ -422,7 +444,7 @@ button{ font-family:inherit; }
 #clearBtn .bin-top{
   top:50%; left:50%;
   transform-box: fill-box; transform-origin: 90% 100%;
-  transform: translate(-50%, -120%) rotate(0deg);   /* sits on rim */
+  transform: translate(-50%, -120%) rotate(0deg);
 }
 #clearBtn.btn-secondary.subtle:hover{
   background-color:var(--clear-bg-hover);
@@ -432,11 +454,19 @@ button{ font-family:inherit; }
 #clearBtn.btn-secondary.subtle:hover .bin-top{ transform: translate(-50%, -120%) rotate(160deg); }
 #clearBtn.btn-secondary.subtle:active{ transform: translateY(0) scale(.97); box-shadow:none; }
 
-/* ---------- PROGRESS BAR ---------- */
+/* ---------- PROGRESS BAR (matches JS scaleX) ---------- */
 .progress-row{ display:flex; flex-direction:column; gap:4px; margin-top:6px; }
 .helper-text{ font-size:11px; color:var(--text-muted); }
 .progress-bar-outer{ width:100%; height:5px; border-radius:999px; background: rgba(15,23,42,.7); overflow:hidden; }
-.progress-bar-inner{ width:0%; height:100%; border-radius:inherit; background: linear-gradient(90deg, #22c55e, #a855f7, #f97316); transition: width .2s ease-out; }
+.progress-bar-inner{
+  width:100%;
+  height:100%;
+  border-radius:inherit;
+  background: linear-gradient(90deg, #22c55e, #a855f7, #f97316);
+  transform-origin: left center;
+  transform: scaleX(0);
+  transition: transform .25s ease-out;
+}
 
 /* ---------- RESULTS / FAILED / HISTORY ---------- */
 .results-list{ display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; padding-right:4px; }
@@ -551,19 +581,10 @@ button{ font-family:inherit; }
 }
 
 /* ===== Custom properties registration for smooth angle animation ===== */
-@property --angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-@property --arc-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
+@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
+@property --arc-angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
 
-/* ===== Legacy safety: if any old Uiverse border exists, clip it ===== */
-/* (Prevents the big viewport band by forcing absolute + clipping) */
+/* ===== Legacy safety: keep uiverse border clipped ===== */
 .uiverse-card .card__border{ position:absolute; inset:-1px; border-radius:inherit; overflow:hidden; pointer-events:none; }
 .uiverse-card .card__border::before{
   content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
@@ -577,189 +598,6 @@ button{ font-family:inherit; }
   animation: ct-card-orbit 6s linear infinite;
 }
 
-/* =========================
-   CrownTALK — Final patch
-   ========================= */
-
-/* 1) THEME DOT: gap between core and arc + same partial ring style */
-.theme-dot{
-  --ring-gap: 3px;             /* space between dot and arc */
-  --ring-thick: 2px;           /* arc thickness */
-  --arc-angle: 0deg;
-  --arc-size: 16deg;
-  overflow: visible;
-}
-
-/* draw the arc OUTSIDE with a gap (uses mask-composite to keep only the ring) */
-.theme-dot::after{
-  content:"";
-  position:absolute;
-  inset: calc(-1 * (var(--ring-gap) + var(--ring-thick)));
-  border-radius: calc(999px + var(--ring-gap) + var(--ring-thick));
-  border: var(--ring-thick) solid transparent;       /* controls thickness */
-  background:
-    conic-gradient(from var(--arc-angle),
-      rgba(var(--glow), .95) 0 var(--arc-size),
-      transparent var(--arc-size) 360deg)
-    border-box;
-  /* keep only the border area, leaving a gap to the core */
-  -webkit-mask:
-     linear-gradient(#000 0 0) padding-box,
-     linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  opacity: 1; /* visible even when not active so the gap shows */
-  pointer-events: none;
-  z-index: 1;
-}
-
-.theme-dot.is-active::after{
-  animation: ct-theme-orbit 6s linear infinite !important;
-}
-
-@property --arc-angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
-@keyframes ct-theme-orbit { to { --arc-angle: 360deg; } }
-
-/* 2) CARDS: arc outside the box + gap (matches theme-dot arc) */
-.card{
-  overflow: visible;           /* allow outside ring to show */
-}
-
-/* remove any earlier inside-arc to avoid double rings */
-.card::before{ content:none !important; }
-
-/* brand-new outer arc ring with gap */
-.card::after{
-  --arc-gap: 8px;              /* space between card edge and arc */
-  --arc-thick: 2px;            /* arc thickness */
-  --angle: 0deg;
-
-  content:"";
-  position:absolute;
-  inset: calc(-1 * (var(--arc-gap) + var(--arc-thick)));
-  border-radius: calc(16px + var(--arc-gap) + var(--arc-thick));
-  border: var(--arc-thick) solid transparent;
-  background:
-    conic-gradient(from var(--angle),
-      color-mix(in oklab, var(--accent) 88%, white 12%) 0 14deg,
-      transparent 14deg 360deg)
-    border-box;
-  /* keep only the border area so a clean gap appears */
-  -webkit-mask:
-     linear-gradient(#000 0 0) padding-box,
-     linear-gradient(#000 0 0);
-  -webkit-mask-composite: xor;
-          mask-composite: exclude;
-  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
-  pointer-events: none;
-  animation: ct-card-orbit 6s linear infinite;
-  z-index: 0;
-}
-
-@property --angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
-@keyframes ct-card-orbit { to { --angle: 360deg; } }
-
-/* 3) TRASH BUTTON: lid aligned to the rim, not the middle */
-#clearBtn .svgIcon{ width:18px; height:auto; }
-
-#clearBtn .bin-bottom{
-  top:50%;
-  left:50%;
-  transform: translate(-50%, -46%);     /* keeps body visually centered */
-}
-
-#clearBtn .bin-top{
-  top:50%;
-  left:50%;
-  transform-box: fill-box;
-  transform-origin: 90% 96%;            /* hinge near back-right corner */
-  transform: translate(-50%, -124%) rotate(0deg);   /* sits on the rim */
-}
-
-#clearBtn.btn-secondary.subtle:hover .bin-top{
-  transform: translate(-50%, -124%) rotate(160deg);
-}
-
-/* (optional) tiny smoothing on the outer arcs’ glow */
-.card::after,
-.theme-dot::after{
-  will-change: transform;
-}
-
-/* keep generate icon always visible */
-.btn .sparkle,
-.btn svg{ display:inline-block; }
-
-
-
-/* =========================
-   CARD SPACING + ORBIT TWEAK
-   ========================= */
-:root{
-  /* spacing between stacked cards */
-  --card-gap: 22px;
-
-  /* orbit look (match theme-dot) */
-  --ct-arc-size: 16deg;      /* arc length like .theme-dot */
-  --ct-arc-thick: 2px;       /* arc thickness */
-  --ct-arc-gap: 6px;         /* tiny gap from card edge */
-}
-
-/* give real vertical separation so rings don't overlap */
-.app-main{ gap: var(--card-gap) !important; }
-.app-main > .card{ margin-bottom: var(--card-gap); }
-
-/* keep content clipping but let inner ring breathe; ring sits slightly inside */
-.card{
-  overflow: hidden; /* keep your inner glow contained */
-}
-
-/* orbit ring: same conic arc as theme-dot with small gap from border */
-.card::before{
-  /* draw a 16deg arc, with a tiny inset gap so it doesn’t kiss the edge */
-  --angle: 0deg;
-  --ring: var(--ct-arc-thick);
-  inset: var(--ct-arc-gap) !important;   /* small visible gap from border */
-  padding: var(--ring) !important;
-  background:
-    conic-gradient(from var(--angle),
-      color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 var(--ct-arc-size),
-      transparent var(--ct-arc-size) 360deg) !important;
-  -webkit-mask:
-    radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring))) !important;
-          mask:
-    radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring))) !important;
-  animation: ct-card-orbit 6s linear infinite !important;
-  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
-}
-
-/* register animating angle (some browsers need this) */
-@property --angle { syntax: "<angle>"; inherits: false; initial-value: 0deg; }
-@keyframes ct-card-orbit { to { --angle: 360deg; } }
-
-/* =========================
-   THEME DOT TOOLTIP/ARC GAP
-   (keeps dots readable above)
-   ========================= */
-.theme-dots{ gap: 10px; padding: 8px; overflow: visible; }
-.theme-dot{ --ring-thick: 2px; }   /* keep dot arc thickness consistent */
-
-/* =========================
-   TRASH LID RIM ALIGNMENT
-   ========================= */
-#clearBtn .bin-bottom{
-  top:50%; left:50%;
-  transform: translate(-50%, -46%); /* body visually centered */
-}
-#clearBtn .bin-top{
-  top:50%; left:50%;
-  transform-box: fill-box;
-  transform-origin: 88% 96%;         /* hinge on back-right corner */
-  transform: translate(-50%, -120%) rotate(0deg); /* sits on the rim */
-}
-#clearBtn.btn-secondary.subtle:hover .bin-top{
-  transform: translate(-50%, -120%) rotate(160deg);
-}
-
+/* Gate helpers */
 html[data-locked="1"] { overflow: hidden; }
 #appRoot[data-hidden="1"] { display: none !important; }
