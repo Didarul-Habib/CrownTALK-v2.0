@@ -696,3 +696,20 @@ html[data-locked="1"] { overflow: hidden; }
 
 /* small nudge so the gate’s input looks crisp on all themes */
 #ctAccessInput::placeholder { letter-spacing: .02em; }
+
+
+/* ===== Simple spacing between cards ===== */
+
+/* Your <main class="main"> wrapper */
+.main{
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: 18px;   /* space between each .card – tweak if you want */
+}
+
+/* Slightly tighter on short viewports */
+@media (max-height: 900px){
+  .main{
+    row-gap: 14px;
+  }
+}
