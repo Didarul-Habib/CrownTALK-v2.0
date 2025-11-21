@@ -1514,3 +1514,120 @@ body {
 @media (prefers-reduced-motion: reduce){
   .theme-dot.is-active::after{ animation: none; }
 }
+
+
+/* =========================================================
+   Cancel & Clear button upgrades (keep same IDs/classes)
+========================================================= */
+
+/* ---------- A11y helper for the Clear text we hid visually ---------- */
+.sr-only {
+  position: absolute !important;
+  width: 1px; height: 1px;
+  padding: 0; margin: -1px;
+  overflow: hidden; clip: rect(0, 0, 1px, 1px);
+  white-space: nowrap; border: 0;
+}
+
+/* ---------- CANCEL (success-green outline -> glow on hover) ---------- */
+#cancelBtn.btn-secondary {
+  --cancel-col: #2a9149; /* success green */
+  --cancel-col-rgb: 42,145,73;
+
+  border: 2px solid rgba(var(--cancel-col-rgb), 0.9);
+  background: transparent;
+  color: rgba(219, 218, 218, 0.95);
+  text-transform: uppercase;
+  letter-spacing: .12em;
+  font-weight: 600;
+  padding: 9px 16px;
+  border-radius: 10px;
+  transition:
+    transform .12s ease,
+    box-shadow .25s ease,
+    background-color .2s ease,
+    border-color .2s ease,
+    color .2s ease;
+}
+
+#cancelBtn.btn-secondary:hover:not(:disabled) {
+  background-color: var(--cancel-col);
+  border-color: var(--cancel-col);
+  color: #ffffff;
+  text-shadow: 0 0 20px #fff, 0 0 8px #fff;
+  box-shadow:
+    0 0 30px rgba(var(--cancel-col-rgb), .65),
+    0 0 60px rgba(var(--cancel-col-rgb), .45),
+    0 0 120px rgba(var(--cancel-col-rgb), .35);
+  transform: translateY(-1px) scale(1.03);
+}
+
+#cancelBtn.btn-secondary:active {
+  transform: translateY(0) scale(0.98);
+  box-shadow: none;
+}
+
+/* ---------- CLEAR (round trash button with animated lid) ------------- */
+/* Keep the same classes; make it a circular icon button */
+#clearBtn.btn-secondary.subtle {
+  --clear-bg: rgba(20, 20, 20, 1);
+  --clear-bg-hover: #ff4545;   /* danger red */
+  --clear-col: #ffffff;
+
+  width: 50px;
+  height: 50px;
+  padding: 0;
+  border-radius: 50%;
+  border: none;                    /* override dashed border from .subtle */
+  background: var(--clear-bg);
+  color: var(--clear-col);
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 2px;
+  box-shadow: 0 0 20px rgba(0,0,0,0.2);
+  transition:
+    background-color .25s ease,
+    transform .15s ease,
+    box-shadow .25s ease;
+}
+
+/* hide the original "Clear" text (kept as sr-only for screen readers) */
+#clearBtn.btn-secondary.subtle { font-size: 0; line-height: 0; }
+
+/* SVGs inside the Clear button */
+#clearBtn .svgIcon {
+  width: 12px;
+  height: auto;
+  color: var(--clear-col);
+  transition: transform .35s ease, color .25s ease;
+}
+#clearBtn .bin-top {
+  transform-origin: bottom right;
+}
+
+/* Hover interaction: red bg + rotate lid */
+#clearBtn.btn-secondary.subtle:hover {
+  background-color: var(--clear-bg-hover);
+  box-shadow:
+    0 0 30px rgba(255, 69, 69, .75),
+    0 0 60px rgba(255, 69, 69, .45),
+    0 0 120px rgba(255, 69, 69, .35);
+  transform: translateY(-1px);
+}
+#clearBtn.btn-secondary.subtle:hover .bin-top {
+  transform: rotate(160deg);
+}
+
+/* Press */
+#clearBtn.btn-secondary.subtle:active {
+  transform: translateY(0) scale(0.97);
+  box-shadow: none;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce) {
+  #cancelBtn.btn-secondary,
+  #clearBtn.btn-secondary.subtle { transition: none; }
+  #clearBtn .bin-top { transition: none; }
+}
