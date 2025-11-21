@@ -1,78 +1,54 @@
-/* =========================
-   CrownTALK — One-time Access Gate (adminGate/password)
-   Code: @CrownTALK@2026@CrownDEX
-   ========================= */
+/* ============================================
+   CrownTALK — One-time Access Gate + App Logic
+   Access code: @CrownTALK@2026@CrownDEX
+   Persists with localStorage + cookie fallback
+   ============================================ */
 
+/* ---------- Gate (single source of truth) ---------- */
 (() => {
   const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
-  const STORAGE_KEY = 'crowntalk_access_v1';      // local/sessionStorage
-  const COOKIE_KEY  = 'crowntalk_access_v1';      // cookie fallback
-
-  // ----- tiny utils -----
-  const qs  = (sel, root = document) => root.querySelector(sel);
-  const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
-
-  function setCookie(name, val, days = 3650) { // ~10 years
-    try {
-      const d = new Date();
-      d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
-      document.cookie = `${name}=${encodeURIComponent(val)}; expires=${d.toUTCString()}; path=/; SameSite=Lax`;
-    } catch {}
-  }
-  function getCookie(name) {
-    try {
-      const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
-      return m ? decodeURIComponent(m[2]) : '';
-    } catch { return ''; }
-  }
+  const STORAGE_KEY = 'crowntalk_access_v1';    // local/session storage key
+  const COOKIE_KEY  = 'crowntalk_access_v1';    // cookie fallback
 
   function isAuthorized() {
-    try {
-      if (localStorage.getItem(STORAGE_KEY) === '1') return true;
-    } catch {}
-    try {
-      if (sessionStorage.getItem(STORAGE_KEY) === '1') return true;
-    } catch {}
-    if (getCookie(COOKIE_KEY) === '1') return true;
+    try { if (localStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
+    try { if (sessionStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
+    try { if (document.cookie.includes(`${COOKIE_KEY}=1`)) return true; } catch {}
     return false;
   }
 
   function markAuthorized() {
     try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
     try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    setCookie(COOKIE_KEY, '1');
+    try { document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
   }
 
-  // gate DOM
-  function gateEls() {
-    const gate    = qs('#adminGate');
-    const input   = qs('#adminGate #password');
-    // The lock is the SVG directly inside the same "relative" wrapper as the input
-    const lockSvg = qs('#adminGate .relative > svg');
-    const warn    = qs('#adminGate .mt-4 p'); // warning line (we’ll reuse for “denied”)
-    return { gate, input, lockSvg, warn };
+  function els() {
+    return {
+      gate:  document.getElementById('adminGate'),
+      input: document.getElementById('password'),
+    };
   }
 
   function showGate() {
-    const { gate, input } = gateEls();
+    const { gate, input } = els();
     if (!gate) return;
     gate.hidden = false;
-    gate.style.display = 'grid';
+    gate.style.display = 'grid';   // ensure visible even if other CSS overrides
     document.body.style.overflow = 'hidden';
     if (input) { input.value = ''; setTimeout(() => input.focus(), 0); }
   }
 
   function hideGate() {
-    const { gate } = gateEls();
+    const { gate } = els();
     if (!gate) return;
     gate.hidden = true;
     gate.style.display = 'none';
     document.body.style.overflow = '';
-    try { gate.remove(); } catch {}
   }
 
-  async function tryUnlock() {
-    const { input, warn } = gateEls();
+  async function tryAuth() {
+    const { input } = els();
     if (!input) return;
     const val = (input.value || '').trim();
     if (!val) return;
@@ -80,58 +56,43 @@
     if (val === ACCESS_CODE) {
       markAuthorized();
       hideGate();
-      // once unlocked, boot the app UI
+      // boot app UI now that we’re unlocked
       bootAppUI();
       return;
     }
 
-    // Wrong code → shake + message
+    // wrong code → subtle shake + hint
     input.classList.add('ct-shake');
     setTimeout(() => input.classList.remove('ct-shake'), 350);
     input.value = '';
     input.placeholder = 'Wrong code — try again';
-    if (warn) {
-      warn.innerHTML =
-        '<span class="w-2 h-2 bg-red-500 rounded-full" style="display:inline-block"></span>' +
-        ' <span><span class="text-red-400">ACCESS DENIED:</span> Invalid credentials</span>';
-    }
   }
 
   function bindGate() {
-    const { input, lockSvg } = gateEls();
-    if (input) {
-      input.addEventListener('keydown', (e) => {
-        if (e.key === 'Enter') {
-          e.preventDefault();
-          tryUnlock();
-        }
-      });
-      // Optional auto-try when leaving the field with something typed
-      input.addEventListener('blur', () => {
-        const { gate } = gateEls();
-        if (gate && gate.style.display !== 'none' && (input.value || '').trim()) {
-          tryUnlock();
-        }
-      });
-    }
-    if (lockSvg) {
-      lockSvg.style.cursor = 'pointer';
-      lockSvg.addEventListener('click', tryUnlock);
+    const { gate, input } = els();
+    if (!gate) return;
+
+    // Enter to submit
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); tryAuth(); }
+    });
+
+    // Click the lock icon to submit
+    const lockIcon = gate.querySelector('svg');
+    if (lockIcon) {
+      lockIcon.style.cursor = 'pointer';
+      lockIcon.addEventListener('click', tryAuth);
     }
   }
 
-  // entry for gate
+  // Init on DOM ready
   if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', () => {
-      if (isAuthorized()) {
-        hideGate();
-        bootAppUI();
-      } else {
-        showGate();
-        bindGate();
-      }
-    });
+    document.addEventListener('DOMContentLoaded', init);
   } else {
+    init();
+  }
+
+  function init() {
     if (isAuthorized()) {
       hideGate();
       bootAppUI();
@@ -142,9 +103,7 @@
   }
 })();
 
-/* =========================
-   CrownTALK — App code (unchanged logic)
-   ========================= */
+/* ========= App code (unchanged, just wrapped) ========= */
 
 // ------------------------
 // Backend endpoints
@@ -156,23 +115,19 @@ const rerollURL = `${backendBase}/reroll`;
 // ------------------------
 // DOM elements
 // ------------------------
-const urlInput = document.getElementById("urlInput");
-const generateBtn = document.getElementById("generateBtn");
-const cancelBtn = document.getElementById("cancelBtn");
-const clearBtn = document.getElementById("clearBtn");
-
-const progressEl = document.getElementById("progress");
-const progressBarFill = document.getElementById("progressBarFill");
-
-const resultsEl = document.getElementById("results");
-const failedEl = document.getElementById("failed");
-const resultCountEl = document.getElementById("resultCount");
-const failedCountEl = document.getElementById("failedCount");
-
-const historyEl = document.getElementById("history");
-const clearHistoryBtn = document.getElementById("clearHistoryBtn");
-
-const yearEl = document.getElementById("year");
+const urlInput       = document.getElementById("urlInput");
+const generateBtn    = document.getElementById("generateBtn");
+const cancelBtn      = document.getElementById("cancelBtn");
+const clearBtn       = document.getElementById("clearBtn");
+const progressEl     = document.getElementById("progress");
+const progressBarFill= document.getElementById("progressBarFill");
+const resultsEl      = document.getElementById("results");
+const failedEl       = document.getElementById("failed");
+const resultCountEl  = document.getElementById("resultCount");
+const failedCountEl  = document.getElementById("failedCount");
+const historyEl      = document.getElementById("history");
+const clearHistoryBtn= document.getElementById("clearHistoryBtn");
+const yearEl         = document.getElementById("year");
 
 // theme dots (live node list -> array)
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
@@ -180,7 +135,7 @@ let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 // ------------------------
 // State
 // ------------------------
-let cancelled = false;
+let cancelled    = false;
 let historyItems = [];
 
 // ------------------------
@@ -192,10 +147,7 @@ function parseURLs(raw) {
     .split(/\r?\n/)
     .map((line) => line.trim())
     .filter(Boolean)
-    .map((line) => {
-      line = line.replace(/^\s*\d+\.\s*/, "");
-      return line.trim();
-    });
+    .map((line) => line.replace(/^\s*\d+\.\s*/, "").trim());
 }
 
 function setProgressText(text) {
@@ -223,18 +175,13 @@ function resetResults() {
 async function copyToClipboard(text) {
   if (!text) return;
   try {
-    if (navigator.clipboard && navigator.clipboard.writeText) {
+    if (navigator.clipboard?.writeText) {
       await navigator.clipboard.writeText(text);
     } else {
       const ta = document.createElement("textarea");
-      ta.value = text;
-      ta.style.position = "fixed";
-      ta.style.opacity = "0";
-      document.body.appendChild(ta);
-      ta.focus();
-      ta.select();
-      document.execCommand("copy");
-      document.body.removeChild(ta);
+      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+      document.body.appendChild(ta); ta.focus(); ta.select();
+      document.execCommand("copy"); document.body.removeChild(ta);
     }
   } catch (err) {
     console.error("Clipboard error", err);
@@ -259,26 +206,19 @@ function autoResizeTextarea() {
 // ------------------------
 function addToHistory(text) {
   if (!text) return;
-  const timestamp = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   historyItems.push({ text, timestamp });
   renderHistory();
 }
 
 function renderHistory() {
   if (!historyEl) return;
-
   historyEl.innerHTML = "";
   if (!historyItems.length) {
     historyEl.textContent = "Copied comments will show up here.";
     return;
   }
-
-  const items = [...historyItems].reverse();
-
-  items.forEach((item) => {
+  [...historyItems].reverse().forEach((item) => {
     const entry = document.createElement("div");
     entry.className = "history-item";
 
@@ -301,26 +241,16 @@ function renderHistory() {
 
     const main = document.createElement("span");
     main.innerHTML = `
-      <svg
-        width="12"
-        height="12"
-        fill="#0E418F"
-        xmlns="http://www.w3.org/2000/svg"
-        shape-rendering="geometricPrecision"
-        text-rendering="geometricPrecision"
-        image-rendering="optimizeQuality"
-        fill-rule="evenodd"
-        clip-rule="evenodd"
-        viewBox="0 0 467 512.22"
-      >
-        <path
-          fill-rule="nonzero"
-          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z"
-        ></path>
+      <svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg"
+           shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
+           image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
+           viewBox="0 0 467 512.22">
+        <path fill-rule="nonzero"
+          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z">
+        </path>
       </svg>
       Copy
     `;
-
     const alt = document.createElement("span");
     alt.textContent = "Copied";
 
@@ -383,18 +313,13 @@ function buildTweetBlock(result) {
 
     const line = document.createElement("div");
     line.className = "comment-line";
-    if (comment.lang) {
-      line.dataset.lang = comment.lang;
-    }
+    if (comment.lang) line.dataset.lang = comment.lang;
 
     const tag = document.createElement("span");
     tag.className = "comment-tag";
-    if (multilingual) {
-      tag.textContent =
-        comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase();
-    } else {
-      tag.textContent = `EN #${idx + 1}`;
-    }
+    tag.textContent = multilingual
+      ? (comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase())
+      : `EN #${idx + 1}`;
 
     const bubble = document.createElement("span");
     bubble.className = "comment-text";
@@ -403,34 +328,21 @@ function buildTweetBlock(result) {
     const copyBtn = document.createElement("button");
     let copyLabel = "Copy";
     if (multilingual) {
-      if (comment.lang === "en") {
-        copyBtn.className = "copy-btn-en";
-        copyLabel = "Copy EN";
-      } else {
-        copyBtn.className = "copy-btn";
-      }
+      if (comment.lang === "en") { copyBtn.className = "copy-btn-en"; copyLabel = "Copy EN"; }
+      else { copyBtn.className = "copy-btn"; }
     } else {
       copyBtn.className = "copy-btn";
     }
 
     const copyMain = document.createElement("span");
     copyMain.innerHTML = `
-      <svg
-        width="12"
-        height="12"
-        fill="#0E418F"
-        xmlns="http://www.w3.org/2000/svg"
-        shape-rendering="geometricPrecision"
-        text-rendering="geometricPrecision"
-        image-rendering="optimizeQuality"
-        fill-rule="evenodd"
-        clip-rule="evenodd"
-        viewBox="0 0 467 512.22"
-      >
-        <path
-          fill-rule="nonzero"
-          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z"
-        ></path>
+      <svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg"
+           shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
+           image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
+           viewBox="0 0 467 512.22">
+        <path fill-rule="nonzero"
+          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z">
+        </path>
       </svg>
       ${copyLabel}
     `;
@@ -518,16 +430,13 @@ async function handleGenerate() {
   const raw = urlInput.value;
   const urls = parseURLs(raw);
 
-  if (!urls.length) {
-    alert("Please paste at least one tweet URL.");
-    return;
-  }
+  if (!urls.length) { alert("Please paste at least one tweet URL."); return; }
 
   cancelled = false;
   document.body.classList.add("is-generating");
 
   generateBtn.disabled = true;
-  cancelBtn.disabled = false;
+  cancelBtn.disabled   = false;
   resetResults();
   resetProgress();
 
@@ -541,19 +450,16 @@ async function handleGenerate() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ urls }),
     });
-
-    if (!res.ok) {
-      throw new Error(`Backend error: ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Backend error: ${res.status}`);
 
     const data = await res.json();
     if (cancelled) return;
 
     const results = Array.isArray(data.results) ? data.results : [];
-    const failed = Array.isArray(data.failed) ? data.failed : [];
+    const failed  = Array.isArray(data.failed)  ? data.failed  : [];
 
     resultsEl.innerHTML = "";
-    failedEl.innerHTML = "";
+    failedEl.innerHTML  = "";
 
     let processed = 0;
     const total = results.length || urls.length;
@@ -565,6 +471,7 @@ async function handleGenerate() {
 
         appendResultBlock(item);
         processed += 1;
+
         const ratio = total ? processed / total : 1;
         setProgressRatio(ratio);
         setProgressText(`Processed ${processed}/${total} tweets…`);
@@ -574,7 +481,7 @@ async function handleGenerate() {
           setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
           document.body.classList.remove("is-generating");
           generateBtn.disabled = false;
-          cancelBtn.disabled = true;
+          cancelBtn.disabled   = true;
         }
       }, delay);
       delay += 120;
@@ -586,19 +493,15 @@ async function handleGenerate() {
     if (!results.length) {
       document.body.classList.remove("is-generating");
       generateBtn.disabled = false;
-      cancelBtn.disabled = true;
-      if (failed.length) {
-        setProgressText("All URLs failed to process.");
-      } else {
-        setProgressText("No comments returned.");
-      }
+      cancelBtn.disabled   = true;
+      setProgressText(failed.length ? "All URLs failed to process." : "No comments returned.");
       setProgressRatio(1);
     }
   } catch (err) {
     console.error("Generate error", err);
     document.body.classList.remove("is-generating");
     generateBtn.disabled = false;
-    cancelBtn.disabled = true;
+    cancelBtn.disabled   = true;
     setProgressText("Error contacting CrownTALK backend.");
     setProgressRatio(0);
   }
@@ -611,7 +514,7 @@ function handleCancel() {
   cancelled = true;
   document.body.classList.remove("is-generating");
   generateBtn.disabled = false;
-  cancelBtn.disabled = true;
+  cancelBtn.disabled   = true;
   setProgressText("Cancelled.");
   setProgressRatio(0);
 }
@@ -627,7 +530,7 @@ function handleClear() {
 // Reroll
 // ------------------------
 async function handleReroll(tweetEl) {
-  const url = tweetEl && tweetEl.dataset.url;
+  const url = tweetEl?.dataset.url;
   if (!url) return;
 
   const button = tweetEl.querySelector(".reroll-btn");
@@ -640,12 +543,9 @@ async function handleReroll(tweetEl) {
   const commentsWrap = tweetEl.querySelector(".comments");
   if (commentsWrap) {
     commentsWrap.innerHTML = "";
-    const sk1 = document.createElement("div");
-    sk1.className = "tweet-skeleton-line";
-    const sk2 = document.createElement("div");
-    sk2.className = "tweet-skeleton-line";
-    commentsWrap.appendChild(sk1);
-    commentsWrap.appendChild(sk2);
+    const sk1 = document.createElement("div"); sk1.className = "tweet-skeleton-line";
+    const sk2 = document.createElement("div"); sk2.className = "tweet-skeleton-line";
+    commentsWrap.appendChild(sk1); commentsWrap.appendChild(sk2);
   }
 
   try {
@@ -654,15 +554,11 @@ async function handleReroll(tweetEl) {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ url }),
     });
-    if (!res.ok) {
-      throw new Error(`Reroll failed: ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
+
     const data = await res.json();
     if (data && Array.isArray(data.comments)) {
-      updateTweetBlock(tweetEl, {
-        url: data.url || url,
-        comments: data.comments,
-      });
+      updateTweetBlock(tweetEl, { url: data.url || url, comments: data.comments });
     } else {
       setProgressText("Reroll failed for this tweet.");
     }
@@ -679,30 +575,18 @@ async function handleReroll(tweetEl) {
 // Theme
 // ------------------------
 const THEME_STORAGE_KEY = "crowntalk_theme";
-const ALLOWED_THEMES = [
-  "white",
-  "dark-purple",
-  "gold",
-  "blue",
-  "black",
-  "emerald",
-  "crimson", // replaced "neon"
-];
+const ALLOWED_THEMES = ["white","dark-purple","gold","blue","black","emerald","crimson"];
 
-// sanitize dots: remove texture, coerce unknown "green" -> crimson
 function sanitizeThemeDots() {
   themeDots.forEach((dot) => {
-    if (!dot || !dot.dataset) return;
+    if (!dot?.dataset) return;
     const t = (dot.dataset.theme || "").trim();
-
     if (t === "texture") {
       dot.parentElement && dot.parentElement.removeChild(dot);
     } else if (!ALLOWED_THEMES.includes(t)) {
-      // some builds had a stray "green" — treat as crimson
       dot.dataset.theme = "crimson";
     }
   });
-  // refresh node list after potential removals
   themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 }
 
@@ -710,66 +594,40 @@ function applyTheme(themeName) {
   const html = document.documentElement;
   const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
   html.setAttribute("data-theme", t);
-
-  themeDots.forEach((dot) => {
-    dot.classList.toggle("is-active", dot.dataset.theme === t);
-  });
-
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, t);
-  } catch {
-    // ignore storage errors
-  }
+  themeDots.forEach((dot) => dot.classList.toggle("is-active", dot.dataset.theme === t));
+  try { localStorage.setItem(THEME_STORAGE_KEY, t); } catch {}
 }
 
 function initTheme() {
   sanitizeThemeDots();
-
-  let theme = "dark-purple"; // default first-run = purple
+  let theme = "dark-purple";
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     if (stored) {
-      // migrate old "neon" -> "crimson"
       theme = stored === "neon" ? "crimson" : stored;
       if (stored === "neon") localStorage.setItem(THEME_STORAGE_KEY, "crimson");
     }
     if (!ALLOWED_THEMES.includes(theme)) theme = "dark-purple";
-  } catch {
-    // ignore
-  }
+  } catch {}
   applyTheme(theme);
 }
 
-/* ------------------------
-   Boot existing UI
-   ------------------------ */
+/* ---------- Boot UI once unlocked ---------- */
 function bootAppUI() {
-  if (yearEl) {
-    yearEl.textContent = String(new Date().getFullYear());
-  }
-
+  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
   initTheme();
   renderHistory();
   autoResizeTextarea();
 
-  if (urlInput) {
-    urlInput.addEventListener("input", autoResizeTextarea);
-  }
-
+  urlInput?.addEventListener("input", autoResizeTextarea);
   generateBtn?.addEventListener("click", () => {
-    if (document.body.classList.contains("is-generating")) return;
-    handleGenerate();
+    if (!document.body.classList.contains("is-generating")) handleGenerate();
   });
-
   cancelBtn?.addEventListener("click", handleCancel);
   clearBtn?.addEventListener("click", handleClear);
 
-  clearHistoryBtn?.addEventListener("click", () => {
-    historyItems = [];
-    renderHistory();
-  });
+  clearHistoryBtn?.addEventListener("click", () => { historyItems = []; renderHistory(); });
 
-  // Copy / reroll in results
   resultsEl?.addEventListener("click", async (event) => {
     const copyBtn = event.target.closest(".copy-btn, .copy-btn-en");
     const rerollBtn = event.target.closest(".reroll-btn");
@@ -777,11 +635,9 @@ function bootAppUI() {
     if (copyBtn) {
       const text = copyBtn.dataset.text || "";
       if (!text) return;
-
       await copyToClipboard(text);
       addToHistory(text);
 
-      // mark copied
       const line = copyBtn.closest(".comment-line");
       if (line) line.classList.add("copied");
       copyBtn.classList.add("is-copied");
@@ -789,20 +645,15 @@ function bootAppUI() {
       const old = copyBtn.textContent;
       copyBtn.textContent = "Copied";
       copyBtn.disabled = true;
-      setTimeout(() => {
-        copyBtn.textContent = old;
-        copyBtn.disabled = false;
-      }, 700);
+      setTimeout(() => { copyBtn.textContent = old; copyBtn.disabled = false; }, 700);
     }
 
     if (rerollBtn) {
       const tweetEl = rerollBtn.closest(".tweet");
-      if (!tweetEl) return;
-      handleReroll(tweetEl);
+      if (tweetEl) handleReroll(tweetEl);
     }
   });
 
-  // History copy
   historyEl?.addEventListener("click", async (event) => {
     const btn = event.target.closest(".history-copy-btn");
     if (!btn) return;
@@ -813,18 +664,13 @@ function bootAppUI() {
     const old = btn.textContent;
     btn.textContent = "Copied";
     btn.disabled = true;
-    setTimeout(() => {
-      btn.textContent = old;
-      btn.disabled = false;
-    }, 700);
+    setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 700);
   });
 
-  // theme dots
   themeDots.forEach((dot) => {
     dot.addEventListener("click", () => {
       const t = dot.dataset.theme;
-      if (!t) return;
-      applyTheme(t);
+      if (t) applyTheme(t);
     });
   });
 }
