@@ -586,3 +586,125 @@ button{ font-family:inherit; }
   inherits: false;
   initial-value: 0deg;
 }
+
+/* ===== Fix 1: register animated angle custom properties ===== */
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --arc-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* ===== Fix 2: kill the viewport-wide fixed sheen and keep ring on border ===== */
+/* (If these selectors exist earlier, this block overrides them safely.) */
+.card::before,
+.uiverse-card .card__border { /* create a border layer we can animate */
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+  pointer-events: none;
+  z-index: 0;
+  border: 2px solid transparent;
+  /* The orbit is a thin conic segment drawn in the border image itself */
+  border-image-slice: 1;
+  border-image-source:
+    conic-gradient(
+      from var(--angle),
+      transparent 0 348deg,
+      color-mix(in oklab, var(--accent, #a78bfa) 88%, white 12%) 348deg 360deg
+    );
+  /* soft glow without painting over content */
+  box-shadow: 0 0 10px color-mix(in oklab, var(--accent, #a78bfa) 55%, transparent);
+  animation: ct-card-orbit 6s linear infinite;
+}
+
+/* Ensure real card content is above the ring */
+.card > *:not(.card__border),
+.uiverse-card > *:not(.card__border) {
+  position: relative;
+  z-index: 1;
+}
+
+@keyframes ct-card-orbit { to { --angle: 360deg; } }
+
+/* ===== Fix 3: theme-dot partial ring remains an animated arc (not a single dot) ===== */
+.theme-dot {
+  --ring-thick: 2px;
+  --arc-angle: 0deg;      /* animated custom prop */
+  --arc-size: 16deg;      /* visible arc length */
+  position: relative;
+  overflow: visible;      /* let arc render around the dot */
+}
+
+.theme-dot::after {
+  content: "";
+  position: absolute;
+  inset: calc(-1 * var(--ring-thick));
+  border-radius: 999px;
+  padding: var(--ring-thick);
+  background:
+    conic-gradient(from var(--arc-angle),
+      rgba(var(--glow, 129,140,248), .95) 0 var(--arc-size),
+      transparent var(--arc-size) 360deg);
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+          mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+  opacity: 0;
+  pointer-events: none;
+}
+
+.theme-dot.is-active {
+  border-color: rgba(var(--glow,129,140,248), .9);
+  box-shadow:
+    0 0 0 4px rgba(var(--glow,129,140,248), .10),
+    0 0 24px rgba(var(--glow,129,140,248), .35);
+}
+.theme-dot.is-active::after {
+  opacity: 1;
+  animation: ct-theme-orbit 6s linear infinite;
+}
+@keyframes ct-theme-orbit { to { --arc-angle: 360deg; } }
+
+/* ===== Fix 4: trash-can lid sits on the rim (not the middle) ===== */
+/* Keep: <button id="clearBtn" class="btn-secondary subtle"> with two SVGs:
+   .svgIcon.bin-top and .svgIcon.bin-bottom */
+#clearBtn .svgIcon {
+  position: absolute;
+  width: 18px;
+  height: auto;
+  transition: transform .35s ease, opacity .25s ease;
+}
+#clearBtn .bin-bottom {
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -46%);   /* body visually centered */
+}
+#clearBtn .bin-top {
+  top: 50%;
+  left: 50%;
+  transform-box: fill-box;            /* origin relative to lid path */
+  transform-origin: 88% 96%;          /* hinge near back-right corner */
+  transform: translate(-50%, -120%) rotate(0deg);  /* sits on rim */
+}
+#clearBtn.btn-secondary.subtle:hover .bin-top {
+  transform: translate(-50%, -120%) rotate(160deg);
+}
+
+/* ===== Safety: if any older rules used `position: fixed` on a border sheen, neutralize them ===== */
+.card .card__border::before,
+.uiverse-card .card__border::before,
+.ct-card__border::before {
+  position: absolute !important;
+  inset: 0 !important;
+  width: 100% !important;
+  height: 100% !important;
+  transform: none !important;
+  background: none !important;   /* avoid the big horizontal panel */
+  animation: none !important;    /* orbit handled by border-image above */
+}
