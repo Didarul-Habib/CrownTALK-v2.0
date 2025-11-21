@@ -1640,3 +1640,64 @@ body {
 @media (prefers-reduced-motion: reduce){
   .theme-dot.is-active::after{ animation: none; }
 }
+
+
+/* ===== Clear button trash-can fix (precise lid alignment) ===== */
+/* Keep: <button id="clearBtn" class="btn-secondary subtle"> with two SVGs inside */
+
+#clearBtn.btn-secondary.subtle{
+  width: 50px;
+  height: 50px;
+  border: none;
+  border-radius: 50%;
+  background: #141414;
+  color: #fff;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  font-size: 0;
+  line-height: 0;
+}
+
+#clearBtn .svgIcon{
+  position: absolute;
+  width: 18px;                 /* little bigger so shapes are crisp */
+  height: auto;
+  color: currentColor;
+  transition: transform .35s ease, opacity .25s ease;
+}
+
+/* Bin body: perfectly centered */
+#clearBtn .bin-bottom{
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -46%);   /* -46% sits the body visually center */
+}
+
+/* Lid: hinge at bottom-right of its own box and sit right on the rim */
+#clearBtn .bin-top{
+  top: 50%;
+  left: 50%;
+  transform-box: fill-box;            /* allow origin relative to the path box */
+  transform-origin: 88% 96%;          /* hinge near the back-right corner */
+  transform: translate(-50%, -110%) rotate(0deg);
+}
+
+/* Hover animation and red state (unchanged behavior) */
+#clearBtn.btn-secondary.subtle:hover{
+  background-color: #ff4545;
+  box-shadow:
+    0 0 30px rgba(255,69,69,.75),
+    0 0 60px rgba(255,69,69,.45),
+    0 0 120px rgba(255,69,69,.35);
+  transform: translateY(-1px);
+}
+#clearBtn.btn-secondary.subtle:hover .bin-top{
+  transform: translate(-50%, -110%) rotate(160deg);
+}
+#clearBtn.btn-secondary.subtle:active{
+  transform: translateY(0) scale(.97);
+  box-shadow: none;
+}
