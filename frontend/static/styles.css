@@ -1,5 +1,5 @@
 /* =========================================================
-   CrownTALK — Full Stylesheet (clean, merged)
+   CrownTALK — Full Stylesheet
    ========================================================= */
 
 /* ---------- ROOT VARIABLES ---------- */
@@ -238,6 +238,11 @@ body{
 @keyframes sheen{ 0%{transform:translateX(-120%);opacity:0}8%{opacity:.9}20%{transform:translateX(120%);opacity:0}100%{transform:translateX(120%);opacity:0} }
 @keyframes hero-glow-pulse{ 0%,100%{ box-shadow:0 0 30px var(--hero-glow-from),0 0 70px var(--hero-glow-to); transform:scale(1) } 50%{ box-shadow:0 0 52px var(--hero-glow-from),0 0 110px var(--hero-glow-to); transform:scale(1.02) } }
 
+/* ----- universal rotate keyframes (element style) ----- */
+@keyframes rotate {
+  to { transform: rotate(360deg); }
+}
+
 /* ---------- THEME SWITCHER (dots) ---------- */
 .theme-switcher{ display:flex; align-items:center; gap:8px; }
 .theme-label{ font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); }
@@ -248,7 +253,7 @@ body{
 .theme-dot{
   --ring: rgba(148,163,184,.55);
   --glow: 129,140,248;
-  --arc-angle: 0deg; --arc-size: 16deg; --ring-thick: 2px;
+  --arc-angle: 0deg; --arc-size: 60deg; --ring-thick: 2px;
 
   position:relative; width:16px; height:16px; border-radius:999px;
   border:2px solid var(--ring); cursor:pointer; overflow:visible; z-index:0;
@@ -258,7 +263,7 @@ body{
 }
 .theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
 
-/* partial orbit arc */
+/* partial orbit arc (wide so it looks like a line, not a dot) */
 .theme-dot::after{
   content:""; position:absolute; inset: calc(-1 * var(--ring-thick)); border-radius:999px; padding:var(--ring-thick);
   background: conic-gradient(from var(--arc-angle), rgba(var(--glow), .95) 0 var(--arc-size), transparent var(--arc-size) 360deg);
@@ -270,8 +275,7 @@ body{
   border-color: rgba(var(--glow), .9);
   box-shadow: 0 0 0 4px rgba(var(--glow), .10), 0 0 24px rgba(var(--glow), .35);
 }
-.theme-dot.is-active::after{ opacity:1; animation: ct-theme-orbit 6s linear infinite; }
-@keyframes ct-theme-orbit{ to{ --arc-angle: 360deg; } }
+.theme-dot.is-active::after{ opacity:1; animation: rotate 6s linear infinite; }
 
 /* tooltip ABOVE */
 .theme-dot::before{
@@ -324,7 +328,7 @@ body{
   box-shadow: inset 0 -16px 24px rgba(255,255,255,0.12), 0 8px 24px rgba(0,0,0,.25);
 }
 
-/* rotating thin arc hugging the border */
+/* rotating thin arc hugging the border (conic) */
 .card::before{
   content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none;
   --ring:2px; padding:var(--ring); --angle:0deg;
@@ -334,12 +338,33 @@ body{
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
           mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
   filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
-  animation: ct-card-orbit 6s linear infinite; z-index:0;
+  animation: card-orbit 6s linear infinite; z-index:0;
 }
-@keyframes ct-card-orbit{ to{ --angle: 360deg; } }
+@keyframes card-orbit{ to{ --angle: 360deg; } }
+
+/* smooth sweep highlight like the element */
+.card::after{
+  content:"";
+  position: fixed;      /* matches element behavior for silky rotation */
+  top:50%; left:50%;
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: left;
+  width:200%;
+  height:10rem;
+  z-index:1;
+  background-image: linear-gradient(
+    0deg,
+    hsla(0,0%,100%,0) 0%,
+    color-mix(in oklab, var(--accent) 92%, white 8%) 40%,
+    color-mix(in oklab, var(--accent) 92%, white 8%) 60%,
+    hsla(0,0%,40%,0) 100%
+  );
+  pointer-events:none;
+  animation: rotate 8s linear infinite;
+}
 
 /* ensure content stays above effects */
-.card > *{ position:relative; z-index:1; }
+.card > *{ position:relative; z-index:2; }
 
 .card-input{ min-height:200px; }
 .card-results{ min-height:200px; }
@@ -422,14 +447,14 @@ button{ font-family:inherit; }
 #clearBtn .bin-top{
   top:50%; left:50%;
   transform-box: fill-box; transform-origin: 88% 96%;
-  transform: translate(-50%, -110%) rotate(0deg);
+  transform: translate(-50%, -120%) rotate(0deg);
 }
 #clearBtn.btn-secondary.subtle:hover{
   background-color:var(--clear-bg-hover);
   box-shadow: 0 0 30px rgba(255,69,69,.75), 0 0 60px rgba(255,69,69,.45), 0 0 120px rgba(255,69,69,.35);
   transform: translateY(-1px);
 }
-#clearBtn.btn-secondary.subtle:hover .bin-top{ transform: translate(-50%, -110%) rotate(160deg); }
+#clearBtn.btn-secondary.subtle:hover .bin-top{ transform: translate(-50%, -120%) rotate(160deg); }
 #clearBtn.btn-secondary.subtle:active{ transform: translateY(0) scale(.97); box-shadow:none; }
 
 /* ---------- PROGRESS BAR ---------- */
@@ -550,9 +575,7 @@ button{ font-family:inherit; }
   .controls{ flex-wrap:wrap; }
 }
 
-
-
-/* ===== Fix: register animating angle props (enables rotation) ===== */
+/* ===== Custom-property registration for smooth conic orbits ===== */
 @property --angle {
   syntax: "<angle>";
   inherits: false;
@@ -563,46 +586,3 @@ button{ font-family:inherit; }
   inherits: false;
   initial-value: 0deg;
 }
-
-/* If you still have old “animation: rotate …” on these elements, remove it.
-   The rules below already animate the border arc via the custom props. */
-
-/* Card border orbit (works for .card and .uiverse-card) */
-.card::before,
-.uiverse-card .card__border::before {
-  /* use the same animation keyframe for both */
-  animation: ct-card-orbit 6s linear infinite !important;
-}
-@keyframes ct-card-orbit {
-  to { --angle: 360deg; }
-}
-
-/* Theme-dot partial ring */
-.theme-dot.is-active::after {
-  animation: ct-theme-orbit 6s linear infinite !important;
-}
-@keyframes ct-theme-orbit {
-  to { --arc-angle: 360deg; }
-}
-
-/* ===== Fix: trash-can lid sits on the rim, not the middle ===== */
-#clearBtn .bin-bottom {
-  /* body perfectly centered */
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -46%);  /* visually centered */
-}
-
-#clearBtn .bin-top {
-  top: 50%;
-  left: 50%;
-  transform-box: fill-box;     /* use path box for origin */
-  transform-origin: 88% 96%;   /* hinge near back-right corner of lid */
-  /* sit the lid right on the rim (higher than before) */
-  transform: translate(-50%, -120%) rotate(0deg);
-}
-
-#clearBtn.btn-secondary.subtle:hover .bin-top {
-  transform: translate(-50%, -120%) rotate(160deg);
-}
-
