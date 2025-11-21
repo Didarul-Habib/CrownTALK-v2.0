@@ -1,19 +1,161 @@
-/* =========================================================
-   CrownTALK — Final script.js (with one-time Access Gate)
-   Passphrase: @CrownTALK@2026@CrownDEX
-   Compatible storage: localStorage "ct_access_ok" + cookie "ct_gate"
-   ========================================================= */
+/* =========================
+   CrownTALK — One-time Access Gate (adminGate/password)
+   Code: @CrownTALK@2026@CrownDEX
+   ========================= */
 
-/* ------------------------
-   Backend endpoints
-   ------------------------ */
+(() => {
+  const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
+  const STORAGE_KEY = 'crowntalk_access_v1';      // local/sessionStorage
+  const COOKIE_KEY  = 'crowntalk_access_v1';      // cookie fallback
+
+  // ----- tiny utils -----
+  const qs  = (sel, root = document) => root.querySelector(sel);
+  const qsa = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+
+  function setCookie(name, val, days = 3650) { // ~10 years
+    try {
+      const d = new Date();
+      d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+      document.cookie = `${name}=${encodeURIComponent(val)}; expires=${d.toUTCString()}; path=/; SameSite=Lax`;
+    } catch {}
+  }
+  function getCookie(name) {
+    try {
+      const m = document.cookie.match(new RegExp('(^| )' + name + '=([^;]+)'));
+      return m ? decodeURIComponent(m[2]) : '';
+    } catch { return ''; }
+  }
+
+  function isAuthorized() {
+    try {
+      if (localStorage.getItem(STORAGE_KEY) === '1') return true;
+    } catch {}
+    try {
+      if (sessionStorage.getItem(STORAGE_KEY) === '1') return true;
+    } catch {}
+    if (getCookie(COOKIE_KEY) === '1') return true;
+    return false;
+  }
+
+  function markAuthorized() {
+    try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
+    try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
+    setCookie(COOKIE_KEY, '1');
+  }
+
+  // gate DOM
+  function gateEls() {
+    const gate    = qs('#adminGate');
+    const input   = qs('#adminGate #password');
+    // The lock is the SVG directly inside the same "relative" wrapper as the input
+    const lockSvg = qs('#adminGate .relative > svg');
+    const warn    = qs('#adminGate .mt-4 p'); // warning line (we’ll reuse for “denied”)
+    return { gate, input, lockSvg, warn };
+  }
+
+  function showGate() {
+    const { gate, input } = gateEls();
+    if (!gate) return;
+    gate.hidden = false;
+    gate.style.display = 'grid';
+    document.body.style.overflow = 'hidden';
+    if (input) { input.value = ''; setTimeout(() => input.focus(), 0); }
+  }
+
+  function hideGate() {
+    const { gate } = gateEls();
+    if (!gate) return;
+    gate.hidden = true;
+    gate.style.display = 'none';
+    document.body.style.overflow = '';
+    try { gate.remove(); } catch {}
+  }
+
+  async function tryUnlock() {
+    const { input, warn } = gateEls();
+    if (!input) return;
+    const val = (input.value || '').trim();
+    if (!val) return;
+
+    if (val === ACCESS_CODE) {
+      markAuthorized();
+      hideGate();
+      // once unlocked, boot the app UI
+      bootAppUI();
+      return;
+    }
+
+    // Wrong code → shake + message
+    input.classList.add('ct-shake');
+    setTimeout(() => input.classList.remove('ct-shake'), 350);
+    input.value = '';
+    input.placeholder = 'Wrong code — try again';
+    if (warn) {
+      warn.innerHTML =
+        '<span class="w-2 h-2 bg-red-500 rounded-full" style="display:inline-block"></span>' +
+        ' <span><span class="text-red-400">ACCESS DENIED:</span> Invalid credentials</span>';
+    }
+  }
+
+  function bindGate() {
+    const { input, lockSvg } = gateEls();
+    if (input) {
+      input.addEventListener('keydown', (e) => {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          tryUnlock();
+        }
+      });
+      // Optional auto-try when leaving the field with something typed
+      input.addEventListener('blur', () => {
+        const { gate } = gateEls();
+        if (gate && gate.style.display !== 'none' && (input.value || '').trim()) {
+          tryUnlock();
+        }
+      });
+    }
+    if (lockSvg) {
+      lockSvg.style.cursor = 'pointer';
+      lockSvg.addEventListener('click', tryUnlock);
+    }
+  }
+
+  // entry for gate
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', () => {
+      if (isAuthorized()) {
+        hideGate();
+        bootAppUI();
+      } else {
+        showGate();
+        bindGate();
+      }
+    });
+  } else {
+    if (isAuthorized()) {
+      hideGate();
+      bootAppUI();
+    } else {
+      showGate();
+      bindGate();
+    }
+  }
+})();
+
+/* =========================
+   CrownTALK — App code (unchanged logic)
+   ========================= */
+
+// ------------------------
+// Backend endpoints
+// ------------------------
 const backendBase = "https://crowntalk.onrender.com";
 const commentURL = `${backendBase}/comment`;
 const rerollURL = `${backendBase}/reroll`;
 
-/* ------------------------
-   DOM elements
-   ------------------------ */
+// ------------------------
+// DOM elements
+// ------------------------
 const urlInput = document.getElementById("urlInput");
 const generateBtn = document.getElementById("generateBtn");
 const cancelBtn = document.getElementById("cancelBtn");
@@ -32,18 +174,18 @@ const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 
 const yearEl = document.getElementById("year");
 
-/* theme dots (live node list -> array) */
+// theme dots (live node list -> array)
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 
-/* ------------------------
-   State
-   ------------------------ */
+// ------------------------
+// State
+// ------------------------
 let cancelled = false;
 let historyItems = [];
 
-/* ------------------------
-   Utilities
-   ------------------------ */
+// ------------------------
+// Utilities
+// ------------------------
 function parseURLs(raw) {
   if (!raw) return [];
   return raw
@@ -112,9 +254,9 @@ function autoResizeTextarea() {
   urlInput.style.height = newHeight + "px";
 }
 
-/* ------------------------
-   History
-   ------------------------ */
+// ------------------------
+// History
+// ------------------------
 function addToHistory(text) {
   if (!text) return;
   const timestamp = new Date().toLocaleTimeString([], {
@@ -196,9 +338,9 @@ function renderHistory() {
   });
 }
 
-/* ------------------------
-   Rendering helpers
-   ------------------------ */
+// ------------------------
+// Rendering helpers
+// ------------------------
 function buildTweetBlock(result) {
   const url = result.url || "";
   const comments = Array.isArray(result.comments) ? result.comments : [];
@@ -369,9 +511,9 @@ function showSkeletons(count) {
   }
 }
 
-/* ------------------------
-   Generate flow
-   ------------------------ */
+// ------------------------
+// Generate flow
+// ------------------------
 async function handleGenerate() {
   const raw = urlInput.value;
   const urls = parseURLs(raw);
@@ -462,9 +604,9 @@ async function handleGenerate() {
   }
 }
 
-/* ------------------------
-   Cancel & Clear
-   ------------------------ */
+// ------------------------
+// Cancel & Clear
+// ------------------------
 function handleCancel() {
   cancelled = true;
   document.body.classList.remove("is-generating");
@@ -481,9 +623,9 @@ function handleClear() {
   autoResizeTextarea();
 }
 
-/* ------------------------
-   Reroll
-   ------------------------ */
+// ------------------------
+// Reroll
+// ------------------------
 async function handleReroll(tweetEl) {
   const url = tweetEl && tweetEl.dataset.url;
   if (!url) return;
@@ -533,9 +675,9 @@ async function handleReroll(tweetEl) {
   }
 }
 
-/* ------------------------
-   Theme
-   ------------------------ */
+// ------------------------
+// Theme
+// ------------------------
 const THEME_STORAGE_KEY = "crowntalk_theme";
 const ALLOWED_THEMES = [
   "white",
@@ -547,7 +689,7 @@ const ALLOWED_THEMES = [
   "crimson", // replaced "neon"
 ];
 
-/* sanitize dots: remove texture, coerce unknown "green" -> crimson */
+// sanitize dots: remove texture, coerce unknown "green" -> crimson
 function sanitizeThemeDots() {
   themeDots.forEach((dot) => {
     if (!dot || !dot.dataset) return;
@@ -556,9 +698,11 @@ function sanitizeThemeDots() {
     if (t === "texture") {
       dot.parentElement && dot.parentElement.removeChild(dot);
     } else if (!ALLOWED_THEMES.includes(t)) {
+      // some builds had a stray "green" — treat as crimson
       dot.dataset.theme = "crimson";
     }
   });
+  // refresh node list after potential removals
   themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 }
 
@@ -574,27 +718,30 @@ function applyTheme(themeName) {
   try {
     localStorage.setItem(THEME_STORAGE_KEY, t);
   } catch {
-    /* ignore storage errors */
+    // ignore storage errors
   }
 }
 
 function initTheme() {
   sanitizeThemeDots();
 
-  let theme = "dark-purple";
+  let theme = "dark-purple"; // default first-run = purple
   try {
     const stored = localStorage.getItem(THEME_STORAGE_KEY);
     if (stored) {
+      // migrate old "neon" -> "crimson"
       theme = stored === "neon" ? "crimson" : stored;
       if (stored === "neon") localStorage.setItem(THEME_STORAGE_KEY, "crimson");
     }
     if (!ALLOWED_THEMES.includes(theme)) theme = "dark-purple";
-  } catch {}
+  } catch {
+    // ignore
+  }
   applyTheme(theme);
 }
 
 /* ------------------------
-   Boot existing UI (call only once)
+   Boot existing UI
    ------------------------ */
 function bootAppUI() {
   if (yearEl) {
@@ -622,7 +769,7 @@ function bootAppUI() {
     renderHistory();
   });
 
-  /* Copy / reroll in results */
+  // Copy / reroll in results
   resultsEl?.addEventListener("click", async (event) => {
     const copyBtn = event.target.closest(".copy-btn, .copy-btn-en");
     const rerollBtn = event.target.closest(".reroll-btn");
@@ -634,6 +781,7 @@ function bootAppUI() {
       await copyToClipboard(text);
       addToHistory(text);
 
+      // mark copied
       const line = copyBtn.closest(".comment-line");
       if (line) line.classList.add("copied");
       copyBtn.classList.add("is-copied");
@@ -654,7 +802,7 @@ function bootAppUI() {
     }
   });
 
-  /* History copy */
+  // History copy
   historyEl?.addEventListener("click", async (event) => {
     const btn = event.target.closest(".history-copy-btn");
     if (!btn) return;
@@ -671,7 +819,7 @@ function bootAppUI() {
     }, 700);
   });
 
-  /* theme dots */
+  // theme dots
   themeDots.forEach((dot) => {
     dot.addEventListener("click", () => {
       const t = dot.dataset.theme;
@@ -680,126 +828,3 @@ function bootAppUI() {
     });
   });
 }
-
-/* =========================================================
-   Unified One-time Access Gate (matches #adminGate/#password)
-   ========================================================= */
-(() => {
-  const ACCESS_CODE = "@CrownTALK@2026@CrownDEX";
-  const CT_GATE_HASH =
-    "3ada2749690e130e09395a7a0df080001f9667bda788c5564fe714361b62b0dd";
-
-  const LS_KEY = "ct_access_ok"; // stores CT_GATE_HASH
-  const COOKIE_KEY = "ct_gate";   // cookie with CT_GATE_HASH
-
-  function setCookie(name, value, days = 3650) {
-    try {
-      const d = new Date();
-      d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
-      document.cookie = `${name}=${value};expires=${d.toUTCString()};path=/;SameSite=Lax`;
-    } catch {}
-  }
-  function getCookie(name) {
-    const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
-    return m ? m[2] : "";
-  }
-
-  function isAuthorized() {
-    try {
-      return (
-        localStorage.getItem(LS_KEY) === CT_GATE_HASH ||
-        getCookie(COOKIE_KEY) === CT_GATE_HASH
-      );
-    } catch {
-      return false;
-    }
-  }
-  function markAuthorized() {
-    try {
-      localStorage.setItem(LS_KEY, CT_GATE_HASH);
-    } catch {}
-    setCookie(COOKIE_KEY, CT_GATE_HASH);
-    // legacy flag for older snippet variants (harmless extra)
-    try { sessionStorage.setItem("crowntalk_access_v1", "1"); } catch {}
-    try {
-      document.cookie = `crowntalk_access_v1=1; max-age=${7 * 24 * 3600}; path=/; samesite=lax`;
-    } catch {}
-  }
-
-  function els() {
-    return {
-      gate: document.getElementById("adminGate"),
-      input: document.getElementById("password"),
-      lock: document.getElementById("adminGate")?.querySelector("svg"),
-    };
-  }
-
-  function showGate() {
-    const { gate, input } = els();
-    if (!gate) return;
-    gate.hidden = false;
-    gate.style.display = "grid";
-    document.body.style.overflow = "hidden";
-    if (input) {
-      input.value = "";
-      setTimeout(() => input.focus(), 0);
-    }
-  }
-  function hideGate() {
-    const { gate } = els();
-    if (!gate) return;
-    gate.hidden = true;
-    gate.style.display = "none";
-    document.body.style.overflow = "";
-    try {
-      gate.remove();
-    } catch {}
-  }
-
-  async function tryAuth() {
-    const { input } = els();
-    if (!input) return;
-    const val = (input.value || "").trim();
-    if (val === ACCESS_CODE) {
-      markAuthorized();
-      hideGate();
-      if (typeof bootAppUI === "function") bootAppUI();
-      return;
-    }
-    // wrong code -> shake + hint
-    input.classList.add("ct-shake");
-    setTimeout(() => input.classList.remove("ct-shake"), 350);
-    input.value = "";
-    input.placeholder = "Wrong code — try again";
-  }
-
-  function bind() {
-    const { input, lock } = els();
-    input?.addEventListener("keydown", (e) => {
-      if (e.key === "Enter") {
-        e.preventDefault();
-        tryAuth();
-      }
-    });
-    if (lock) {
-      lock.style.cursor = "pointer";
-      lock.addEventListener("click", tryAuth);
-    }
-  }
-
-  // Entry
-  if (document.readyState === "loading") {
-    document.addEventListener("DOMContentLoaded", start);
-  } else {
-    start();
-  }
-  function start() {
-    if (isAuthorized()) {
-      hideGate();
-      if (typeof bootAppUI === "function") bootAppUI();
-    } else {
-      showGate();
-      bind();
-    }
-  }
-})();
