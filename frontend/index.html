@@ -2,82 +2,49 @@
 <html lang="en" data-theme="dark-purple">
   <head>
     <meta charset="utf-8" />
-    <meta
-      name="viewport"
-      content="width=device-width, initial-scale=1, viewport-fit=cover"
-    />
-    <title>CrownTALK- Comment Generator</title>
-
-    <!-- Tailwind (for the access gate) -->
-    <script src="https://cdn.tailwindcss.com"></script>
-
-    <!-- Core styles --><!doctype html>
-<html lang="en" data-theme="dark-purple">
-  <head>
-    <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover" />
     <title>CrownTALK — Comment Generator</title>
 
-    <!-- Your existing styles -->
+    <!-- Core styles -->
     <link rel="stylesheet" href="static/styles.css" />
     <link rel="stylesheet" href="static/generate-button.css" />
     <link rel="stylesheet" href="static/loader.css" />
     <link rel="stylesheet" href="static/inputbox.css" />
     <link rel="shortcut icon" href="static/logo.png" type="image/png" />
 
-    <!-- Minimal overlay styles (scoped, won’t touch the rest) -->
+    <!-- Minimal overlay helpers (scoped to #adminGate only) -->
     <style>
-      /* full-screen dim/backdrop */
-      .ct-gate-overlay {
-        position: fixed;
-        inset: 0;
-        z-index: 9999;
-        display: grid;
-        place-items: center;
-        padding: 16px;
-        backdrop-filter: blur(6px);
-        background: rgba(0,0,0,.55);
-      }
-      /* tiny helpers so the gate looks right without Tailwind */
-      #adminGate .font-mono{ font-family: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace; }
-      #adminGate .w-full{ width:100%; } #adminGate .max-w-md{ max-width:28rem; }
-      #adminGate .mx-auto{ margin-left:auto;margin-right:auto; } #adminGate .relative{ position:relative; }
-      #adminGate .absolute{ position:absolute; } #adminGate .p-6{ padding:1.5rem; }
-      #adminGate .bg-black{ background:#000; } #adminGate .bg-green-400{ background:#4ade80; }
-      #adminGate .border-2{ border-width:2px; } #adminGate .border-green-400{ border-color:#4ade80; }
-      #adminGate .rounded-lg{ border-radius:.75rem; }
-      #adminGate .shadow-lg{ box-shadow:0 20px 60px rgba(0,0,0,.55), inset 0 0 0 1px rgba(74,222,128,.2); }
-      #adminGate .overflow-hidden{ overflow:hidden; }
-      #adminGate .text-green-600{ color:#16a34a; } #adminGate .text-green-500{ color:#22c55e; }
-      #adminGate .text-green-400{ color:#4ade80; } #adminGate .text-green-300{ color:#86efac; }
-      #adminGate .text-red-400{ color:#f87171; } #adminGate .text-xs{ font-size:.75rem; line-height:1rem; }
-      #adminGate .text-sm{ font-size:.875rem; line-height:1.25rem; } #adminGate .text-base{ font-size:1rem; line-height:1.5rem; }
-      #adminGate .font-bold{ font-weight:700; } #adminGate .opacity-80{ opacity:.8; } #adminGate .opacity-75{ opacity:.75; }
-      #adminGate .tracking-wider{ letter-spacing:.08em; } #adminGate .flex{ display:flex; }
-      #adminGate .items-center{ align-items:center; } #adminGate .gap-2{ gap:.5rem; }
-      #adminGate .mr-2{ margin-right:.5rem; } #adminGate .ml-2{ margin-left:.5rem; }
-      #adminGate .mt-4{ margin-top:1rem; } #adminGate .mt-6{ margin-top:1.5rem; }
-      #adminGate .btn-inline{ padding:.6rem 1rem; border-radius:.6rem; border:2px solid #22c55e; color:#22c55e; background:transparent; cursor:pointer; }
-      #adminGate .btn-inline:hover{ background:#052e1a; }
-      #adminGate input#password{
-        width:100%; background:transparent; color:#86efac; font-size:1rem;
-        border:2px solid #22c55e; border-radius:.5rem; padding:.75rem .75rem; padding-right:2.25rem;
-        outline:none; transition: box-shadow .15s ease, border-color .15s ease;
-      }
-      #adminGate input#password::placeholder{ color: rgba(22,163,74,.6); }
-      #adminGate input#password:focus{ border-color:#16a34a; box-shadow:0 0 0 2px rgba(74,222,128,.45); }
-      #adminGate .animate-pulse{ animation: ct-gate-pulse 1.2s ease-in-out infinite; }
-      @keyframes ct-gate-pulse{ 0%,100%{opacity:.25;} 50%{opacity:.9;} }
-      #adminGate .error-msg { color:#f87171; font-size:.85rem; margin-top:.5rem; min-height:1.2em; }
+      .ct-gate-overlay{position:fixed;inset:0;z-index:9999;display:grid;place-items:center;padding:16px;backdrop-filter:blur(6px);background:rgba(0,0,0,.55);}
+      #adminGate .font-mono{font-family:ui-monospace,SFMono-Regular,Menlo,Monaco,Consolas,"Liberation Mono","Courier New",monospace;}
+      #adminGate .w-full{width:100%;} #adminGate .max-w-md{max-width:28rem;} #adminGate .mx-auto{margin-left:auto;margin-right:auto;}
+      #adminGate .relative{position:relative;} #adminGate .absolute{position:absolute;} #adminGate .p-6{padding:1.5rem;}
+      #adminGate .bg-black{background:#000;} #adminGate .bg-green-400{background:#4ade80;}
+      #adminGate .border-2{border-width:2px;} #adminGate .border-green-400{border-color:#4ade80;}
+      #adminGate .rounded-lg{border-radius:.75rem;} #adminGate .shadow-lg{box-shadow:0 20px 60px rgba(0,0,0,.55), inset 0 0 0 1px rgba(74,222,128,.2);}
+      #adminGate .overflow-hidden{overflow:hidden;}
+      #adminGate .text-green-600{color:#16a34a;} #adminGate .text-green-500{color:#22c55e;}
+      #adminGate .text-green-400{color:#4ade80;} #adminGate .text-green-300{color:#86efac;}
+      #adminGate .text-red-400{color:#f87171;} #adminGate .text-xs{font-size:.75rem;line-height:1rem;}
+      #adminGate .text-sm{font-size:.875rem;line-height:1.25rem;} #adminGate .text-base{font-size:1rem;line-height:1.5rem;}
+      #adminGate .font-bold{font-weight:700;} #adminGate .opacity-80{opacity:.8;} #adminGate .opacity-75{opacity:.75;}
+      #adminGate .tracking-wider{letter-spacing:.08em;} #adminGate .flex{display:flex;} #adminGate .items-center{align-items:center;}
+      #adminGate .gap-2{gap:.5rem;} #adminGate .mr-2{margin-right:.5rem;} #adminGate .ml-2{margin-left:.5rem;} #adminGate .mt-4{margin-top:1rem;}
+      #adminGate input#password{width:100%;background:transparent;color:#86efac;font-size:1rem;border:2px solid #22c55e;border-radius:.5rem;padding:.75rem .75rem;padding-right:2.25rem;outline:none;transition:box-shadow .15s ease,border-color .15s ease;}
+      #adminGate input#password::placeholder{color:rgba(22,163,74,.6);} #adminGate input#password:focus{border-color:#16a34a;box-shadow:0 0 0 2px rgba(74,222,128,.45);}
+      #adminGate .animate-pulse{animation:ct-gate-pulse 1.2s ease-in-out infinite;}
+      @keyframes ct-gate-pulse{0%,100%{opacity:.25;}50%{opacity:.9;}}
+      /* tiny shake effect used by script.js on wrong code (optional) */
+      .ct-shake{animation:ctshake .35s ease;}
+      @keyframes ctshake{10%,90%{transform:translateX(-1px)}20%,80%{transform:translateX(2px)}30%,50%,70%{transform:translateX(-4px)}40%,60%{transform:translateX(4px)}}
     </style>
   </head>
 
   <body>
-    <!-- ========== ACCESS GATE (first-time per device) ========== -->
+    <!-- ===== ACCESS GATE (first time per device) ===== -->
     <div id="adminGate" class="ct-gate-overlay" hidden>
-      <!-- (keep all your original element classes/structure) -->
       <div class="relative w-full max-w-md mx-auto font-mono">
         <div class="relative p-6 bg-black border-2 border-green-400 rounded-lg shadow-lg overflow-hidden">
+          <!-- corner ticks -->
           <div class="absolute top-0 left-0 w-6 h-1 bg-green-400"></div>
           <div class="absolute top-0 left-0 w-1 h-6 bg-green-400"></div>
           <div class="absolute top-0 right-0 w-6 h-1 bg-green-400"></div>
@@ -96,26 +63,16 @@
           </label>
 
           <div class="relative">
-            <input
-              id="password"
-              type="password"
-              class="w-full bg-transparent text-green-300 text-base border-2 border-green-500 rounded-md p-3"
-              placeholder="➤ ENTER CREDENTIALS"
-              autocomplete="current-password"
-              aria-label="Access code"
-            />
+            <input id="password" type="password"
+                   class="w-full bg-transparent text-green-300 text-base border-2 border-green-500 rounded-md p-3"
+                   placeholder="➤ ENTER CREDENTIALS" autocomplete="current-password" aria-label="Access code" />
+            <!-- lock icon doubles as submit -->
             <svg stroke="currentColor" viewBox="0 0 24 24" fill="none"
-              class="absolute" style="right:.75rem; top:50%; transform:translateY(-50%); width:1.25rem; height:1.25rem; color:#22c55e"
-              xmlns="http://www.w3.org/2000/svg">
+                 style="position:absolute; right:.75rem; top:50%; transform:translateY(-50%); width:1.25rem; height:1.25rem; color:#22c55e; cursor:pointer"
+                 xmlns="http://www.w3.org/2000/svg">
               <path d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
+                    stroke-width="2" stroke-linejoin="round" stroke-linecap="round"></path>
             </svg>
-          </div>
-
-          <div id="gateError" class="error-msg"></div>
-
-          <div class="mt-6" style="display:flex; justify-content:flex-end; gap:.5rem;">
-            <button id="gateSubmit" type="button" class="btn-inline">Unlock</button>
           </div>
 
           <div class="mt-4 flex items-center gap-2 opacity-80">
@@ -133,17 +90,13 @@
         </div>
       </div>
     </div>
-    <!-- ========== /ACCESS GATE ========== -->
+    <!-- ===== /ACCESS GATE ===== -->
 
     <div class="app-shell">
       <!-- ===== HERO / HEADER ===== -->
       <header class="hero">
         <div class="hero-main">
-          <div class="hero-orbit">
-            <div class="hero-orbit-inner">
-              <img src="static/logo.png" alt="CrownTALK" />
-            </div>
-          </div>
+          <div class="hero-orbit"><div class="hero-orbit-inner"><img src="static/logo.png" alt="CrownTALK" /></div></div>
           <div class="hero-copy">
             <h1>C R O W N T A L K</h1>
             <p>Humanlike comment engine powered by CrownDEX 👑</p>
@@ -210,12 +163,9 @@
             <button id="generateBtn" type="button" class="btn">
               <div class="dots_border"></div>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24" class="sparkle" aria-hidden="true">
-                <path class="path" stroke-linejoin="round" stroke-linecap="round"
-                  d="M14.187 8.096L15 5.25L15.813 8.096C16.0231 8.83114 16.4171 9.50062 16.9577 10.0413C17.4984 10.5819 18.1679 10.9759 18.903 11.186L21.75 12L18.904 12.813C18.1689 13.0231 17.4994 13.4171 16.9587 13.9577C16.4181 14.4984 16.0241 15.1679 15.814 15.903L15 18.75L14.187 15.904C13.9769 15.1689 13.5829 14.4994 13.0423 13.9587C12.5016 13.4181 11.8321 13.0241 11.097 12.814L8.25 12L11.096 11.187C11.8311 10.9769 12.5006 10.5829 13.0413 10.0423C13.5819 9.50162 13.9759 8.83214 14.186 8.097L14.187 8.096Z"></path>
-                <path class="path" stroke-linejoin="round" stroke-linecap="round"
-                  d="M6 14.25L5.741 15.285C5.59267 15.8785 5.28579 16.4206 4.85319 16.8532C4.42059 17.2858 3.87853 17.5927 3.285 17.741L2.25 18L3.285 18.259C3.87853 18.4073 4.42059 18.7142 4.85319 19.1468C5.28579 19.5794 5.59267 20.1215 5.741 20.715L6 21.75L6.259 20.715C6.40725 20.1216 6.71398 19.5796 7.14639 19.147C7.5788 18.7144 8.12065 18.4075 8.714 18.259L9.75 18L8.714 17.741C8.12065 17.5925 7.5788 17.2856 7.14639 16.853C6.71398 16.4204 6.40725 15.8784 6.259 15.285L6 14.25Z"></path>
-                <path class="path" stroke-linejoin="round" stroke-linecap="round"
-                  d="M6.5 4L6.303 4.5915C6.24777 4.75718 6.15472 4.90774 6.03123 5.03123C5.90774 5.15472 5.75718 5.24777 5.5915 5.303L5 5.5L5.5915 5.697C5.75718 5.75223 5.90774 5.84528 6.03123 5.96877C6.15472 6.09226 6.24777 6.24282 6.303 6.4085L6.5 7L6.697 6.4085C6.75223 6.24282 6.84528 6.09226 6.96877 5.96877C7.09226 5.84528 7.24282 5.75223 7.4085 5.697L8 5.5L7.4085 5.303C7.24282 5.24777 7.09226 5.15472 6.96877 5.03123C6.84528 4.90774 6.75223 4.75718 6.697 4.5915L6.5 4Z"></path>
+                <path class="path" stroke-linejoin="round" stroke-linecap="round" d="M14.187 8.096L15 5.25L15.813 8.096C16.0231 8.83114 16.4171 9.50062 16.9577 10.0413C17.4984 10.5819 18.1679 10.9759 18.903 11.186L21.75 12L18.904 12.813C18.1689 13.0231 17.4994 13.4171 16.9587 13.9577C16.4181 14.4984 16.0241 15.1679 15.814 15.903L15 18.75L14.187 15.904C13.9769 15.1689 13.5829 14.4994 13.0423 13.9587C12.5016 13.4181 11.8321 13.0241 11.097 12.814L8.25 12L11.096 11.187C11.8311 10.9769 12.5006 10.5829 13.0413 10.0423C13.5819 9.50162 13.9759 8.83214 14.186 8.097Z"></path>
+                <path class="path" stroke-linejoin="round" stroke-linecap="round" d="M6 14.25L5.741 15.285C5.59267 15.8785 5.28579 16.4206 4.85319 16.8532C4.42059 17.2858 3.87853 17.5927 3.285 17.741L2.25 18L3.285 18.259C3.87853 18.4073 4.42059 18.7142 4.85319 19.1468C5.28579 19.5794 5.59267 20.1215 5.741 20.715L6 21.75L6.259 20.715C6.40725 20.1216 6.71398 19.5796 7.14639 19.147C7.5788 18.7144 8.12065 18.4075 8.714 18.259L9.75 18L8.714 17.741C8.12065 17.5925 7.5788 17.2856 7.14639 16.853C6.71398 16.4204 6.40725 15.8784 6.259 15.285L6 14.25Z"></path>
+                <path class="path" stroke-linejoin="round" stroke-linecap="round" d="M6.5 4L6.303 4.5915C6.24777 4.75718 6.15472 4.90774 6.03123 5.03123C5.90774 5.15472 5.75718 5.24777 5.5915 5.303L5 5.5L5.5915 5.697C5.75718 5.75223 5.90774 5.84528 6.03123 5.96877C6.15472 6.09226 6.24777 6.24282 6.303 6.4085L6.5 7L6.697 6.4085C6.75223 6.24282 6.84528 6.09226 6.96877 5.96877C7.09226 5.84528 7.24282 5.75223 7.4085 5.697L8 5.5L7.4085 5.303C7.24282 5.24777 7.09226 5.15472 6.96877 5.03123C6.84528 4.90774 6.75223 4.75718 6.697 4.5915L6.5 4Z"></path>
               </svg>
               <span class="text_button tb-1">Generate</span>
               <span class="text_button tb-2">Generating</span>
@@ -226,13 +176,15 @@
             <button id="clearBtn" class="btn-secondary subtle" type="button" aria-label="Clear">
               <span class="sr-only">Clear</span>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 69 14" class="svgIcon bin-top" aria-hidden="true">
-                <g clip-path="url(#clip0_35_24)"><path fill="currentColor"
-                  d="M20.8232 2.62734L19.9948 4.21304C19.8224 4.54309 19.4808 4.75 19.1085 4.75H4.92857C2.20246 4.75 0 6.87266 0 9.5C0 12.1273 2.20246 14.25 4.92857 14.25H64.0714C66.7975 14.25 69 12.1273 69 9.5C69 6.87266 66.7975 4.75 64.0714 4.75H49.8915C49.5192 4.75 49.1776 4.54309 49.0052 4.21305L48.1768 2.62734C47.3451 1.00938 45.6355 0 43.7719 0H25.2281C23.3645 0 21.6549 1.00938 20.8232 2.62734Z"></path></g>
+                <g clip-path="url(#clip0_35_24)">
+                  <path fill="currentColor" d="M20.8232 2.62734L19.9948 4.21304C19.8224 4.54309 19.4808 4.75 19.1085 4.75H4.92857C2.20246 4.75 0 6.87266 0 9.5C0 12.1273 2.20246 14.25 4.92857 14.25H64.0714C66.7975 14.25 69 12.1273 69 9.5C69 6.87266 66.7975 4.75 64.0714 4.75H49.8915C49.5192 4.75 49.1776 4.54309 49.0052 4.21305L48.1768 2.62734C47.3451 1.00938 45.6355 0 43.7719 0H25.2281C23.3645 0 21.6549 1.00938 20.8232 2.62734Z"></path>
+                </g>
                 <defs><clipPath id="clip0_35_24"><rect fill="white" height="14" width="69"></rect></clipPath></defs>
               </svg>
               <svg xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 69 57" class="svgIcon bin-bottom" aria-hidden="true">
-                <g clip-path="url(#clip0_35_22)"><path fill="currentColor"
-                  d="M64.0023 1.0648C64.0397 0.4882 63.5822 0 63.0044 0H5.99556C5.4178 0 4.96025 0.4882 4.99766 1.0648L8.19375 50.3203C8.44018 54.0758 11.6746 57 15.5712 57H53.4288C57.3254 57 60.5598 54.0758 60.8062 50.3203L64.0023 1.0648Z"></path></g>
+                <g clip-path="url(#clip0_35_22)">
+                  <path fill="currentColor" d="M64.0023 1.0648C64.0397 0.4882 63.5822 0 63.0044 0H5.99556C5.4178 0 4.96025 0.4882 4.99766 1.0648L8.19375 50.3203C8.44018 54.0758 11.6746 57 15.5712 57H53.4288C57.3254 57 60.5598 54.0758 60.8062 50.3203L64.0023 1.0648Z"></path>
+                </g>
                 <defs><clipPath id="clip0_35_22"><rect fill="white" height="57" width="69"></rect></clipPath></defs>
               </svg>
             </button>
@@ -244,6 +196,7 @@
           </div>
         </section>
 
+        <!-- RESULTS -->
         <section class="card">
           <div class="card-head">
             <h2>Results <span id="resultCount" class="chip">0</span></h2>
@@ -252,14 +205,16 @@
           <div id="results" class="tweets"></div>
         </section>
 
+        <!-- FAILED -->
         <section class="card">
           <div class="card-head">
             <h2>Failed <span id="failedCount" class="chip">0</span></h2>
-            <p class="muted">Errors while processing your URLs(Maybe url is broken or tweet is private/broken)</p>
+            <p class="muted">Errors while processing your URLs (Maybe url is broken or tweet is private/broken)</p>
           </div>
           <div id="failed" class="failed-list"></div>
         </section>
 
+        <!-- HISTORY -->
         <section class="card">
           <div class="card-head">
             <h2>Clipboard History</h2>
@@ -271,563 +226,19 @@
         </section>
       </main>
 
+      <!-- ===== FOOTER ===== -->
       <footer class="footer">
         <div>© <span id="year"></span> CrownTALK</div>
         <div>Built by <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a></div>
       </footer>
     </div>
 
-    <!-- Loader overlay -->
-    <div id="chipLoader" class="chip-loader" aria-hidden="true">
-      <div class="main-container">
-        <div class="loader">
-        </div>
-      </div>
-    </div>
-
-    <!-- ===== Gate logic ===== -->
-    <script>
-      (function () {
-        const STORAGE_KEY = "ct_gate_v1";
-        const ACCESS_CODE = "@CrownTALK@2026@CrownDEX";
-
-        const gate = document.getElementById("adminGate");
-        const input = document.getElementById("password");
-        const submit = document.getElementById("gateSubmit");
-        const err = document.getElementById("gateError");
-
-        function alreadyUnlocked() {
-          try { return localStorage.getItem(STORAGE_KEY) === "ok"; }
-          catch { return false; }
-        }
-        function unlock() {
-          try { localStorage.setItem(STORAGE_KEY, "ok"); } catch {}
-          gate.hidden = true;
-          document.body.classList.remove("ct-gate-open");
-          err.textContent = "";
-        }
-        function showGate() {
-          gate.hidden = false;
-          document.body.classList.add("ct-gate-open");
-          setTimeout(() => input && input.focus(), 0);
-        }
-        function trySubmit() {
-          const v = (input.value || "").trim();
-          if (v === ACCESS_CODE) {
-            unlock();
-          } else {
-            err.textContent = "Invalid access code. Please try again.";
-          }
-        }
-
-        // init
-        document.addEventListener("DOMContentLoaded", () => {
-          if (!alreadyUnlocked()) showGate();
-        });
-
-        // interactions
-        if (submit) submit.addEventListener("click", trySubmit);
-        if (input) input.addEventListener("keydown", (e) => {
-          if (e.key === "Enter") { e.preventDefault(); trySubmit(); }
-        });
-      })();
-    </script>
-
-    <!-- Your main app JS -->
-    <script src="static/script.js"></script>
-  </body>
-</html>
-
-    <link rel="stylesheet" href="static/styles.css" />
-    <link rel="stylesheet" href="static/generate-button.css" />
-    <link rel="stylesheet" href="static/loader.css" />
-    <link rel="stylesheet" href="static/inputbox.css" />
-
-    <link rel="shortcut icon" href="static/logo.png" type="image/png" />
-  </head>
-  <body>
-    <!-- ACCESS GATE OVERLAY (shows once per device until authenticated) -->
-    <div
-      id="adminGate"
-      class="ct-gate-overlay fixed inset-0 z-[9999] grid place-items-center p-4 backdrop-blur-sm bg-black/55"
-    >
-      <div class="relative w-full max-w-md mx-auto font-mono">
-        <div
-          class="relative p-6 bg-black border-2 border-green-400 rounded-lg shadow-lg overflow-hidden"
-        >
-          <div class="absolute top-0 left-0 w-6 h-1 bg-green-400"></div>
-          <div class="absolute top-0 left-0 w-1 h-6 bg-green-400"></div>
-          <div class="absolute top-0 right-0 w-6 h-1 bg-green-400"></div>
-          <div class="absolute top-0 right-0 w-1 h-6 bg-green-400"></div>
-          <div class="absolute bottom-0 left-0 w-6 h-1 bg-green-400"></div>
-          <div class="absolute bottom-0 left-0 w-1 h-6 bg-green-400"></div>
-          <div class="absolute bottom-0 right-0 w-6 h-1 bg-green-400"></div>
-          <div class="absolute bottom-0 right-0 w-1 h-6 bg-green-400"></div>
-
-          <div
-            class="absolute inset-x-0 top-0 h-16 bg-gradient-to-b from-transparent via-green-900/20 to-transparent"
-          ></div>
-
-          <label
-            class="mb-3 text-green-400 text-sm tracking-wider flex items-center"
-            for="password"
-          >
-            <span class="mr-2 text-green-600">➜</span>
-            <span class="text-green-300 font-bold">CrownTALK_ACCESS</span>
-            <span class="ml-2 opacity-75 animate-pulse">▋</span>
-          </label>
-
-          <div class="relative">
-            <input
-              class="w-full bg-transparent text-green-300 text-base border-2 border-green-500 rounded-md p-3 focus:outline-none focus:ring-2 focus:ring-green-400 focus:border-green-600 placeholder-green-600/60 pr-10"
-              placeholder="➤ ENTER CREDENTIALS"
-              id="password"
-              type="password"
-              autocomplete="current-password"
-            />
-
-            <svg
-              stroke="currentColor"
-              viewBox="0 0 24 24"
-              fill="none"
-              class="absolute right-3 top-1/2 transform -translate-y-1/2 w-5 h-5 text-green-500"
-              xmlns="http://www.w3.org/2000/svg"
-            >
-              <path
-                d="M12 15v2m-6 4h12a2 2 0 002-2v-6a2 2 0 00-2-2H6a2 2 0 00-2 2v6a2 2 0 002 2zm10-10V7a4 4 0 00-8 0v4h8z"
-                stroke-width="2"
-                stroke-linejoin="round"
-                stroke-linecap="round"
-              ></path>
-            </svg>
-          </div>
-
-          <div class="mt-4 flex flex-col gap-2">
-            <p class="text-xs text-green-500 opacity-80 flex items-center gap-2">
-              <span class="w-2 h-2 bg-red-500 rounded-full"></span>
-              <span
-                ><span class="text-red-400">WARNING:</span> Unauthorized access
-                will be reported</span
-              >
-            </p>
-          </div>
-
-          <div class="absolute top-0 right-12 w-px h-4 bg-green-500/50"></div>
-          <div class="absolute top-0 right-16 w-px h-6 bg-green-500/30"></div>
-          <div class="absolute top-0 right-20 w-px h-2 bg-green-500/70"></div>
-
-          <div class="absolute bottom-0 left-12 w-px h-4 bg-green-500/50"></div>
-          <div class="absolute bottom-0 left-16 w-px h-6 bg-green-500/30"></div>
-          <div class="absolute bottom-0 left-20 w-px h-2 bg-green-500/70"></div>
-        </div>
-      </div>
-    </div>
-
-    <div id="appRoot" class="app-shell">
-      <!-- ===== HERO / HEADER ===== -->
-      <header class="hero">
-        <div class="hero-main">
-          <div class="hero-orbit">
-            <div class="hero-orbit-inner">
-              <img src="static/logo.png" alt="CrownTALK" />
-            </div>
-          </div>
-
-          <div class="hero-copy">
-            <h1>C R O W N T A L K</h1>
-            <p>Humanlike comment engine powered by CrownDEX 👑</p>
-          </div>
-        </div>
-
-        <div class="theme-switcher">
-          <span class="theme-label">Theme</span>
-          <div class="theme-dots">
-            <button class="theme-dot" data-theme="white" title="White"></button>
-            <button
-              class="theme-dot"
-              data-theme="dark-purple"
-              title="Purple"
-            ></button>
-            <button class="theme-dot" data-theme="gold" title="Gold"></button>
-            <button class="theme-dot" data-theme="blue" title="Blue"></button>
-            <button class="theme-dot" data-theme="black" title="Black"></button>
-            <button
-              class="theme-dot"
-              data-theme="emerald"
-              title="Emerald"
-            ></button>
-            <button
-              class="theme-dot"
-              data-theme="crimson"
-              title="Crimson"
-            ></button>
-          </div>
-        </div>
-      </header>
-
-      <!-- ===== INPUT / CONTROLS ===== -->
-      <main class="main">
-        <section class="card">
-          <div class="card-head">
-            <h2>Tweet URLs</h2>
-          </div>
-
-          <!-- Chat-style input panel WITH header -->
-          <div class="ai-chat-input">
-            <div class="chat-container">
-              <div class="chat-header">
-                <div class="status-section">
-                  <div class="status-indicator" aria-hidden="true"></div>
-                  <span class="status-text">CrownTALK</span>
-                </div>
-                <div class="badges">
-                  <span class="badge badge-gpt">TALK-5</span>
-                  <span class="badge badge-pro">Pro</span>
-                </div>
-              </div>
-
-              <div class="input-section">
-                <textarea
-                  id="urlInput"
-                  class="main-input"
-                  rows="8"
-                  placeholder="Paste one or more X (Twitter) post links — one per line (e.g., https://x.com/user/status/123...)"
-                  spellcheck="false"
-                ></textarea>
-                <div class="gradient-overlay"></div>
-              </div>
-
-              <div class="footer-info">
-                <div class="shortcut-info">
-                  <svg
-                    class="info-icon"
-                    fill="currentColor"
-                    viewBox="0 0 20 20"
-                    aria-hidden="true"
-                  >
-                    <path
-                      fill-rule="evenodd"
-                      d="M18 10a8 8 0 11-16 0 8 8 0 0116 0zm-7-4a1 1 0 11-2 0 1 1 0 012 0zM9 9a1 1 0 000 2v3a1 1 0 001 1h1a1 1 0 100-2v-3a1 1 0 00-1-1H9z"
-                      clip-rule="evenodd"
-                    ></path>
-                  </svg>
-                  <span>Press <kbd class="shortcut-key">Enter</kbd> for new line</span>
-                </div>
-
-                <div class="system-status">
-                  <div class="system-indicator" aria-hidden="true"></div>
-                  <span>All Systems Operational</span>
-                </div>
-              </div>
-
-              <div class="floating-overlay"></div>
-            </div>
-          </div>
-
-          <div class="controls">
-            <button id="generateBtn" type="button" class="btn">
-              <div class="dots_border"></div>
-
-              <!-- sparkle icon -->
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 24 24"
-                class="sparkle"
-                aria-hidden="true"
-              >
-                <path
-                  class="path"
-                  stroke-linejoin="round"
-                  stroke-linecap="round"
-                  d="M14.187 8.096L15 5.25L15.813 8.096C16.0231 8.83114 16.4171 9.50062 16.9577 10.0413C17.4984 10.5819 18.1679 10.9759 18.903 11.186L21.75 12L18.904 12.813C18.1689 13.0231 17.4994 13.4171 16.9587 13.9577C16.4181 14.4984 16.0241 15.1679 15.814 15.903L15 18.75L14.187 15.904C13.9769 15.1689 13.5829 14.4994 13.0423 13.9587C12.5016 13.4181 11.8321 13.0241 11.097 12.814L8.25 12L11.096 11.187C11.8311 10.9769 12.5006 10.5829 13.0413 10.0423C13.5819 9.50162 13.9759 8.83214 14.186 8.097L14.187 8.096Z"
-                ></path>
-                <path
-                  class="path"
-                  stroke-linejoin="round"
-                  stroke-linecap="round"
-                  d="M6 14.25L5.741 15.285C5.59267 15.8785 5.28579 16.4206 4.85319 16.8532C4.42059 17.2858 3.87853 17.5927 3.285 17.741L2.25 18L3.285 18.259C3.87853 18.4073 4.42059 18.7142 4.85319 19.1468C5.28579 19.5794 5.59267 20.1215 5.741 20.715L6 21.75L6.259 20.715C6.40725 20.1216 6.71398 19.5796 7.14639 19.147C7.5788 18.7144 8.12065 18.4075 8.714 18.259L9.75 18L8.714 17.741C8.12065 17.5925 7.5788 17.2856 7.14639 16.853C6.71398 16.4204 6.40725 15.8784 6.259 15.285L6 14.25Z"
-                ></path>
-                <path
-                  class="path"
-                  stroke-linejoin="round"
-                  stroke-linecap="round"
-                  d="M6.5 4L6.303 4.5915C6.24777 4.75718 6.15472 4.90774 6.03123 5.03123C5.90774 5.15472 5.75718 5.24777 5.5915 5.303L5 5.5L5.5915 5.697C5.75718 5.75223 5.90774 5.84528 6.03123 5.96877C6.15472 6.09226 6.24777 6.24282 6.303 6.4085L6.5 7L6.697 6.4085C6.75223 6.24282 6.84528 6.09226 6.96877 5.96877C7.09226 5.84528 7.24282 5.75223 7.4085 5.697L8 5.5L7.4085 5.303C7.24282 5.24777 7.09226 5.15472 6.96877 5.03123C6.84528 4.90774 6.75223 4.75718 6.697 4.5915L6.5 4Z"
-                ></path>
-              </svg>
-
-              <span class="text_button tb-1">Generate</span>
-              <span class="text_button tb-2">Generating</span>
-            </button>
-
-            <!-- Cancel Button -->
-            <button id="cancelBtn" class="btn-secondary" type="button">
-              Cancel
-            </button>
-
-            <!-- Clear Button Trash Can -->
-            <button
-              id="clearBtn"
-              class="btn-secondary subtle"
-              type="button"
-              aria-label="Clear"
-            >
-              <span class="sr-only">Clear</span>
-              <!-- bin lid -->
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 69 14"
-                class="svgIcon bin-top"
-                aria-hidden="true"
-              >
-                <g clip-path="url(#clip0_35_24)">
-                  <path
-                    fill="currentColor"
-                    d="M20.8232 2.62734L19.9948 4.21304C19.8224 4.54309 19.4808 4.75 19.1085 4.75H4.92857C2.20246 4.75 0 6.87266 0 9.5C0 12.1273 2.20246 14.25 4.92857 14.25H64.0714C66.7975 14.25 69 12.1273 69 9.5C69 6.87266 66.7975 4.75 64.0714 4.75H49.8915C49.5192 4.75 49.1776 4.54309 49.0052 4.21305L48.1768 2.62734C47.3451 1.00938 45.6355 0 43.7719 0H25.2281C23.3645 0 21.6549 1.00938 20.8232 2.62734ZM64.0023 20.0648C64.0397 19.4882 63.5822 19 63.0044 19H5.99556C5.4178 19 4.96025 19.4882 4.99766 20.0648L8.19375 69.3203C8.44018 73.0758 11.6746 76 15.5712 76H53.4288C57.3254 76 60.5598 73.0758 60.8062 69.3203L64.0023 20.0648Z"
-                  ></path>
-                </g>
-                <defs>
-                  <clipPath id="clip0_35_24">
-                    <rect fill="white" height="14" width="69"></rect>
-                  </clipPath>
-                </defs>
-              </svg>
-              <!-- bin body -->
-              <svg
-                xmlns="http://www.w3.org/2000/svg"
-                fill="none"
-                viewBox="0 0 69 57"
-                class="svgIcon bin-bottom"
-                aria-hidden="true"
-              >
-                <g clip-path="url(#clip0_35_22)">
-                  <path
-                    fill="currentColor"
-                    d="M20.8232 -16.3727L19.9948 -14.787C19.8224 -14.4569 19.4808 -14.25 19.1085 -14.25H4.92857C2.20246 -14.25 0 -12.1273 0 -9.5C0 -6.8727 2.20246 -4.75 4.92857 -4.75H64.0714C66.7975 -4.75 69 -6.8727 69 -9.5C69 -12.1273 66.7975 -14.25 64.0714 -14.25H49.8915C49.5192 -14.25 49.1776 -14.4569 49.0052 -14.787L48.1768 -16.3727C47.3451 -17.9906 45.6355 -19 43.7719 -19H25.2281C23.3645 -19 21.6549 -17.9906 20.8232 -16.3727ZM64.0023 1.0648C64.0397 0.4882 63.5822 0 63.0044 0H5.99556C5.4178 0 4.96025 0.4882 4.99766 1.0648L8.19375 50.3203C8.44018 54.0758 11.6746 57 15.5712 57H53.4288C57.3254 57 60.5598 54.0758 60.8062 50.3203L64.0023 1.0648Z"
-                  ></path>
-                </g>
-                <defs>
-                  <clipPath id="clip0_35_22">
-                    <rect fill="white" height="57" width="69"></rect>
-                  </clipPath>
-                </defs>
-              </svg>
-            </button>
-          </div>
-
-          <div class="progress-row">
-            <span id="progress" class="helper-text"></span>
-            <div class="progress-bar-outer">
-              <div id="progressBarFill" class="progress-bar-inner"></div>
-            </div>
-          </div>
-        </section>
-
-        <!-- ===== RESULTS / FAILED / HISTORY ===== -->
-        <section class="card">
-          <div class="card-head">
-            <h2>Results <span id="resultCount" class="chip">0</span></h2>
-            <p class="muted">Human style smart comments ready to copy</p>
-          </div>
-          <div id="results" class="tweets"></div>
-        </section>
-
-        <section class="card">
-          <div class="card-head">
-            <h2>Failed <span id="failedCount" class="chip">0</span></h2>
-            <p class="muted">
-              Errors while processing your URLs(Maybe url is broken or tweet is
-              private/broken)
-            </p>
-          </div>
-          <div id="failed" class="failed-list"></div>
-        </section>
-
-        <section class="card">
-          <div class="card-head">
-            <h2>Clipboard History</h2>
-            <div class="chip-row">
-              <button
-                id="clearHistoryBtn"
-                class="btn-secondary subtle"
-                type="button"
-              >
-                Clear History
-              </button>
-            </div>
-          </div>
-          <div id="history" class="history-list"></div>
-        </section>
-      </main>
-
-      <!-- ===== FOOTER ===== -->
-      <footer class="footer">
-        <div>© <span id="year"></span> CrownTALK</div>
-        <div>
-          Built by
-          <a
-            href="https://x.com/_CrownDEX"
-            target="_blank"
-            rel="noopener noreferrer"
-            >CrownDEX</a
-          >
-        </div>
-      </footer>
-    </div>
-
     <!-- ===== Single Loader Overlay ===== -->
     <div id="chipLoader" class="chip-loader" aria-hidden="true">
-      <div class="main-container">
-        <div class="loader">
-          <svg
-            viewBox="0 0 800 500"
-            xmlns="http://www.w3.org/2000/svg"
-            role="img"
-            aria-label="Loading"
-          >
-            <defs>
-              <linearGradient id="chipGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#2d2d2d"></stop>
-                <stop offset="100%" stop-color="#0f0f0f"></stop>
-              </linearGradient>
-              <linearGradient id="textGradient" x1="0" y1="0" x2="0" y2="1">
-                <stop offset="0%" stop-color="#eeeeee"></stop>
-                <stop offset="100%" stop-color="#888888"></stop>
-              </linearGradient>
-              <linearGradient id="pinGradient" x1="1" y1="0" x2="0" y2="0">
-                <stop offset="0%" stop-color="#bbbbbb"></stop>
-                <stop offset="50%" stop-color="#888888"></stop>
-                <stop offset="100%" stop-color="#555555"></stop>
-              </linearGradient>
-            </defs>
-
-            <g id="traces">
-              <path d="M100 100 H200 V210 H326" class="trace-bg"></path>
-              <path d="M100 100 H200 V210 H326" class="trace-flow purple"></path>
-              <path d="M80 180 H180 V230 H326" class="trace-bg"></path>
-              <path d="M80 180 H180 V230 H326" class="trace-flow blue"></path>
-              <path d="M60 260 H150 V250 H326" class="trace-bg"></path>
-              <path d="M60 260 H150 V250 H326" class="trace-flow yellow"></path>
-              <path d="M100 350 H200 V270 H326" class="trace-bg"></path>
-              <path d="M100 350 H200 V270 H326" class="trace-flow green"></path>
-              <path d="M700 90 H560 V210 H474" class="trace-bg"></path>
-              <path d="M700 90 H560 V210 H474" class="trace-flow blue"></path>
-              <path d="M740 160 H580 V230 H474" class="trace-bg"></path>
-              <path d="M740 160 H580 V230 H474" class="trace-flow green"></path>
-              <path d="M720 250 H590 V250 H474" class="trace-bg"></path>
-              <path d="M720 250 H590 V250 H474" class="trace-flow red"></path>
-              <path d="M680 340 H570 V270 H474" class="trace-bg"></path>
-              <path d="M680 340 H570 V270 H474" class="trace-flow yellow"></path>
-            </g>
-
-            <rect
-              x="330"
-              y="190"
-              width="140"
-              height="100"
-              rx="20"
-              ry="20"
-              fill="url(#chipGradient)"
-              stroke="#222"
-              stroke-width="3"
-              filter="drop-shadow(0 0 6px rgba(0,0,0,0.8))"
-            ></rect>
-
-            <g>
-              <rect
-                x="322"
-                y="205"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-              <rect
-                x="322"
-                y="225"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-              <rect
-                x="322"
-                y="245"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-              <rect
-                x="322"
-                y="265"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-            </g>
-            <g>
-              <rect
-                x="470"
-                y="205"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-              <rect
-                x="470"
-                y="225"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-              <rect
-                x="470"
-                y="245"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-              <rect
-                x="470"
-                y="265"
-                width="8"
-                height="10"
-                fill="url(#pinGradient)"
-                rx="2"
-              ></rect>
-            </g>
-
-            <text
-              x="400"
-              y="240"
-              font-family="Arial, sans-serif"
-              font-size="22"
-              fill="url(#textGradient)"
-              text-anchor="middle"
-              alignment-baseline="middle"
-            >
-              Loading
-            </text>
-
-            <circle cx="100" cy="100" r="5" fill="black"></circle>
-            <circle cx="80" cy="180" r="5" fill="black"></circle>
-            <circle cx="60" cy="260" r="5" fill="black"></circle>
-            <circle cx="100" cy="350" r="5" fill="black"></circle>
-            <circle cx="700" cy="90" r="5" fill="black"></circle>
-            <circle cx="740" cy="160" r="5" fill="black"></circle>
-            <circle cx="720" cy="250" r="5" fill="black"></circle>
-            <circle cx="680" cy="340" r="5" fill="black"></circle>
-          </svg>
-        </div>
-      </div>
+      <div class="main-container"><div class="loader"></div></div>
     </div>
 
+    <!-- Your main app JS (contains the single-gate + app logic) -->
     <script src="static/script.js"></script>
   </body>
 </html>
