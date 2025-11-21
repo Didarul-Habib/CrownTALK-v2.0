@@ -1,3 +1,102 @@
+/* =========================
+   CrownTALK — Access Gate
+   ========================= */
+
+/**
+ * One-time unlock per device/browser.
+ * Passphrase: @CrownTALK@2026@CrownDEX
+ * SHA-256 hex: 3ada2749690e130e09395a7a0df080001f9667bda788c5564fe714361b62b0dd
+ */
+const CT_GATE_COOKIE = "ct_gate";
+const CT_GATE_LS_KEY = "ct_access_ok";
+const CT_GATE_HASH = "3ada2749690e130e09395a7a0df080001f9667bda788c5564fe714361b62b0dd";
+
+function setCookie(name, value, days = 3650) { // ~10 years
+  const d = new Date();
+  d.setTime(d.getTime() + days * 24 * 60 * 60 * 1000);
+  document.cookie = `${name}=${value};expires=${d.toUTCString()};path=/;SameSite=Lax`;
+}
+function getCookie(name) {
+  const m = document.cookie.match(new RegExp("(^| )" + name + "=([^;]+)"));
+  return m ? m[2] : "";
+}
+async function sha256Hex(str) {
+  const enc = new TextEncoder();
+  const buf = await crypto.subtle.digest("SHA-256", enc.encode(str));
+  return [...new Uint8Array(buf)].map(b => b.toString(16).padStart(2, "0")).join("");
+}
+
+function gateIsUnlocked() {
+  try {
+    const a = localStorage.getItem(CT_GATE_LS_KEY);
+    const b = getCookie(CT_GATE_COOKIE);
+    return a === CT_GATE_HASH || b === CT_GATE_HASH;
+  } catch { return false; }
+}
+
+function showGate() {
+  document.documentElement.setAttribute("data-locked", "1");
+  const gate = document.getElementById("ctGate");
+  const app = document.getElementById("appRoot");
+  if (app) app.setAttribute("data-hidden", "1");
+  if (gate) {
+    gate.classList.remove("hidden");
+    gate.classList.add("flex");
+    const input = document.getElementById("ctAccessInput");
+    setTimeout(() => input && input.focus(), 0);
+  }
+}
+
+function hideGate() {
+  document.documentElement.removeAttribute("data-locked");
+  const gate = document.getElementById("ctGate");
+  const app = document.getElementById("appRoot");
+  if (gate) {
+    gate.classList.add("hidden");
+    gate.classList.remove("flex");
+  }
+  if (app) app.removeAttribute("data-hidden");
+}
+
+function attachGateHandlers(onUnlock) {
+  const input = document.getElementById("ctAccessInput");
+  const btn   = document.getElementById("ctAccessBtn");
+  const msg   = document.getElementById("ctAccessMsg");
+
+  async function tryUnlock() {
+    const val = (input?.value || "").trim();
+    if (!val) return;
+    // verify
+    const h = await sha256Hex(val);
+    if (h === CT_GATE_HASH) {
+      try {
+        localStorage.setItem(CT_GATE_LS_KEY, CT_GATE_HASH);
+      } catch {}
+      setCookie(CT_GATE_COOKIE, CT_GATE_HASH);
+      hideGate();
+      onUnlock && onUnlock();
+    } else {
+      if (msg) {
+        msg.innerHTML = `<span class="w-2 h-2 bg-red-500 rounded-full inline-block"></span>
+          <span><span class="text-red-400">ACCESS DENIED:</span> Invalid credentials</span>`;
+        msg.classList.remove("text-green-500");
+        msg.classList.add("text-red-400");
+      }
+      input?.select();
+    }
+  }
+
+  btn?.addEventListener("click", tryUnlock);
+  input?.addEventListener("keydown", (e) => {
+    if (e.key === "Enter") tryUnlock();
+  });
+}
+
+/* =========================
+   Your existing app code
+   (wrapped into bootAppUI)
+   ========================= */
+
 // ------------------------
 // Backend endpoints
 // ------------------------
@@ -592,10 +691,10 @@ function initTheme() {
   applyTheme(theme);
 }
 
-// ------------------------
-// Event bindings
-// ------------------------
-document.addEventListener("DOMContentLoaded", () => {
+/* ------------------------
+   Boot existing UI *after* gate unlock
+   ------------------------ */
+function bootAppUI() {
   if (yearEl) {
     yearEl.textContent = String(new Date().getFullYear());
   }
@@ -608,21 +707,21 @@ document.addEventListener("DOMContentLoaded", () => {
     urlInput.addEventListener("input", autoResizeTextarea);
   }
 
-  generateBtn.addEventListener("click", () => {
+  generateBtn?.addEventListener("click", () => {
     if (document.body.classList.contains("is-generating")) return;
     handleGenerate();
   });
 
-  cancelBtn.addEventListener("click", handleCancel);
-  clearBtn.addEventListener("click", handleClear);
+  cancelBtn?.addEventListener("click", handleCancel);
+  clearBtn?.addEventListener("click", handleClear);
 
-  clearHistoryBtn.addEventListener("click", () => {
+  clearHistoryBtn?.addEventListener("click", () => {
     historyItems = [];
     renderHistory();
   });
 
   // Copy / reroll in results
-  resultsEl.addEventListener("click", async (event) => {
+  resultsEl?.addEventListener("click", async (event) => {
     const copyBtn = event.target.closest(".copy-btn, .copy-btn-en");
     const rerollBtn = event.target.closest(".reroll-btn");
 
@@ -655,7 +754,7 @@ document.addEventListener("DOMContentLoaded", () => {
   });
 
   // History copy
-  historyEl.addEventListener("click", async (event) => {
+  historyEl?.addEventListener("click", async (event) => {
     const btn = event.target.closest(".history-copy-btn");
     if (!btn) return;
     const text = btn.dataset.text || "";
@@ -679,4 +778,19 @@ document.addEventListener("DOMContentLoaded", () => {
       applyTheme(t);
     });
   });
+}
+
+/* ------------------------
+   Entry
+   ------------------------ */
+document.addEventListener("DOMContentLoaded", () => {
+  if (gateIsUnlocked()) {
+    hideGate();
+    bootAppUI();
+  } else {
+    showGate();
+    attachGateHandlers(() => {
+      bootAppUI();
+    });
+  }
 });
