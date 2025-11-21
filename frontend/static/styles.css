@@ -1,5 +1,5 @@
 /* =========================================================
-   CrownTALK — Full Stylesheet
+   CrownTALK — Full Stylesheet (clean, merged)
    ========================================================= */
 
 /* ---------- ROOT VARIABLES ---------- */
@@ -238,11 +238,6 @@ body{
 @keyframes sheen{ 0%{transform:translateX(-120%);opacity:0}8%{opacity:.9}20%{transform:translateX(120%);opacity:0}100%{transform:translateX(120%);opacity:0} }
 @keyframes hero-glow-pulse{ 0%,100%{ box-shadow:0 0 30px var(--hero-glow-from),0 0 70px var(--hero-glow-to); transform:scale(1) } 50%{ box-shadow:0 0 52px var(--hero-glow-from),0 0 110px var(--hero-glow-to); transform:scale(1.02) } }
 
-/* ----- universal rotate keyframes (element style) ----- */
-@keyframes rotate {
-  to { transform: rotate(360deg); }
-}
-
 /* ---------- THEME SWITCHER (dots) ---------- */
 .theme-switcher{ display:flex; align-items:center; gap:8px; }
 .theme-label{ font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); }
@@ -253,7 +248,7 @@ body{
 .theme-dot{
   --ring: rgba(148,163,184,.55);
   --glow: 129,140,248;
-  --arc-angle: 0deg; --arc-size: 60deg; --ring-thick: 2px;
+  --arc-angle: 0deg; --arc-size: 60deg; --ring-thick: 2px;  /* longer arc */
 
   position:relative; width:16px; height:16px; border-radius:999px;
   border:2px solid var(--ring); cursor:pointer; overflow:visible; z-index:0;
@@ -263,7 +258,7 @@ body{
 }
 .theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
 
-/* partial orbit arc (wide so it looks like a line, not a dot) */
+/* partial orbit arc */
 .theme-dot::after{
   content:""; position:absolute; inset: calc(-1 * var(--ring-thick)); border-radius:999px; padding:var(--ring-thick);
   background: conic-gradient(from var(--arc-angle), rgba(var(--glow), .95) 0 var(--arc-size), transparent var(--arc-size) 360deg);
@@ -275,7 +270,8 @@ body{
   border-color: rgba(var(--glow), .9);
   box-shadow: 0 0 0 4px rgba(var(--glow), .10), 0 0 24px rgba(var(--glow), .35);
 }
-.theme-dot.is-active::after{ opacity:1; animation: rotate 6s linear infinite; }
+.theme-dot.is-active::after{ opacity:1; animation: ct-theme-orbit 6s linear infinite; }
+@keyframes ct-theme-orbit{ to{ --arc-angle: 360deg; } }
 
 /* tooltip ABOVE */
 .theme-dot::before{
@@ -328,43 +324,22 @@ body{
   box-shadow: inset 0 -16px 24px rgba(255,255,255,0.12), 0 8px 24px rgba(0,0,0,.25);
 }
 
-/* rotating thin arc hugging the border (conic) */
+/* rotating thin arc hugging the border (CLIPPED, no overflow) */
 .card::before{
   content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none;
   --ring:2px; padding:var(--ring); --angle:0deg;
   background: conic-gradient(from var(--angle),
-              color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 12deg,
-              transparent 12deg 360deg);
+              color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 14deg,
+              transparent 14deg 360deg);
   -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
           mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
   filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
-  animation: card-orbit 6s linear infinite; z-index:0;
+  animation: ct-card-orbit 6s linear infinite; z-index:0;
 }
-@keyframes card-orbit{ to{ --angle: 360deg; } }
-
-/* smooth sweep highlight like the element */
-.card::after{
-  content:"";
-  position: fixed;      /* matches element behavior for silky rotation */
-  top:50%; left:50%;
-  transform: translate(-50%, -50%) rotate(0deg);
-  transform-origin: left;
-  width:200%;
-  height:10rem;
-  z-index:1;
-  background-image: linear-gradient(
-    0deg,
-    hsla(0,0%,100%,0) 0%,
-    color-mix(in oklab, var(--accent) 92%, white 8%) 40%,
-    color-mix(in oklab, var(--accent) 92%, white 8%) 60%,
-    hsla(0,0%,40%,0) 100%
-  );
-  pointer-events:none;
-  animation: rotate 8s linear infinite;
-}
+@keyframes ct-card-orbit{ to{ --angle: 360deg; } }
 
 /* ensure content stays above effects */
-.card > *{ position:relative; z-index:2; }
+.card > *{ position:relative; z-index:1; }
 
 .card-input{ min-height:200px; }
 .card-results{ min-height:200px; }
@@ -446,8 +421,8 @@ button{ font-family:inherit; }
 #clearBtn .bin-bottom{ top:50%; left:50%; transform: translate(-50%, -46%); }
 #clearBtn .bin-top{
   top:50%; left:50%;
-  transform-box: fill-box; transform-origin: 88% 96%;
-  transform: translate(-50%, -120%) rotate(0deg);
+  transform-box: fill-box; transform-origin: 90% 100%;
+  transform: translate(-50%, -120%) rotate(0deg);   /* sits on rim */
 }
 #clearBtn.btn-secondary.subtle:hover{
   background-color:var(--clear-bg-hover);
@@ -518,7 +493,7 @@ button{ font-family:inherit; }
 .reroll-btn:active::after{ transform:translateY(0%); box-shadow:none; }
 .reroll-btn:active{ transform: translateY(1px); }
 
-/* failed/histry lists */
+/* failed/history lists */
 .failed-list{ display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto; padding-right:4px; }
 .failed-item{ padding:6px 8px; border-radius:10px; background: rgba(15,23,42,.9); border:1px dashed rgba(248,113,113,.7); font-size:11px; color:#fecaca; }
 .failed-url{ display:block; word-break:break-all; }
@@ -575,7 +550,7 @@ button{ font-family:inherit; }
   .controls{ flex-wrap:wrap; }
 }
 
-/* ===== Custom-property registration for smooth conic orbits ===== */
+/* ===== Custom properties registration for smooth angle animation ===== */
 @property --angle {
   syntax: "<angle>";
   inherits: false;
@@ -587,124 +562,17 @@ button{ font-family:inherit; }
   initial-value: 0deg;
 }
 
-/* ===== Fix 1: register animated angle custom properties ===== */
-@property --angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-@property --arc-angle {
-  syntax: "<angle>";
-  inherits: false;
-  initial-value: 0deg;
-}
-
-/* ===== Fix 2: kill the viewport-wide fixed sheen and keep ring on border ===== */
-/* (If these selectors exist earlier, this block overrides them safely.) */
-.card::before,
-.uiverse-card .card__border { /* create a border layer we can animate */
-  content: "";
-  position: absolute;
-  inset: 0;
-  border-radius: inherit;
-  pointer-events: none;
-  z-index: 0;
-  border: 2px solid transparent;
-  /* The orbit is a thin conic segment drawn in the border image itself */
-  border-image-slice: 1;
-  border-image-source:
-    conic-gradient(
-      from var(--angle),
-      transparent 0 348deg,
-      color-mix(in oklab, var(--accent, #a78bfa) 88%, white 12%) 348deg 360deg
-    );
-  /* soft glow without painting over content */
-  box-shadow: 0 0 10px color-mix(in oklab, var(--accent, #a78bfa) 55%, transparent);
+/* ===== Legacy safety: if any old Uiverse border exists, clip it ===== */
+/* (Prevents the big viewport band by forcing absolute + clipping) */
+.uiverse-card .card__border{ position:absolute; inset:-1px; border-radius:inherit; overflow:hidden; pointer-events:none; }
+.uiverse-card .card__border::before{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  --angle:0deg; --ring:2px; padding:var(--ring);
+  background: conic-gradient(from var(--angle),
+              color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 14deg,
+              transparent 14deg 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
   animation: ct-card-orbit 6s linear infinite;
-}
-
-/* Ensure real card content is above the ring */
-.card > *:not(.card__border),
-.uiverse-card > *:not(.card__border) {
-  position: relative;
-  z-index: 1;
-}
-
-@keyframes ct-card-orbit { to { --angle: 360deg; } }
-
-/* ===== Fix 3: theme-dot partial ring remains an animated arc (not a single dot) ===== */
-.theme-dot {
-  --ring-thick: 2px;
-  --arc-angle: 0deg;      /* animated custom prop */
-  --arc-size: 16deg;      /* visible arc length */
-  position: relative;
-  overflow: visible;      /* let arc render around the dot */
-}
-
-.theme-dot::after {
-  content: "";
-  position: absolute;
-  inset: calc(-1 * var(--ring-thick));
-  border-radius: 999px;
-  padding: var(--ring-thick);
-  background:
-    conic-gradient(from var(--arc-angle),
-      rgba(var(--glow, 129,140,248), .95) 0 var(--arc-size),
-      transparent var(--arc-size) 360deg);
-  -webkit-mask:
-    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
-          mask:
-    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
-  opacity: 0;
-  pointer-events: none;
-}
-
-.theme-dot.is-active {
-  border-color: rgba(var(--glow,129,140,248), .9);
-  box-shadow:
-    0 0 0 4px rgba(var(--glow,129,140,248), .10),
-    0 0 24px rgba(var(--glow,129,140,248), .35);
-}
-.theme-dot.is-active::after {
-  opacity: 1;
-  animation: ct-theme-orbit 6s linear infinite;
-}
-@keyframes ct-theme-orbit { to { --arc-angle: 360deg; } }
-
-/* ===== Fix 4: trash-can lid sits on the rim (not the middle) ===== */
-/* Keep: <button id="clearBtn" class="btn-secondary subtle"> with two SVGs:
-   .svgIcon.bin-top and .svgIcon.bin-bottom */
-#clearBtn .svgIcon {
-  position: absolute;
-  width: 18px;
-  height: auto;
-  transition: transform .35s ease, opacity .25s ease;
-}
-#clearBtn .bin-bottom {
-  top: 50%;
-  left: 50%;
-  transform: translate(-50%, -46%);   /* body visually centered */
-}
-#clearBtn .bin-top {
-  top: 50%;
-  left: 50%;
-  transform-box: fill-box;            /* origin relative to lid path */
-  transform-origin: 88% 96%;          /* hinge near back-right corner */
-  transform: translate(-50%, -120%) rotate(0deg);  /* sits on rim */
-}
-#clearBtn.btn-secondary.subtle:hover .bin-top {
-  transform: translate(-50%, -120%) rotate(160deg);
-}
-
-/* ===== Safety: if any older rules used `position: fixed` on a border sheen, neutralize them ===== */
-.card .card__border::before,
-.uiverse-card .card__border::before,
-.ct-card__border::before {
-  position: absolute !important;
-  inset: 0 !important;
-  width: 100% !important;
-  height: 100% !important;
-  transform: none !important;
-  background: none !important;   /* avoid the big horizontal panel */
-  animation: none !important;    /* orbit handled by border-image above */
 }
