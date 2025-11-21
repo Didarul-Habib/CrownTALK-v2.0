@@ -1371,155 +1371,146 @@ body {
 .uiverse-card > *:not(.card__border){ position:relative; z-index:1; }
 
 /* =========================================================
-   CrownTALK — Theme dots with ROTATING RING + hover label
-   (no HTML changes; uses .is-active your JS already toggles)
+   CrownTALK — Theme dots with FILLED CORE + PARTIAL ORBIT ARC
+   - Keeps your .theme-dots/.theme-dot HTML & .is-active class
+   - Core stays filled; only a thin arc rotates around it
 ========================================================= */
 
-/* container stays inline row */
+/* container unchanged */
 .theme-switcher { align-items: center; gap: 10px; }
-.theme-dots {
-  display: inline-flex;
-  align-items: center;
-  gap: 10px;
-  padding: 8px;
-  border-radius: 16px;
+.theme-dots{
+  display:inline-flex; align-items:center; gap:10px;
+  padding:8px; border-radius:16px;
   background-color: rgba(15,23,42,.55);
   box-shadow: 0 10px 30px rgba(15,23,42,.45);
 }
 
-/* ---- base radio dot ------------------------------------------------ */
+/* --- base dot ---------------------------------------------------- */
 .theme-dot{
-  /* defaults; each theme below overrides --dot-grad and --glow */
+  /* per-theme vars set below */
   --ring: rgba(148,163,184,.55);
   --glow: 129,140,248;
-  --angle: 0deg;               /* animated when active */
+  --arc-angle: 0deg;      /* animated when active */
+  --arc-size: 14deg;      /* size of the bright segment */
+  --ring-thick: 2px;      /* orbit ring thickness */
 
   position: relative;
-  width: 20px; height: 20px;
+  width: 16px; height: 16px;
   border-radius: 999px;
   border: 2px solid var(--ring);
   cursor: pointer;
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease;
 
-  /* we’ll paint the rotating arc IN the border box and carve a ring using masks */
-  background:
-    conic-gradient(from var(--angle),
-      rgba(var(--glow), .95) 0 12deg,      /* bright 12deg arc */
-      transparent 12deg 360deg) border-box;
-  -webkit-mask:
-    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
-          mask:
-    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
-  /* above mask keeps only a thin ring; arc will orbit around it */
-
-  transition:
-    transform .18s ease,
-    border-color .18s ease,
-    box-shadow .18s ease,
-    filter .18s ease;
+  /* FILLED CORE */
+  background: var(--dot-grad, radial-gradient(circle at 35% 25%, #fff 20%, #bbb 60%, #666 100%));
 }
 
-/* inner fill (appears when active) */
-.theme-dot::before{
+/* hover + focus */
+.theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
+.theme-dot:focus-visible{
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,.9),
+    0 0 0 6px rgba(var(--glow), .45),
+    0 0 24px rgba(var(--glow), .35);
+}
+
+/* --- PARTIAL ORBIT ARC (around the border) ----------------------- */
+/* Draw the moving arc on ::after so the center stays filled */
+.theme-dot::after{
   content:"";
   position:absolute;
-  inset:4px;
-  border-radius:999px;
-  background: var(--dot-grad, transparent);
-  transform: scale(0);
-  transition: transform .22s cubic-bezier(.2,.8,.2,1);
+  inset: calc(-1 * var(--ring-thick));   /* hug outside of the border */
+  border-radius: 999px;
+
+  /* Thin ring masked, with a bright arc segment */
+  padding: var(--ring-thick);
+  background:
+    conic-gradient(from var(--arc-angle),
+      rgba(var(--glow), .95) 0 var(--arc-size),
+      transparent var(--arc-size) 360deg);
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+          mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+
+  opacity: 0; /* only visible when active */
 }
 
-/* tooltip (label on hover) */
-.theme-dot::after{
-  /* per-theme content below */
-  position:absolute;
-  left:50%; bottom:-32px;
+/* ACTIVE: start rotation + glow */
+.theme-dot.is-active{
+  border-color: rgba(var(--glow), .9);
+  box-shadow:
+    0 0 0 4px rgba(var(--glow), .10),
+    0 0 24px rgba(var(--glow), .35);
+}
+.theme-dot.is-active::after{
+  opacity: 1;
+  animation: ct-theme-orbit 7s linear infinite;
+}
+@keyframes ct-theme-orbit { to{ --arc-angle: 360deg; } }
+
+/* --- Tooltip label on hover (names) ------------------------------- */
+.theme-dot::before{
+  /* tooltip bubble */
+  position:absolute; left:50%; bottom:-32px;
   transform: translateX(-50%) translateY(10px);
-  padding:6px 10px;
-  border-radius:8px;
-  font-size:12px; font-weight:700; letter-spacing:.2px;
-  white-space:nowrap;
+  padding:6px 10px; border-radius:8px;
+  font-size:12px; font-weight:700; letter-spacing:.2px; white-space:nowrap;
   background: rgba(15,23,42,.9); color:#fff;
   border:1px solid rgba(148,163,184,.35);
   box-shadow:0 8px 22px rgba(0,0,0,.35);
   opacity:0; pointer-events:none;
   transition: opacity .18s ease, transform .18s ease;
   clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% calc(100% - 8px), 50% 100%, 0 calc(100% - 8px));
+  content: attr(data-label);       /* we’ll set labels via CSS below */
 }
-.theme-dot:hover::after{ opacity:1; transform: translateX(-50%) translateY(0); }
+.theme-dot:hover::before{ opacity:1; transform: translateX(-50%) translateY(0); }
 
-/* hover + focus */
-.theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
-.theme-dot:focus-visible{
-  outline:none;
-  box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 0 0 6px rgba(var(--glow),.45), 0 0 24px rgba(var(--glow),.35);
-}
-
-/* ---- ACTIVE: show inner fill, glow, and START ring rotation ------- */
-.theme-dot.is-active{
-  border-color: rgba(var(--glow), .9);
-  box-shadow:
-    0 0 0 4px rgba(var(--glow), .10),
-    0 0 24px rgba(var(--glow), .35);
-  animation: themeRingOrbit 6s linear infinite;
-}
-.theme-dot.is-active::before{ transform: scale(1); }
-
-@keyframes themeRingOrbit{
-  to{ --angle: 360deg; }
-}
-
-/* ---- per-theme visuals + hover label text ------------------------- */
-/* Dark Purple → Cygnus Magenta */
+/* --- Per-theme fill + glow + label ------------------------------- */
 .theme-dot[data-theme="dark-purple"]{
-  --dot-grad: radial-gradient(circle at 35% 25%, #e879f9 10%, #a855f7 52%, #4c1d95 100%);
+  --dot-grad: radial-gradient(circle at 35% 25%, #e879f9 12%, #a855f7 55%, #4c1d95 100%);
   --glow: 167,139,250;
 }
-.theme-dot[data-theme="dark-purple"]::after{ content:"Cygnus Magenta"; }
+.theme-dot[data-theme="dark-purple"]::before{ content:"Cygnus Magenta"; }
 
-/* Blue → Helios Blue */
 .theme-dot[data-theme="blue"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #93c5fd 12%, #3b82f6 55%, #1e3a8a 100%);
   --glow: 59,130,246;
 }
-.theme-dot[data-theme="blue"]::after{ content:"Helios Blue"; }
+.theme-dot[data-theme="blue"]::before{ content:"Helios Blue"; }
 
-/* Emerald → Orion Lime */
 .theme-dot[data-theme="emerald"]{
-  --dot-grad: radial-gradient(circle at 35% 25%, #86efac 14%, #10b981 50%, #065f46 100%);
+  --dot-grad: radial-gradient(circle at 35% 25%, #86efac 14%, #10b981 52%, #065f46 100%);
   --glow: 16,185,129;
 }
-.theme-dot[data-theme="emerald"]::after{ content:"Orion Lime"; }
+.theme-dot[data-theme="emerald"]::before{ content:"Orion Lime"; }
 
-/* Gold */
 .theme-dot[data-theme="gold"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #fde68a 12%, #f59e0b 55%, #92400e 100%);
   --glow: 251,191,36;
 }
-.theme-dot[data-theme="gold"]::after{ content:"Solar Gold"; }
+.theme-dot[data-theme="gold"]::before{ content:"Solar Gold"; }
 
-/* White */
 .theme-dot[data-theme="white"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #ffffff 10%, #e5e7eb 55%, #9ca3af 100%);
   --glow: 209,213,219;
 }
-.theme-dot[data-theme="white"]::after{ content:"Polar White"; }
+.theme-dot[data-theme="white"]::before{ content:"Polar White"; }
 
-/* Black */
 .theme-dot[data-theme="black"]{
-  --dot-grad: radial-gradient(circle at 35% 25%, #e5e7eb 8%, #6b7280 48%, #111827 100%);
+  --dot-grad: radial-gradient(circle at 35% 25%, #e5e7eb 10%, #6b7280 48%, #111827 100%);
   --glow: 209,213,219;
 }
-.theme-dot[data-theme="black"]::after{ content:"Nebula Black"; }
+.theme-dot[data-theme="black"]::before{ content:"Nebula Black"; }
 
-/* Crimson */
 .theme-dot[data-theme="crimson"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #fecdd3 12%, #f43f5e 55%, #7f1d1d 100%);
   --glow: 255,64,96;
 }
-.theme-dot[data-theme="crimson"]::after{ content:"Crimson Nova"; }
+.theme-dot[data-theme="crimson"]::before{ content:"Crimson Nova"; }
 
-/* reduced motion */
+/* motion preference */
 @media (prefers-reduced-motion: reduce){
-  .theme-dot.is-active{ animation:none; }
+  .theme-dot.is-active::after{ animation: none; }
 }
