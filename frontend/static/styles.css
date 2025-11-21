@@ -576,3 +576,116 @@ button{ font-family:inherit; }
   filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
   animation: ct-card-orbit 6s linear infinite;
 }
+
+/* =========================
+   CrownTALK — Final patch
+   ========================= */
+
+/* 1) THEME DOT: gap between core and arc + same partial ring style */
+.theme-dot{
+  --ring-gap: 3px;             /* space between dot and arc */
+  --ring-thick: 2px;           /* arc thickness */
+  --arc-angle: 0deg;
+  --arc-size: 16deg;
+  overflow: visible;
+}
+
+/* draw the arc OUTSIDE with a gap (uses mask-composite to keep only the ring) */
+.theme-dot::after{
+  content:"";
+  position:absolute;
+  inset: calc(-1 * (var(--ring-gap) + var(--ring-thick)));
+  border-radius: calc(999px + var(--ring-gap) + var(--ring-thick));
+  border: var(--ring-thick) solid transparent;       /* controls thickness */
+  background:
+    conic-gradient(from var(--arc-angle),
+      rgba(var(--glow), .95) 0 var(--arc-size),
+      transparent var(--arc-size) 360deg)
+    border-box;
+  /* keep only the border area, leaving a gap to the core */
+  -webkit-mask:
+     linear-gradient(#000 0 0) padding-box,
+     linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 1; /* visible even when not active so the gap shows */
+  pointer-events: none;
+  z-index: 1;
+}
+
+.theme-dot.is-active::after{
+  animation: ct-theme-orbit 6s linear infinite !important;
+}
+
+@property --arc-angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
+@keyframes ct-theme-orbit { to { --arc-angle: 360deg; } }
+
+/* 2) CARDS: arc outside the box + gap (matches theme-dot arc) */
+.card{
+  overflow: visible;           /* allow outside ring to show */
+}
+
+/* remove any earlier inside-arc to avoid double rings */
+.card::before{ content:none !important; }
+
+/* brand-new outer arc ring with gap */
+.card::after{
+  --arc-gap: 8px;              /* space between card edge and arc */
+  --arc-thick: 2px;            /* arc thickness */
+  --angle: 0deg;
+
+  content:"";
+  position:absolute;
+  inset: calc(-1 * (var(--arc-gap) + var(--arc-thick)));
+  border-radius: calc(16px + var(--arc-gap) + var(--arc-thick));
+  border: var(--arc-thick) solid transparent;
+  background:
+    conic-gradient(from var(--angle),
+      color-mix(in oklab, var(--accent) 88%, white 12%) 0 14deg,
+      transparent 14deg 360deg)
+    border-box;
+  /* keep only the border area so a clean gap appears */
+  -webkit-mask:
+     linear-gradient(#000 0 0) padding-box,
+     linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
+  pointer-events: none;
+  animation: ct-card-orbit 6s linear infinite;
+  z-index: 0;
+}
+
+@property --angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
+@keyframes ct-card-orbit { to { --angle: 360deg; } }
+
+/* 3) TRASH BUTTON: lid aligned to the rim, not the middle */
+#clearBtn .svgIcon{ width:18px; height:auto; }
+
+#clearBtn .bin-bottom{
+  top:50%;
+  left:50%;
+  transform: translate(-50%, -46%);     /* keeps body visually centered */
+}
+
+#clearBtn .bin-top{
+  top:50%;
+  left:50%;
+  transform-box: fill-box;
+  transform-origin: 90% 96%;            /* hinge near back-right corner */
+  transform: translate(-50%, -124%) rotate(0deg);   /* sits on the rim */
+}
+
+#clearBtn.btn-secondary.subtle:hover .bin-top{
+  transform: translate(-50%, -124%) rotate(160deg);
+}
+
+/* (optional) tiny smoothing on the outer arcs’ glow */
+.card::after,
+.theme-dot::after{
+  will-change: transform;
+}
+
+/* keep generate icon always visible */
+.btn .sparkle,
+.btn svg{ display:inline-block; }
