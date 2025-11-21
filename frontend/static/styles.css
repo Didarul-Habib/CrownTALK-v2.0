@@ -1371,13 +1371,11 @@ body {
 .uiverse-card > *:not(.card__border){ position:relative; z-index:1; }
 
 /* =========================================================
-   CrownTALK — Radio-style Theme Dots (hover label + glow)
-   - No HTML changes required
-   - Uses your existing .theme-dots / .theme-dot structure
-   - Tooltip shows on hover; keeps row layout
+   CrownTALK — Theme dots with ROTATING RING + hover label
+   (no HTML changes; uses .is-active your JS already toggles)
 ========================================================= */
 
-/* container stays inline; just a touch more spacing */
+/* container stays inline row */
 .theme-switcher { align-items: center; gap: 10px; }
 .theme-dots {
   display: inline-flex;
@@ -1385,22 +1383,33 @@ body {
   gap: 10px;
   padding: 8px;
   border-radius: 16px;
-  background-color: rgba(15, 23, 42, 0.55);
-  box-shadow: 0 10px 30px rgba(15, 23, 42, 0.45);
+  background-color: rgba(15,23,42,.55);
+  box-shadow: 0 10px 30px rgba(15,23,42,.45);
 }
 
-/* --- radio base -------------------------------------------------- */
-.theme-dot {
-  --ring: rgba(148, 163, 184, 0.55);   /* idle ring */
-  --glow: 129, 140, 248;               /* fallback glow rgb */
+/* ---- base radio dot ------------------------------------------------ */
+.theme-dot{
+  /* defaults; each theme below overrides --dot-grad and --glow */
+  --ring: rgba(148,163,184,.55);
+  --glow: 129,140,248;
+  --angle: 0deg;               /* animated when active */
 
   position: relative;
-  width: 20px;
-  height: 20px;
+  width: 20px; height: 20px;
   border-radius: 999px;
-  border: 2px solid var(--ring);       /* radio ring */
-  background: transparent;             /* hollow by default */
+  border: 2px solid var(--ring);
   cursor: pointer;
+
+  /* we’ll paint the rotating arc IN the border box and carve a ring using masks */
+  background:
+    conic-gradient(from var(--angle),
+      rgba(var(--glow), .95) 0 12deg,      /* bright 12deg arc */
+      transparent 12deg 360deg) border-box;
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+          mask:
+    radial-gradient(farthest-side, transparent calc(100% - 2px), #000 calc(100% - 2px));
+  /* above mask keeps only a thin ring; arc will orbit around it */
 
   transition:
     transform .18s ease,
@@ -1409,135 +1418,108 @@ body {
     filter .18s ease;
 }
 
-/* inner fill circle (appears when active) */
-.theme-dot::before {
-  content: "";
-  position: absolute;
-  inset: 4px;                /* thickness of hollow ring */
-  border-radius: 999px;
+/* inner fill (appears when active) */
+.theme-dot::before{
+  content:"";
+  position:absolute;
+  inset:4px;
+  border-radius:999px;
   background: var(--dot-grad, transparent);
-  transform: scale(0);       /* hidden when not active */
+  transform: scale(0);
   transition: transform .22s cubic-bezier(.2,.8,.2,1);
 }
 
-/* hover affordance */
-.theme-dot:hover { transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
+/* tooltip (label on hover) */
+.theme-dot::after{
+  /* per-theme content below */
+  position:absolute;
+  left:50%; bottom:-32px;
+  transform: translateX(-50%) translateY(10px);
+  padding:6px 10px;
+  border-radius:8px;
+  font-size:12px; font-weight:700; letter-spacing:.2px;
+  white-space:nowrap;
+  background: rgba(15,23,42,.9); color:#fff;
+  border:1px solid rgba(148,163,184,.35);
+  box-shadow:0 8px 22px rgba(0,0,0,.35);
+  opacity:0; pointer-events:none;
+  transition: opacity .18s ease, transform .18s ease;
+  clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% calc(100% - 8px), 50% 100%, 0 calc(100% - 8px));
+}
+.theme-dot:hover::after{ opacity:1; transform: translateX(-50%) translateY(0); }
 
-/* active state (JS already toggles .is-active on the chosen dot) */
-.theme-dot.is-active {
+/* hover + focus */
+.theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
+.theme-dot:focus-visible{
+  outline:none;
+  box-shadow:0 0 0 2px rgba(255,255,255,.9), 0 0 0 6px rgba(var(--glow),.45), 0 0 24px rgba(var(--glow),.35);
+}
+
+/* ---- ACTIVE: show inner fill, glow, and START ring rotation ------- */
+.theme-dot.is-active{
   border-color: rgba(var(--glow), .9);
   box-shadow:
     0 0 0 4px rgba(var(--glow), .10),
     0 0 24px rgba(var(--glow), .35);
-  animation: themeRingPulse 2.4s ease-in-out infinite;
+  animation: themeRingOrbit 6s linear infinite;
 }
-.theme-dot.is-active::before { transform: scale(1); }
+.theme-dot.is-active::before{ transform: scale(1); }
 
-@keyframes themeRingPulse {
-  0%, 100% { box-shadow:
-      0 0 0 4px rgba(var(--glow), .10),
-      0 0 24px rgba(var(--glow), .35);
-  }
-  50% { box-shadow:
-      0 0 0 6px rgba(var(--glow), .16),
-      0 0 34px rgba(var(--glow), .50);
-  }
+@keyframes themeRingOrbit{
+  to{ --angle: 360deg; }
 }
 
-/* focus (keyboard) */
-.theme-dot:focus-visible {
-  outline: none;
-  box-shadow:
-    0 0 0 2px rgba(255,255,255,.9),
-    0 0 0 6px rgba(var(--glow), .45),
-    0 0 24px rgba(var(--glow), .35);
-}
-
-/* --- hover label (tooltip) --------------------------------------- */
-.theme-dot::after {
-  /* content set per-theme below; default hidden */
-  position: absolute;
-  left: 50%;
-  transform: translateX(-50%) translateY(10px);
-  bottom: -32px;
-
-  padding: 6px 10px;
-  border-radius: 8px;
-  font-size: 12px;
-  font-weight: 700;
-  letter-spacing: .2px;
-  white-space: nowrap;
-
-  background: rgba(15, 23, 42, 0.9);
-  color: #fff;
-  border: 1px solid rgba(148,163,184,.35);
-  box-shadow: 0 8px 22px rgba(0,0,0,.35);
-
-  opacity: 0;
-  pointer-events: none;
-  transition: opacity .18s ease, transform .18s ease;
-}
-.theme-dot:hover::after {
-  opacity: 1;
-  transform: translateX(-50%) translateY(0);
-}
-
-/* little arrow */
-.theme-dot:hover::after { clip-path: polygon(8px 0, calc(100% - 8px) 0, 100% calc(100% - 8px), 50% 100%, 0 calc(100% - 8px)); }
-
-/* --- per-theme visuals (fill gradient + glow color + label) ------ */
-/* Dark Purple → “Cygnus Magenta” */
-.theme-dot[data-theme="dark-purple"] {
+/* ---- per-theme visuals + hover label text ------------------------- */
+/* Dark Purple → Cygnus Magenta */
+.theme-dot[data-theme="dark-purple"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #e879f9 10%, #a855f7 52%, #4c1d95 100%);
-  --glow: 167, 139, 250;
+  --glow: 167,139,250;
 }
-.theme-dot[data-theme="dark-purple"]::after { content: "Cygnus Magenta"; }
+.theme-dot[data-theme="dark-purple"]::after{ content:"Cygnus Magenta"; }
 
-/* Blue → “Helios Blue” */
-.theme-dot[data-theme="blue"] {
+/* Blue → Helios Blue */
+.theme-dot[data-theme="blue"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #93c5fd 12%, #3b82f6 55%, #1e3a8a 100%);
-  --glow: 59, 130, 246;
+  --glow: 59,130,246;
 }
-.theme-dot[data-theme="blue"]::after { content: "Helios Blue"; }
+.theme-dot[data-theme="blue"]::after{ content:"Helios Blue"; }
 
-/* Emerald → “Orion Lime” */
-.theme-dot[data-theme="emerald"] {
+/* Emerald → Orion Lime */
+.theme-dot[data-theme="emerald"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #86efac 14%, #10b981 50%, #065f46 100%);
-  --glow: 16, 185, 129;
+  --glow: 16,185,129;
 }
-.theme-dot[data-theme="emerald"]::after { content: "Orion Lime"; }
+.theme-dot[data-theme="emerald"]::after{ content:"Orion Lime"; }
 
 /* Gold */
-.theme-dot[data-theme="gold"] {
+.theme-dot[data-theme="gold"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #fde68a 12%, #f59e0b 55%, #92400e 100%);
-  --glow: 251, 191, 36;
+  --glow: 251,191,36;
 }
-.theme-dot[data-theme="gold"]::after { content: "Solar Gold"; }
+.theme-dot[data-theme="gold"]::after{ content:"Solar Gold"; }
 
 /* White */
-.theme-dot[data-theme="white"] {
+.theme-dot[data-theme="white"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #ffffff 10%, #e5e7eb 55%, #9ca3af 100%);
-  --glow: 209, 213, 219;
+  --glow: 209,213,219;
 }
-.theme-dot[data-theme="white"]::after { content: "Polar White"; }
+.theme-dot[data-theme="white"]::after{ content:"Polar White"; }
 
 /* Black */
-.theme-dot[data-theme="black"] {
+.theme-dot[data-theme="black"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #e5e7eb 8%, #6b7280 48%, #111827 100%);
-  --glow: 209, 213, 219;
+  --glow: 209,213,219;
 }
-.theme-dot[data-theme="black"]::after { content: "Nebula Black"; }
+.theme-dot[data-theme="black"]::after{ content:"Nebula Black"; }
 
 /* Crimson */
-.theme-dot[data-theme="crimson"] {
+.theme-dot[data-theme="crimson"]{
   --dot-grad: radial-gradient(circle at 35% 25%, #fecdd3 12%, #f43f5e 55%, #7f1d1d 100%);
-  --glow: 255, 64, 96;
+  --glow: 255,64,96;
 }
-.theme-dot[data-theme="crimson"]::after { content: "Crimson Nova"; }
+.theme-dot[data-theme="crimson"]::after{ content:"Crimson Nova"; }
 
-/* --- optional reduced motion ------------------------------------- */
-@media (prefers-reduced-motion: reduce) {
-  .theme-dot.is-active { animation: none; }
+/* reduced motion */
+@media (prefers-reduced-motion: reduce){
+  .theme-dot.is-active{ animation:none; }
 }
-
-
