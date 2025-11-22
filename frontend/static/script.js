@@ -424,8 +424,25 @@ function showSkeletons(count) {
 }
 
 // ------------------------
-// Generate flow
+// Generate flow + Auto Retry
 // ------------------------
+
+async function fetchWithRetry(url, options, retries = 1, delayMs = 2500) {
+  try {
+    const res = await fetch(url, options);
+    if (!res.ok) throw new Error(`HTTP ${res.status}`);
+    return res;
+  } catch (err) {
+    if (retries > 0) {
+      console.warn("Fetch failed, retrying…", err);
+      await new Promise(r => setTimeout(r, delayMs));
+      return fetchWithRetry(url, options, retries - 1, delayMs);
+    }
+    throw err;
+  }
+}
+
+
 async function handleGenerate() {
   const raw = urlInput.value;
   const urls = parseURLs(raw);
@@ -445,13 +462,11 @@ async function handleGenerate() {
   showSkeletons(urls.length);
 
   try {
-    const res = await fetch(commentURL, {
+    const res = await fetchWithRetry(commentURL, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ urls }),
-    });
-    if (!res.ok) throw new Error(`Backend error: ${res.status}`);
-
+    }, 1, 2500); // 1 retry after 2.5s
     const data = await res.json();
     if (cancelled) return;
 
@@ -497,15 +512,22 @@ async function handleGenerate() {
       setProgressText(failed.length ? "All URLs failed to process." : "No comments returned.");
       setProgressRatio(1);
     }
-  } catch (err) {
+ } catch (err) {
     console.error("Generate error", err);
     document.body.classList.remove("is-generating");
     generateBtn.disabled = false;
     cancelBtn.disabled   = true;
-    setProgressText("Error contacting CrownTALK backend.");
+
+    let msg = "Error contacting CrownTALK backend.";
+    if (err && String(err).includes("HTTP 5")) {
+      msg = "Server is busy or waking up. Please try again in a few seconds.";
+    } else if (err instanceof TypeError) {
+      msg = "Network issue – check your connection and try again.";
+    }
+
+    setProgressText(msg);
     setProgressRatio(0);
   }
-}
 
 // ------------------------
 // Cancel & Clear
