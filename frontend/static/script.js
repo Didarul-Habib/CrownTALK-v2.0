@@ -3,7 +3,6 @@
    Access code: @CrownTALK@2026@CrownDEX
    Persists with localStorage + cookie fallback
    ============================================ */
-
 /* ---------- Gate (single source of truth) ---------- */
 (() => {
   const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
@@ -20,7 +19,9 @@
   function markAuthorized() {
     try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
     try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try { document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+    try {
+      document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`;
+    } catch {}
   }
 
   function els() {
@@ -36,7 +37,10 @@
     gate.hidden = false;
     gate.style.display = 'grid';   // ensure visible even if other CSS overrides
     document.body.style.overflow = 'hidden';
-    if (input) { input.value = ''; setTimeout(() => input.focus(), 0); }
+    if (input) {
+      input.value = '';
+      setTimeout(() => input.focus(), 0);
+    }
   }
 
   function hideGate() {
@@ -74,7 +78,10 @@
 
     // Enter to submit
     input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); tryAuth(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        tryAuth();
+      }
     });
 
     // Click the lock icon to submit
@@ -85,13 +92,6 @@
     }
   }
 
-  // Init on DOM ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
-  }
-
   function init() {
     if (isAuthorized()) {
       hideGate();
@@ -100,6 +100,13 @@
       showGate();
       bindGate();
     }
+  }
+
+  // Init on DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
   }
 })();
 
