@@ -154,3 +154,24 @@ main .chip-loader { display: none !important; }
   .chip-loader { backdrop-filter: none; -webkit-backdrop-filter: none; }
   .chip-loader svg .trace-flow { animation: none; }
 }
+
+
+/* =========================================
+   CrownTALK — Loader perf patch (no visual
+   change in motion, just lighter to render)
+   ========================================= */
+
+/* 1) Remove expensive blur on the overlay */
+.chip-loader {
+  backdrop-filter: none !important;
+  -webkit-backdrop-filter: none !important;
+}
+
+/* 2) Kill heavy drop-shadows on SVG */
+.chip-loader svg {
+  filter: none !important;
+}
+
+.chip-loader svg .trace-flow {
+  filter: none !important;
+}
