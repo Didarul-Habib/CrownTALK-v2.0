@@ -138,6 +138,44 @@ let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 let cancelled    = false;
 let historyItems = [];
 
+
+// ------------------------
+// Backend helpers (warmup + timeout fetch)
+// ------------------------
+function warmBackendOnce() {
+  // fire-and-forget ping to wake the Render instance
+  try {
+    fetch(backendBase + "/", {
+      method: "GET",
+      cache: "no-store",
+      mode: "no-cors",
+      keepalive: true,
+    }).catch(() => {});
+  } catch (err) {
+    console.warn("warmBackendOnce error", err);
+  }
+}
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+  // Older browsers: no AbortController → just use plain fetch
+  if (typeof AbortController === "undefined") {
+    return fetch(url, options);
+  }
+
+  const controller = new AbortController();
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
+}
+
+
 // ------------------------
 // Utilities
 // ------------------------
@@ -455,13 +493,16 @@ async function handleGenerate() {
   const raw = urlInput.value;
   const urls = parseURLs(raw);
 
-  if (!urls.length) { alert("Please paste at least one tweet URL."); return; }
+  if (!urls.length) {
+    alert("Please paste at least one tweet URL.");
+    return;
+  }
 
   cancelled = false;
   document.body.classList.add("is-generating");
 
   generateBtn.disabled = true;
-  cancelBtn.disabled   = false;
+  cancelBtn.disabled = false;
   resetResults();
   resetProgress();
 
@@ -469,13 +510,32 @@ async function handleGenerate() {
   setProgressRatio(0.03);
   showSkeletons(urls.length);
 
+  // Shared request body/options
+  const payload = JSON.stringify({ urls });
+  const requestOptions = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+  };
+
   try {
-    const res = await fetch(commentURL, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls }),
-    });
-    if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+    let res;
+
+    // ---- first attempt ----
+    try {
+      res = await fetchWithTimeout(commentURL, requestOptions, 45000);
+    } catch (firstErr) {
+      console.warn("First generate attempt failed, warming backend then retrying…", firstErr);
+      setProgressText("Waking CrownTALK engine… retrying once.");
+      warmBackendOnce();
+
+      // ---- second (final) attempt ----
+      res = await fetchWithTimeout(commentURL, requestOptions, 45000);
+    }
+
+    if (!res.ok) {
+      throw new Error(`Backend error: ${res.status}`);
+    }
 
     const data = await res.json();
     if (cancelled) return;
@@ -506,7 +566,7 @@ async function handleGenerate() {
           setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
           document.body.classList.remove("is-generating");
           generateBtn.disabled = false;
-          cancelBtn.disabled   = true;
+          cancelBtn.disabled = true;
         }
       }, delay);
       delay += 120;
@@ -518,19 +578,24 @@ async function handleGenerate() {
     if (!results.length) {
       document.body.classList.remove("is-generating");
       generateBtn.disabled = false;
-      cancelBtn.disabled   = true;
-      setProgressText(failed.length ? "All URLs failed to process." : "No comments returned.");
+      cancelBtn.disabled = true;
+      setProgressText(
+        failed.length
+          ? "All URLs failed to process."
+          : "No comments returned."
+      );
       setProgressRatio(1);
     }
   } catch (err) {
     console.error("Generate error", err);
     document.body.classList.remove("is-generating");
     generateBtn.disabled = false;
-    cancelBtn.disabled   = true;
-    setProgressText("Error contacting CrownTALK backend.");
+    cancelBtn.disabled = true;
+    setProgressText("Error contacting CrownTALK backend. Please try again.");
     setProgressRatio(0);
   }
 }
+   
 
 // ------------------------
 // Cancel & Clear
