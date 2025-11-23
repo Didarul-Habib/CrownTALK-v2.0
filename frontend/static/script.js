@@ -174,19 +174,44 @@ function resetResults() {
 
 async function copyToClipboard(text) {
   if (!text) return;
-  try {
-    if (navigator.clipboard?.writeText) {
+
+  // Modern async clipboard (no scroll / focus)
+  if (navigator.clipboard?.writeText) {
+    try {
       await navigator.clipboard.writeText(text);
-    } else {
-      const ta = document.createElement("textarea");
-      ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
-      document.body.appendChild(ta); ta.focus(); ta.select();
-      document.execCommand("copy"); document.body.removeChild(ta);
+      return;
+    } catch (err) {
+      console.warn("navigator.clipboard failed, using fallback", err);
     }
-  } catch (err) {
-    console.error("Clipboard error", err);
   }
+
+  // Fallback: hidden span + Range, NO focus, NO scroll jump
+  const helper = document.createElement("span");
+  helper.textContent = text;
+  helper.style.position = "fixed";
+  helper.style.left = "-9999px";
+  helper.style.top = "0";
+  helper.style.whiteSpace = "pre"; // preserve line breaks
+
+  document.body.appendChild(helper);
+
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(helper);
+
+  selection.removeAllRanges();
+  selection.addRange(range);
+
+  try {
+    document.execCommand("copy");
+  } catch (err) {
+    console.error("execCommand copy failed", err);
+  }
+
+  selection.removeAllRanges();
+  document.body.removeChild(helper);
 }
+
 
 function formatTweetCount(count) {
   const n = Number(count) || 0;
