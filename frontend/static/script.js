@@ -135,14 +135,17 @@ let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 // ------------------------
 // State
 // ------------------------
-let cancelled    = false;
-let historyItems = [];
-
+let cancelled      = false;
+let historyItems   = [];
+let backendWarmed  = false;   // <--- added flag
 
 // ------------------------
 // Backend helpers (warmup + timeout fetch)
 // ------------------------
 function warmBackendOnce() {
+  if (backendWarmed) return;   // <--- guard so we only ping once per page load
+  backendWarmed = true;
+
   // fire-and-forget ping to wake the Render instance
   try {
     fetch(backendBase + "/", {
@@ -249,7 +252,6 @@ async function copyToClipboard(text) {
   selection.removeAllRanges();
   document.body.removeChild(helper);
 }
-
 
 function formatTweetCount(count) {
   const n = Number(count) || 0;
@@ -490,6 +492,8 @@ function showSkeletons(count) {
 // Generate flow
 // ------------------------
 async function handleGenerate() {
+  warmBackendOnce();  // <--- proactively wake backend on every generate click (guarded)
+
   const raw = urlInput.value;
   const urls = parseURLs(raw);
 
@@ -595,7 +599,6 @@ async function handleGenerate() {
     setProgressRatio(0);
   }
 }
-   
 
 // ------------------------
 // Cancel & Clear
@@ -704,6 +707,8 @@ function initTheme() {
 
 /* ---------- Boot UI once unlocked ---------- */
 function bootAppUI() {
+  warmBackendOnce();  // <--- wake backend as soon as UI is live
+
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
   initTheme();
   renderHistory();
