@@ -718,6 +718,27 @@ function bootAppUI() {
   generateBtn?.addEventListener("click", () => {
     if (!document.body.classList.contains("is-generating")) handleGenerate();
   });
+
+   // Only warm occasionally while user is actually active
+let lastWarmAt = 0;
+
+function maybeWarmBackend() {
+  const now = Date.now();
+  const FIVE_MIN = 5 * 60 * 1000;
+
+  // Only ping if 5+ minutes since last warm
+  if (now - lastWarmAt > FIVE_MIN) {
+    lastWarmAt = now;
+    warmBackendOnce();
+  }
+
+     // Gentle warmup shortly after UI becomes usable
+  setTimeout(() => {
+    maybeWarmBackend();
+  }, 4000);
+} 
+}
+
   cancelBtn?.addEventListener("click", handleCancel);
   clearBtn?.addEventListener("click", handleClear);
 
