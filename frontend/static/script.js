@@ -20,7 +20,9 @@
   function markAuthorized() {
     try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
     try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try { document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+    try {
+      document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`;
+    } catch {}
   }
 
   function els() {
@@ -36,7 +38,10 @@
     gate.hidden = false;
     gate.style.display = 'grid';   // ensure visible even if other CSS overrides
     document.body.style.overflow = 'hidden';
-    if (input) { input.value = ''; setTimeout(() => input.focus(), 0); }
+    if (input) {
+      input.value = '';
+      setTimeout(() => input.focus(), 0);
+    }
   }
 
   function hideGate() {
@@ -74,7 +79,10 @@
 
     // Enter to submit
     input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') { e.preventDefault(); tryAuth(); }
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        tryAuth();
+      }
     });
 
     // Click the lock icon to submit
@@ -83,13 +91,6 @@
       lockIcon.style.cursor = 'pointer';
       lockIcon.addEventListener('click', tryAuth);
     }
-  }
-
-  // Init on DOM ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
   }
 
   function init() {
@@ -101,6 +102,13 @@
       bindGate();
     }
   }
+
+  // Init on DOM ready
+  if (document.readyState === 'loading') {
+    document.addEventListener('DOMContentLoaded', init);
+  } else {
+    init();
+  }
 })();
 
 /* ========= App code (unchanged, just wrapped) ========= */
@@ -109,25 +117,25 @@
 // Backend endpoints
 // ------------------------
 const backendBase = "https://crowntalk.onrender.com";
-const commentURL = `${backendBase}/comment`;
-const rerollURL = `${backendBase}/reroll`;
+const commentURL  = `${backendBase}/comment`;
+const rerollURL   = `${backendBase}/reroll`;
 
 // ------------------------
 // DOM elements
 // ------------------------
-const urlInput       = document.getElementById("urlInput");
-const generateBtn    = document.getElementById("generateBtn");
-const cancelBtn      = document.getElementById("cancelBtn");
-const clearBtn       = document.getElementById("clearBtn");
-const progressEl     = document.getElementById("progress");
-const progressBarFill= document.getElementById("progressBarFill");
-const resultsEl      = document.getElementById("results");
-const failedEl       = document.getElementById("failed");
-const resultCountEl  = document.getElementById("resultCount");
-const failedCountEl  = document.getElementById("failedCount");
-const historyEl      = document.getElementById("history");
-const clearHistoryBtn= document.getElementById("clearHistoryBtn");
-const yearEl         = document.getElementById("year");
+const urlInput        = document.getElementById("urlInput");
+const generateBtn     = document.getElementById("generateBtn");
+const cancelBtn       = document.getElementById("cancelBtn");
+const clearBtn        = document.getElementById("clearBtn");
+const progressEl      = document.getElementById("progress");
+const progressBarFill = document.getElementById("progressBarFill");
+const resultsEl       = document.getElementById("results");
+const failedEl        = document.getElementById("failed");
+const resultCountEl   = document.getElementById("resultCount");
+const failedCountEl   = document.getElementById("failedCount");
+const historyEl       = document.getElementById("history");
+const clearHistoryBtn = document.getElementById("clearHistoryBtn");
+const yearEl          = document.getElementById("year");
 
 // theme dots (live node list -> array)
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
@@ -135,17 +143,13 @@ let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 // ------------------------
 // State
 // ------------------------
-let cancelled      = false;
-let historyItems   = [];
-let backendWarmed  = false;   // <--- added flag
+let cancelled    = false;
+let historyItems = [];
 
 // ------------------------
 // Backend helpers (warmup + timeout fetch)
 // ------------------------
 function warmBackendOnce() {
-  if (backendWarmed) return;   // <--- guard so we only ping once per page load
-  backendWarmed = true;
-
   // fire-and-forget ping to wake the Render instance
   try {
     fetch(backendBase + "/", {
@@ -156,6 +160,20 @@ function warmBackendOnce() {
     }).catch(() => {});
   } catch (err) {
     console.warn("warmBackendOnce error", err);
+  }
+}
+
+// Only warm occasionally while user is actually active
+let lastWarmAt = 0;
+
+function maybeWarmBackend() {
+  const now = Date.now();
+  const FIVE_MIN = 5 * 60 * 1000;
+
+  // Only ping if 5+ minutes since last warm
+  if (now - lastWarmAt > FIVE_MIN) {
+    lastWarmAt = now;
+    warmBackendOnce();
   }
 }
 
@@ -177,7 +195,6 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
     throw err;
   }
 }
-
 
 // ------------------------
 // Utilities
@@ -271,7 +288,10 @@ function autoResizeTextarea() {
 // ------------------------
 function addToHistory(text) {
   if (!text) return;
-  const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const timestamp = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   historyItems.push({ text, timestamp });
   renderHistory();
 }
@@ -393,8 +413,12 @@ function buildTweetBlock(result) {
     const copyBtn = document.createElement("button");
     let copyLabel = "Copy";
     if (multilingual) {
-      if (comment.lang === "en") { copyBtn.className = "copy-btn-en"; copyLabel = "Copy EN"; }
-      else { copyBtn.className = "copy-btn"; }
+      if (comment.lang === "en") {
+        copyBtn.className = "copy-btn-en";
+        copyLabel = "Copy EN";
+      } else {
+        copyBtn.className = "copy-btn";
+      }
     } else {
       copyBtn.className = "copy-btn";
     }
@@ -492,8 +516,6 @@ function showSkeletons(count) {
 // Generate flow
 // ------------------------
 async function handleGenerate() {
-  warmBackendOnce();  // <--- proactively wake backend on every generate click (guarded)
-
   const raw = urlInput.value;
   const urls = parseURLs(raw);
 
@@ -501,6 +523,7 @@ async function handleGenerate() {
     alert("Please paste at least one tweet URL.");
     return;
   }
+
   // Try to wake the backend if it's been idle for a while
   maybeWarmBackend();
 
@@ -508,7 +531,7 @@ async function handleGenerate() {
   document.body.classList.add("is-generating");
 
   generateBtn.disabled = true;
-  cancelBtn.disabled = false;
+  cancelBtn.disabled   = false;
   resetResults();
   resetProgress();
 
@@ -572,7 +595,7 @@ async function handleGenerate() {
           setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
           document.body.classList.remove("is-generating");
           generateBtn.disabled = false;
-          cancelBtn.disabled = true;
+          cancelBtn.disabled   = true;
         }
       }, delay);
       delay += 120;
@@ -584,7 +607,7 @@ async function handleGenerate() {
     if (!results.length) {
       document.body.classList.remove("is-generating");
       generateBtn.disabled = false;
-      cancelBtn.disabled = true;
+      cancelBtn.disabled   = true;
       setProgressText(
         failed.length
           ? "All URLs failed to process."
@@ -596,7 +619,7 @@ async function handleGenerate() {
     console.error("Generate error", err);
     document.body.classList.remove("is-generating");
     generateBtn.disabled = false;
-    cancelBtn.disabled = true;
+    cancelBtn.disabled   = true;
     setProgressText("Error contacting CrownTALK backend. Please try again.");
     setProgressRatio(0);
   }
@@ -689,8 +712,12 @@ function applyTheme(themeName) {
   const html = document.documentElement;
   const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
   html.setAttribute("data-theme", t);
-  themeDots.forEach((dot) => dot.classList.toggle("is-active", dot.dataset.theme === t));
-  try { localStorage.setItem(THEME_STORAGE_KEY, t); } catch {}
+  themeDots.forEach((dot) =>
+    dot.classList.toggle("is-active", dot.dataset.theme === t)
+  );
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, t);
+  } catch {}
 }
 
 function initTheme() {
@@ -709,45 +736,32 @@ function initTheme() {
 
 /* ---------- Boot UI once unlocked ---------- */
 function bootAppUI() {
-  warmBackendOnce();  // <--- wake backend as soon as UI is live
-
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
   initTheme();
   renderHistory();
   autoResizeTextarea();
 
+  // Gentle warmup shortly after UI becomes usable
+  setTimeout(() => {
+    maybeWarmBackend();
+  }, 4000);
+
   urlInput?.addEventListener("input", autoResizeTextarea);
+
   generateBtn?.addEventListener("click", () => {
     if (!document.body.classList.contains("is-generating")) handleGenerate();
   });
 
-   // Only warm occasionally while user is actually active
-let lastWarmAt = 0;
-
-function maybeWarmBackend() {
-  const now = Date.now();
-  const FIVE_MIN = 5 * 60 * 1000;
-
-  // Only ping if 5+ minutes since last warm
-  if (now - lastWarmAt > FIVE_MIN) {
-    lastWarmAt = now;
-    warmBackendOnce();
-  }
-
-     // Gentle warmup shortly after UI becomes usable
-  setTimeout(() => {
-    maybeWarmBackend();
-  }, 4000);
-} 
-}
-
   cancelBtn?.addEventListener("click", handleCancel);
   clearBtn?.addEventListener("click", handleClear);
 
-  clearHistoryBtn?.addEventListener("click", () => { historyItems = []; renderHistory(); });
+  clearHistoryBtn?.addEventListener("click", () => {
+    historyItems = [];
+    renderHistory();
+  });
 
   resultsEl?.addEventListener("click", async (event) => {
-    const copyBtn = event.target.closest(".copy-btn, .copy-btn-en");
+    const copyBtn  = event.target.closest(".copy-btn, .copy-btn-en");
     const rerollBtn = event.target.closest(".reroll-btn");
 
     if (copyBtn) {
@@ -763,7 +777,10 @@ function maybeWarmBackend() {
       const old = copyBtn.textContent;
       copyBtn.textContent = "Copied";
       copyBtn.disabled = true;
-      setTimeout(() => { copyBtn.textContent = old; copyBtn.disabled = false; }, 700);
+      setTimeout(() => {
+        copyBtn.textContent = old;
+        copyBtn.disabled = false;
+      }, 700);
     }
 
     if (rerollBtn) {
@@ -782,7 +799,10 @@ function maybeWarmBackend() {
     const old = btn.textContent;
     btn.textContent = "Copied";
     btn.disabled = true;
-    setTimeout(() => { btn.textContent = old; btn.disabled = false; }, 700);
+    setTimeout(() => {
+      btn.textContent = old;
+      btn.disabled = false;
+    }, 700);
   });
 
   themeDots.forEach((dot) => {
