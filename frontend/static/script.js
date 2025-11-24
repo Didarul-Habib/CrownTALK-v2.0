@@ -501,6 +501,8 @@ async function handleGenerate() {
     alert("Please paste at least one tweet URL.");
     return;
   }
+  // Try to wake the backend if it's been idle for a while
+  maybeWarmBackend();
 
   cancelled = false;
   document.body.classList.add("is-generating");
