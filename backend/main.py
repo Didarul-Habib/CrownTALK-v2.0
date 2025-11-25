@@ -101,7 +101,7 @@ def healthz():
 
 @app.route("/ping", methods=["GET"])
 def ping():
-    # Small endpoint your frontend can hit to keep the dyno warm
+    # Small endpoint your frontend or a pinger can hit to keep the dyno warm
     return _allow_cors(make_response(jsonify({"pong": True, "ts": time.time()}), 200))
 
 
@@ -136,12 +136,34 @@ def _respect_gap(provider: str):
     _last_call_at[provider] = time.time()
 
 
+def _split_comments(text: str) -> List[str]:
+    """
+    Accepts a blob and tries to extract 2 short lines.
+    Supports numbered lists, newlines, or sentences.
+    """
+    if not text:
+        return []
+    # try numbered
+    lines = []
+    for row in text.splitlines():
+        row = row.strip(" \t-•")
+        row = row.lstrip("0123456789.) ]\t")
+        row = row.strip()
+        if row:
+            lines.append(row)
+    if len(lines) >= 2:
+        return lines[:2]
+    # fallback: split by sentence-ish
+    parts = [p.strip() for p in text.replace("\n", " ").split(". ") if p.strip()]
+    if len(parts) >= 2:
+        return [parts[0].rstrip("."), parts[1].rstrip(".")][:2]
+    return [text[:160]]
+
 def call_groq(url: str) -> Optional[List[str]]:
     if not _groq:
         return None
     _respect_gap("groq")
     try:
-        # groq chat API
         resp = _groq.chat.completions.create(
             model=GROQ_MODEL,
             messages=[
@@ -150,6 +172,7 @@ def call_groq(url: str) -> Optional[List[str]]:
             ],
             temperature=0.7,
             max_tokens=180,
+            # groq python often ignores per-call timeout; safe to leave, or remove if it errors
             timeout=PROVIDER_TIMEOUT,
         )
         text = (resp.choices[0].message.content or "").strip()
@@ -157,7 +180,6 @@ def call_groq(url: str) -> Optional[List[str]]:
     except Exception as e:
         print(f"[groq] error for {url}: {e}")
         return None
-
 
 def call_openai(url: str) -> Optional[List[str]]:
     if not _openai:
@@ -180,7 +202,6 @@ def call_openai(url: str) -> Optional[List[str]]:
         print(f"[openai] error for {url}: {e}")
         return None
 
-
 def call_gemini(url: str) -> Optional[List[str]]:
     if not _genai:
         return None
@@ -195,46 +216,16 @@ def call_gemini(url: str) -> Optional[List[str]]:
         print(f"[gemini] error for {url}: {e}")
         return None
 
-
 def call_offline(url: str) -> List[str]:
-    # extremely safe generic fallbacks
     base = [
         "Sounds like a solid direction—keen to see where this goes.",
         "Interesting take—curious how this unfolds over time.",
         "Love the clarity here. Appreciate you sharing this.",
         "Great points. What are the first steps to make it happen?",
-        "This is promising—how can people get involved?"
+        "This is promising—how can people get involved?",
     ]
-    # pick 2 semi-random but deterministic by url hash
     h = abs(hash(url))
     return [base[h % len(base)], base[(h // 7) % len(base)]]
-
-
-def _split_comments(text: str) -> List[str]:
-    """
-    Accepts a blob and tries to extract 2 short lines.
-    Supports numbered lists, newlines, or sentences.
-    """
-    if not text:
-        return []
-    # try numbered
-    lines = []
-    for row in text.splitlines():
-        row = row.strip(" \t-•")  # strip bullets/dashes
-        row = row.lstrip("0123456789.) ]\t")  # remove leading list numerals
-        row = row.strip()
-        if row:
-            lines.append(row)
-    if len(lines) >= 2:
-        return lines[:2]
-
-    # fallback: split by sentence-ish
-    parts = [p.strip() for p in text.replace("\n", " ").split(". ") if p.strip()]
-    if len(parts) >= 2:
-        return [parts[0].rstrip(".") , parts[1].rstrip(".")][:2]
-
-    return [text[:160]]  # at least something
-
 
 PROVIDER_FUNCS = {
     "groq":   call_groq,
@@ -243,31 +234,23 @@ PROVIDER_FUNCS = {
     "offline": lambda url: call_offline(url),
 }
 
-
 def generate_for_url(url: str) -> Dict[str, Any]:
-    """
-    Walk through provider order; first provider that returns >=2 comments wins.
-    """
     for name in LLM_ORDER:
         fn = PROVIDER_FUNCS.get(name)
         if not fn:
             continue
         out = fn(url)
         if out and len(out) >= 1:
-            # normalize -> [{lang:"en", text:...}, ...]
             comments = [{"lang": "en", "text": c.strip()} for c in out[:2] if c and c.strip()]
             if comments:
                 return {"url": url, "comments": comments, "provider": name}
-    # nothing at all
     return {"url": url, "comments": [], "provider": None}
-
 
 # -------- API: /comment --------
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment():
     if request.method == "OPTIONS":
         return _allow_cors(make_response("", 204))
-
     try:
         payload = request.get_json(silent=True) or {}
         urls = _normalize(payload.get("urls", []))
@@ -275,10 +258,8 @@ def comment():
             return _allow_cors(make_response(jsonify({
                 "results": [], "failed": [{"url": "(none)", "reason": "No URLs provided"}]
             }), 400))
-
         results: List[Dict[str, Any]] = []
         failed: List[Dict[str, str]] = []
-
         for i, url in enumerate(urls):
             try:
                 item = generate_for_url(url)
@@ -289,9 +270,7 @@ def comment():
             except Exception as e:
                 print(f"[comment] error on {url}: {e}")
                 failed.append({"url": url, "reason": "Internal error"})
-            # pacing
             time.sleep(max(PER_URL_SLEEP_SECONDS, 0.0))
-
         return _allow_cors(make_response(jsonify({
             "results": results,
             "failed": failed
@@ -302,19 +281,16 @@ def comment():
             "results": [], "failed": [{"url": "(all)", "reason": "Server error"}]
         }), 500))
 
-
 # -------- API: /reroll --------
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll():
     if request.method == "OPTIONS":
         return _allow_cors(make_response("", 204))
-
     try:
         payload = request.get_json(silent=True) or {}
         url = (payload.get("url") or "").strip()
         if not url:
             return _allow_cors(make_response(jsonify({"error": "Missing url"}), 400))
-
         item = generate_for_url(url)
         return _allow_cors(make_response(jsonify({
             "url": url,
@@ -325,10 +301,8 @@ def reroll():
         print(f"[reroll] fatal: {e}")
         return _allow_cors(make_response(jsonify({
             "url": url if "url" in locals() else None,
-            "comments": [],
-            "error": "Server error"
+            "comments": [], "error": "Server error"
         }), 500))
-
 
 # -------- Warm-up on boot (non-blocking) --------
 def _warm_once():
@@ -336,10 +310,9 @@ def _warm_once():
         # A tiny self-ping after boot so first user isn't cold
         time.sleep(1.5)
         with app.test_client() as c:
-            c.get("/healthz", timeout=5)
+            c.get("/healthz")   # removed invalid timeout kwarg
     except Exception:
         pass
-
 
 if __name__ == "__main__":
     # local dev: python main.py
