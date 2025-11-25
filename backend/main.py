@@ -1,3 +1,7 @@
+# ensure Gunicorn can always find the Flask app
+# (your file already defines `app = Flask(__name__)`)
+application = app  # alias for platforms that look for `application`
+__all__ = ["app", "application"]
 # utils.py
 from __future__ import annotations
 
