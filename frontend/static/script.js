@@ -812,3 +812,28 @@ function bootAppUI() {
     });
   });
 }
+
+
+// Keep the backend warm while the tab is open (no effect if tab is hidden)
+(function keepAliveWhileVisible() {
+  const PING_MS = 4 * 60 * 1000; // every 4 minutes
+  let timer = null;
+
+  function schedule() {
+    clearInterval(timer);
+    if (document.visibilityState === "visible") {
+      timer = setInterval(() => {
+        fetch("https://crowntalk.onrender.com/ping", {
+          method: "GET",
+          cache: "no-store",
+          mode: "no-cors",
+          keepalive: true,
+        }).catch(() => {});
+      }, PING_MS);
+    }
+  }
+
+  document.addEventListener("visibilitychange", schedule);
+  window.addEventListener("pagehide", () => clearInterval(timer));
+  schedule();
+})();
