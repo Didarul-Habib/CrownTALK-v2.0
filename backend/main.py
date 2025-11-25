@@ -3,15 +3,13 @@
 application = app  # alias for platforms that look for `application`
 __all__ = ["app", "application"]
 # utils.py
-from __future__ import annotations
-
-import logging
 import re
+import os
+import logging
 import time
 import threading
 from dataclasses import dataclass
 from typing import List, Tuple
-import os
 import requests
 from urllib.parse import urlparse
 
