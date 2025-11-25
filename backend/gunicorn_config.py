@@ -1,13 +1,16 @@
 # gunicorn_config.py
+import os
 
 # Workers & threading (safe for Render free tier)
-workers = 2
+workers = int(os.getenv("WEB_CONCURRENCY", "2"))
 worker_class = "gthread"
-threads = 2
+threads = int(os.getenv("WEB_THREADS", "2"))
 
-# Networking
-bind = "0.0.0.0:10000"  # ignored on Render (Procfile uses $PORT), useful for local dev
-timeout = 120
+# Networking: bind to $PORT (Render provides), default 8000 for local dev
+bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
+
+# Timeouts
+timeout = int(os.getenv("WEB_TIMEOUT", "120"))
 keepalive = 30
 
 # Process naming
