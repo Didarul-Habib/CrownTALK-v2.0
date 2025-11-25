@@ -1,3 +1,4 @@
+import re
 import os
 import time
 import json
@@ -116,11 +117,13 @@ def _normalize(urls: List[str]) -> List[str]:
 
 # ---------- Prompts ----------
 SYSTEM_PROMPT = (
-    "You are CrownTALK, a friendly, concise social reply writer.\n"
+    "You are CrownTALK, a friendly, concise social reply writer. "
     "Write short, humanlike, positive comments for the given tweet URL. "
-    "Keep them natural, non-repetitive, no hashtags, no emojis. "
-    "Return two distinct comments in English."
+    "Return exactly two lines, each line is the final comment only. "
+    "No headings, no labels, no numbering, no quotes, no emojis, no hashtags, "
+    "and no punctuation at all. each comment must be different tone and style like a human based on the post context."
 )
+
 
 USER_TEMPLATE = "Tweet URL: {url}\nTask: Write 2 short humanlike comments in English."
 
@@ -138,26 +141,76 @@ def _respect_gap(provider: str):
 
 def _split_comments(text: str) -> List[str]:
     """
-    Accepts a blob and tries to extract 2 short lines.
-    Supports numbered lists, newlines, or sentences.
+    Extract exactly two plain comment lines from model output.
+    - Removes preambles like 'Here are two comments:'
+    - Strips list labels like 'Comment 1:', '1)', '-', etc.
+    - Removes ALL punctuation characters from the final lines.
     """
+
     if not text:
         return []
-    # try numbered
-    lines = []
+
+    def _clean_labels(line: str) -> str:
+        s = line.strip()
+        # Remove obvious bullets/dashes first
+        s = s.strip("•-–—").strip()
+
+        # Drop common preambles if they appear at line start
+        s = re.sub(r"^\s*(here (are|is).{0,60}comment[s]?\s*:)\s*", "", s, flags=re.I)
+        s = re.sub(r"^\s*(sample|possible|two|the two|some)\s+comment[s]?\s*:\s*", "", s, flags=re.I)
+
+        # Remove explicit labels / numbering
+        s = re.sub(r"^\s*(comment|reply|option|idea|line)\s*\d+\s*[:\-\.)]\s*", "", s, flags=re.I)
+        s = re.sub(r"^\s*\(?\s*\d+\s*[:\-\.)]\s*", "", s)     # 1) 1. 1-
+        s = re.sub(r"^\s*[A-Z]\s*[:\-\.)]\s*", "", s)        # A) A. A-
+        return s.strip()
+
+    def _to_plain(line: str) -> str:
+        # Remove ALL punctuation (keep letters, numbers, spaces)
+        line = re.sub(r"[^\w\s]", "", line, flags=re.UNICODE)
+        # Collapse multiple spaces
+        line = re.sub(r"\s+", " ", line).strip()
+        return line
+
+    # 1) Line-oriented parse
+    lines: List[str] = []
     for row in text.splitlines():
-        row = row.strip(" \t-•")
-        row = row.lstrip("0123456789.) ]\t")
-        row = row.strip()
+        row = _clean_labels(row)
         if row:
             lines.append(row)
-    if len(lines) >= 2:
-        return lines[:2]
-    # fallback: split by sentence-ish
-    parts = [p.strip() for p in text.replace("\n", " ").split(". ") if p.strip()]
-    if len(parts) >= 2:
-        return [parts[0].rstrip("."), parts[1].rstrip(".")][:2]
-    return [text[:160]]
+
+    # Remove any leftover preamble-y lines
+    lines = [ln for ln in lines if not re.match(r"^(here (are|is)|two comments|possible comments)", ln, re.I)]
+
+    if len(lines) < 2:
+        # 2) Try splitting inside one paragraph on obvious separators
+        chunks = re.split(r"(?:\s(?:(?:comment|reply)\s*\d+|(?:\d+|[A-Z])[:\-\.)]|-)\s*)", text, flags=re.I)
+        chunks = [_clean_labels(c) for c in chunks if _clean_labels(c)]
+        lines.extend(chunks)
+
+    if len(lines) < 2:
+        # 3) Sentence-ish fallback
+        parts = [p.strip() for p in re.split(r"[.?!]\s+", text) if p.strip()]
+        parts = [_clean_labels(p) for p in parts if _clean_labels(p)]
+        lines.extend(parts)
+
+    # Dedup while preserving order
+    seen = set()
+    uniq = []
+    for ln in lines:
+        if ln not in seen:
+            seen.add(ln)
+            uniq.append(ln)
+
+    # Convert to plain (no punctuation) and keep non-empty
+    plain = [p for p in (_to_plain(ln) for ln in uniq) if p]
+
+    # Guarantee at least one line if everything was stripped
+    if not plain and text.strip():
+        plain = [_to_plain(text)]
+
+    return plain[:2]
+
 
 def call_groq(url: str) -> Optional[List[str]]:
     if not _groq:
