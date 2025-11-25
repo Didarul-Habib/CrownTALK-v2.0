@@ -1,267 +1,177 @@
 # utils.py
-import os
-import re
-import json
-import time
+from __future__ import annotations
+
 import logging
-from typing import Dict, List, Optional, Tuple
+import re
+import time
+import threading
+from dataclasses import dataclass
+from typing import List, Tuple
+import os
+import requests
+from urllib.parse import urlparse
 
-logger = logging.getLogger("crowntalk.utils")
-logger.setLevel(logging.INFO)
+logger = logging.getLogger("utils")
+if not logger.handlers:
+    logging.basicConfig(level=logging.INFO)
 
-# -------------------------------
-# General helpers
-# -------------------------------
-_URL_RE = re.compile(r"^https?://", re.I)
+class CrownTALKError(Exception):
+    def __init__(self, message: str, code: str = "error"):
+        super().__init__(message)
+        self.code = code
 
-def is_valid_url(url: str) -> bool:
-    return bool(url and _URL_RE.match(url))
+# Global upstream pacing (VX/FX Twitter scrapers)
+_MIN_GAP_SECONDS = float(os.environ.get("UPSTREAM_MIN_GAP_SECONDS", "0.5"))
+_last_call_ts = 0.0
+_rl_lock = threading.Lock()
 
-def safe_json(body: bytes) -> dict:
+def _rate_limit_yield():
+    global _last_call_ts
+    with _rl_lock:
+        now = time.time()
+        wait = _MIN_GAP_SECONDS - (now - _last_call_ts)
+        if wait > 0:
+            time.sleep(wait)
+        _last_call_ts = time.time()
+
+_SESSION = requests.Session()
+_SESSION.headers.update({"User-Agent": "CrownTALK/1.0 (+https://crowndex.app)"})
+_DEFAULT_TIMEOUT = 12
+
+_X_DOMAINS = {"x.com", "twitter.com", "mobile.twitter.com", "m.twitter.com"}
+
+def _extract_handle_and_id(url: str) -> Tuple[str, str]:
     try:
-        return json.loads(body.decode("utf-8"))
-    except Exception:
-        return {}
+        u = url.strip()
+        if not u:
+            raise ValueError("empty url")
+        if not u.startswith("http"):
+            u = "https://" + u
+        p = urlparse(u)
+        host = p.netloc.lower().split(":")[0]
+        if host not in _X_DOMAINS:
+            raise ValueError("not an x.com/twitter.com URL")
 
-def log_exc(prefix: str, err: Exception):
-    logger.exception("%s: %s", prefix, err)
+        parts = [seg for seg in p.path.split("/") if seg]
+        if len(parts) >= 3 and parts[1] == "status":
+            handle = parts[0]
+            status_id = parts[2]
+        elif len(parts) >= 4 and parts[-2] == "status":
+            handle = parts[-4]
+            status_id = parts[-1]
+        else:
+            raise ValueError("couldn't parse status path")
 
-# -------------------------------
-# Provider availability / order
-# -------------------------------
-def provider_available(name: str) -> bool:
-    """A provider is considered 'available' if its minimal API key is present."""
-    name = (name or "").lower()
-    if name == "groq":
-        return bool(os.getenv("GROQ_API_KEY"))
-    if name in ("openai", "oai"):
-        return bool(os.getenv("OPENAI_API_KEY"))
-    if name in ("gemini", "google", "googleai"):
-        return bool(os.getenv("GEMINI_API_KEY"))
-    return False
-
-def resolve_provider_order() -> List[str]:
-    """
-    Get desired order from PROVIDER_ORDER, but only keep available ones.
-    Example: PROVIDER_ORDER="groq,openai,gemini"
-    Fallback default order tries fast+cheap first.
-    """
-    env_order = os.getenv("PROVIDER_ORDER", "")
-    if env_order.strip():
-        candidates = [p.strip().lower() for p in env_order.split(",") if p.strip()]
-    else:
-        candidates = ["groq", "openai", "gemini"]
-
-    # Keep only available
-    ordered = [p for p in candidates if provider_available(p)]
-
-    # If none configured, return empty -> caller will use offline fallback
-    return ordered
-
-# -------------------------------
-# Provider clients (lazy init)
-# -------------------------------
-def _get_groq_client():
-    """Return GROQ client or None if not configured."""
-    key = os.getenv("GROQ_API_KEY")
-    if not key:
-        return None
-    try:
-        from groq import Groq
-        return Groq(api_key=key)
+        status_id = re.sub(r"[^\d]", "", status_id)
+        if not handle or not status_id:
+            raise ValueError("missing handle or id")
+        return handle, status_id
     except Exception as e:
-        log_exc("GROQ client init failed", e)
-        return None
+        raise CrownTALKError(f"Bad tweet URL: {url}", code="bad_tweet_url") from e
 
-def _get_openai_client():
-    """Return OpenAI client or None if not configured."""
-    key = os.getenv("OPENAI_API_KEY")
-    if not key:
-        return None
-    try:
-        from openai import OpenAI
-        return OpenAI(api_key=key)
-    except Exception as e:
-        log_exc("OpenAI client init failed", e)
-        return None
+def _normalize_x_url(url: str) -> str:
+    handle, status_id = _extract_handle_and_id(url)
+    return f"https://x.com/{handle}/status/{status_id}"
 
-def _get_gemini_model():
-    """Return Gemini GenerativeModel or None if not configured."""
-    key = os.getenv("GEMINI_API_KEY")
-    if not key:
-        return None
-    try:
-        import google.generativeai as genai
-        genai.configure(api_key=key)
-        # fast, inexpensive default
-        return genai.GenerativeModel(os.getenv("GEMINI_MODEL", "gemini-1.5-flash"))
-    except Exception as e:
-        log_exc("Gemini model init failed", e)
-        return None
-
-# -------------------------------
-# Prompt builder
-# -------------------------------
-def build_system_prompt() -> str:
-    return (
-        "You are CrownTALK, a social reply generator. "
-        "Write short, humanlike, friendly comment variations for an X (Twitter) post URL. "
-        "No hashtags, no emojis unless clearly appropriate. Avoid sounding generic. "
-        "Return concise 1–2 sentence replies."
-    )
-
-def build_user_prompt(url: str, lang_hint: Optional[str] = None) -> str:
-    base = f"Generate 2–3 different comment options that would fit under this X post:\nURL: {url}"
-    if lang_hint and lang_hint.lower() != "en":
-        base += f"\nPrimary language: {lang_hint}"
-    base += "\nReturn only the raw comments, one per line."
-    return base
-
-# -------------------------------
-# Single-call wrappers to each provider
-# -------------------------------
-def _call_groq(url: str, lang_hint: Optional[str]) -> List[Dict]:
-    client = _get_groq_client()
-    if not client:
-        raise RuntimeError("GROQ not configured")
-    model = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-    system = build_system_prompt()
-    user = build_user_prompt(url, lang_hint)
-
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "system", "content": system},
-                  {"role": "user", "content": user}],
-        temperature=0.7,
-        max_tokens=200,
-        n=1,
-    )
-    text = (resp.choices[0].message.content or "").strip()
-    return _split_lines_to_comments(text, lang_hint)
-
-def _call_openai(url: str, lang_hint: Optional[str]) -> List[Dict]:
-    client = _get_openai_client()
-    if not client:
-        raise RuntimeError("OpenAI not configured")
-    # sensible light default; allow override via env
-    model = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-    system = build_system_prompt()
-    user = build_user_prompt(url, lang_hint)
-
-    # Using Chat Completions for broad SDK compatibility
-    resp = client.chat.completions.create(
-        model=model,
-        messages=[{"role": "system", "content": system},
-                  {"role": "user", "content": user}],
-        temperature=0.7,
-        max_tokens=220,
-        n=1,
-    )
-    text = (resp.choices[0].message.content or "").strip()
-    return _split_lines_to_comments(text, lang_hint)
-
-def _call_gemini(url: str, lang_hint: Optional[str]) -> List[Dict]:
-    model = _get_gemini_model()
-    if not model:
-        raise RuntimeError("Gemini not configured")
-    system = build_system_prompt()
-    user = build_user_prompt(url, lang_hint)
-    # Gemini has no native 'system' field — prepend system to content
-    prompt = system + "\n\n" + user
-
-    resp = model.generate_content(prompt)
-    # SDK returns either .text or candidates; stick to .text for simplicity
-    text = (getattr(resp, "text", None) or "").strip()
-    if not text and getattr(resp, "candidates", None):
-        text = (resp.candidates[0].content.parts[0].text or "").strip()
-    return _split_lines_to_comments(text, lang_hint)
-
-# -------------------------------
-# Parse LLM output → comments[]
-# -------------------------------
-def _split_lines_to_comments(text: str, lang_hint: Optional[str]) -> List[Dict]:
-    """
-    Convert model's multi-line output into: [{text, lang}]
-    Lines like "1) ..." or "- ..." are normalized.
-    """
-    if not text:
-        return []
-
-    lines = [ln.strip() for ln in text.splitlines()]
-    out: List[Dict] = []
-    for ln in lines:
-        # strip common list markers
-        ln = re.sub(r"^\s*(?:[-*]|\d+[.)])\s*", "", ln)
-        if ln:
-            out.append({"text": ln, "lang": (lang_hint or "en")})
-    return out[:6]  # cap to a reasonable number
-
-# -------------------------------
-# Offline fallback
-# -------------------------------
-def offline_fallback_comments(url: str, lang_hint: Optional[str]) -> List[Dict]:
-    """
-    Very small deterministic generator used when all providers fail.
-    Keeps tone friendly & short to mimic the live model.
-    """
-    base = re.sub(r"https?://", "", url).split("/")[0] if url else "this"
-    samples = [
-        f"Love the take — curious to see where this goes 👀",
-        f"Well said. {base} never disappoints.",
-        "This is such a clean breakdown — thanks for sharing!",
-        "Solid points here. Bookmarked to revisit.",
-        "Yep, this hits the nail on the head.",
-    ]
-    lang = (lang_hint or "en")
-    return [{"text": s, "lang": lang} for s in samples[:3]]
-
-# -------------------------------
-# Orchestrator: try providers in order
-# -------------------------------
-def generate_for_url(url: str, lang_hint: Optional[str] = None) -> Tuple[List[Dict], str]:
-    """
-    Try providers in resolved order; return (comments, provider_used).
-    If none succeed, return offline fallback with provider_used="offline".
-    """
-    if not is_valid_url(url):
-        raise ValueError("Invalid URL")
-
-    order = resolve_provider_order()
-    errors: List[str] = []
-
-    for name in order:
-        try:
-            if name == "groq":
-                comments = _call_groq(url, lang_hint)
-            elif name in ("openai", "oai"):
-                comments = _call_openai(url, lang_hint)
-            elif name in ("gemini", "google", "googleai"):
-                comments = _call_gemini(url, lang_hint)
-            else:
+def clean_and_normalize_urls(urls: List[str]) -> List[str]:
+    out, seen = [], set()
+    for item in urls:
+        if not item:
+            continue
+        for raw in str(item).splitlines():
+            raw = raw.strip()
+            if not raw or not raw.startswith("http"):
                 continue
+            try:
+                canon = _normalize_x_url(raw)
+            except CrownTALKError:
+                continue
+            if canon not in seen:
+                seen.add(canon)
+                out.append(canon)
+    if not out:
+        raise CrownTALKError("No valid X/Twitter links found", code="no_valid_urls")
+    return out
 
-            if comments:
-                return comments, name
-        except Exception as e:
-            errors.append(f"{name}: {e}")
-            # brief backoff before trying next provider
-            time.sleep(0.15)
+@dataclass
+class TweetData:
+    text: str
+    author_name: str | None
+    lang: str | None
 
-    # If we reach here, all providers failed → offline fallback
-    logger.warning("All providers failed for %s; errors=%s", url, "; ".join(errors))
-    return offline_fallback_comments(url, lang_hint), "offline"
+_VX_FMT = "https://api.vxtwitter.com/{handle}/status/{status_id}"
+_FX_FMT = "https://api.fxtwitter.com/{handle}/status/{status_id}"
 
-# -------------------------------
-# Health / warm helpers
-# -------------------------------
-def health_payload() -> dict:
-    order = resolve_provider_order()
-    return {
-        "ok": True,
-        "providers_configured": order,
-        "env": {
-            "groq": bool(os.getenv("GROQ_API_KEY")),
-            "openai": bool(os.getenv("OPENAI_API_KEY")),
-            "gemini": bool(os.getenv("GEMINI_API_KEY")),
-        },
-    }
+def _backoff_sleep(attempt: int, base: float = 0.35, cap: float = 6.0):
+    sleep = min(cap, base * (2 ** (attempt - 1)))
+    sleep *= (0.9 + 0.2 * (attempt % 3))  # tiny jitter
+    time.sleep(sleep)
+
+def _do_get_json(url: str) -> requests.Response:
+    _rate_limit_yield()
+    return _SESSION.get(url, timeout=_DEFAULT_TIMEOUT)
+
+def _read_json_payload(resp: requests.Response) -> dict:
+    try:
+        return resp.json()
+    except Exception:
+        raise CrownTALKError("Bad JSON from upstream", code="upstream_bad_json")
+
+def _parse_payload(payload: dict) -> TweetData:
+    lang = payload.get("lang") or payload.get("tweet", {}).get("lang")
+    text = (
+        payload.get("text")
+        or payload.get("full_text")
+        or payload.get("tweet", {}).get("text")
+        or payload.get("tweet", {}).get("full_text")
+    )
+    user_name = (
+        payload.get("user_name")
+        or payload.get("user", {}).get("name")
+        or payload.get("tweet", {}).get("user", {}).get("name")
+    )
+    if not text:
+        raise CrownTALKError("Tweet text missing in upstream payload", code="upstream_shape_changed")
+    return TweetData(text=text, author_name=user_name, lang=lang)
+
+def fetch_tweet_data(x_url: str) -> TweetData:
+    handle, status_id = _extract_handle_and_id(x_url)
+
+    vx_url = _VX_FMT.format(handle=handle, status_id=status_id)
+    for attempt in range(1, 4):
+        try:
+            logger.info("Fetching VXTwitter data for %s -> %s", x_url, vx_url)
+            r = _do_get_json(vx_url)
+            if r.status_code == 200:
+                payload = _read_json_payload(r)
+                inner = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+                return _parse_payload(inner)
+            elif r.status_code in (429, 500, 502, 503, 504):
+                if r.status_code == 429 and attempt >= 2:
+                    break
+                _backoff_sleep(attempt); continue
+            else:
+                break
+        except requests.RequestException:
+            logger.exception("VXTwitter request error"); _backoff_sleep(attempt)
+
+    fx_url = _FX_FMT.format(handle=handle, status_id=status_id)
+    for attempt in range(1, 4):
+        try:
+            logger.info("Fetching FXTwitter data for %s -> %s", x_url, fx_url)
+            r = _do_get_json(fx_url)
+            if r.status_code == 200:
+                payload = _read_json_payload(r)
+                inner = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+                return _parse_payload(inner)
+            elif r.status_code in (429, 500, 502, 503, 504):
+                _backoff_sleep(attempt); continue
+            else:
+                break
+        except requests.RequestException:
+            logger.exception("FXTwitter request error"); _backoff_sleep(attempt)
+
+    raise CrownTALKError(
+        "Upstream is rate-limiting or unavailable; try fewer links or wait a minute",
+        code="upstream_rate_limited",
+    )
