@@ -1,5 +1,5 @@
 /* =========================================================
-   CrownTALK — Full Stylesheet (clean, merged)
+   CrownTALK — Full Stylesheet
    ========================================================= */
 
 /* ---------- ROOT VARIABLES ---------- */
@@ -1213,7 +1213,7 @@ body:not(.is-generating) #progressBarFill::before{
     background .16s ease,
     border-color .16s ease,
     color .16s ease,
-    opacity .15s.ease;
+    opacity .15s ease;
 }
 
 /* top gloss like a real key surface */
@@ -1231,21 +1231,21 @@ body:not(.is-generating) #progressBarFill::before{
   pointer-events: none;
 }
 
-/* label text */
+/* label text (since we’re not using the icon) */
 #clearBtn.btn-secondary.subtle::after{
   content: "CLEAR";
   position: relative;
   z-index: 1;
 }
 
-/* hide old trash SVG */
+/* completely hide the old trash SVG so no lid/body shows */
 #clearBtn .svgIcon,
 #clearBtn .bin-top,
 #clearBtn .bin-bottom{
   display: none !important;
 }
 
-/* hover */
+/* HOVER: brighter edge & top, slight pop */
 #clearBtn.btn-secondary.subtle:hover{
   background:
     radial-gradient(circle at 20% 0%, rgba(255,255,255,.26), transparent 65%),
@@ -1260,7 +1260,7 @@ body:not(.is-generating) #progressBarFill::before{
     0 10px 20px rgba(0,0,0,.8);
 }
 
-/* pressed */
+/* PRESSED: key goes “down” */
 #clearBtn.btn-secondary.subtle:active{
   transform: translateY(2px);
   box-shadow:
@@ -1268,7 +1268,7 @@ body:not(.is-generating) #progressBarFill::before{
     0 4px 10px rgba(0,0,0,.85);
 }
 
-/* MOBILE clear */
+/* MOBILE: keep it tighter on small screens */
 @media (max-width: 480px){
   #clearBtn.btn-secondary.subtle{
     min-width: 72px;
@@ -1278,7 +1278,7 @@ body:not(.is-generating) #progressBarFill::before{
   }
 }
 
-/* more breathing room between action buttons */
+/* More breathing room between the action buttons */
 .controls{
   gap: 16px;
 }
@@ -1313,12 +1313,14 @@ body:not(.is-generating) #progressBarFill::before{
   align-items: center;
   justify-content: center;
 
+  /* keep your “CANCEL” vibe */
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
   color: #fef2f2;
 
+  /* 3D key shadow */
   box-shadow:
     0 3px 0 rgba(127,29,29,.95),
     0 8px 16px rgba(0,0,0,.75);
@@ -1328,14 +1330,14 @@ body:not(.is-generating) #progressBarFill::before{
 
   transition:
     transform .12s ease,
-    box-shadow .14s.ease,
-    background .18s.ease,
-    border-color .18s.ease,
-    color .18s.ease,
-    opacity .15s.ease;
+    box-shadow .14s ease,
+    background .18s ease,
+    border-color .18s ease,
+    color .18s ease,
+    opacity .15s ease;
 }
 
-/* glossy highlight strip */
+/* glossy highlight strip on top face */
 #cancelBtn.btn-secondary::before{
   content: "";
   position: absolute;
@@ -1350,7 +1352,7 @@ body:not(.is-generating) #progressBarFill::before{
   pointer-events: none;
 }
 
-/* hover */
+/* HOVER – brighter, more “alert”, a bit of glow */
 #cancelBtn.btn-secondary:hover:not(:disabled){
   background:
     radial-gradient(circle at 18% 0%, rgba(255,255,255,.4), transparent 60%),
@@ -1366,7 +1368,7 @@ body:not(.is-generating) #progressBarFill::before{
   color: #fff;
 }
 
-/* active */
+/* ACTIVE – pressed key effect */
 #cancelBtn.btn-secondary:active{
   transform: translateY(2px);
   box-shadow:
@@ -1374,7 +1376,7 @@ body:not(.is-generating) #progressBarFill::before{
     0 4px 10px rgba(0,0,0,.8);
 }
 
-/* disabled */
+/* DISABLED – softer, less alarming */
 #cancelBtn.btn-secondary:disabled{
   opacity: .55;
   cursor: default;
@@ -1384,73 +1386,249 @@ body:not(.is-generating) #progressBarFill::before{
 }
 
 
-/* =====================================
-   CrownTALK – Desktop viewport fit tweak v2
-   (make 100% zoom behave closer to your 75% layout)
-   ===================================== */
+/* ======================================================
+   NEW PREMIUM PATCHES (focus mode, scrollbars, rails, etc)
+   ====================================================== */
 
-@media (min-width: 1280px) and (min-height: 800px){
-  /* 1) Global scale a bit smaller + tighter vertical padding */
-  body{
-    padding-top: 6px;
-    padding-bottom: 6px;
-  }
-
-  .app-shell{
-    transform: scale(.80);           /* was .85 – shrink a bit more */
-    transform-origin: top center;
+/* 1. Generating focus mode (desktop only) */
+@media (min-width: 900px){
+  body.is-generating .card{
+    transition:
+      transform .18s ease,
+      box-shadow .2s ease,
+      opacity .2s ease;
   }
 
-  /* 2) Trim hero bar height slightly */
-  .hero{
-    padding-block: 4px;
-    margin-bottom: 2px;
+  /* highlight input card */
+  body.is-generating .card.card-input{
+    transform: translateY(-1px);
+    box-shadow:
+      0 18px 40px rgba(0,0,0,.65),
+      0 0 0 1px rgba(var(--btn-glow), .35);
   }
 
-  .hero-orbit{
-    width: 80px;
-    height: 80px;
-  }
-  .hero-orbit-inner{
-    width: 64px;
-    height: 64px;
-  }
-  .hero-copy h1{
-    font-size: clamp(16px, 2.6vw, 22px);
+  /* gently push other cards into the background */
+  body.is-generating .card:not(.card-input){
+    opacity: .78;
   }
 
-  /* 3) Slightly smaller vertical padding in cards */
-  .card{
-    padding-top: 10px;
-    padding-bottom: 8px;
+  body.is-generating .card:not(.card-input)::before{
+    content: "" !important;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% -10%,
+      rgba(15,23,42,.35),
+      rgba(3,7,18,.9)
+    );
+    pointer-events: none;
+  }
+}
+
+/* 2. Theme switch glow trail */
+body.theme-changing .app-shell{
+  animation: ct-theme-flash 0.24s ease-out;
+}
+
+@keyframes ct-theme-flash{
+  0%{
+    filter: brightness(1.02);
+    box-shadow: 0 0 0 0 rgba(var(--btn-glow),0);
+  }
+  40%{
+    filter: brightness(1.06);
+    box-shadow: 0 0 60px rgba(var(--btn-glow),.45);
+  }
+  100%{
+    filter: none;
+    box-shadow: none;
+  }
+}
+
+/* quick ping on active dot */
+.theme-dot.is-active{
+  animation: ct-theme-dot-pulse 0.26s ease-out;
+}
+
+@keyframes ct-theme-dot-pulse{
+  0%{
+    transform: scale(1);
+  }
+  40%{
+    transform: scale(1.12);
+  }
+  100%{
+    transform: scale(1.02);
+  }
+}
+
+/* 3. Card header “crown line” */
+.card-header{
+  position: relative;
+  padding-bottom: 4px;
+}
+
+.card-header::after{
+  content:"";
+  position:absolute;
+  left:6px;
+  right:6px;
+  bottom:-6px;
+  height:1px;
+  border-radius:999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--btn-glow), .55),
+    transparent
+  );
+  opacity:.42;
+  pointer-events:none;
+}
+
+.card:hover .card-header::after{
+  opacity:.8;
+}
+
+/* 4. Tweet left rail + crown marker */
+.tweet{
+  position: relative;
+  padding-left: 16px;
+}
+
+.tweet::before{
+  content:"";
+  position:absolute;
+  top:8px;
+  bottom:8px;
+  left:6px;
+  width:3px;
+  border-radius:999px;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--btn-glow), .9),
+    rgba(var(--btn-glow), .25)
+  );
+  opacity:.8;
+  box-shadow: 0 0 12px rgba(var(--btn-glow), .5);
+  pointer-events:none;
+}
+
+.tweet::after{
+  content:"";
+  position:absolute;
+  top:5px;
+  left:4px;
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background: radial-gradient(circle at 30% 0%,
+    #ffffff,
+    rgba(var(--btn-glow),1)
+  );
+  box-shadow: 0 0 10px rgba(var(--btn-glow), .85);
+  opacity:.95;
+  pointer-events:none;
+}
+
+.tweet:hover::before{
+  width:4px;
+  opacity:1;
+}
+
+/* 5. Comment-line hover “lane” */
+.comment-line{
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    box-shadow .16s ease,
+    transform .12s ease;
+}
+
+.comment-line:hover{
+  background:
+    linear-gradient(
+      90deg,
+      rgba(15,23,42,.95),
+      rgba(15,23,42,.9),
+      rgba(15,23,42,.95)
+    );
+  border-color: rgba(var(--btn-glow), .75);
+  box-shadow:
+    0 0 0 1px rgba(var(--btn-glow), .4),
+    0 8px 20px rgba(0,0,0,.7);
+  transform: translateY(-1px);
+}
+
+.comment-line:hover .comment-tag{
+  letter-spacing:.16em;
+  color: var(--accent);
+}
+
+/* 6. Glassy scrollbars on lists (desktop) */
+@media (pointer: fine){
+  .results-list,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95);
   }
 
-  /* 4) Reduce “minimum” heights so the stack is shorter */
-  .card-input{
-    min-height: 155px;          /* was 170 / 200 */
-  }
-  .card-results{
-    min-height: 155px;
-  }
-  .card-failed{
-    min-height: 64px;
-  }
-  .card-history{
-    min-height: 90px;
+  .results-list::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
   }
 
-  /* textarea doesn’t need to be that tall on desktop */
-  .url-textarea{
-    min-height: 110px;
-    max-height: 240px;
+  .results-list::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
   }
 
-  /* 5) Tighter spacing between sections + footer */
-  .main{
-    row-gap: 12px;              /* was 14–18 */
+  .results-list::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .9),
+      rgba(var(--btn-glow), .5)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
   }
 
-  .footer{
-    margin-top: 8px;            /* was 12–18 */
+  .results-list::-webkit-scrollbar-thumb:hover,
+  .failed-list::-webkit-scrollbar-thumb:hover,
+  .history-list::-webkit-scrollbar-thumb:hover{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), 1),
+      rgba(var(--btn-glow), .7)
+    );
   }
+}
+
+/* 7. Extra low-motion guardrail hook */
+body.low-motion .hero-orbit,
+body.low-motion .hero-orbit::before,
+body.low-motion .hero-orbit::after,
+body.low-motion .card::after,
+body.low-motion .theme-dot.is-active::after,
+body.low-motion .hero-copy h1::after,
+body.low-motion .tweet-skeleton{
+  animation: none !important;
+}
+
+body.low-motion.is-generating #progressBarFill,
+body.low-motion.is-generating #progressBarFill::before{
+  animation: none !important;
+}
+
+/* 8. Tiny quality-of-life: make results/failure/history lists feel a bit more “panel-y” */
+.results-list,
+.failed-list,
+.history-list{
+  padding-right: 6px;
 }
