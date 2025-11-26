@@ -1,43 +1,43 @@
-# Python junk
+# VCS / editor
+.git/
+.gitignore
+*.swp
+*.swo
+*.orig
+*.bak
+.DS_Store
+.idea/
+.vscode/
+
+# Python cache & virtualenvs
 __pycache__/
 *.py[cod]
 *.pyo
 *.pyd
 *.so
-.Python
-.env
+*.egg-info/
 .venv/
 venv/
+env/
+.Python
 
-# OS/editor
-.DS_Store
-Thumbs.db
-*.swp
-*.swo
-.idea/
-.vscode/
-
-# VCS
-.git/
-.gitignore
-
-# Build & caches
-dist/
-build/
-*.egg-info/
-.cache/
-pytest_cache/
-
-# Logs & data
+# Env & logs
+.env
 *.log
-/tmp/
+
+# Databases / tmp
 *.sqlite
 *.db
-crowntalk.db
+/tmp/
 
-# Node stuff (if ever present)
+# Node (if present)
 node_modules/
 
-# Docker
-Dockerfile*
-docker-compose*.yml
+# Build artifacts
+dist/
+build/
+
+# DO NOT ignore app assets:
+# (keep these lines so Docker copies your UI)
+!index.html
+!static/**
