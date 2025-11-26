@@ -1,21 +1,52 @@
 /* ============================================
-   CrownTALK — Access Gate + App Logic (final)
-   Server now enforces access with header:
-     X-CT-Key: <your ACCESS_KEY>
-   This script:
-     • asks user for the key once
-     • stores it locally
-     • sends it with every POST
-     • re-prompts if backend returns 403
+   CrownTALK — One-time Access Gate + App Logic
+   Access code: @CrownTALK@2026@CrownDEX
+   Persists with localStorage + cookie fallback
    ============================================ */
 
 /* ---------- Gate (single source of truth) ---------- */
 (() => {
-  // storage keys
-  const AUTH_FLAG   = 'crowntalk_access_v1';
+  const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
+  const STORAGE_KEY = 'crowntalk_access_v1';    // local/session storage key
+  const COOKIE_KEY  = 'crowntalk_access_v1';    // cookie fallback
+
+  // NEW: store the entered key so we can send it to backend as X-CT-Key
   const KEY_STORAGE = 'crowntalk_key_v1';
-  const COOKIE_AUTH = 'crowntalk_access_v1';
-  const COOKIE_KEY  = 'crowntalk_key_v1';
+  const COOKIE_KEYVAL = 'crowntalk_key_v1';
+
+  function saveKey(key) {
+    try { localStorage.setItem(KEY_STORAGE, key); } catch {}
+    try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
+    try { document.cookie = `${COOKIE_KEYVAL}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+  }
+  function getKeyFromCookie() {
+    try {
+      const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEYVAL}=([^;]*)`));
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch { return ''; }
+  }
+  function getKey() {
+    try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+    try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+    return getKeyFromCookie();
+  }
+  // expose for app code
+  window.CTGate = { getKey };
+
+  function isAuthorized() {
+    try { if (localStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
+    try { if (sessionStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
+    try { if (document.cookie.includes(`${COOKIE_KEY}=1`)) return true; } catch {}
+    return false;
+  }
+
+  function markAuthorized() {
+    try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
+    try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
+    try {
+      document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`;
+    } catch {}
+  }
 
   function els() {
     return {
@@ -24,50 +55,14 @@
     };
   }
 
-  function saveKey(key) {
-    try { localStorage.setItem(KEY_STORAGE, key); } catch {}
-    try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
-    try { document.cookie = `${COOKIE_KEY}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
-  }
-
-  function getKeyFromCookie() {
-    try {
-      const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEY}=([^;]*)`));
-      return m ? decodeURIComponent(m[1]) : '';
-    } catch { return ''; }
-  }
-
-  function getKey() {
-    try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
-    try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
-    return getKeyFromCookie();
-  }
-
-  function markAuthorized() {
-    try { localStorage.setItem(AUTH_FLAG, '1'); } catch {}
-    try { sessionStorage.setItem(AUTH_FLAG, '1'); } catch {}
-    try { document.cookie = `${COOKIE_AUTH}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
-  }
-
-  function isAuthorized() {
-    // If we have a stored key, consider authorized (backend will still verify)
-    const k = getKey();
-    if (k && k.length > 0) return true;
-    try { if (localStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
-    try { if (sessionStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
-    try { if (document.cookie.includes(`${COOKIE_AUTH}=1`)) return true; } catch {}
-    return false;
-  }
-
-  function showGate(msg) {
+  function showGate() {
     const { gate, input } = els();
     if (!gate) return;
     gate.hidden = false;
-    gate.style.display = 'grid';
+    gate.style.display = 'grid';   // ensure visible even if other CSS overrides
     document.body.style.overflow = 'hidden';
     if (input) {
       input.value = '';
-      if (msg) input.placeholder = msg;
       setTimeout(() => input.focus(), 0);
     }
   }
@@ -86,12 +81,22 @@
     const val = (input.value || '').trim();
     if (!val) return;
 
-    // Save the user-supplied key; backend will validate on the next request
-    saveKey(val);
-    markAuthorized();
-    hideGate();
-    // boot app UI now that we’re unlocked
-    bootAppUI?.();
+    if (val === ACCESS_CODE) {
+      markAuthorized();
+      // NEW: keep the exact code so backend can verify header
+      saveKey(val);
+
+      hideGate();
+      // boot app UI now that we’re unlocked
+      bootAppUI();
+      return;
+    }
+
+    // wrong code → subtle shake + hint
+    input.classList.add('ct-shake');
+    setTimeout(() => input.classList.remove('ct-shake'), 350);
+    input.value = '';
+    input.placeholder = 'Wrong code — try again';
   }
 
   function bindGate() {
@@ -115,19 +120,11 @@
   }
 
   function init() {
-    // expose helpers for app code
-    window.CTGate = {
-      getKey,
-      requireKey: () => { showGate('➤ ENTER ACCESS KEY'); },
-      show403: () => { showGate('Access denied. Enter valid key'); },
-      hide: hideGate,
-    };
-
     if (isAuthorized()) {
       hideGate();
-      bootAppUI?.();
+      bootAppUI();
     } else {
-      showGate('➤ ENTER ACCESS KEY');
+      showGate();
       bindGate();
     }
   }
@@ -140,7 +137,7 @@
   }
 })();
 
-/* ========= App code (same UI, now adds X-CT-Key) ========= */
+/* ========= App code (unchanged, just wrapped) ========= */
 
 // ------------------------
 // Backend endpoints
@@ -207,9 +204,11 @@ function maybeWarmBackend() {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+  // Older browsers: no AbortController → just use plain fetch
   if (typeof AbortController === "undefined") {
     return fetch(url, options);
   }
+
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -242,7 +241,7 @@ function setProgressText(text) {
 function setProgressRatio(ratio) {
   if (!progressBarFill) return;
   const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
-  progressBarFill.style.width = (clamped * 100).toFixed(2) + "%";
+  progressBarFill.style.transform = `scaleX(${clamped})`;
 }
 
 function resetProgress() {
@@ -253,24 +252,30 @@ function resetProgress() {
 function resetResults() {
   if (resultsEl) resultsEl.innerHTML = "";
   if (failedEl) failedEl.innerHTML = "";
-  if (resultCountEl) resultCountEl.textContent = "0";
+  if (resultCountEl) resultCountEl.textContent = "0 tweets";
   if (failedCountEl) failedCountEl.textContent = "0";
 }
 
 async function copyToClipboard(text) {
   if (!text) return;
 
+  // Modern async clipboard (no scroll / focus)
   if (navigator.clipboard?.writeText) {
-    try { await navigator.clipboard.writeText(text); return; }
-    catch (err) { console.warn("navigator.clipboard failed, using fallback", err); }
+    try {
+      await navigator.clipboard.writeText(text);
+      return;
+    } catch (err) {
+      console.warn("navigator.clipboard failed, using fallback", err);
+    }
   }
 
+  // Fallback: hidden span + Range, NO focus, NO scroll jump
   const helper = document.createElement("span");
   helper.textContent = text;
   helper.style.position = "fixed";
   helper.style.left = "-9999px";
   helper.style.top = "0";
-  helper.style.whiteSpace = "pre";
+  helper.style.whiteSpace = "pre"; // preserve line breaks
 
   document.body.appendChild(helper);
 
@@ -281,13 +286,20 @@ async function copyToClipboard(text) {
   selection.removeAllRanges();
   selection.addRange(range);
 
-  try { document.execCommand("copy"); } catch (err) { console.error("execCommand copy failed", err); }
+  try {
+    document.execCommand("copy");
+  } catch (err) {
+    console.error("execCommand copy failed", err);
+  }
 
   selection.removeAllRanges();
   document.body.removeChild(helper);
 }
 
-function formatTweetCount(count) { return `${Number(count) || 0}`; }
+function formatTweetCount(count) {
+  const n = Number(count) || 0;
+  return `${n} tweet${n === 1 ? "" : "s"}`;
+}
 
 function autoResizeTextarea() {
   if (!urlInput) return;
@@ -302,7 +314,10 @@ function autoResizeTextarea() {
 // ------------------------
 function addToHistory(text) {
   if (!text) return;
-  const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const timestamp = new Date().toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+  });
   historyItems.push({ text, timestamp });
   renderHistory();
 }
@@ -415,7 +430,7 @@ function buildTweetBlock(result) {
     tag.className = "comment-tag";
     tag.textContent = multilingual
       ? (comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase())
-      : `EN ${idx + 1}`;
+      : `EN #${idx + 1}`;
 
     const bubble = document.createElement("span");
     bubble.className = "comment-text";
@@ -441,7 +456,7 @@ function buildTweetBlock(result) {
            image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
            viewBox="0 0 467 512.22">
         <path fill-rule="nonzero"
-          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z">
+          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z">
         </path>
       </svg>
       ${copyLabel}
@@ -501,14 +516,13 @@ function appendFailedItem(failure) {
 
   const reasonSpan = document.createElement("div");
   reasonSpan.className = "failed-reason";
-  reasonSpan.textContent = failure.error || failure.reason || "Unknown error";
+  reasonSpan.textContent = failure.reason || "Unknown error";
 
   wrapper.appendChild(urlSpan);
   wrapper.appendChild(reasonSpan);
   failedEl.appendChild(wrapper);
 }
 
-// show minimal skeletons (kept light to avoid jank)
 function showSkeletons(count) {
   resultsEl.innerHTML = "";
   const num = Math.min(Math.max(count, 1), 6);
@@ -536,13 +550,6 @@ async function handleGenerate() {
     return;
   }
 
-  // require key
-  const key = window.CTGate?.getKey?.() || "";
-  if (!key) {
-    window.CTGate?.requireKey?.();
-    return;
-  }
-
   // Try to wake the backend if it's been idle for a while
   maybeWarmBackend();
 
@@ -558,13 +565,14 @@ async function handleGenerate() {
   setProgressRatio(0.03);
   showSkeletons(urls.length);
 
-  // Shared request body/options (now includes X-CT-Key)
+  // Shared request body/options
   const payload = JSON.stringify({ urls });
   const requestOptions = {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
-      "X-CT-Key": key,
+      // NEW: pass the access key to backend guard
+      "X-CT-Key": (window.CTGate?.getKey?.() || "")
     },
     body: payload,
   };
@@ -585,11 +593,11 @@ async function handleGenerate() {
     }
 
     if (res.status === 403) {
-      window.CTGate?.show403?.();
+      alert("Access denied — check the access code.");
       document.body.classList.remove("is-generating");
       generateBtn.disabled = false;
       cancelBtn.disabled   = true;
-      setProgressText("Access denied. Enter valid key.");
+      setProgressText("Access denied.");
       setProgressRatio(0);
       return;
     }
@@ -620,11 +628,11 @@ async function handleGenerate() {
 
         const ratio = total ? processed / total : 1;
         setProgressRatio(ratio);
-        setProgressText(`Processed ${processed}/${total}…`);
+        setProgressText(`Processed ${processed}/${total} tweets…`);
         resultCountEl.textContent = formatTweetCount(processed);
 
         if (processed === total) {
-          setProgressText(`Processed ${processed}.`);
+          setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
           document.body.classList.remove("is-generating");
           generateBtn.disabled = false;
           cancelBtn.disabled   = true;
@@ -683,9 +691,6 @@ async function handleReroll(tweetEl) {
   const url = tweetEl?.dataset.url;
   if (!url) return;
 
-  const key = window.CTGate?.getKey?.() || "";
-  if (!key) { window.CTGate?.requireKey?.(); return; }
-
   const button = tweetEl.querySelector(".reroll-btn");
   if (!button) return;
 
@@ -706,17 +711,15 @@ async function handleReroll(tweetEl) {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
-        "X-CT-Key": key,
+        // NEW: pass the access key to backend guard
+        "X-CT-Key": (window.CTGate?.getKey?.() || "")
       },
       body: JSON.stringify({ url }),
     });
-
     if (res.status === 403) {
-      window.CTGate?.show403?.();
-      setProgressText("Access denied for reroll.");
+      alert("Access denied — check the access code.");
       return;
     }
-
     if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
 
     const data = await res.json();
@@ -757,8 +760,12 @@ function applyTheme(themeName) {
   const html = document.documentElement;
   const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
   html.setAttribute("data-theme", t);
-  themeDots.forEach((dot) => dot.classList.toggle("is-active", dot.dataset.theme === t));
-  try { localStorage.setItem(THEME_STORAGE_KEY, t); } catch {}
+  themeDots.forEach((dot) =>
+    dot.classList.toggle("is-active", dot.dataset.theme === t)
+  );
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, t);
+  } catch {}
 }
 
 function initTheme() {
@@ -783,7 +790,9 @@ function bootAppUI() {
   autoResizeTextarea();
 
   // Gentle warmup shortly after UI becomes usable
-  setTimeout(() => { maybeWarmBackend(); }, 4000);
+  setTimeout(() => {
+    maybeWarmBackend();
+  }, 4000);
 
   urlInput?.addEventListener("input", autoResizeTextarea);
 
@@ -851,6 +860,7 @@ function bootAppUI() {
     });
   });
 }
+
 
 // Keep the backend warm while the tab is open (no effect if tab is hidden)
 (function keepAliveWhileVisible() {
