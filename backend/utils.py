@@ -50,8 +50,8 @@ _X_DOMAINS = {"x.com", "twitter.com", "mobile.twitter.com", "m.twitter.com"}
 
 def _flatten_to_string(text_or_list: Union[str, Iterable]) -> str:
     """
-    Helper: accepts a string or an iterable of strings (possibly nested)
-    and returns a single whitespace-joined string.
+    Accepts a string or an iterable (possibly nested) and returns a single
+    whitespace-joined string. Used so clean_and_normalize_urls can accept lists.
     """
     if isinstance(text_or_list, (list, tuple, set)):
         parts: List[str] = []
@@ -69,10 +69,8 @@ def _flatten_to_string(text_or_list: Union[str, Iterable]) -> str:
 
 def clean_and_normalize_urls(text_or_list: Union[str, List[str]]) -> List[str]:
     """
-    Accepts either:
-      - a string with one or more URLs (any separators), or
-      - a list (or nested lists) of URL strings.
-    Returns a de-duplicated list of normalized X/Twitter status URLs.
+    Accept string or list of strings. Returns a de-duplicated list of normalized
+    X/Twitter status URLs. Query/fragment are dropped (only scheme+host+path kept).
     """
     raw = _flatten_to_string(text_or_list)
     if not raw:
@@ -91,6 +89,7 @@ def clean_and_normalize_urls(text_or_list: Union[str, List[str]]) -> List[str]:
             host = (p.netloc or "").lower().split(":")[0]
             if host not in _X_DOMAINS:
                 continue
+            # KEEP ONLY scheme://host + path  -> strips ?query and #fragment
             clean = f"https://{host}{p.path}"
             if clean not in seen:
                 seen.add(clean)
