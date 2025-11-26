@@ -166,4 +166,25 @@ body.is-generating #generateBtn::before {
     box-shadow:
       0 0 0 1px rgba(var(--btn-glow), .55) inset,
       0 10px 26px rgba(var(--btn-glow), .28),
-      0 1px 0 rgba(255,255,255,.18) inset;
+      0 1px 0 rgba(255,255,255,.18) inset,
+      0 0 0 0 rgba(var(--btn-glow), .0);
+    filter: saturate(1);
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(var(--btn-glow), .65) inset,
+      0 12px 30px rgba(var(--btn-glow), .36),
+      0 1px 0 rgba(255,255,255,.22) inset,
+      0 0 0 10px rgba(var(--btn-glow), .08);
+    filter: saturate(1.05);
+  }
+}
+
+/* reduced motion safety */
+@media (prefers-reduced-motion: reduce) {
+  .dots_border::before,
+  .btn:is(:hover, :focus-visible) .sparkle .path,
+  body.is-generating #generateBtn::before {
+    animation: none !important;
+  }
+}
