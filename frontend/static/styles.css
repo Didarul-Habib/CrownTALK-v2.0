@@ -1161,122 +1161,124 @@ body:not(.is-generating) #progressBarFill::before{
 }
 
 /* =====================================
-   CrownTALK – Clear button v3 (icon + label, theme-aware)
+   CrownTALK – Clear button (keyboard key style)
    ===================================== */
 
 #clearBtn.btn-secondary.subtle{
-  /* pill instead of plain circle */
-  min-width: 90px;
-  height: 38px;
-  padding: 0 14px 0 12px;
-  border-radius: 999px;
-  border: 1px solid rgba(148,163,184,.55);
+  position: relative;
 
+  /* key dimensions */
+  min-width: 88px;
+  height: 36px;
+  padding: 0 16px;
+
+  /* key shape */
+  border-radius: 9px;
+  border: 1px solid rgba(148,163,184,.6);
+
+  /* keycap gradient (theme-aware but still “dark key”) */
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255,255,255,.22), transparent 65%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--accent) 25%, #020617 75%),
+      rgba(10,16,30,1)
+    );
+  background-clip: padding-box;
+
+  /* layout */
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  gap: 8px;
 
-  background:
-    radial-gradient(circle at 25% 0%, rgba(255,255,255,.16), transparent 60%),
-    linear-gradient(145deg,
-      rgba(15,23,42,1),
-      color-mix(in oklab, var(--accent) 16%, #020617 84%)
-    );
-  color: #e5e7eb;
-  box-shadow:
-    0 8px 20px rgba(0,0,0,.75),
-    0 0 0 1px rgba(15,23,42,1);
-
+  /* text: looks like keyboard legends */
   font-size: 11px;
-  line-height: 1;
-  letter-spacing: .08em;
+  font-weight: 600;
+  letter-spacing: .14em;
   text-transform: uppercase;
-  cursor: pointer;
+  color: #f9fafb;
+  font-family: inherit;
 
-  /* kill old “round trash” transitions */
+  /* 3D key shadow */
+  box-shadow:
+    0 3px 0 rgba(0,0,0,.85),      /* rim at bottom edge */
+    0 8px 16px rgba(0,0,0,.7);    /* drop shadow */
+
+  cursor: pointer;
+  gap: 0;
+
   transition:
-    transform .14s ease,
-    box-shadow .18s ease,
-    border-color .18s ease,
-    background .18s ease,
-    color .18s ease,
+    transform .12s ease,
+    box-shadow .14s ease,
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
     opacity .15s ease;
 }
 
-/* icon: small, clean, sits left of label */
-#clearBtn .svgIcon{
-  position: static;
-  width: 14px;
-  height: 14px;
-  color: #f9fafb;
-  flex-shrink: 0;
-}
-
-/* use only one SVG so it doesn’t look like a bucket */
-#clearBtn .bin-bottom{ display: none; }
-#clearBtn .bin-top{ display: block; }
-
-/* text label created via ::after so no HTML changes */
-#clearBtn.btn-secondary.subtle::after{
-  content: "Clear";
-  position: relative;
-  top: 0;
-  font-weight: 600;
-  opacity: .9;
-}
-
-/* subtle highlight strip */
+/* top gloss like a real key surface */
 #clearBtn.btn-secondary.subtle::before{
-  content:"";
-  position:absolute;
-  inset: 4px 10px 60%;
-  border-radius: 999px;
+  content: "";
+  position: absolute;
+  inset: 2px 3px 55%;
+  border-radius: 7px;
   background: linear-gradient(
     180deg,
-    rgba(255,255,255,.35),
-    transparent
+    rgba(255,255,255,.45),
+    rgba(255,255,255,.06)
   );
-  opacity:.7;
-  pointer-events:none;
+  opacity: .9;
+  pointer-events: none;
 }
 
-/* HOVER – theme-colour pop + icon tint */
+/* label text (since we’re not using the icon) */
+#clearBtn.btn-secondary.subtle::after{
+  content: "CLEAR";
+  position: relative;
+  z-index: 1;
+}
+
+/* completely hide the old trash SVG so no lid/body shows */
+#clearBtn .svgIcon,
+#clearBtn .bin-top,
+#clearBtn .bin-bottom{
+  display: none !important;
+}
+
+/* HOVER: brighter edge & top, slight pop */
 #clearBtn.btn-secondary.subtle:hover{
-  transform: translateY(-1px);
   background:
-    radial-gradient(circle at 25% 0%, rgba(255,255,255,.2), transparent 60%),
-    linear-gradient(145deg,
-      color-mix(in oklab, var(--accent) 50%, #020617 50%),
-      rgba(15,23,42,1)
+    radial-gradient(circle at 20% 0%, rgba(255,255,255,.26), transparent 65%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--accent) 40%, #020617 60%),
+      rgba(10,16,30,1)
     );
   border-color: rgba(var(--btn-glow), .9);
   box-shadow:
-    0 10px 26px rgba(0,0,0,.9),
-    0 0 0 1px rgba(var(--btn-glow), .7);
-  color: #f9fafb;
+    0 3px 0 rgba(0,0,0,.9),
+    0 10px 20px rgba(0,0,0,.8);
 }
 
-#clearBtn.btn-secondary.subtle:hover .svgIcon{
-  color: rgba(var(--btn-glow), 1);
-}
-
-/* PRESSED */
+/* PRESSED: key goes “down” */
 #clearBtn.btn-secondary.subtle:active{
-  transform: translateY(0) scale(.96);
+  transform: translateY(2px);
   box-shadow:
-    0 5px 14px rgba(0,0,0,.85),
-    0 0 0 1px rgba(15,23,42,1);
+    0 1px 0 rgba(0,0,0,.9),
+    0 4px 10px rgba(0,0,0,.85);
 }
 
-/* MOBILE: keep it compact, hide text if super narrow */
+/* MOBILE: keep it tighter on small screens */
 @media (max-width: 480px){
   #clearBtn.btn-secondary.subtle{
-    min-width: 44px;
-    padding: 0;
-    justify-content: center;
+    min-width: 72px;
+    padding: 0 10px;
+    font-size: 10px;
+    letter-spacing: .10em;
   }
-  #clearBtn.btn-secondary.subtle::after{
-    display: none;
-  }
+}
+
+/* More breathing room between the action buttons */
+.controls{
+  gap: 16px;
 }
