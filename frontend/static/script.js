@@ -1,29 +1,21 @@
 /* ============================================
-   CrownTALK — One-time Access Gate + App Logic
-   Access code: @CrownTALK@2026@CrownDEX
-   Persists with localStorage + cookie fallback
+   CrownTALK — Access Gate + App Logic (final)
+   Server now enforces access with header:
+     X-CT-Key: <your ACCESS_KEY>
+   This script:
+     • asks user for the key once
+     • stores it locally
+     • sends it with every POST
+     • re-prompts if backend returns 403
    ============================================ */
 
 /* ---------- Gate (single source of truth) ---------- */
 (() => {
-  const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
-  const STORAGE_KEY = 'crowntalk_access_v1';    // local/session storage key
-  const COOKIE_KEY  = 'crowntalk_access_v1';    // cookie fallback
-
-  function isAuthorized() {
-    try { if (localStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
-    try { if (sessionStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
-    try { if (document.cookie.includes(`${COOKIE_KEY}=1`)) return true; } catch {}
-    return false;
-  }
-
-  function markAuthorized() {
-    try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try {
-      document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`;
-    } catch {}
-  }
+  // storage keys
+  const AUTH_FLAG   = 'crowntalk_access_v1';
+  const KEY_STORAGE = 'crowntalk_key_v1';
+  const COOKIE_AUTH = 'crowntalk_access_v1';
+  const COOKIE_KEY  = 'crowntalk_key_v1';
 
   function els() {
     return {
@@ -32,14 +24,50 @@
     };
   }
 
-  function showGate() {
+  function saveKey(key) {
+    try { localStorage.setItem(KEY_STORAGE, key); } catch {}
+    try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
+    try { document.cookie = `${COOKIE_KEY}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+  }
+
+  function getKeyFromCookie() {
+    try {
+      const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEY}=([^;]*)`));
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch { return ''; }
+  }
+
+  function getKey() {
+    try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+    try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+    return getKeyFromCookie();
+  }
+
+  function markAuthorized() {
+    try { localStorage.setItem(AUTH_FLAG, '1'); } catch {}
+    try { sessionStorage.setItem(AUTH_FLAG, '1'); } catch {}
+    try { document.cookie = `${COOKIE_AUTH}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+  }
+
+  function isAuthorized() {
+    // If we have a stored key, consider authorized (backend will still verify)
+    const k = getKey();
+    if (k && k.length > 0) return true;
+    try { if (localStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
+    try { if (sessionStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
+    try { if (document.cookie.includes(`${COOKIE_AUTH}=1`)) return true; } catch {}
+    return false;
+  }
+
+  function showGate(msg) {
     const { gate, input } = els();
     if (!gate) return;
     gate.hidden = false;
-    gate.style.display = 'grid';   // ensure visible even if other CSS overrides
+    gate.style.display = 'grid';
     document.body.style.overflow = 'hidden';
     if (input) {
       input.value = '';
+      if (msg) input.placeholder = msg;
       setTimeout(() => input.focus(), 0);
     }
   }
@@ -58,19 +86,12 @@
     const val = (input.value || '').trim();
     if (!val) return;
 
-    if (val === ACCESS_CODE) {
-      markAuthorized();
-      hideGate();
-      // boot app UI now that we’re unlocked
-      bootAppUI();
-      return;
-    }
-
-    // wrong code → subtle shake + hint
-    input.classList.add('ct-shake');
-    setTimeout(() => input.classList.remove('ct-shake'), 350);
-    input.value = '';
-    input.placeholder = 'Wrong code — try again';
+    // Save the user-supplied key; backend will validate on the next request
+    saveKey(val);
+    markAuthorized();
+    hideGate();
+    // boot app UI now that we’re unlocked
+    bootAppUI?.();
   }
 
   function bindGate() {
@@ -94,11 +115,19 @@
   }
 
   function init() {
+    // expose helpers for app code
+    window.CTGate = {
+      getKey,
+      requireKey: () => { showGate('➤ ENTER ACCESS KEY'); },
+      show403: () => { showGate('Access denied. Enter valid key'); },
+      hide: hideGate,
+    };
+
     if (isAuthorized()) {
       hideGate();
-      bootAppUI();
+      bootAppUI?.();
     } else {
-      showGate();
+      showGate('➤ ENTER ACCESS KEY');
       bindGate();
     }
   }
@@ -111,7 +140,7 @@
   }
 })();
 
-/* ========= App code (unchanged, just wrapped) ========= */
+/* ========= App code (same UI, now adds X-CT-Key) ========= */
 
 // ------------------------
 // Backend endpoints
@@ -178,11 +207,9 @@ function maybeWarmBackend() {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
-  // Older browsers: no AbortController → just use plain fetch
   if (typeof AbortController === "undefined") {
     return fetch(url, options);
   }
-
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
 
@@ -212,7 +239,6 @@ function setProgressText(text) {
   if (progressEl) progressEl.textContent = text || "";
 }
 
-// Match CSS transition: width grows smoothly (not transform)
 function setProgressRatio(ratio) {
   if (!progressBarFill) return;
   const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
@@ -234,23 +260,17 @@ function resetResults() {
 async function copyToClipboard(text) {
   if (!text) return;
 
-  // Modern async clipboard (no scroll / focus)
   if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch (err) {
-      console.warn("navigator.clipboard failed, using fallback", err);
-    }
+    try { await navigator.clipboard.writeText(text); return; }
+    catch (err) { console.warn("navigator.clipboard failed, using fallback", err); }
   }
 
-  // Fallback: hidden span + Range, NO focus, NO scroll jump
   const helper = document.createElement("span");
   helper.textContent = text;
   helper.style.position = "fixed";
   helper.style.left = "-9999px";
   helper.style.top = "0";
-  helper.style.whiteSpace = "pre"; // preserve line breaks
+  helper.style.whiteSpace = "pre";
 
   document.body.appendChild(helper);
 
@@ -261,20 +281,13 @@ async function copyToClipboard(text) {
   selection.removeAllRanges();
   selection.addRange(range);
 
-  try {
-    document.execCommand("copy");
-  } catch (err) {
-    console.error("execCommand copy failed", err);
-  }
+  try { document.execCommand("copy"); } catch (err) { console.error("execCommand copy failed", err); }
 
   selection.removeAllRanges();
   document.body.removeChild(helper);
 }
 
-function formatTweetCount(count) {
-  const n = Number(count) || 0;
-  return `${n}`;
-}
+function formatTweetCount(count) { return `${Number(count) || 0}`; }
 
 function autoResizeTextarea() {
   if (!urlInput) return;
@@ -289,10 +302,7 @@ function autoResizeTextarea() {
 // ------------------------
 function addToHistory(text) {
   if (!text) return;
-  const timestamp = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
+  const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   historyItems.push({ text, timestamp });
   renderHistory();
 }
@@ -526,6 +536,13 @@ async function handleGenerate() {
     return;
   }
 
+  // require key
+  const key = window.CTGate?.getKey?.() || "";
+  if (!key) {
+    window.CTGate?.requireKey?.();
+    return;
+  }
+
   // Try to wake the backend if it's been idle for a while
   maybeWarmBackend();
 
@@ -541,11 +558,14 @@ async function handleGenerate() {
   setProgressRatio(0.03);
   showSkeletons(urls.length);
 
-  // Shared request body/options
+  // Shared request body/options (now includes X-CT-Key)
   const payload = JSON.stringify({ urls });
   const requestOptions = {
     method: "POST",
-    headers: { "Content-Type": "application/json" },
+    headers: {
+      "Content-Type": "application/json",
+      "X-CT-Key": key,
+    },
     body: payload,
   };
 
@@ -562,6 +582,16 @@ async function handleGenerate() {
 
       // ---- second (final) attempt ----
       res = await fetchWithTimeout(commentURL, requestOptions, 45000);
+    }
+
+    if (res.status === 403) {
+      window.CTGate?.show403?.();
+      document.body.classList.remove("is-generating");
+      generateBtn.disabled = false;
+      cancelBtn.disabled   = true;
+      setProgressText("Access denied. Enter valid key.");
+      setProgressRatio(0);
+      return;
     }
 
     if (!res.ok) {
@@ -653,6 +683,9 @@ async function handleReroll(tweetEl) {
   const url = tweetEl?.dataset.url;
   if (!url) return;
 
+  const key = window.CTGate?.getKey?.() || "";
+  if (!key) { window.CTGate?.requireKey?.(); return; }
+
   const button = tweetEl.querySelector(".reroll-btn");
   if (!button) return;
 
@@ -671,9 +704,19 @@ async function handleReroll(tweetEl) {
   try {
     const res = await fetch(rerollURL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
+      headers: {
+        "Content-Type": "application/json",
+        "X-CT-Key": key,
+      },
       body: JSON.stringify({ url }),
     });
+
+    if (res.status === 403) {
+      window.CTGate?.show403?.();
+      setProgressText("Access denied for reroll.");
+      return;
+    }
+
     if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
 
     const data = await res.json();
@@ -714,12 +757,8 @@ function applyTheme(themeName) {
   const html = document.documentElement;
   const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
   html.setAttribute("data-theme", t);
-  themeDots.forEach((dot) =>
-    dot.classList.toggle("is-active", dot.dataset.theme === t)
-  );
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, t);
-  } catch {}
+  themeDots.forEach((dot) => dot.classList.toggle("is-active", dot.dataset.theme === t));
+  try { localStorage.setItem(THEME_STORAGE_KEY, t); } catch {}
 }
 
 function initTheme() {
@@ -744,9 +783,7 @@ function bootAppUI() {
   autoResizeTextarea();
 
   // Gentle warmup shortly after UI becomes usable
-  setTimeout(() => {
-    maybeWarmBackend();
-  }, 4000);
+  setTimeout(() => { maybeWarmBackend(); }, 4000);
 
   urlInput?.addEventListener("input", autoResizeTextarea);
 
@@ -814,7 +851,6 @@ function bootAppUI() {
     });
   });
 }
-
 
 // Keep the backend warm while the tab is open (no effect if tab is hidden)
 (function keepAliveWhileVisible() {
