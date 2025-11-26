@@ -125,7 +125,7 @@ def init_db() -> None:
         )
         conn.commit()
 
-# === NEW: ensure DB exists when running under Gunicorn import ===
+# Ensure DB exists under Gunicorn (module import path)
 try:
     init_db()
 except Exception as e:
@@ -457,14 +457,6 @@ def add_headers(response):
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-CT-Key"
     return response
-
-# === NEW: safety net when the first HTTP request arrives ===
-@app.before_first_request
-def _ensure_db_before_first_request():
-    try:
-        init_db()
-    except Exception as e:
-        logger.exception("DB init failed before first request: %s", e)
 
 # -------- Routes --------
 @app.route("/", methods=["GET"])
