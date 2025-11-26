@@ -1161,90 +1161,122 @@ body:not(.is-generating) #progressBarFill::before{
 }
 
 /* =====================================
-   CrownTALK – Clear button v2 glass override
+   CrownTALK – Clear button v3 (icon + label, theme-aware)
    ===================================== */
 
 #clearBtn.btn-secondary.subtle{
-  --clear-base: rgba(15,23,42,.96);
-
-  width: 44px;
-  height: 44px;
-  padding: 0;
+  /* pill instead of plain circle */
+  min-width: 90px;
+  height: 38px;
+  padding: 0 14px 0 12px;
   border-radius: 999px;
   border: 1px solid rgba(148,163,184,.55);
-  background:
-    radial-gradient(circle at 30% 20%, rgba(255,255,255,.14), transparent 60%),
-    linear-gradient(145deg,
-      rgba(15,23,42,1),
-      color-mix(in oklab, var(--accent) 12%, #020617 88%)
-    );
-  color: #f9fafb;
+
   display: inline-flex;
   align-items: center;
   justify-content: center;
-  position: relative;
-  overflow: hidden;
+  gap: 8px;
+
+  background:
+    radial-gradient(circle at 25% 0%, rgba(255,255,255,.16), transparent 60%),
+    linear-gradient(145deg,
+      rgba(15,23,42,1),
+      color-mix(in oklab, var(--accent) 16%, #020617 84%)
+    );
+  color: #e5e7eb;
   box-shadow:
     0 8px 20px rgba(0,0,0,.75),
     0 0 0 1px rgba(15,23,42,1);
-  font-size: 0;
-  line-height: 0;
+
+  font-size: 11px;
+  line-height: 1;
+  letter-spacing: .08em;
+  text-transform: uppercase;
   cursor: pointer;
+
+  /* kill old “round trash” transitions */
   transition:
     transform .14s ease,
     box-shadow .18s ease,
     border-color .18s ease,
     background .18s ease,
+    color .18s ease,
     opacity .15s ease;
 }
 
-/* icon: clean, centered, single trash glyph */
+/* icon: small, clean, sits left of label */
 #clearBtn .svgIcon{
   position: static;
   width: 14px;
   height: 14px;
   color: #f9fafb;
-  transition: none;
+  flex-shrink: 0;
 }
 
-/* only use one icon so it doesn’t look chunky */
-#clearBtn .bin-bottom{
-  display: none;
+/* use only one SVG so it doesn’t look like a bucket */
+#clearBtn .bin-bottom{ display: none; }
+#clearBtn .bin-top{ display: block; }
+
+/* text label created via ::after so no HTML changes */
+#clearBtn.btn-secondary.subtle::after{
+  content: "Clear";
+  position: relative;
+  top: 0;
+  font-weight: 600;
+  opacity: .9;
 }
 
-#clearBtn .bin-top{
-  display: block;
-  transform: none;
-}
-
-/* subtle inner shine */
+/* subtle highlight strip */
 #clearBtn.btn-secondary.subtle::before{
   content:"";
   position:absolute;
-  inset: 4px 6px 60%;
+  inset: 4px 10px 60%;
   border-radius: 999px;
   background: linear-gradient(
     180deg,
     rgba(255,255,255,.35),
     transparent
   );
-  opacity:.75;
+  opacity:.7;
   pointer-events:none;
 }
 
-/* hover: gentle lift + color-matched glow */
+/* HOVER – theme-colour pop + icon tint */
 #clearBtn.btn-secondary.subtle:hover{
   transform: translateY(-1px);
+  background:
+    radial-gradient(circle at 25% 0%, rgba(255,255,255,.2), transparent 60%),
+    linear-gradient(145deg,
+      color-mix(in oklab, var(--accent) 50%, #020617 50%),
+      rgba(15,23,42,1)
+    );
+  border-color: rgba(var(--btn-glow), .9);
   box-shadow:
     0 10px 26px rgba(0,0,0,.9),
     0 0 0 1px rgba(var(--btn-glow), .7);
-  border-color: rgba(var(--btn-glow), .85);
+  color: #f9fafb;
 }
 
-/* pressed */
+#clearBtn.btn-secondary.subtle:hover .svgIcon{
+  color: rgba(var(--btn-glow), 1);
+}
+
+/* PRESSED */
 #clearBtn.btn-secondary.subtle:active{
   transform: translateY(0) scale(.96);
   box-shadow:
     0 5px 14px rgba(0,0,0,.85),
     0 0 0 1px rgba(15,23,42,1);
+}
+
+/* MOBILE: keep it compact, hide text if super narrow */
+@media (max-width: 480px){
+  #clearBtn.btn-secondary.subtle{
+    min-width: 44px;
+    padding: 0;
+    justify-content: center;
+  }
+  #clearBtn.btn-secondary.subtle::after{
+    display: none;
+  }
 }
