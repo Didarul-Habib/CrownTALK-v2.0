@@ -1632,3 +1632,75 @@ body.low-motion.is-generating #progressBarFill::before{
 .history-list{
   padding-right: 6px;
 }
+
+
+/* =====================================
+   CrownTALK – Desktop viewport fit tweak v2
+   (make 100% zoom behave closer to your 75% layout)
+   ===================================== */
+
+@media (min-width: 1280px) and (min-height: 800px){
+  /* 1) Global scale a bit smaller + tighter vertical padding */
+  body{
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .app-shell{
+    transform: scale(.80);           /* was .85 – shrink a bit more */
+    transform-origin: top center;
+  }
+
+  /* 2) Trim hero bar height slightly */
+  .hero{
+    padding-block: 4px;
+    margin-bottom: 2px;
+  }
+
+  .hero-orbit{
+    width: 80px;
+    height: 80px;
+  }
+  .hero-orbit-inner{
+    width: 64px;
+    height: 64px;
+  }
+  .hero-copy h1{
+    font-size: clamp(16px, 2.6vw, 22px);
+  }
+
+  /* 3) Slightly smaller vertical padding in cards */
+  .card{
+    padding-top: 10px;
+    padding-bottom: 8px;
+  }
+
+  /* 4) Reduce “minimum” heights so the stack is shorter */
+  .card-input{
+    min-height: 155px;          /* was 170 / 200 */
+  }
+  .card-results{
+    min-height: 155px;
+  }
+  .card-failed{
+    min-height: 64px;
+  }
+  .card-history{
+    min-height: 90px;
+  }
+
+  /* textarea doesn’t need to be that tall on desktop */
+  .url-textarea{
+    min-height: 110px;
+    max-height: 240px;
+  }
+
+  /* 5) Tighter spacing between sections + footer */
+  .main{
+    row-gap: 12px;              /* was 14–18 */
+  }
+
+  .footer{
+    margin-top: 8px;            /* was 12–18 */
+  }
+}
