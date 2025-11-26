@@ -1900,3 +1900,161 @@ body.low-motion.is-generating #progressBarFill,
 body.low-motion.is-generating #progressBarFill::before{
   animation: none !important;
 }
+
+/* =====================================
+   CrownTALK – Premium micro interactions (desktop-only where possible)
+   ===================================== */
+
+/* 1) Card micro tilt / depth (desktop pointer only) */
+@media (pointer: fine) and (min-width: 900px){
+  .card{
+    transform-origin: center top;
+    transition:
+      transform .18s ease-out,
+      box-shadow .20s ease-out,
+      border-color .18s ease-out;
+  }
+
+  .card:hover{
+    transform: perspective(1100px) rotateX(3deg) translateY(-2px);
+    box-shadow:
+      0 14px 32px rgba(0,0,0,.70),
+      inset 0 -16px 24px rgba(255,255,255,0.10);
+    border-color: color-mix(in oklab, var(--card-border) 55%, var(--accent) 45%);
+  }
+}
+
+/* 2) Card header micro “chrome” line */
+.card-header{
+  position: relative;
+}
+.card-header::after{
+  content:"";
+  position:absolute;
+  left:-4px;
+  right:-4px;
+  bottom:-3px;
+  height:1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148,163,184,.65),
+    transparent
+  );
+  opacity:.45;
+  pointer-events:none;
+}
+
+/* 3) Focused textarea → card gets a soft accent glow */
+@supports(selector(:has(*))){
+  .card:has(.url-textarea:focus){
+    box-shadow:
+      0 0 0 1px rgba(var(--btn-glow), .45),
+      0 0 22px rgba(var(--btn-glow), .30),
+      inset 0 -16px 24px rgba(255,255,255,0.13);
+    border-color: rgba(var(--btn-glow), .85);
+  }
+}
+
+/* 4) Theme-dot subtle breathing when active (desktop only) */
+@media (pointer: fine){
+  .theme-dot.is-active{
+    animation: ct-theme-pulse 4.5s ease-in-out infinite;
+  }
+}
+@keyframes ct-theme-pulse{
+  0%{
+    box-shadow:
+      0 0 0 4px rgba(var(--glow), .10),
+      0 0 18px rgba(var(--glow), .35);
+  }
+  50%{
+    box-shadow:
+      0 0 0 6px rgba(var(--glow), .16),
+      0 0 26px rgba(var(--glow), .50);
+  }
+  100%{
+    box-shadow:
+      0 0 0 4px rgba(var(--glow), .10),
+      0 0 18px rgba(var(--glow), .35);
+  }
+}
+
+/* 5) Magnetic hover on main action buttons (desktop only) */
+@media (pointer: fine){
+  .controls .btn,
+  #cancelBtn.btn-secondary,
+  #clearBtn.btn-secondary.subtle{
+    transition:
+      transform .14s ease,
+      box-shadow .16s ease,
+      filter .16s ease;
+  }
+
+  .controls .btn:hover,
+  #cancelBtn.btn-secondary:hover:not(:disabled),
+  #clearBtn.btn-secondary.subtle:hover{
+    transform: translateY(-1px) scale(1.02);
+  }
+}
+
+/* 6) Tweet “cinematic” entry (desktop only) */
+@media (pointer: fine){
+  .tweet{
+    animation: ct-tweet-in .18s ease-out;
+    transform-origin: top;
+  }
+}
+@keyframes ct-tweet-in{
+  from{
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to{
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 7) Slightly richer skeleton look (no extra animation cost) */
+.tweet-skeleton{
+  position: relative;
+  overflow: hidden;
+}
+.tweet-skeleton::before{
+  content:"";
+  position:absolute;
+  inset:-18%;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255,255,255,.14), transparent 60%),
+    radial-gradient(circle at 100% 0%, rgba(var(--btn-glow), .20), transparent 65%);
+  opacity:.55;
+  pointer-events:none;
+}
+
+/* 8) Extra theme reflection on cards – static, no animation */
+.card{
+  background-image:
+    radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 0% 64%,  color-mix(in oklab, var(--accent) 75%, #fff 0%) 0px, transparent 85%),
+    radial-gradient(at 41% 94%, color-mix(in oklab, var(--accent) 55%, var(--hero-glow-from) 45%) 0px, transparent 85%),
+    radial-gradient(at 100% 99%, color-mix(in oklab, var(--accent) 45%, var(--hero-glow-to) 55%) 0px, transparent 85%),
+    linear-gradient(
+      145deg,
+      rgba(15,23,42,.96),
+      color-mix(in oklab, var(--accent) 8%, var(--card-bg) 92%),
+      rgba(15,23,42,.98)
+    );
+}
+
+/* 9) Respect reduced motion: kill new cosmetic animations too */
+@media (prefers-reduced-motion: reduce){
+  .theme-dot.is-active{
+    animation: none !important;
+  }
+  .tweet{
+    animation: none !important;
+  }
+}
