@@ -1704,3 +1704,199 @@ body.low-motion.is-generating #progressBarFill::before{
     margin-top: 8px;            /* was 12–18 */
   }
 }
+
+/* =====================================================
+   CrownTALK – Premium Lite Pack (safe to add at the end)
+   - Desktop: nicer hovers & rails
+   - Mobile: lighter GPU, fewer animations
+   ===================================================== */
+
+/* 1) Desktop-only card hover lift (no effect on touch devices) */
+@media (pointer: fine) and (min-width: 900px){
+  .card{
+    transition:
+      transform .15s ease,
+      box-shadow .18s ease,
+      border-color .18s ease;
+  }
+
+  .card:hover{
+    transform: translateY(-2px);
+    box-shadow:
+      0 18px 40px rgba(0,0,0,.7),
+      0 0 0 1px rgba(15,23,42,.9);
+    border-color: rgba(var(--btn-glow), .85);
+  }
+}
+
+/* 2) Desktop tweet rail + glow marker (very cheap, no animation) */
+@media (pointer: fine){
+  .tweet{
+    position: relative;
+    padding-left: 16px;
+  }
+
+  .tweet::before{
+    content:"";
+    position:absolute;
+    top:8px;
+    bottom:8px;
+    left:6px;
+    width:3px;
+    border-radius:999px;
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .25)
+    );
+    opacity:.9;
+    box-shadow:0 0 10px rgba(var(--btn-glow), .5);
+    pointer-events:none;
+  }
+
+  .tweet::after{
+    content:"";
+    position:absolute;
+    top:5px;
+    left:4px;
+    width:7px;
+    height:7px;
+    border-radius:999px;
+    background: radial-gradient(circle at 30% 0%,
+      #ffffff,
+      rgba(var(--btn-glow),1)
+    );
+    box-shadow:0 0 10px rgba(var(--btn-glow), .9);
+    pointer-events:none;
+  }
+}
+
+/* 3) Desktop: nicer hover on comments & history pills */
+@media (pointer: fine){
+  .comment-line,
+  .history-item{
+    transition:
+      background .16s ease,
+      border-color .16s ease,
+      box-shadow .16s ease,
+      transform .12s ease;
+  }
+
+  .comment-line:hover,
+  .history-item:hover{
+    background: linear-gradient(
+      90deg,
+      rgba(15,23,42,.98),
+      rgba(15,23,42,.9),
+      rgba(15,23,42,.98)
+    );
+    border-color: rgba(var(--btn-glow), .75);
+    box-shadow:
+      0 0 0 1px rgba(var(--btn-glow), .4),
+      0 8px 20px rgba(0,0,0,.7);
+    transform: translateY(-1px);
+  }
+
+  .comment-line:hover .comment-tag{
+    letter-spacing:.16em;
+    color: var(--accent);
+  }
+}
+
+/* 4) Desktop-only glassy scrollbars for lists */
+@media (pointer: fine){
+  .results-list,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95);
+  }
+
+  .results-list::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
+  }
+
+  .results-list::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
+  }
+
+  .results-list::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .6)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
+  }
+}
+
+/* 5) MOBILE PERF MODE – kill heavy stuff & simplify visuals */
+@media (max-width: 768px){
+  /* a) Turn OFF decorative animations on phones */
+  .hero-orbit,
+  .hero-orbit::before,
+  .hero-orbit::after,
+  .card::after,
+  .theme-dot.is-active::after,
+  .hero-copy h1::after,
+  .tweet-skeleton{
+    animation: none !important;
+  }
+
+  /* keep behaviour of the progress bar, but if you want,
+     you can also fully kill its animation by uncommenting:
+
+  body.is-generating #progressBarFill,
+  body.is-generating #progressBarFill::before{
+    animation: none !important;
+  }
+  */
+
+  /* b) Simpler card background for GPUs */
+  .card{
+    background-image: linear-gradient(
+      145deg,
+      rgba(15,23,42,.98),
+      rgba(15,23,42,.9)
+    );
+    box-shadow:
+      0 4px 10px rgba(0,0,0,.6);
+  }
+
+  /* c) Softer hero glow (cheaper) */
+  .hero-orbit{
+    box-shadow: 0 0 24px rgba(15,23,42,.9);
+  }
+
+  /* d) Theme dots: keep static, no orbit arc move */
+  .theme-dot::after{
+    animation: none !important;
+  }
+}
+
+/* 6) Optional “manual low-motion” hook for really weak phones
+   - If you ever add: document.body.classList.add("low-motion")
+   - it will hard-disable all decorative animations everywhere.
+*/
+body.low-motion .hero-orbit,
+body.low-motion .hero-orbit::before,
+body.low-motion .hero-orbit::after,
+body.low-motion .card::after,
+body.low-motion .theme-dot.is-active::after,
+body.low-motion .hero-copy h1::after,
+body.low-motion .tweet-skeleton{
+  animation: none !important;
+}
+
+body.low-motion.is-generating #progressBarFill,
+body.low-motion.is-generating #progressBarFill::before{
+  animation: none !important;
+}
