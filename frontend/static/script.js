@@ -1,8 +1,13 @@
 /* ============================================
-   CrownTALK — Access Gate + App Logic (final)
+   CrownTALK — Access Gate + App Logic (resilient)
    - User enters ANY code
    - We store it and send as X-CT-Key
    - Backend validates (ACCESS_KEY on Render)
+   - Multiple submit triggers supported:
+       • Enter key in input
+       • Click on element [data-ct="submit-access"]
+       • Click on the lock <svg> inside the gate
+       • Form submit on #adminGate form
    ============================================ */
 
 /* ---------- Gate (single source of truth) ---------- */
@@ -13,40 +18,31 @@
   const COOKIE_AUTH = 'crowntalk_access_v1';
   const COOKIE_KEY  = 'crowntalk_key_v1';
 
-  function els() {
-    return {
-      gate:  document.getElementById('adminGate'),
-      input: document.getElementById('password'),
-    };
-  }
+  function q(sel, root=document){ return root.querySelector(sel); }
+  function qa(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
 
   function saveKey(key) {
     try { localStorage.setItem(KEY_STORAGE, key); } catch {}
     try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
     try { document.cookie = `${COOKIE_KEY}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
   }
-
   function getKeyFromCookie() {
     try {
       const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEY}=([^;]*)`));
       return m ? decodeURIComponent(m[1]) : '';
     } catch { return ''; }
   }
-
   function getKey() {
     try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
     try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
     return getKeyFromCookie();
   }
-
   function markAuthorized() {
     try { localStorage.setItem(AUTH_FLAG, '1'); } catch {}
     try { sessionStorage.setItem(AUTH_FLAG, '1'); } catch {}
     try { document.cookie = `${COOKIE_AUTH}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
   }
-
   function isAuthorized() {
-    // If we have a stored key, consider authorized (server still checks)
     const k = getKey();
     if (k && k.length > 0) return true;
     try { if (localStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
@@ -55,8 +51,22 @@
     return false;
   }
 
+  function getGateEls() {
+    const gate  = q('#adminGate') || q('[data-ct="access-gate"]') || document.body;
+    // Resolve the input robustly
+    let input = q('#password', gate)
+            || q('[data-ct="access-input"]', gate)
+            || q('input[type="password"]', gate)
+            || q('input', gate);
+    // Optional submit button(s)
+    const submitBtn = q('[data-ct="submit-access"]', gate);
+    const lockIcon  = q('svg', gate);
+    const form      = q('form', gate);
+    return { gate, input, submitBtn, lockIcon, form };
+  }
+
   function showGate(placeholderMsg) {
-    const { gate, input } = els();
+    const { gate, input } = getGateEls();
     if (!gate) return;
     gate.hidden = false;
     gate.style.display = 'grid';
@@ -67,9 +77,8 @@
       setTimeout(() => input.focus(), 0);
     }
   }
-
   function hideGate() {
-    const { gate } = els();
+    const { gate } = getGateEls();
     if (!gate) return;
     gate.hidden = true;
     gate.style.display = 'none';
@@ -77,26 +86,27 @@
   }
 
   async function tryAuth() {
-    const { input } = els();
-    if (!input) return;
+    const { input } = getGateEls();
+    if (!input) { hideGate(); bootAppUI?.(); return; }
     const val = (input.value || '').trim();
-    if (!val) return;
-
-    // IMPORTANT CHANGE:
-    // Do NOT verify against a hardcoded code. Just save what user entered.
+    if (!val) {
+      input.classList.add('ct-shake');
+      setTimeout(() => input.classList.remove('ct-shake'), 350);
+      return;
+    }
+    // Save what the user typed; server will validate later.
     saveKey(val);
     markAuthorized();
     hideGate();
-
     // boot app UI now that we’re unlocked
     bootAppUI?.();
   }
 
   function bindGate() {
-    const { gate, input } = els();
+    const { gate, input, submitBtn, lockIcon, form } = getGateEls();
     if (!gate) return;
 
-    // Enter to submit
+    // Enter to submit (works even if inside a form; we prevent duplicate submits)
     input?.addEventListener('keydown', (e) => {
       if (e.key === 'Enter') {
         e.preventDefault();
@@ -104,12 +114,26 @@
       }
     });
 
-    // Click the lock icon to submit
-    const lockIcon = gate.querySelector('svg');
+    // Explicit submit trigger
+    submitBtn?.addEventListener('click', (e) => {
+      e.preventDefault();
+      tryAuth();
+    });
+
+    // Lock icon click
     if (lockIcon) {
       lockIcon.style.cursor = 'pointer';
-      lockIcon.addEventListener('click', tryAuth);
+      lockIcon.addEventListener('click', (e) => {
+        e.preventDefault();
+        tryAuth();
+      });
     }
+
+    // Form submit (if the gate is wrapped in a <form>)
+    form?.addEventListener('submit', (e) => {
+      e.preventDefault();
+      tryAuth();
+    });
   }
 
   function init() {
@@ -119,8 +143,10 @@
       requireKey: () => { showGate('➤ ENTER ACCESS KEY'); },
       show403: () => { showGate('Access denied. Enter valid key'); },
       hide: hideGate,
+      submit: tryAuth, // for onclick="CTGate.submit()" if needed
     };
 
+    // If we already have a key from a previous session, unlock
     if (isAuthorized()) {
       hideGate();
       bootAppUI?.();
@@ -186,7 +212,6 @@ function warmBackendOnce() {
     }).catch(() => {});
   } catch {}
 }
-
 let lastWarmAt = 0;
 function maybeWarmBackend() {
   const now = Date.now();
@@ -196,7 +221,6 @@ function maybeWarmBackend() {
     warmBackendOnce();
   }
 }
-
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   if (typeof AbortController === "undefined") return fetch(url, options);
   const controller = new AbortController();
@@ -284,10 +308,8 @@ function buildTweetBlock(result){
   comments.forEach((comment,idx)=>{
     if (!comment||!comment.text) return;
     const line=document.createElement("div"); line.className="comment-line"; if (comment.lang) line.dataset.lang=comment.lang;
-
     const tag=document.createElement("span"); tag.className="comment-tag";
     tag.textContent = multilingual ? (comment.lang==="en"?"EN":(comment.lang||"native").toUpperCase()) : `EN ${idx+1}`;
-
     const bubble=document.createElement("span"); bubble.className="comment-text"; bubble.textContent=comment.text;
 
     const copyBtn=document.createElement("button"); let copyLabel="Copy";
@@ -360,7 +382,6 @@ async function handleGenerate(){
               res = await fetchWithTimeout(commentURL, requestOptions, 45000); }
 
     if (res.status === 403){
-      // Show the gate so user can re-enter the right server key
       window.CTGate?.show403?.();
       document.body.classList.remove("is-generating");
       generateBtn.disabled=false; cancelBtn.disabled=true;
