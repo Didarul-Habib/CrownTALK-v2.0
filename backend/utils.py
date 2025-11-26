@@ -6,7 +6,7 @@ import time
 import threading
 import logging
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Union, Iterable
 from urllib.parse import urlparse
 
 import requests
@@ -48,19 +48,53 @@ _SESSION.headers.update({"User-Agent": "CrownTALK/1.0 (+https://crowndex.app)"})
 
 _X_DOMAINS = {"x.com", "twitter.com", "mobile.twitter.com", "m.twitter.com"}
 
-def clean_and_normalize_urls(text: str) -> List[str]:
-    if not text: return []
-    candidates = re.split(r"[\s,]+", text.strip())
+def _flatten_to_string(text_or_list: Union[str, Iterable]) -> str:
+    """
+    Helper: accepts a string or an iterable of strings (possibly nested)
+    and returns a single whitespace-joined string.
+    """
+    if isinstance(text_or_list, (list, tuple, set)):
+        parts: List[str] = []
+        stack = list(text_or_list)
+        while stack:
+            item = stack.pop(0)
+            if item is None:
+                continue
+            if isinstance(item, (list, tuple, set)):
+                stack[:0] = list(item)
+            else:
+                parts.append(str(item))
+        return " ".join(parts)
+    return str(text_or_list or "")
+
+def clean_and_normalize_urls(text_or_list: Union[str, List[str]]) -> List[str]:
+    """
+    Accepts either:
+      - a string with one or more URLs (any separators), or
+      - a list (or nested lists) of URL strings.
+    Returns a de-duplicated list of normalized X/Twitter status URLs.
+    """
+    raw = _flatten_to_string(text_or_list)
+    if not raw:
+        return []
+
+    candidates = re.split(r"[\s,]+", raw.strip())
     out, seen = [], set()
+
     for u in candidates:
-        if not u: continue
-        if not u.startswith("http"): u = "https://" + u
+        if not u:
+            continue
+        if not u.startswith("http"):
+            u = "https://" + u
         try:
             p = urlparse(u)
-            if p.netloc.lower() not in _X_DOMAINS: continue
-            clean = f"https://{p.netloc}{p.path}"
+            host = (p.netloc or "").lower().split(":")[0]
+            if host not in _X_DOMAINS:
+                continue
+            clean = f"https://{host}{p.path}"
             if clean not in seen:
-                seen.add(clean); out.append(clean)
+                seen.add(clean)
+                out.append(clean)
         except Exception:
             continue
     return out
