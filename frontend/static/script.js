@@ -212,10 +212,11 @@ function setProgressText(text) {
   if (progressEl) progressEl.textContent = text || "";
 }
 
+// Match CSS transition: width grows smoothly (not transform)
 function setProgressRatio(ratio) {
   if (!progressBarFill) return;
   const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
-  progressBarFill.style.transform = `scaleX(${clamped})`;
+  progressBarFill.style.width = (clamped * 100).toFixed(2) + "%";
 }
 
 function resetProgress() {
@@ -226,7 +227,7 @@ function resetProgress() {
 function resetResults() {
   if (resultsEl) resultsEl.innerHTML = "";
   if (failedEl) failedEl.innerHTML = "";
-  if (resultCountEl) resultCountEl.textContent = "0 tweets";
+  if (resultCountEl) resultCountEl.textContent = "0";
   if (failedCountEl) failedCountEl.textContent = "0";
 }
 
@@ -272,7 +273,7 @@ async function copyToClipboard(text) {
 
 function formatTweetCount(count) {
   const n = Number(count) || 0;
-  return `${n} tweet${n === 1 ? "" : "s"}`;
+  return `${n}`;
 }
 
 function autoResizeTextarea() {
@@ -404,7 +405,7 @@ function buildTweetBlock(result) {
     tag.className = "comment-tag";
     tag.textContent = multilingual
       ? (comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase())
-      : `EN #${idx + 1}`;
+      : `EN ${idx + 1}`;
 
     const bubble = document.createElement("span");
     bubble.className = "comment-text";
@@ -490,13 +491,14 @@ function appendFailedItem(failure) {
 
   const reasonSpan = document.createElement("div");
   reasonSpan.className = "failed-reason";
-  reasonSpan.textContent = failure.reason || "Unknown error";
+  reasonSpan.textContent = failure.error || failure.reason || "Unknown error";
 
   wrapper.appendChild(urlSpan);
   wrapper.appendChild(reasonSpan);
   failedEl.appendChild(wrapper);
 }
 
+// show minimal skeletons (kept light to avoid jank)
 function showSkeletons(count) {
   resultsEl.innerHTML = "";
   const num = Math.min(Math.max(count, 1), 6);
@@ -588,11 +590,11 @@ async function handleGenerate() {
 
         const ratio = total ? processed / total : 1;
         setProgressRatio(ratio);
-        setProgressText(`Processed ${processed}/${total} tweets…`);
+        setProgressText(`Processed ${processed}/${total}…`);
         resultCountEl.textContent = formatTweetCount(processed);
 
         if (processed === total) {
-          setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
+          setProgressText(`Processed ${processed}.`);
           document.body.classList.remove("is-generating");
           generateBtn.disabled = false;
           cancelBtn.disabled   = true;
