@@ -1,0 +1,169 @@
+/* =========================================================
+   CrownTALK – Themed Uiverse-style Generate Button
+   Uses theme tokens from styles.css:
+     --btn-base (hex), --btn-edge (hex), --btn-glow (r,g,b)
+   HTML structure (from your index.html):
+     <div class="btn-wrapper">
+       <button id="generateBtn" class="btn" type="button">
+         <div class="dots_border"></div>
+         <svg class="sparkle">…</svg>
+         <span class="text_button tb-1">Generate</span>
+         <span class="text_button tb-2">Generating</span>
+       </button>
+     </div>
+========================================================= */
+
+/* ---------- Base button ---------- */
+.btn {
+  --radius: 9999px;
+  --ease: .28s cubic-bezier(.2,.8,.2,1);
+
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  gap: 10px;
+
+  padding: 12px 22px;
+  background: transparent;
+  border: none;
+  border-radius: var(--radius);
+  cursor: pointer;
+
+  transform: translateZ(0);
+  transition: transform var(--ease), filter var(--ease);
+  isolation: isolate;
+}
+
+/* glossy face with theme color */
+.btn::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
+
+  /* If color-mix is unsupported, the first color renders */
+  background:
+    linear-gradient(
+      to bottom,
+      color-mix(in srgb, var(--btn-base) 100%, white 0%) 0%,
+      color-mix(in srgb, var(--btn-base) 85%, black 15%) 100%
+    );
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.18) inset,
+    0 8px 20px rgba(6,12,24,.65),
+    0 8px 24px rgba(var(--btn-glow), .25);
+  transition: box-shadow var(--ease), filter var(--ease);
+  z-index: 0;
+}
+
+/* outer glow */
+.btn::after {
+  content: "";
+  position: absolute;
+  inset: -1px;
+  border-radius: inherit;
+  pointer-events: none;
+  opacity: 0;
+  transition: opacity var(--ease);
+  box-shadow:
+    0 0 0 1px rgba(var(--btn-glow), .6),
+    0 14px 36px rgba(var(--btn-glow), .35);
+  z-index: -1;
+}
+
+/* hover/active/focus/disabled */
+.btn:hover:not(:disabled) { transform: translateY(-1px); }
+.btn:hover:not(:disabled)::after { opacity: 1; }
+.btn:active:not(:disabled) { transform: translateY(0); filter: saturate(1.04); }
+.btn:focus-visible {
+  outline: none;
+  box-shadow:
+    0 0 0 2px rgba(255,255,255,.9),
+    0 0 0 5px rgba(var(--btn-glow), .45);
+}
+.btn:disabled { opacity: .55; cursor: default; filter: grayscale(.1); }
+
+/* ---------- Uiverse “mean-bird-62” internals ---------- */
+
+/* rotating dotted sweep hugging the pill edge */
+.dots_border {
+  --size_border: calc(100% + 2px);
+  overflow: hidden;
+  position: absolute;
+  inset: 0;
+  width: var(--size_border);
+  height: var(--size_border);
+  margin: auto;
+  border-radius: var(--radius);
+  z-index: -2;
+}
+
+.dots_border::before {
+  content: "";
+  position: absolute;
+  top: 30%;
+  left: 50%;
+  width: 100%;
+  height: 2rem;
+  transform: translate(-50%, -50%) rotate(0deg);
+  transform-origin: left;
+  background: white;
+  mask: linear-gradient(transparent 0%, white 120%);
+  animation: btn-rotate 2s linear infinite;
+  opacity: .35;
+}
+
+@keyframes btn-rotate { to { transform: translate(-50%, -50%) rotate(360deg); } }
+
+/* sparkle icon */
+.sparkle {
+  position: relative;
+  width: 1.25rem;
+  z-index: 2;
+}
+.sparkle .path {
+  fill: currentColor;
+  stroke: currentColor;
+  transform-origin: center;
+  color: #fff;
+}
+.btn:is(:hover, :focus-visible) .sparkle .path { animation: path-pop 1.5s linear .25s infinite; }
+.sparkle .path:nth-child(1){ --scale1: 1.2; }
+.sparkle .path:nth-child(2){ --scale2: 1.18; }
+.sparkle .path:nth-child(3){ --scale3: 1.22; }
+@keyframes path-pop {
+  0%,34%,71%,100% { transform: scale(1); }
+  17% { transform: scale(var(--scale1,1)); }
+  49% { transform: scale(var(--scale2,1)); }
+  83% { transform: scale(var(--scale3,1)); }
+}
+
+/* labels (two spans: tb-1 idle, tb-2 generating) */
+.text_button {
+  position: relative;
+  z-index: 2;
+  font-size: 1rem;
+  font-weight: 600;
+  letter-spacing: .2px;
+  background-image: linear-gradient(90deg, rgba(255,255,255,1) 0%, rgba(255,255,255,.2) 120%);
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+  white-space: nowrap;
+}
+.tb-2 { display: none; }
+
+/* swap label when running (script.js toggles body.is-generating) */
+body.is-generating #generateBtn .tb-1 { display: none; }
+body.is-generating #generateBtn .tb-2 { display: inline; }
+
+/* subtle heartbeat while generating */
+body.is-generating #generateBtn::before {
+  animation: gen-pulse 1.35s ease-in-out infinite;
+}
+@keyframes gen-pulse {
+  0%,100% {
+    box-shadow:
+      0 0 0 1px rgba(var(--btn-glow), .55) inset,
+      0 10px 26px rgba(var(--btn-glow), .28),
+      0 1px 0 rgba(255,255,255,.18) inset;
