@@ -1,52 +1,17 @@
 /* ============================================
-   CrownTALK — One-time Access Gate + App Logic
-   Access code: @CrownTALK@2026@CrownDEX
-   Persists with localStorage + cookie fallback
+   CrownTALK — Access Gate + App Logic (final)
+   - User enters ANY code
+   - We store it and send as X-CT-Key
+   - Backend validates (ACCESS_KEY on Render)
    ============================================ */
 
 /* ---------- Gate (single source of truth) ---------- */
 (() => {
-  const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
-  const STORAGE_KEY = 'crowntalk_access_v1';    // local/session storage key
-  const COOKIE_KEY  = 'crowntalk_access_v1';    // cookie fallback
-
-  // NEW: store the entered key so we can send it to backend as X-CT-Key
-  const KEY_STORAGE = 'crowntalk_key_v1';
-  const COOKIE_KEYVAL = 'crowntalk_key_v1';
-
-  function saveKey(key) {
-    try { localStorage.setItem(KEY_STORAGE, key); } catch {}
-    try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
-    try { document.cookie = `${COOKIE_KEYVAL}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
-  }
-  function getKeyFromCookie() {
-    try {
-      const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEYVAL}=([^;]*)`));
-      return m ? decodeURIComponent(m[1]) : '';
-    } catch { return ''; }
-  }
-  function getKey() {
-    try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
-    try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
-    return getKeyFromCookie();
-  }
-  // expose for app code
-  window.CTGate = { getKey };
-
-  function isAuthorized() {
-    try { if (localStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
-    try { if (sessionStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
-    try { if (document.cookie.includes(`${COOKIE_KEY}=1`)) return true; } catch {}
-    return false;
-  }
-
-  function markAuthorized() {
-    try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try {
-      document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`;
-    } catch {}
-  }
+  // storage keys
+  const AUTH_FLAG   = 'crowntalk_access_v1';   // UI unlocked flag
+  const KEY_STORAGE = 'crowntalk_key_v1';      // where we persist the code
+  const COOKIE_AUTH = 'crowntalk_access_v1';
+  const COOKIE_KEY  = 'crowntalk_key_v1';
 
   function els() {
     return {
@@ -55,13 +20,49 @@
     };
   }
 
-  function showGate() {
+  function saveKey(key) {
+    try { localStorage.setItem(KEY_STORAGE, key); } catch {}
+    try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
+    try { document.cookie = `${COOKIE_KEY}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+  }
+
+  function getKeyFromCookie() {
+    try {
+      const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEY}=([^;]*)`));
+      return m ? decodeURIComponent(m[1]) : '';
+    } catch { return ''; }
+  }
+
+  function getKey() {
+    try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+    try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+    return getKeyFromCookie();
+  }
+
+  function markAuthorized() {
+    try { localStorage.setItem(AUTH_FLAG, '1'); } catch {}
+    try { sessionStorage.setItem(AUTH_FLAG, '1'); } catch {}
+    try { document.cookie = `${COOKIE_AUTH}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+  }
+
+  function isAuthorized() {
+    // If we have a stored key, consider authorized (server still checks)
+    const k = getKey();
+    if (k && k.length > 0) return true;
+    try { if (localStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
+    try { if (sessionStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
+    try { if (document.cookie.includes(`${COOKIE_AUTH}=1`)) return true; } catch {}
+    return false;
+  }
+
+  function showGate(placeholderMsg) {
     const { gate, input } = els();
     if (!gate) return;
     gate.hidden = false;
-    gate.style.display = 'grid';   // ensure visible even if other CSS overrides
+    gate.style.display = 'grid';
     document.body.style.overflow = 'hidden';
     if (input) {
+      if (placeholderMsg) input.placeholder = placeholderMsg;
       input.value = '';
       setTimeout(() => input.focus(), 0);
     }
@@ -81,22 +82,14 @@
     const val = (input.value || '').trim();
     if (!val) return;
 
-    if (val === ACCESS_CODE) {
-      markAuthorized();
-      // NEW: keep the exact code so backend can verify header
-      saveKey(val);
+    // IMPORTANT CHANGE:
+    // Do NOT verify against a hardcoded code. Just save what user entered.
+    saveKey(val);
+    markAuthorized();
+    hideGate();
 
-      hideGate();
-      // boot app UI now that we’re unlocked
-      bootAppUI();
-      return;
-    }
-
-    // wrong code → subtle shake + hint
-    input.classList.add('ct-shake');
-    setTimeout(() => input.classList.remove('ct-shake'), 350);
-    input.value = '';
-    input.placeholder = 'Wrong code — try again';
+    // boot app UI now that we’re unlocked
+    bootAppUI?.();
   }
 
   function bindGate() {
@@ -120,11 +113,19 @@
   }
 
   function init() {
+    // expose helpers for app code
+    window.CTGate = {
+      getKey,
+      requireKey: () => { showGate('➤ ENTER ACCESS KEY'); },
+      show403: () => { showGate('Access denied. Enter valid key'); },
+      hide: hideGate,
+    };
+
     if (isAuthorized()) {
       hideGate();
-      bootAppUI();
+      bootAppUI?.();
     } else {
-      showGate();
+      showGate('➤ ENTER ACCESS KEY');
       bindGate();
     }
   }
@@ -137,7 +138,7 @@
   }
 })();
 
-/* ========= App code (unchanged, just wrapped) ========= */
+/* ========= App code (unchanged UI; now adds X-CT-Key) ========= */
 
 // ------------------------
 // Backend endpoints
@@ -163,7 +164,7 @@ const historyEl       = document.getElementById("history");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 const yearEl          = document.getElementById("year");
 
-// theme dots (live node list -> array)
+// theme dots
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 
 // ------------------------
@@ -176,7 +177,6 @@ let historyItems = [];
 // Backend helpers (warmup + timeout fetch)
 // ------------------------
 function warmBackendOnce() {
-  // fire-and-forget ping to wake the Render instance
   try {
     fetch(backendBase + "/", {
       method: "GET",
@@ -184,19 +184,13 @@ function warmBackendOnce() {
       mode: "no-cors",
       keepalive: true,
     }).catch(() => {});
-  } catch (err) {
-    console.warn("warmBackendOnce error", err);
-  }
+  } catch {}
 }
 
-// Only warm occasionally while user is actually active
 let lastWarmAt = 0;
-
 function maybeWarmBackend() {
   const now = Date.now();
   const FIVE_MIN = 5 * 60 * 1000;
-
-  // Only ping if 5+ minutes since last warm
   if (now - lastWarmAt > FIVE_MIN) {
     lastWarmAt = now;
     warmBackendOnce();
@@ -204,14 +198,9 @@ function maybeWarmBackend() {
 }
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
-  // Older browsers: no AbortController → just use plain fetch
-  if (typeof AbortController === "undefined") {
-    return fetch(url, options);
-  }
-
+  if (typeof AbortController === "undefined") return fetch(url, options);
   const controller = new AbortController();
   const id = setTimeout(() => controller.abort(), timeoutMs);
-
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
     clearTimeout(id);
@@ -227,154 +216,51 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
 // ------------------------
 function parseURLs(raw) {
   if (!raw) return [];
-  return raw
-    .split(/\r?\n/)
-    .map((line) => line.trim())
-    .filter(Boolean)
-    .map((line) => line.replace(/^\s*\d+\.\s*/, "").trim());
+  return raw.split(/\r?\n/).map((l)=>l.trim()).filter(Boolean).map((l)=>l.replace(/^\s*\d+\.\s*/, "").trim());
 }
-
-function setProgressText(text) {
-  if (progressEl) progressEl.textContent = text || "";
+function setProgressText(t){ if (progressEl) progressEl.textContent = t || ""; }
+function setProgressRatio(r){ if (progressBarFill) progressBarFill.style.width = (Math.max(0,Math.min(1,+r||0))*100).toFixed(2)+"%"; }
+function resetProgress(){ setProgressText(""); setProgressRatio(0); }
+function resetResults(){
+  if (resultsEl) resultsEl.innerHTML="";
+  if (failedEl) failedEl.innerHTML="";
+  if (resultCountEl) resultCountEl.textContent="0";
+  if (failedCountEl) failedCountEl.textContent="0";
 }
-
-function setProgressRatio(ratio) {
-  if (!progressBarFill) return;
-  const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
-  progressBarFill.style.transform = `scaleX(${clamped})`;
-}
-
-function resetProgress() {
-  setProgressText("");
-  setProgressRatio(0);
-}
-
-function resetResults() {
-  if (resultsEl) resultsEl.innerHTML = "";
-  if (failedEl) failedEl.innerHTML = "";
-  if (resultCountEl) resultCountEl.textContent = "0 tweets";
-  if (failedCountEl) failedCountEl.textContent = "0";
-}
-
-async function copyToClipboard(text) {
+async function copyToClipboard(text){
   if (!text) return;
-
-  // Modern async clipboard (no scroll / focus)
-  if (navigator.clipboard?.writeText) {
-    try {
-      await navigator.clipboard.writeText(text);
-      return;
-    } catch (err) {
-      console.warn("navigator.clipboard failed, using fallback", err);
-    }
-  }
-
-  // Fallback: hidden span + Range, NO focus, NO scroll jump
-  const helper = document.createElement("span");
-  helper.textContent = text;
-  helper.style.position = "fixed";
-  helper.style.left = "-9999px";
-  helper.style.top = "0";
-  helper.style.whiteSpace = "pre"; // preserve line breaks
-
+  if (navigator.clipboard?.writeText){ try{ await navigator.clipboard.writeText(text); return; }catch{} }
+  const helper=document.createElement("span"); helper.textContent=text; helper.style.position="fixed"; helper.style.left="-9999px"; helper.style.top="0"; helper.style.whiteSpace="pre";
   document.body.appendChild(helper);
-
-  const selection = window.getSelection();
-  const range = document.createRange();
-  range.selectNodeContents(helper);
-
-  selection.removeAllRanges();
-  selection.addRange(range);
-
-  try {
-    document.execCommand("copy");
-  } catch (err) {
-    console.error("execCommand copy failed", err);
-  }
-
-  selection.removeAllRanges();
-  document.body.removeChild(helper);
+  const sel=window.getSelection(), range=document.createRange(); range.selectNodeContents(helper); sel.removeAllRanges(); sel.addRange(range);
+  try{ document.execCommand("copy"); }catch{}
+  sel.removeAllRanges(); document.body.removeChild(helper);
 }
-
-function formatTweetCount(count) {
-  const n = Number(count) || 0;
-  return `${n} tweet${n === 1 ? "" : "s"}`;
-}
-
-function autoResizeTextarea() {
-  if (!urlInput) return;
-  urlInput.style.height = "auto";
-  const base = 180;
-  const newHeight = Math.max(base, urlInput.scrollHeight);
-  urlInput.style.height = newHeight + "px";
-}
+function formatTweetCount(n){ n=Number(n)||0; return `${n}`; }
+function autoResizeTextarea(){ if (!urlInput) return; urlInput.style.height="auto"; urlInput.style.height=Math.max(180,urlInput.scrollHeight)+"px"; }
 
 // ------------------------
 // History
 // ------------------------
-function addToHistory(text) {
+function addToHistory(text){
   if (!text) return;
-  const timestamp = new Date().toLocaleTimeString([], {
-    hour: "2-digit",
-    minute: "2-digit",
-  });
-  historyItems.push({ text, timestamp });
-  renderHistory();
+  const timestamp=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
+  historyItems.push({ text, timestamp }); renderHistory();
 }
-
-function renderHistory() {
-  if (!historyEl) return;
-  historyEl.innerHTML = "";
-  if (!historyItems.length) {
-    historyEl.textContent = "Copied comments will show up here.";
-    return;
-  }
-  [...historyItems].reverse().forEach((item) => {
-    const entry = document.createElement("div");
-    entry.className = "history-item";
-
-    const textSpan = document.createElement("div");
-    textSpan.className = "history-text";
-    textSpan.textContent = item.text;
-
-    const right = document.createElement("div");
-    right.style.display = "flex";
-    right.style.flexDirection = "column";
-    right.style.alignItems = "flex-end";
-    right.style.gap = "4px";
-
-    const meta = document.createElement("div");
-    meta.className = "history-meta";
-    meta.textContent = item.timestamp;
-
-    const btn = document.createElement("button");
-    btn.className = "history-copy-btn";
-
-    const main = document.createElement("span");
-    main.innerHTML = `
-      <svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg"
-           shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
-           image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
-           viewBox="0 0 467 512.22">
-        <path fill-rule="nonzero"
-          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z">
-        </path>
-      </svg>
-      Copy
-    `;
-    const alt = document.createElement("span");
-    alt.textContent = "Copied";
-
-    btn.appendChild(main);
-    btn.appendChild(alt);
-    btn.dataset.text = item.text;
-
-    right.appendChild(meta);
-    right.appendChild(btn);
-
-    entry.appendChild(textSpan);
-    entry.appendChild(right);
-
+function renderHistory(){
+  if (!historyEl) return; historyEl.innerHTML="";
+  if (!historyItems.length){ historyEl.textContent="Copied comments will show up here."; return; }
+  [...historyItems].reverse().forEach((item)=>{
+    const entry=document.createElement("div"); entry.className="history-item";
+    const textSpan=document.createElement("div"); textSpan.className="history-text"; textSpan.textContent=item.text;
+    const right=document.createElement("div"); right.style.display="flex"; right.style.flexDirection="column"; right.style.alignItems="flex-end"; right.style.gap="4px";
+    const meta=document.createElement("div"); meta.className="history-meta"; meta.textContent=item.timestamp;
+    const btn=document.createElement("button"); btn.className="history-copy-btn";
+    const main=document.createElement("span"); main.innerHTML=`<svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 467 512.22"><path fill-rule="nonzero" d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z"></path></svg> Copy`;
+    const alt=document.createElement("span"); alt.textContent="Copied";
+    btn.appendChild(main); btn.appendChild(alt); btn.dataset.text=item.text;
+    right.appendChild(meta); right.appendChild(btn);
+    entry.appendChild(textSpan); entry.appendChild(right);
     historyEl.appendChild(entry);
   });
 }
@@ -382,97 +268,36 @@ function renderHistory() {
 // ------------------------
 // Rendering helpers
 // ------------------------
-function buildTweetBlock(result) {
-  const url = result.url || "";
-  const comments = Array.isArray(result.comments) ? result.comments : [];
+function buildTweetBlock(result){
+  const url=result.url||""; const comments=Array.isArray(result.comments)?result.comments:[];
+  const tweet=document.createElement("div"); tweet.className="tweet"; tweet.dataset.url=url;
 
-  const tweet = document.createElement("div");
-  tweet.className = "tweet";
-  tweet.dataset.url = url;
+  const header=document.createElement("div"); header.className="tweet-header";
+  const link=document.createElement("a"); link.className="tweet-link"; link.href=url||"#"; link.target="_blank"; link.rel="noopener noreferrer"; link.textContent=url||"(no url)"; link.title="Open tweet (tap to open)";
+  const actions=document.createElement("div"); actions.className="tweet-actions";
+  const rerollBtn=document.createElement("button"); rerollBtn.className="reroll-btn"; rerollBtn.textContent="Reroll";
+  actions.appendChild(rerollBtn); header.appendChild(link); header.appendChild(actions); tweet.appendChild(header);
 
-  const header = document.createElement("div");
-  header.className = "tweet-header";
+  const commentsWrap=document.createElement("div"); commentsWrap.className="comments";
+  const hasNative=comments.some((c)=>c&&c.lang&&c.lang!=="en"); const multilingual=hasNative;
 
-  const link = document.createElement("a");
-  link.className = "tweet-link";
-  link.href = url || "#";
-  link.target = "_blank";
-  link.rel = "noopener noreferrer";
-  link.textContent = url || "(no url)";
-  link.title = "Open tweet (tap to open)";
+  comments.forEach((comment,idx)=>{
+    if (!comment||!comment.text) return;
+    const line=document.createElement("div"); line.className="comment-line"; if (comment.lang) line.dataset.lang=comment.lang;
 
-  const actions = document.createElement("div");
-  actions.className = "tweet-actions";
+    const tag=document.createElement("span"); tag.className="comment-tag";
+    tag.textContent = multilingual ? (comment.lang==="en"?"EN":(comment.lang||"native").toUpperCase()) : `EN ${idx+1}`;
 
-  const rerollBtn = document.createElement("button");
-  rerollBtn.className = "reroll-btn";
-  rerollBtn.textContent = "Reroll";
+    const bubble=document.createElement("span"); bubble.className="comment-text"; bubble.textContent=comment.text;
 
-  actions.appendChild(rerollBtn);
-  header.appendChild(link);
-  header.appendChild(actions);
-  tweet.appendChild(header);
+    const copyBtn=document.createElement("button"); let copyLabel="Copy";
+    if (multilingual){ if (comment.lang==="en"){ copyBtn.className="copy-btn-en"; copyLabel="Copy EN"; } else { copyBtn.className="copy-btn"; } } else { copyBtn.className="copy-btn"; }
 
-  const commentsWrap = document.createElement("div");
-  commentsWrap.className = "comments";
+    const copyMain=document.createElement("span"); copyMain.innerHTML=`<svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 467 512.22"><path fill-rule="nonzero" d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z"></path></svg> ${copyLabel}`;
+    const copyAlt=document.createElement("span"); copyAlt.textContent="Copied";
+    copyBtn.appendChild(copyMain); copyBtn.appendChild(copyAlt); copyBtn.dataset.text=comment.text;
 
-  const hasNative = comments.some((c) => c && c.lang && c.lang !== "en");
-  const multilingual = hasNative;
-
-  comments.forEach((comment, idx) => {
-    if (!comment || !comment.text) return;
-
-    const line = document.createElement("div");
-    line.className = "comment-line";
-    if (comment.lang) line.dataset.lang = comment.lang;
-
-    const tag = document.createElement("span");
-    tag.className = "comment-tag";
-    tag.textContent = multilingual
-      ? (comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase())
-      : `EN #${idx + 1}`;
-
-    const bubble = document.createElement("span");
-    bubble.className = "comment-text";
-    bubble.textContent = comment.text;
-
-    const copyBtn = document.createElement("button");
-    let copyLabel = "Copy";
-    if (multilingual) {
-      if (comment.lang === "en") {
-        copyBtn.className = "copy-btn-en";
-        copyLabel = "Copy EN";
-      } else {
-        copyBtn.className = "copy-btn";
-      }
-    } else {
-      copyBtn.className = "copy-btn";
-    }
-
-    const copyMain = document.createElement("span");
-    copyMain.innerHTML = `
-      <svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg"
-           shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
-           image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
-           viewBox="0 0 467 512.22">
-        <path fill-rule="nonzero"
-          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z">
-        </path>
-      </svg>
-      ${copyLabel}
-    `;
-
-    const copyAlt = document.createElement("span");
-    copyAlt.textContent = "Copied";
-
-    copyBtn.appendChild(copyMain);
-    copyBtn.appendChild(copyAlt);
-    copyBtn.dataset.text = comment.text;
-
-    line.appendChild(tag);
-    line.appendChild(bubble);
-    line.appendChild(copyBtn);
-
+    line.appendChild(tag); line.appendChild(bubble); line.appendChild(copyBtn);
     commentsWrap.appendChild(line);
   });
 
@@ -480,60 +305,27 @@ function buildTweetBlock(result) {
   return tweet;
 }
 
-function appendResultBlock(result) {
-  const block = buildTweetBlock(result);
-  resultsEl.appendChild(block);
-}
-
-function updateTweetBlock(tweetEl, result) {
+function appendResultBlock(result){ resultsEl.appendChild(buildTweetBlock(result)); }
+function updateTweetBlock(tweetEl,result){
   if (!tweetEl) return;
   tweetEl.dataset.url = result.url || tweetEl.dataset.url || "";
-
-  const oldComments = tweetEl.querySelector(".comments");
-  if (oldComments) oldComments.remove();
-
-  const newComments = buildTweetBlock(result).querySelector(".comments");
-  if (newComments) tweetEl.appendChild(newComments);
-
-  tweetEl.style.transition = "box-shadow 0.25s ease, transform 0.25s ease";
-  const oldShadow = tweetEl.style.boxShadow;
-  const oldTransform = tweetEl.style.transform;
-  tweetEl.style.boxShadow = "0 0 0 2px rgba(56,189,248,0.9)";
-  tweetEl.style.transform = "translateY(-1px)";
-  setTimeout(() => {
-    tweetEl.style.boxShadow = oldShadow;
-    tweetEl.style.transform = oldTransform;
-  }, 420);
+  const old = tweetEl.querySelector(".comments"); if (old) old.remove();
+  const neu = buildTweetBlock(result).querySelector(".comments"); if (neu) tweetEl.appendChild(neu);
+  tweetEl.style.transition="box-shadow .25s ease, transform .25s ease";
+  const s=tweetEl.style.boxShadow, t=tweetEl.style.transform;
+  tweetEl.style.boxShadow="0 0 0 2px rgba(56,189,248,.9)"; tweetEl.style.transform="translateY(-1px)";
+  setTimeout(()=>{ tweetEl.style.boxShadow=s; tweetEl.style.transform=t; },420);
 }
-
-function appendFailedItem(failure) {
-  const wrapper = document.createElement("div");
-  wrapper.className = "failed-item";
-
-  const urlSpan = document.createElement("div");
-  urlSpan.className = "failed-url";
-  urlSpan.textContent = failure.url || "(unknown URL)";
-
-  const reasonSpan = document.createElement("div");
-  reasonSpan.className = "failed-reason";
-  reasonSpan.textContent = failure.reason || "Unknown error";
-
-  wrapper.appendChild(urlSpan);
-  wrapper.appendChild(reasonSpan);
-  failedEl.appendChild(wrapper);
+function appendFailedItem(f){
+  const el=document.createElement("div"); el.className="failed-item";
+  const u=document.createElement("div"); u.className="failed-url"; u.textContent=f.url||"(unknown URL)";
+  const r=document.createElement("div"); r.className="failed-reason"; r.textContent=f.error||f.reason||"Unknown error";
+  el.appendChild(u); el.appendChild(r); failedEl.appendChild(el);
 }
-
-function showSkeletons(count) {
-  resultsEl.innerHTML = "";
-  const num = Math.min(Math.max(count, 1), 6);
-  for (let i = 0; i < num; i++) {
-    const sk = document.createElement("div");
-    sk.className = "tweet-skeleton";
-    for (let j = 0; j < 3; j++) {
-      const line = document.createElement("div");
-      line.className = "tweet-skeleton-line";
-      sk.appendChild(line);
-    }
+function showSkeletons(count){
+  resultsEl.innerHTML=""; const num=Math.min(Math.max(count,1),6);
+  for (let i=0;i<num;i++){ const sk=document.createElement("div"); sk.className="tweet-skeleton";
+    for (let j=0;j<3;j++){ const line=document.createElement("div"); line.className="tweet-skeleton-line"; sk.appendChild(line); }
     resultsEl.appendChild(sk);
   }
 }
@@ -541,125 +333,85 @@ function showSkeletons(count) {
 // ------------------------
 // Generate flow
 // ------------------------
-async function handleGenerate() {
-  const raw = urlInput.value;
-  const urls = parseURLs(raw);
+async function handleGenerate(){
+  const raw=urlInput.value; const urls=parseURLs(raw);
+  if (!urls.length){ alert("Please paste at least one tweet URL."); return; }
 
-  if (!urls.length) {
-    alert("Please paste at least one tweet URL.");
-    return;
-  }
+  const key = window.CTGate?.getKey?.() || "";
+  if (!key){ window.CTGate?.requireKey?.(); return; }
 
-  // Try to wake the backend if it's been idle for a while
   maybeWarmBackend();
-
-  cancelled = false;
-  document.body.classList.add("is-generating");
-
-  generateBtn.disabled = true;
-  cancelBtn.disabled   = false;
-  resetResults();
-  resetProgress();
-
-  setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
-  setProgressRatio(0.03);
+  cancelled=false; document.body.classList.add("is-generating");
+  generateBtn.disabled=true; cancelBtn.disabled=false; resetResults(); resetProgress();
+  setProgressText(`Processing ${urls.length} URL${urls.length===1?"":"s"}…`); setProgressRatio(0.03);
   showSkeletons(urls.length);
 
-  // Shared request body/options
-  const payload = JSON.stringify({ urls });
-  const requestOptions = {
-    method: "POST",
-    headers: {
-      "Content-Type": "application/json",
-      // NEW: pass the access key to backend guard
-      "X-CT-Key": (window.CTGate?.getKey?.() || "")
-    },
+  const payload=JSON.stringify({ urls });
+  const requestOptions={
+    method:"POST",
+    headers:{ "Content-Type":"application/json", "X-CT-Key": key },
     body: payload,
   };
 
-  try {
+  try{
     let res;
+    try{ res = await fetchWithTimeout(commentURL, requestOptions, 45000); }
+    catch(e){ setProgressText("Waking CrownTALK engine… retrying once."); warmBackendOnce();
+              res = await fetchWithTimeout(commentURL, requestOptions, 45000); }
 
-    // ---- first attempt ----
-    try {
-      res = await fetchWithTimeout(commentURL, requestOptions, 45000);
-    } catch (firstErr) {
-      console.warn("First generate attempt failed, warming backend then retrying…", firstErr);
-      setProgressText("Waking CrownTALK engine… retrying once.");
-      warmBackendOnce();
-
-      // ---- second (final) attempt ----
-      res = await fetchWithTimeout(commentURL, requestOptions, 45000);
-    }
-
-    if (res.status === 403) {
-      alert("Access denied — check the access code.");
+    if (res.status === 403){
+      // Show the gate so user can re-enter the right server key
+      window.CTGate?.show403?.();
       document.body.classList.remove("is-generating");
-      generateBtn.disabled = false;
-      cancelBtn.disabled   = true;
-      setProgressText("Access denied.");
+      generateBtn.disabled=false; cancelBtn.disabled=true;
+      setProgressText("Access denied. Enter valid key.");
       setProgressRatio(0);
       return;
     }
 
-    if (!res.ok) {
-      throw new Error(`Backend error: ${res.status}`);
-    }
+    if (!res.ok) throw new Error(`Backend error: ${res.status}`);
 
     const data = await res.json();
     if (cancelled) return;
 
-    const results = Array.isArray(data.results) ? data.results : [];
-    const failed  = Array.isArray(data.failed)  ? data.failed  : [];
+    const results = Array.isArray(data.results)?data.results:[];
+    const failed  = Array.isArray(data.failed)?data.failed:[];
 
-    resultsEl.innerHTML = "";
-    failedEl.innerHTML  = "";
+    resultsEl.innerHTML=""; failedEl.innerHTML="";
+    let processed=0, total = results.length || urls.length;
 
-    let processed = 0;
-    const total = results.length || urls.length;
-
-    let delay = 50;
-    results.forEach((item) => {
-      setTimeout(() => {
+    let delay=50;
+    results.forEach((item)=>{
+      setTimeout(()=>{
         if (cancelled) return;
-
-        appendResultBlock(item);
-        processed += 1;
-
-        const ratio = total ? processed / total : 1;
+        appendResultBlock(item); processed += 1;
+        const ratio = total ? processed/total : 1;
         setProgressRatio(ratio);
-        setProgressText(`Processed ${processed}/${total} tweets…`);
+        setProgressText(`Processed ${processed}/${total}…`);
         resultCountEl.textContent = formatTweetCount(processed);
 
-        if (processed === total) {
-          setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
+        if (processed === total){
+          setProgressText(`Processed ${processed}.`);
           document.body.classList.remove("is-generating");
-          generateBtn.disabled = false;
-          cancelBtn.disabled   = true;
+          generateBtn.disabled=false; cancelBtn.disabled=true;
         }
       }, delay);
       delay += 120;
     });
 
-    failed.forEach((f) => appendFailedItem(f));
+    failed.forEach((f)=>appendFailedItem(f));
     failedCountEl.textContent = String(failed.length);
 
-    if (!results.length) {
+    if (!results.length){
       document.body.classList.remove("is-generating");
-      generateBtn.disabled = false;
-      cancelBtn.disabled   = true;
-      setProgressText(
-        failed.length
-          ? "All URLs failed to process."
-          : "No comments returned."
-      );
+      generateBtn.disabled=false; cancelBtn.disabled=true;
+      setProgressText(failed.length ? "All URLs failed to process." : "No comments returned.");
       setProgressRatio(1);
     }
-  } catch (err) {
+  }catch(err){
     console.error("Generate error", err);
     document.body.classList.remove("is-generating");
-    generateBtn.disabled = false;
-    cancelBtn.disabled   = true;
+    generateBtn.disabled=false; cancelBtn.disabled=true;
     setProgressText("Error contacting CrownTALK backend. Please try again.");
     setProgressRatio(0);
   }
@@ -668,220 +420,142 @@ async function handleGenerate() {
 // ------------------------
 // Cancel & Clear
 // ------------------------
-function handleCancel() {
-  cancelled = true;
-  document.body.classList.remove("is-generating");
-  generateBtn.disabled = false;
-  cancelBtn.disabled   = true;
-  setProgressText("Cancelled.");
-  setProgressRatio(0);
-}
-
-function handleClear() {
-  urlInput.value = "";
-  resetResults();
-  resetProgress();
-  autoResizeTextarea();
-}
+function handleCancel(){ cancelled=true; document.body.classList.remove("is-generating");
+  generateBtn.disabled=false; cancelBtn.disabled=true; setProgressText("Cancelled."); setProgressRatio(0); }
+function handleClear(){ urlInput.value=""; resetResults(); resetProgress(); autoResizeTextarea(); }
 
 // ------------------------
 // Reroll
 // ------------------------
-async function handleReroll(tweetEl) {
-  const url = tweetEl?.dataset.url;
-  if (!url) return;
+async function handleReroll(tweetEl){
+  const url=tweetEl?.dataset.url; if (!url) return;
+  const key = window.CTGate?.getKey?.() || ""; if (!key){ window.CTGate?.requireKey?.(); return; }
 
-  const button = tweetEl.querySelector(".reroll-btn");
-  if (!button) return;
+  const button=tweetEl.querySelector(".reroll-btn"); if (!button) return;
+  const oldLabel=button.textContent; button.disabled=true; button.textContent="Rerolling…";
 
-  const oldLabel = button.textContent;
-  button.disabled = true;
-  button.textContent = "Rerolling…";
-
-  const commentsWrap = tweetEl.querySelector(".comments");
-  if (commentsWrap) {
-    commentsWrap.innerHTML = "";
-    const sk1 = document.createElement("div"); sk1.className = "tweet-skeleton-line";
-    const sk2 = document.createElement("div"); sk2.className = "tweet-skeleton-line";
-    commentsWrap.appendChild(sk1); commentsWrap.appendChild(sk2);
+  const commentsWrap=tweetEl.querySelector(".comments");
+  if (commentsWrap){
+    commentsWrap.innerHTML=""; const sk1=document.createElement("div"); sk1.className="tweet-skeleton-line";
+    const sk2=document.createElement("div"); sk2.className="tweet-skeleton-line"; commentsWrap.appendChild(sk1); commentsWrap.appendChild(sk2);
   }
 
-  try {
+  try{
     const res = await fetch(rerollURL, {
-      method: "POST",
-      headers: {
-        "Content-Type": "application/json",
-        // NEW: pass the access key to backend guard
-        "X-CT-Key": (window.CTGate?.getKey?.() || "")
-      },
+      method:"POST",
+      headers:{ "Content-Type":"application/json", "X-CT-Key": key },
       body: JSON.stringify({ url }),
     });
-    if (res.status === 403) {
-      alert("Access denied — check the access code.");
-      return;
-    }
+
+    if (res.status === 403){ window.CTGate?.show403?.(); setProgressText("Access denied for reroll."); return; }
     if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
 
     const data = await res.json();
-    if (data && Array.isArray(data.comments)) {
+    if (data && Array.isArray(data.comments)){
       updateTweetBlock(tweetEl, { url: data.url || url, comments: data.comments });
     } else {
       setProgressText("Reroll failed for this tweet.");
     }
-  } catch (err) {
+  }catch(err){
     console.error("Reroll error", err);
     setProgressText("Network error during reroll.");
-  } finally {
-    button.disabled = false;
-    button.textContent = oldLabel;
+  }finally{
+    button.disabled=false; button.textContent=oldLabel;
   }
 }
 
 // ------------------------
 // Theme
 // ------------------------
-const THEME_STORAGE_KEY = "crowntalk_theme";
-const ALLOWED_THEMES = ["white","dark-purple","gold","blue","black","emerald","crimson"];
+const THEME_STORAGE_KEY="crowntalk_theme";
+const ALLOWED_THEMES=["white","dark-purple","gold","blue","black","emerald","crimson"];
 
-function sanitizeThemeDots() {
-  themeDots.forEach((dot) => {
+function sanitizeThemeDots(){
+  themeDots.forEach((dot)=>{
     if (!dot?.dataset) return;
-    const t = (dot.dataset.theme || "").trim();
-    if (t === "texture") {
-      dot.parentElement && dot.parentElement.removeChild(dot);
-    } else if (!ALLOWED_THEMES.includes(t)) {
-      dot.dataset.theme = "crimson";
-    }
+    const t=(dot.dataset.theme||"").trim();
+    if (t==="texture"){ dot.parentElement && dot.parentElement.removeChild(dot); }
+    else if (!ALLOWED_THEMES.includes(t)){ dot.dataset.theme="crimson"; }
   });
   themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 }
-
-function applyTheme(themeName) {
-  const html = document.documentElement;
-  const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
+function applyTheme(themeName){
+  const html=document.documentElement;
+  const t=ALLOWED_THEMES.includes(themeName)?themeName:"dark-purple";
   html.setAttribute("data-theme", t);
-  themeDots.forEach((dot) =>
-    dot.classList.toggle("is-active", dot.dataset.theme === t)
-  );
-  try {
-    localStorage.setItem(THEME_STORAGE_KEY, t);
-  } catch {}
+  themeDots.forEach((dot)=>dot.classList.toggle("is-active", dot.dataset.theme===t));
+  try{ localStorage.setItem(THEME_STORAGE_KEY, t); }catch{}
 }
-
-function initTheme() {
+function initTheme(){
   sanitizeThemeDots();
-  let theme = "dark-purple";
-  try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
-    if (stored) {
-      theme = stored === "neon" ? "crimson" : stored;
-      if (stored === "neon") localStorage.setItem(THEME_STORAGE_KEY, "crimson");
-    }
-    if (!ALLOWED_THEMES.includes(theme)) theme = "dark-purple";
-  } catch {}
+  let theme="dark-purple";
+  try{
+    const stored=localStorage.getItem(THEME_STORAGE_KEY);
+    if (stored){ theme = stored==="neon" ? "crimson" : stored; if (stored==="neon") localStorage.setItem(THEME_STORAGE_KEY, "crimson"); }
+    if (!ALLOWED_THEMES.includes(theme)) theme="dark-purple";
+  }catch{}
   applyTheme(theme);
 }
 
 /* ---------- Boot UI once unlocked ---------- */
-function bootAppUI() {
-  if (yearEl) yearEl.textContent = String(new Date().getFullYear());
-  initTheme();
-  renderHistory();
-  autoResizeTextarea();
+function bootAppUI(){
+  if (yearEl) yearEl.textContent=String(new Date().getFullYear());
+  initTheme(); renderHistory(); autoResizeTextarea();
 
-  // Gentle warmup shortly after UI becomes usable
-  setTimeout(() => {
-    maybeWarmBackend();
-  }, 4000);
+  setTimeout(()=>{ maybeWarmBackend(); }, 4000);
 
   urlInput?.addEventListener("input", autoResizeTextarea);
-
-  generateBtn?.addEventListener("click", () => {
-    if (!document.body.classList.contains("is-generating")) handleGenerate();
-  });
-
+  generateBtn?.addEventListener("click", ()=>{ if (!document.body.classList.contains("is-generating")) handleGenerate(); });
   cancelBtn?.addEventListener("click", handleCancel);
   clearBtn?.addEventListener("click", handleClear);
 
-  clearHistoryBtn?.addEventListener("click", () => {
-    historyItems = [];
-    renderHistory();
-  });
+  clearHistoryBtn?.addEventListener("click", ()=>{ historyItems=[]; renderHistory(); });
 
-  resultsEl?.addEventListener("click", async (event) => {
+  resultsEl?.addEventListener("click", async (event)=>{
     const copyBtn  = event.target.closest(".copy-btn, .copy-btn-en");
     const rerollBtn = event.target.closest(".reroll-btn");
 
-    if (copyBtn) {
-      const text = copyBtn.dataset.text || "";
-      if (!text) return;
-      await copyToClipboard(text);
-      addToHistory(text);
+    if (copyBtn){
+      const text = copyBtn.dataset.text || ""; if (!text) return;
+      await copyToClipboard(text); addToHistory(text);
 
-      const line = copyBtn.closest(".comment-line");
-      if (line) line.classList.add("copied");
+      const line = copyBtn.closest(".comment-line"); if (line) line.classList.add("copied");
       copyBtn.classList.add("is-copied");
-
-      const old = copyBtn.textContent;
-      copyBtn.textContent = "Copied";
-      copyBtn.disabled = true;
-      setTimeout(() => {
-        copyBtn.textContent = old;
-        copyBtn.disabled = false;
-      }, 700);
+      const old=copyBtn.textContent; copyBtn.textContent="Copied"; copyBtn.disabled=true;
+      setTimeout(()=>{ copyBtn.textContent=old; copyBtn.disabled=false; }, 700);
     }
 
-    if (rerollBtn) {
+    if (rerollBtn){
       const tweetEl = rerollBtn.closest(".tweet");
       if (tweetEl) handleReroll(tweetEl);
     }
   });
 
-  historyEl?.addEventListener("click", async (event) => {
-    const btn = event.target.closest(".history-copy-btn");
-    if (!btn) return;
-    const text = btn.dataset.text || "";
-    if (!text) return;
-
-    await copyToClipboard(text);
-    const old = btn.textContent;
-    btn.textContent = "Copied";
-    btn.disabled = true;
-    setTimeout(() => {
-      btn.textContent = old;
-      btn.disabled = false;
-    }, 700);
+  historyEl?.addEventListener("click", async (event)=>{
+    const btn=event.target.closest(".history-copy-btn"); if (!btn) return;
+    const text=btn.dataset.text || ""; if (!text) return;
+    await copyToClipboard(text); const old=btn.textContent; btn.textContent="Copied"; btn.disabled=true;
+    setTimeout(()=>{ btn.textContent=old; btn.disabled=false; }, 700);
   });
 
-  themeDots.forEach((dot) => {
-    dot.addEventListener("click", () => {
-      const t = dot.dataset.theme;
-      if (t) applyTheme(t);
-    });
-  });
+  themeDots.forEach((dot)=>{ dot.addEventListener("click", ()=>{ const t=dot.dataset.theme; if (t) applyTheme(t); }); });
 }
 
-
 // Keep the backend warm while the tab is open (no effect if tab is hidden)
-(function keepAliveWhileVisible() {
-  const PING_MS = 4 * 60 * 1000; // every 4 minutes
-  let timer = null;
-
-  function schedule() {
+(function keepAliveWhileVisible(){
+  const PING_MS = 4 * 60 * 1000;
+  let timer=null;
+  function schedule(){
     clearInterval(timer);
-    if (document.visibilityState === "visible") {
-      timer = setInterval(() => {
+    if (document.visibilityState === "visible"){
+      timer = setInterval(()=>{
         fetch("https://crowntalk.onrender.com/ping", {
-          method: "GET",
-          cache: "no-store",
-          mode: "no-cors",
-          keepalive: true,
-        }).catch(() => {});
+          method:"GET", cache:"no-store", mode:"no-cors", keepalive:true,
+        }).catch(()=>{});
       }, PING_MS);
     }
   }
-
   document.addEventListener("visibilitychange", schedule);
-  window.addEventListener("pagehide", () => clearInterval(timer));
+  window.addEventListener("pagehide", ()=>clearInterval(timer));
   schedule();
 })();
