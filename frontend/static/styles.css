@@ -1159,3 +1159,92 @@ body:not(.is-generating) #progressBarFill::before{
     opacity: 0;
   }
 }
+
+/* =====================================
+   CrownTALK – Clear button v2 glass override
+   ===================================== */
+
+#clearBtn.btn-secondary.subtle{
+  --clear-base: rgba(15,23,42,.96);
+
+  width: 44px;
+  height: 44px;
+  padding: 0;
+  border-radius: 999px;
+  border: 1px solid rgba(148,163,184,.55);
+  background:
+    radial-gradient(circle at 30% 20%, rgba(255,255,255,.14), transparent 60%),
+    linear-gradient(145deg,
+      rgba(15,23,42,1),
+      color-mix(in oklab, var(--accent) 12%, #020617 88%)
+    );
+  color: #f9fafb;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  position: relative;
+  overflow: hidden;
+  box-shadow:
+    0 8px 20px rgba(0,0,0,.75),
+    0 0 0 1px rgba(15,23,42,1);
+  font-size: 0;
+  line-height: 0;
+  cursor: pointer;
+  transition:
+    transform .14s ease,
+    box-shadow .18s ease,
+    border-color .18s ease,
+    background .18s ease,
+    opacity .15s ease;
+}
+
+/* icon: clean, centered, single trash glyph */
+#clearBtn .svgIcon{
+  position: static;
+  width: 14px;
+  height: 14px;
+  color: #f9fafb;
+  transition: none;
+}
+
+/* only use one icon so it doesn’t look chunky */
+#clearBtn .bin-bottom{
+  display: none;
+}
+
+#clearBtn .bin-top{
+  display: block;
+  transform: none;
+}
+
+/* subtle inner shine */
+#clearBtn.btn-secondary.subtle::before{
+  content:"";
+  position:absolute;
+  inset: 4px 6px 60%;
+  border-radius: 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,.35),
+    transparent
+  );
+  opacity:.75;
+  pointer-events:none;
+}
+
+/* hover: gentle lift + color-matched glow */
+#clearBtn.btn-secondary.subtle:hover{
+  transform: translateY(-1px);
+  box-shadow:
+    0 10px 26px rgba(0,0,0,.9),
+    0 0 0 1px rgba(var(--btn-glow), .7);
+  border-color: rgba(var(--btn-glow), .85);
+}
+
+/* pressed */
+#clearBtn.btn-secondary.subtle:active{
+  transform: translateY(0) scale(.96);
+  box-shadow:
+    0 5px 14px rgba(0,0,0,.85),
+    0 0 0 1px rgba(15,23,42,1);
+}
