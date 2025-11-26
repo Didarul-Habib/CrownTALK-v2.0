@@ -13,16 +13,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 
 WORKDIR /app
 
-# ===== Install deps first (better caching) =====
-# If your file is named differently on Render, copy/rename it to requirements.txt
-COPY requirements.txt /app/requirements.txt
-RUN pip install --upgrade pip && pip install -r requirements.txt
-
-# ===== App code =====
-# Copy only what we need (adjust if your layout differs)
-COPY . /app
-
-# Optional: non-root user
+...
 RUN useradd -m appuser
 USER appuser
 
