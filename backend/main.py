@@ -1,277 +1,491 @@
-# main.py
 from __future__ import annotations
 
-import json, os, re, time, random, hashlib, logging, sqlite3, threading
-from collections import Counter
-from typing import List, Optional, Dict, Any
-from urllib.parse import urlparse
+import os
+import re
+import json
+import time
+import random
+import hashlib
+import logging
+import sqlite3
+import threading
+from typing import Any, Dict, List, Optional
 
 import requests
 from flask import Flask, request, jsonify
 
-# Helpers from utils.py (already deployed)
-from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
+from utils import (
+    CrownTALKError,
+    Tweet,
+    fetch_tweet_data,
+    clean_and_normalize_urls,
+)
 
-# ------------------------------------------------------------------------------
-# App / Logging / Config
-# ------------------------------------------------------------------------------
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crowntalk")
 
 PORT = int(os.environ.get("PORT", "10000"))
 DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
-BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onrender.com")
+BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "")
 
-# Batch & pacing (env-tunable)
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "2"))                 # ← process N at a time
-PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.1"))  # ← sleep after every URL
-
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "2"))
+PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.08"))
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
-# ------------------------------------------------------------------------------
-# Optional Groq (free-tier). If not set, we run fully offline.
-# ------------------------------------------------------------------------------
+# Provider config (Groq → OpenAI → Gemini → Offline)
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+
 USE_GROQ = bool(GROQ_API_KEY)
+USE_OPENAI = bool(OPENAI_API_KEY)
+USE_GEMINI = bool(GEMINI_API_KEY)
+
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+GEMINI_MODEL = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+
+groq_client = None
+openai_client = None
+gemini_model = None
+
 if USE_GROQ:
     try:
         from groq import Groq
-        _groq_client = Groq(api_key=GROQ_API_KEY)
-    except Exception:
-        _groq_client = None
+        groq_client = Groq(api_key=GROQ_API_KEY)
+    except Exception as e:
+        logger.warning("Groq init failed: %s", e)
         USE_GROQ = False
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
-# ------------------------------------------------------------------------------
-# Keepalive (Render free – optional)
-# ------------------------------------------------------------------------------
-def keep_alive() -> None:
-    if not BACKEND_PUBLIC_URL:
-        return
-    while True:
-        try:
-            requests.get(f"{BACKEND_PUBLIC_URL}/", timeout=5)
-        except Exception:
-            pass
-        time.sleep(KEEP_ALIVE_INTERVAL)
+if USE_OPENAI:
+    try:
+        from openai import OpenAI
+        openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception as e:
+        logger.warning("OpenAI init failed: %s", e)
+        USE_OPENAI = False
 
-# ------------------------------------------------------------------------------
-# DB init (safe across workers)
-# ------------------------------------------------------------------------------
+if USE_GEMINI:
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        gemini_model = genai.GenerativeModel(GEMINI_MODEL)
+    except Exception as e:
+        logger.warning("Gemini init failed: %s", e)
+        USE_GEMINI = False
+
+# DB init + locking (portable)
 try:
     import fcntl
     _HAS_FCNTL = True
 except Exception:
     _HAS_FCNTL = False
 
-def get_conn() -> sqlite3.Connection:
-    return sqlite3.connect(DB_PATH, timeout=30, isolation_level=None, check_same_thread=False)
 
-def _locked_init(fn):
-    if not _HAS_FCNTL:
-        return fn()
-    lock_path = "/tmp/crowntalk.db.lock"
-    with open(lock_path, "w") as f:
-        fcntl.flock(f, fcntl.LOCK_EX)
-        try:
-            return fn()
-        finally:
-            fcntl.flock(f, fcntl.LOCK_UN)
+def _acquire_lock(f):
+    def wrapper(*args, **kwargs):
+        if not _HAS_FCNTL:
+            return f(*args, **kwargs)
+        with open(DB_PATH + ".lock", "a+") as lockfile:
+            fcntl.flock(lockfile, fcntl.LOCK_EX)
+            try:
+                return f(*args, **kwargs)
+            finally:
+                fcntl.flock(lockfile, fcntl.LOCK_UN)
+    return wrapper
 
-def _do_init() -> None:
-    with get_conn() as conn:
-        conn.execute("PRAGMA busy_timeout=5000;")
-        try:
-            conn.execute("PRAGMA journal_mode=WAL;")
-        except sqlite3.OperationalError:
-            pass
+
+@_acquire_lock
+def init_db() -> None:
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("PRAGMA journal_mode=WAL;")
+        conn.execute("PRAGMA synchronous=NORMAL;")
         conn.executescript(
             """
-            CREATE TABLE IF NOT EXISTS comments (
-                id INTEGER PRIMARY KEY,
-                url TEXT NOT NULL,
-                lang TEXT,
-                text TEXT NOT NULL,
-                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-            );
-            CREATE INDEX IF NOT EXISTS idx_comments_url ON comments(url);
-
             CREATE TABLE IF NOT EXISTS comments_seen(
                 hash TEXT PRIMARY KEY,
                 created_at INTEGER
             );
-
-            -- OTP pattern guards
-            CREATE TABLE IF NOT EXISTS comments_openers_seen(
-                opener TEXT PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS style_signatures_seen(
+                sig TEXT PRIMARY KEY,
                 created_at INTEGER
             );
-            CREATE TABLE IF NOT EXISTS comments_ngrams_seen(
-                ngram TEXT PRIMARY KEY,
-                created_at INTEGER
-            );
-            CREATE TABLE IF NOT EXISTS comments_templates_seen(
-                thash TEXT PRIMARY KEY,
+            CREATE TABLE IF NOT EXISTS comments(
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                url TEXT,
+                handle TEXT,
+                lang TEXT,
+                comment TEXT,
+                style_sig TEXT,
                 created_at INTEGER
             );
             """
         )
+        conn.commit()
 
-def init_db() -> None:
-    def _safe():
-        try:
-            _do_init()
-        except sqlite3.OperationalError as e:
-            if "locked" in str(e).lower():
-                time.sleep(1.0)
-                _do_init()
-            else:
-                raise
-    _locked_init(_safe) if _HAS_FCNTL else _safe()
+# ===== Language detection (CJK-aware) =====
+_CJK_RE = re.compile(r"[\u4e00-\u9fff]")
+_JA_RE  = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff\uFF66-\uFF9D]")
+_KO_RE  = re.compile(r"[\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]")
 
-# ------------------------------------------------------------------------------
-# Light memory / OTP guards (anti-pattern, anti-repeat)
-# ------------------------------------------------------------------------------
-def now_ts() -> int:
-    return int(time.time())
+def detect_lang(tweet_lang_hint: str, text: str) -> str:
+    t = (text or "")
+    if _KO_RE.search(t): return "ko"
+    if _JA_RE.search(t): return "ja"
+    if _CJK_RE.search(t): return "zh"
+    hint = (tweet_lang_hint or "").lower()
+    if hint in {"zh", "zh-cn", "zh-tw", "ja", "ko"}:
+        return {"zh-cn": "zh", "zh-tw": "zh"}.get(hint, hint)
+    return "en"
 
-def sha256(s: str) -> str:
-    return hashlib.sha256(s.encode("utf-8")).hexdigest()
+# ===== Human-only filters =====
+# Emoji ranges (broad)
+EMOJI_RE = re.compile(
+    "["                       # start class
+    "\U0001F600-\U0001F64F"   # emoticons
+    "\U0001F300-\U0001F5FF"   # symbols & pictographs
+    "\U0001F680-\U0001F6FF"   # transport & map
+    "\U0001F1E0-\U0001F1FF"   # flags
+    "\U00002700-\U000027BF"   # dingbats
+    "\U0001F900-\U0001F9FF"
+    "\U0001FA70-\U0001FAFF"
+    "\U00002600-\U000026FF"
+    "]",
+    re.UNICODE,
+)
 
-def normalize_ws(s: str) -> str:
-    return re.sub(r"\s+", " ", (s or "")).strip()
+# Punctuation removal per language
+def strip_nonhuman(text: str, lang: str) -> str:
+    s = (text or "")
+    s = re.sub(r"https?://\S+", "", s)              # no links
+    s = EMOJI_RE.sub("", s)                         # no emoji
+    if lang in {"zh", "ja", "ko"}:
+        s = re.sub(r"[^\u4e00-\u9fff\u3040-\u30ff\u31f0-\u31ff\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\s]", "", s)
+        s = re.sub(r"\s+", "", s)                   # typical CJK: no spaces
+    else:
+        s = re.sub(r"[^A-Za-z0-9\s]", "", s)        # EN: only words and spaces
+        s = re.sub(r"\s+", " ", s).strip()
+    return s.strip()
 
-def _normalize_for_memory(text: str) -> str:
-    t = normalize_ws(text).lower()
-    t = re.sub(r"[^\w\s']+", " ", t)
-    return re.sub(r"\s+", " ", t).strip()
+# Blacklist of common AI-isms (lowercased)
+BLACKLIST_PHRASES = {
+    "as an ai",
+    "as a language model",
+    "as an ai language model",
+    "i cannot",
+    "i can not",
+    "i cant",
+    "i'm unable",
+    "i am unable",
+    "unable to",
+    "i apologize",
+    "sorry but",
+    "i'm sorry",
+    "assistant",
+    "chatgpt",
+    "openai",
+    "gpt",
+    "language model",
+    "knowledge cutoff",
+    "my training",
+    "training data",
+    "hallucinate",
+    "according to my training",
+    "i do not have access",
+    "i dont have access",
+    "ethical guidelines",
+    "cannot assist",
+    "cannot provide",
+    "not able to browse",
+    "as a bot",
+    "model response",
+    # stylistic AI-ish words (overformal)
+    "moreover", "furthermore", "thus", "therefore", "hence",
+    "in conclusion", "in summary", "delve", "utilize", "leverage",
+    "paradigm", "robust", "holistic", "synergy", "pipeline",
+}
 
-def comment_seen(text: str) -> bool:
-    norm = _normalize_for_memory(text)
-    if not norm:
-        return False
-    h = sha256(norm)
-    try:
-        with get_conn() as c:
-            return c.execute("SELECT 1 FROM comments_seen WHERE hash=? LIMIT 1", (h,)).fetchone() is not None
-    except Exception:
-        return False
+# Add extra blacklist via env (comma-separated)
+_extra = os.getenv("BLACKLIST_EXTRA", "")
+if _extra.strip():
+    for tok in _extra.split(","):
+        tok = tok.strip().lower()
+        if tok:
+            BLACKLIST_PHRASES.add(tok)
 
-def remember_comment(text: str, url: str = "", lang: Optional[str] = None) -> None:
-    try:
-        norm = _normalize_for_memory(text)
-        if not norm:
-            return
-        with get_conn() as c:
-            c.execute("INSERT OR IGNORE INTO comments_seen(hash, created_at) VALUES(?,?)", (sha256(norm), now_ts()))
-            c.execute("INSERT INTO comments(url, lang, text) VALUES (?,?,?)", (url, lang, text))
-    except Exception:
-        pass
-    try:
-        remember_ngrams(text)
-        remember_opener(_openers(text))
-    except Exception:
-        pass
-
-def _openers(text: str) -> str:
-    w = re.findall(r"[A-Za-z0-9']+", (text or "").lower())
-    return " ".join(w[:3])
-
-def _trigrams(text: str) -> List[str]:
-    w = re.findall(r"[A-Za-z0-9']+", (text or "").lower())
-    return [" ".join(w[i:i+3]) for i in range(len(w) - 2)]
-
-def opener_seen(opener: str) -> bool:
-    try:
-        with get_conn() as c:
-            return c.execute("SELECT 1 FROM comments_openers_seen WHERE opener=? LIMIT 1", (opener,)).fetchone() is not None
-    except Exception:
-        return False
-
-def remember_opener(opener: str) -> None:
-    try:
-        with get_conn() as c:
-            c.execute("INSERT OR IGNORE INTO comments_openers_seen(opener, created_at) VALUES (?,?)", (opener, now_ts()))
-    except Exception:
-        pass
-
-def trigram_overlap_bad(text: str, threshold: int = 2) -> bool:
-    grams = _trigrams(text)
-    if not grams:
-        return False
-    hits = 0
-    try:
-        with get_conn() as c:
-            for g in grams:
-                if c.execute("SELECT 1 FROM comments_ngrams_seen WHERE ngram=? LIMIT 1", (g,)).fetchone():
-                    hits += 1
-                    if hits >= threshold:
-                        return True
-    except Exception:
-        return False
-    return False
-
-def remember_ngrams(text: str) -> None:
-    grams = _trigrams(text)
-    if not grams:
-        return
-    try:
-        with get_conn() as c:
-            c.executemany(
-                "INSERT OR IGNORE INTO comments_ngrams_seen(ngram, created_at) VALUES (?,?)",
-                [(g, now_ts()) for g in grams],
-            )
-    except Exception:
-        pass
-
-def template_burned(tmpl: str) -> bool:
-    thash = sha256(tmpl)
-    try:
-        with get_conn() as c:
-            return c.execute("SELECT 1 FROM comments_templates_seen WHERE thash=? LIMIT 1", (thash,)).fetchone() is not None
-    except Exception:
-        return False
-
-def remember_template(tmpl: str) -> None:
-    try:
-        with get_conn() as c:
-            c.execute(
-                "INSERT OR IGNORE INTO comments_templates_seen(thash, created_at) VALUES (?,?)",
-                (sha256(tmpl), now_ts()),
-            )
-    except Exception:
-        pass
-
-def _word_trigrams(s: str) -> set:
-    w = re.findall(r"[A-Za-z0-9']+", s.lower())
-    return set(" ".join(w[i:i+3]) for i in range(max(0, len(w) - 2)))
-
-def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300) -> bool:
-    """Jaccard(word-3grams) vs last N comments to block paraphrase repeats."""
-    try:
-        with get_conn() as c:
-            rows = c.execute("SELECT text FROM comments ORDER BY id DESC LIMIT ?", (sample,)).fetchall()
-    except Exception:
-        return False
-    here = _word_trigrams(text)
-    if not here:
-        return False
-    for (t,) in rows:
-        there = _word_trigrams(t)
-        if not there:
-            continue
-        inter = len(here & there)
-        uni = len(here | there)
-        if uni and (inter / uni) >= threshold:
+def contains_blacklisted(text: str) -> bool:
+    s = (text or "").lower()
+    if not s: return False
+    # simple substring check for phrases
+    for p in BLACKLIST_PHRASES:
+        if p in s:
             return True
     return False
 
-# ------------------------------------------------------------------------------
-# CORS + Health
-# ------------------------------------------------------------------------------
+# ===== OTP rules & uniqueness =====
+OTP_RULES = {
+    "length": {"words_min": 6, "words_max": 13, "cjk_chars_min": 12, "cjk_chars_max": 28},
+    "style":  {"one_thought": True, "no_hashtags": True, "no_urls": True, "no_emojis_spam": True, "speak_human": True},
+    "diversity": {
+        "ban_reused_openers": True,
+        "ban_reused_last_bigram": True,
+        "ban_reused_punct_pattern": True,
+        "ban_same_after_normalize": True,
+    },
+}
+
+BUCKETS = {
+    "en": {
+        "agree": ["Fair point not gonna lie", "Yeah this tracks from my side", "I can get behind this take", "Honestly this lands pretty well", "Hard to argue with that framing"],
+        "pushback": ["I get it but missing key context", "Respectfully numbers suggest otherwise", "Not sure the premise fully holds", "I think this overstates the downside", "Counterpoint incentives drive the result"],
+        "curious": ["Curious how this scales in practice", "What happens under edge cases here", "Would love more detail on assumptions", "How does this compare historically", "What signal are we actually seeing"],
+        "personal": ["This lines up with my experience", "Seen similar outcomes on small teams", "Ive shipped with the same constraint", "We tried this results were mixed", "This improved things for us a ton"],
+        "praise": ["Clear framing seriously helpful thread", "Love the nuance you brought here", "Elegant summary thanks for sharing", "Solid synthesis saved me a read", "Concise and useful well done"],
+        "question": ["What would change your mind here", "Where would this approach break", "How do you measure success here", "What tradeoff are you accepting", "What risks are you discounting"],
+    },
+    "zh": {
+        "agree": ["确实有道理", "这个说法挺贴切", "思路很清晰", "很认同这个观点", "讲得挺到位"],
+        "pushback": ["但有点忽略背景", "数据可能不完全支持", "前提有待验证", "结论有点早", "风险被低估了"],
+        "curious": ["想看看实际落地", "细节还有哪些", "边界条件怎么处理", "历史上怎么做的", "数据口径是什么"],
+        "personal": ["和我实践类似", "团队也遇到过", "我们试过效果一般", "我们这么做提升明显", "跟我的经验相符"],
+        "praise": ["总结很到位", "表达很清楚", "信息量挺大", "很有启发", "思考很细致"],
+        "question": ["你会如何评估", "如果失败怎么办", "替代方案有吗", "成本如何量化", "关键假设是什么"],
+    },
+    "ja": {
+        "agree": ["たしかに筋が通ってる", "この視点はしっくりくる", "納得感がある話", "言い回しが絶妙", "整理がうまい"],
+        "pushback": ["前提がやや弱いかも", "背景の説明が足りない", "数字が追いついていない", "結論が早い気がする", "リスクが軽め"],
+        "curious": ["実運用でどう回るのか", "前提条件を知りたい", "比較の軸はどこか", "どこで崩れるのか", "成功指標は何か"],
+        "personal": ["自分の経験とも近い", "チームでも似た話があった", "試したが結果は微妙だった", "導入して改善した", "体感と合っている"],
+        "praise": ["要点がわかりやすい", "視野が広い整理", "示唆が多い", "学びが大きい", "良いまとめ"],
+        "question": ["何が転換点になる", "どの条件で破綻する", "成功の定義は何", "検証方法は何", "代替案はある"],
+    },
+    "ko": {
+        "agree": ["말이 꽤 설득력 있다", "이 관점은 꽤 맞는 듯", "맥락이 잘 잡혀 있다", "정리 깔끔해서 좋다", "이건 인정하게 된다"],
+        "pushback": ["배경 설명이 부족해 보임", "데이터가 아직 약한 듯", "결론이 조금 빠른 편", "리스크를 가볍게 봄", "전제가 애매한 느낌"],
+        "curious": ["실무에서 어떻게 굴릴지", "경계 조건은 어디인지", "비교 기준이 뭔지", "어디서부터 흔들리는지", "성공 지표는 뭔지"],
+        "personal": ["내 경험과도 비슷함", "팀에서도 비슷한 일 있었음", "해봤는데 결과는 애매했음", "도입하고 꽤 개선됨", "체감과 잘 맞음"],
+        "praise": ["핵심 정리가 좋다", "표현이 명료해서 좋다", "배울 점이 많다", "통찰이 인상적이다", "요약이 훌륭하다"],
+        "question": ["여기서 기준은 뭐지", "어떤 상황에선 깨질까", "검증은 어떻게 하지", "대안은 뭘로 보나", "가정은 무엇인가"],
+    },
+}
+
+FILLERS_EN = ["tbh","right now","in practice","for real","in context","from experience","in the wild","no fluff","genuinely"]
+
+WORD_RE = re.compile(r"[A-Za-z0-9]+(?:-[A-Za-z0-9]+)?")
+def _words_en(s:str): return WORD_RE.findall(s or "")
+
+def _punct_pattern(s:str) -> str:
+    return re.sub(r"[A-Za-z0-9\u4e00-\u9fff\u3040-\u30ff\u31f0-\u31ff\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\s]", "", s or "")
+
+def _last_bigram(s:str, lang:str) -> str:
+    if lang in {"zh","ja","ko"}:
+        t = re.sub(r"\s+","", s or "")
+        return t[-2:] if len(t)>=2 else t
+    ws = _words_en(s); return " ".join(ws[-2:]) if len(ws)>=2 else " ".join(ws)
+
+def _normalize_cmp(s:str)->str:
+    s = (s or "").strip().lower()
+    s = re.sub(r"[#@]\w+","", s); s = re.sub(r"https?://\S+","", s)
+    s = re.sub(r"[^\w\s\u4e00-\u9fff\u3040-\u30ff\u31f0-\u31ff\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF]","", s)
+    s = re.sub(r"\s+"," ", s).strip()
+    return s
+
+def _style_signature(text:str, lang:str)->str:
+    opener = (text.strip().split(" ",1)[0] if " " in text else text[:2]).lower()
+    pat = _punct_pattern(text); lb = _last_bigram(text, lang)
+    return hashlib.sha1(f"{lang}|{opener}|{pat}|{lb}".encode()).hexdigest()[:24]
+
+def _sha(text:str)->str: return hashlib.sha256((text or "").encode("utf-8")).hexdigest()
+def _now()->int: return int(time.time())
+def _is_cjk(lang:str)->bool: return lang in {"zh","ja","ko"}
+
+def enforce_length(text:str, lang:str)->Optional[str]:
+    t = (text or "").strip()
+    if not t: return None
+    if _is_cjk(lang):
+        t2 = re.sub(r"\s+","", t); n = len(t2)
+        mn, mx = OTP_RULES["length"]["cjk_chars_min"], OTP_RULES["length"]["cjk_chars_max"]
+        if n < mn:
+            add = ""  # no punctuation padding for CJK per rules
+            while n < mn and len(t2) < mx:
+                # pad with last char if absolutely needed (rare)
+                t2 += t2[-1] if t2 else "好"
+                n = len(t2)
+            t = t2
+        elif n > mx:
+            t = t2[:mx]
+        return t
+    ws = _words_en(t); mn, mx = OTP_RULES["length"]["words_min"], OTP_RULES["length"]["words_max"]
+    if len(ws) < mn:
+        while len(ws) < mn and len(ws)+1 <= mx:
+            ws.append(random.choice(FILLERS_EN))
+        t = " ".join(ws)
+    elif len(ws) > mx:
+        ws = ws[:mx]; t = " ".join(ws)
+    return t
+
+def sanitize_and_validate(text: str, lang: str) -> Optional[str]:
+    if not text: return None
+    s = strip_nonhuman(text, lang)
+    if not s: return None
+    if contains_blacklisted(s): return None
+    # hashtags or @mentions not possible now, but double-check
+    if "#" in s or "@" in s: return None
+    # enforce strict lengths after cleanup
+    s2 = enforce_length(s, lang) or ""
+    if not s2: return None
+    # final guard: ensure no punctuation or emoji slipped through
+    if EMOJI_RE.search(s2): return None
+    if lang in {"zh","ja","ko"}:
+        if re.search(r"[^\u4e00-\u9fff\u3040-\u30ff\u31f0-\u31ff\u1100-\u11FF\u3130-\u318F\uAC00-\uD7AF\s]", s2): return None
+        if len(re.sub(r"\s+","", s2)) < OTP_RULES["length"]["cjk_chars_min"]: return None
+    else:
+        if re.search(r"[^A-Za-z0-9\s]", s2): return None
+        wc = len(_words_en(s2))
+        if wc < OTP_RULES["length"]["words_min"] or wc > OTP_RULES["length"]["words_max"]: return None
+    return s2.strip()
+
+class OfflineGenerator:
+    def __init__(self, db_path:str): self.db_path = db_path
+    def _seen_text(self, text:str)->bool:
+        h = _sha(_normalize_cmp(text))
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.execute("SELECT 1 FROM comments_seen WHERE hash=?", (h,)).fetchone()
+            if c: return True
+            conn.execute("INSERT OR REPLACE INTO comments_seen(hash, created_at) VALUES(?,?)",(h,_now(),)); conn.commit()
+        return False
+    def _seen_sig(self, sig:str)->bool:
+        with sqlite3.connect(self.db_path) as conn:
+            c = conn.execute("SELECT 1 FROM style_signatures_seen WHERE sig=?", (sig,)).fetchone()
+            if c: return True
+            conn.execute("INSERT OR REPLACE INTO style_signatures_seen(sig, created_at) VALUES(?,?)",(sig,_now(),)); conn.commit()
+        return False
+    def _candidate(self, lang:str)->str:
+        table = BUCKETS.get(lang) or BUCKETS["en"]
+        bucket = random.choice(list(table.values())); base = random.choice(bucket)
+        return base.strip()
+    def _generate_unique(self, lang:str)->Optional[str]:
+        for _ in range(32):
+            c = self._candidate(lang)
+            c = sanitize_and_validate(c, lang) or ""
+            if not c: continue
+            sig = _style_signature(c, lang)
+            if not self._seen_sig(sig) and not self._seen_text(c): return c
+        return None
+    def two_comments(self, lang:str)->List[str]:
+        out: List[str] = []
+        # try to get two unique, clean comments
+        for _ in range(20):
+            c = self._generate_unique(lang)
+            if c and c not in out: out.append(c)
+            if len(out) == 2: break
+        # fallback to English if needed
+        while len(out) < 2:
+            c = self._generate_unique("en") or "Genuinely curious how this plays out"
+            c = sanitize_and_validate(c, "en") or c
+            out.append(c)
+        return out[:2]
+
+offline_gen = OfflineGenerator(DB_PATH)
+
+SYSTEM_PROMPT = (
+    "You write very short, natural human comments.\n"
+    "Rules:\n"
+    "1) Output exactly TWO comments as a JSON array of strings.\n"
+    "2) No hashtags, no links, no emoji, no punctuation at all.\n"
+    "3) One thought only, human tone, no boilerplate.\n"
+    "4) Keep them distinct from each other.\n"
+)
+
+def build_user_prompt(post_text: str, lang: str) -> str:
+    base = f"Post:\n{post_text.strip()}\n\n"
+    if lang in {"zh","ja","ko"}:
+        base += (
+            "Language: write in the post's native language (ZH/JA/KO accordingly).\n"
+            "Length: each comment 12–28 native characters.\n"
+            "Do not use punctuation or emoji, only characters and optional spaces.\n"
+        )
+    else:
+        base += (
+            "Language: English.\n"
+            "Length: each comment 6–13 words.\n"
+            "Do not use punctuation or emoji, only words and spaces.\n"
+        )
+    base += 'Return ONLY the JSON array, e.g., ["first comment","second comment"].'
+    return base
+
+def parse_json_list(text: str) -> Optional[List[str]]:
+    try:
+        m = re.search(r"\[[\s\S]*\]", text)
+        if not m: return None
+        data = json.loads(m.group(0))
+        if isinstance(data, list) and all(isinstance(x, str) for x in data):
+            return data
+    except Exception:
+        return None
+    return None
+
+def _clean_two(arr: List[str], lang: str) -> List[str]:
+    out: List[str] = []
+    for c in arr:
+        s = sanitize_and_validate(c, lang)
+        if s and s not in out:
+            out.append(s)
+        if len(out) == 2:
+            break
+    return out[:2]
+
+def provider_groq_two(text: str, lang: str) -> Optional[List[str]]:
+    if not USE_GROQ or not groq_client: return None
+    try:
+        resp = groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[{"role": "system", "content": SYSTEM_PROMPT},{"role": "user", "content": build_user_prompt(text, lang)}],
+            temperature=0.8, max_tokens=128,
+        )
+        content = (resp.choices[0].message.content or "").strip()
+        arr = parse_json_list(content) or []
+        two = _clean_two(arr, lang)
+        return two if len(two) == 2 else None
+    except Exception as e:
+        logger.warning("Groq failed: %s", e); return None
+
+def provider_openai_two(text: str, lang: str) -> Optional[List[str]]:
+    if not USE_OPENAI or not openai_client: return None
+    try:
+        resp = openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[{"role": "system", "content": SYSTEM_PROMPT},{"role": "user", "content": build_user_prompt(text, lang)}],
+            temperature=0.8, max_tokens=128,
+        )
+        content = (resp.choices[0].message.content or "").strip()
+        arr = parse_json_list(content) or []
+        two = _clean_two(arr, lang)
+        return two if len(two) == 2 else None
+    except Exception as e:
+        logger.warning("OpenAI failed: %s", e); return None
+
+def provider_gemini_two(text: str, lang: str) -> Optional[List[str]]:
+    if not USE_GEMINI or not gemini_model: return None
+    try:
+        resp = gemini_model.generate_content([{"text": SYSTEM_PROMPT},{"text": build_user_prompt(text, lang)}])
+        content = (resp.text or "").strip()
+        arr = parse_json_list(content) or []
+        two = _clean_two(arr, lang)
+        return two if len(two) == 2 else None
+    except Exception as e:
+        logger.warning("Gemini failed: %s", e); return None
+
+def gen_two_with_providers(text: str, lang: str) -> List[str]:
+    for fn in (provider_groq_two, provider_openai_two, provider_gemini_two):
+        arr = fn(text, lang)
+        if arr and len(arr) == 2:
+            return arr
+    return offline_gen.two_comments(lang)
+
 @app.after_request
-def add_cors_headers(response):
+def add_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
@@ -279,703 +493,124 @@ def add_cors_headers(response):
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "groq": bool(USE_GROQ)}), 200
+    return jsonify({"status":"ok","groq":bool(USE_GROQ)}), 200
 
-# ------------------------------------------------------------------------------
-# Rules: word count + sanitization
-# ------------------------------------------------------------------------------
-WORD_RE = re.compile(r"[A-Za-z0-9’']+(-[A-Za-z0-9’']+)?")
+@app.route("/ping", methods=["GET"])
+def ping(): return ("",204)
 
-def words(t: str) -> list[str]:
-    return WORD_RE.findall(t or "")
-
-def sanitize_comment(raw: str) -> str:
-    txt = re.sub(r"https?://\S+", "", raw or "")
-    txt = re.sub(r"[@#]\S+", "", txt)
-    txt = re.sub(r"\s+", " ", txt).strip()
-    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
-    return txt
-
-def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
-    txt = sanitize_comment(raw)
-    toks = words(txt)
-    if not toks:
-        return ""
-    if len(toks) > max_w:
-        toks = toks[:max_w]
-    while len(toks) < min_w:
-        for filler in ["honestly","tbh","still","though","right"]:
-            if len(toks) >= min_w: break
-            toks.append(filler)
-        if len(toks) < min_w: break
-    return " ".join(toks).strip()
-
-# ------------------------------------------------------------------------------
-# Topic / keywords (to keep comments context-aware, not templated)
-# ------------------------------------------------------------------------------
-EN_STOPWORDS = {
-    "the","a","an","and","or","but","to","in","on","of","for","with","at","from","by","about","as",
-    "into","like","through","after","over","between","out","against","during","without","before","under",
-    "around","among","is","are","be","am","was","were","it","its","that","this","so","very","really"
-}
-
-AI_BLOCKLIST = {
-    "amazing","awesome","incredible","empowering","game changer","game-changing","transformative",
-    "paradigm shift","as an ai","as a language model","in conclusion","in summary","furthermore","moreover",
-    "navigate this landscape","ever-evolving landscape","leverage this insight","cutting edge","state of the art",
-    "unprecedented","unleash","harness the power","embark on this journey","revolutionize","disruptive",
-    "bestie","like and retweet","thoughts?","agree?","who's with me","drop your thoughts","smash that like button",
-    "link in bio","in case you missed it","i think","i believe","great point","just saying","according to",
-    "to be honest","actually","literally","personally i think","my take","as someone who","at the end of the day",
-    "moving forward","synergy","circle back","bandwidth","double down","let that sink in","on so many levels","tbh",
-    "this resonates","food for thought","hit different"
-}
-
-STARTER_BLOCKLIST = {
-    "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
-    "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
-    "good to see the boring"
-}
-try:
-    EMOJI_PATTERN = re.compile(
-        r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
-        flags=re.UNICODE,
-    )
-except re.error:
-    EMOJI_PATTERN = re.compile(r"[\u2600-\u27BF]+", flags=re.UNICODE)
-
-def detect_topic(text: str) -> str:
-    t = (text or "").lower()
-    if any(k in t for k in ("gm ", "gn ", "good morning", "good night")):
-        return "greeting"
-    if any(k in t for k in ("airdrop", "whitelist", "wl spot", "mint is live")):
-        return "giveaway"
-    if any(k in t for k in ("chart", "support", "resistance", "ath", "price target", "%", "market cap", "mc")):
-        return "chart"
-    if any(k in t for k in ("bug", "issue", "broken", "down again", "wtf", "why is", "tired of")):
-        return "complaint"
-    if any(k in t for k in ("announcing", "announcement", "we're live", "we are live", "launching", "we shipped")):
-        return "announcement"
-    if any(k in t for k in ("meme", "shitpost", "ratioed", "memeing")) or "lol" in t:
-        return "meme"
-    if "🧵" in text or len(text) > 220:
-        return "thread"
-    if len(text) < 80:
-        return "one_liner"
-    return "generic"
-
-def is_crypto_tweet(text: str) -> bool:
-    t = (text or "").lower()
-    crypto_keywords = [
-        "crypto","defi","nft","airdrop","token","coin","chain","l1","l2","staking","yield",
-        "dex","cex","onchain","on-chain","gas fees","btc","eth","sol","arb","layer two","mainnet"
-    ]
-    return any(k in t for k in crypto_keywords) or bool(re.search(r"\$\w{2,8}", text or ""))
-
-def extract_keywords(text: str) -> list[str]:
-    cleaned = re.sub(r"https?://\S+", "", text or "")
-    cleaned = re.sub(r"[@#]\S+", "", cleaned)
-    tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9_\-]{2,}\b", cleaned)
-    if not tokens:
-        return []
-    filtered = [t for t in tokens if t.lower() not in EN_STOPWORDS and len(t) > 2] or tokens
-    counts = Counter([t.lower() for t in filtered])
-    seen, out = set(), []
-    for w in sorted(filtered, key=lambda w: (-counts[w.lower()], -len(w))):
-        lw = w.lower()
-        if lw not in seen:
-            seen.add(lw); out.append(w)
-    return out[:10]
-
-def pick_focus_token(tokens: List[str]) -> Optional[str]:
-    if not tokens:
-        return None
-    upperish = [t for t in tokens if t.isupper() or t[0].isupper()]
-    return random.choice(upperish) if upperish else random.choice(tokens)
-
-# ------------------------------------------------------------------------------
-# Variety buckets + combinator (keeps comments varied)
-# ------------------------------------------------------------------------------
-LEADINS = [
-    "short answer:","zooming out,","if you're weighing","plainly,","real talk:","on the math,",
-    "from experience,","quick take:","low key,","no fluff:","in practice,","gut check:",
-    "signal over noise:","nuts and bolts:","from the builder side,","first principles:"
-]
-CLAIMS = [
-    "{focus} is doing more work than the headline","{focus} is where the thesis tightens",
-    "{focus} is the part that moves things","{focus} is the practical hinge",
-    "{focus} is the constraint to solve","{focus} tells you the next step",
-    "it lives or dies on {focus}","risk mostly hides in {focus}",
-    "execution shows up as {focus}","watch how {focus} trends, not the hype",
-    "{focus} is the boring piece that decides outcomes","{focus} sets the real ceiling",
-    "{focus} is the bit with actual leverage","most errors start before {focus} is clear"
-]
-NUANCE = [
-    "separate it from optics","strip the hype and check it","ignore the noise and test it",
-    "details beat slogans here","context > theatrics","measure it in weeks, not likes",
-    "model it once and the picture clears","ship first, argue later","constraints explain the behavior",
-    "once {focus} holds, the plan is simple","touch grass and look at {focus}"
-]
-CLOSERS = [
-    "then the plan makes sense","and the whole picture clicks","and entries/exits get cleaner",
-    "and you avoid dumb errors","and the convo gets useful","and incentives line up",
-    "and the path forward writes itself","and the take stops being vibes-only"
-]
-
-def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
-    focus = pick_focus_token(key_tokens) or "this"
-    handle = ctx.get("handle")
-    author = ctx.get("author_name")
-    prefix = ""
-    r = random.random()
-    if handle and r < 0.25:
-        prefix = f"@{handle} "
-    elif author and r < 0.40:
-        prefix = f"{author.split()[0]}, "
-
-    mode = random.choice(["lead+claim", "claim+nuance", "claim+closer", "two"])
-    if mode == "lead+claim":
-        s = f"{random.choice(LEADINS)} {random.choice(CLAIMS).format(focus=focus)}"
-    elif mode == "claim+nuance":
-        s = f"{random.choice(CLAIMS).format(focus=focus)} — {random.choice(NUANCE).replace('{focus}', focus)}"
-    elif mode == "claim+closer":
-        s = f"{random.choice(CLAIMS).format(focus=focus)}, {random.choice(CLOSERS)}"
-    else:
-        a = random.choice(CLAIMS).format(focus=focus)
-        b = random.choice(NUANCE + CLOSERS)  # varied joiner
-        join = " — " if random.random() < 0.5 else ", "
-        s = a + join + b.replace("{focus}", focus)
-
-    out = normalize_ws(prefix + s)
-    out = re.sub(r"\s([,.;:?!])", r"\1", out)
-    out = re.sub(r"[.!?;:…]+$", "", out)
-    return out
-
-# ------------------------------------------------------------------------------
-# Offline generator (with OTP guards + 6–13 words enforcement)
-# ------------------------------------------------------------------------------
-class OfflineCommentGenerator:
-    def __init__(self) -> None:
-        self.random = random.Random()
-
-    def _violates_ai_blocklist(self, text: str) -> bool:
-        low = (text or "").lower()
-        if any(p in low for p in AI_BLOCKLIST): return True
-        if re.search(r"\b(so|very|really)\s+\1\b", low): return True
-        if len(re.findall(r"\.\.\.", text or "")) > 1: return True
-        if low.count("—") > 3: return True
-        return False
-
-    def _diversity_ok(self, text: str) -> bool:
-        if not text: return False
-        opener = _openers(text)
-        if any(opener.startswith(b) for b in STARTER_BLOCKLIST): return False
-        if opener_seen(opener): return False
-        if trigram_overlap_bad(text, threshold=2): return False
-        if too_similar_to_recent(text): return False
-        toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
-        novel = [t for t in toks if t not in EN_STOPWORDS and t not in {w.lower() for w in AI_BLOCKLIST}]
-        return len(set(novel)) >= 2
-
-    def _tidy_en(self, t: str) -> str:
-        t = re.sub(r"[^\x00-\x7F]+", "", t)  # strip emojis for EN
-        t = enforce_word_count_natural(t, 6, 13)
-        return t
-
-    def _native_buckets(self, script: str) -> List[str]:
-        f = "{focus}"
-        if script == "bn":
-            return [f"{f} নিয়ে সরাসরি কথা, বাড়তি হাইপ না",
-                    f"{f} ঠিক থাকলে বাকিটা মিলেই যায়",
-                    f"{f} ই ঠিক গেম বদলায়"]
-        if script == "hi":
-            return [f"{f} यहाँ असली काम दिखता है, शोर नहीं",
-                    f"{f} सही हो तो बाकी अपने आप सेट",
-                    f"{f} पर टिके रहो, बातें साफ़"]
-        if script == "ar":
-            return [f"{f} هو الجزء العملي بعيداً عن الضجيج",
-                    f"لو ركّزنا على {f} الصورة توضّح",
-                    f"{f} هنا يغيّر النتيجة فعلاً"]
-        return [f"{f} is the practical bit here",
-                f"keep eyes on {f}, rest follows",
-                f"{f} is where it turns real"]
-
-    def _make_native_comment(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
-        key = extract_keywords(text); focus = pick_focus_token(key) or "this"
-        buckets = self._native_buckets(ctx.get("script", "latn"))
-        last = ""
-        for _ in range(32):
-            out = normalize_ws(random.choice(buckets).format(focus=focus))
-            if self._violates_ai_blocklist(out): continue
-            if not self._diversity_ok(out): last = out; continue
-            if comment_seen(out): last = out; continue
-            remember_template(re.sub(r"\b\w+\b", "w", out)[:80])
-            remember_comment(out)
-            remember_opener(_openers(out))
-            remember_ngrams(out)
-            return enforce_word_count_natural(out, 6, 13)
-        return enforce_word_count_natural(last, 6, 13) if last else None
-
-    def _fixed_buckets(self, ctx: Dict[str, Any], topic: str, is_crypto: bool) -> Dict[str, List[str]]:
-        focus_slot = "{focus}"
-        name_pref = ""
-        if self.random.random() < 0.30:
-            if ctx.get("handle"): name_pref = f"@{ctx['handle']} "
-            elif ctx.get("author_name"): name_pref = f"{ctx['author_name'].split()[0]}, "
-        def P(s: str) -> str: return f"{name_pref}{s}"
-
-        react = [
-            P(f"{focus_slot} take actually feels grounded"),
-            P(f"Hard to disagree with this view on {focus_slot}"),
-            P(f"Have been nodding along reading about {focus_slot}"),
-            P(f"Kinda lines up with my experience of {focus_slot}"),
-            P(f"Nice to see someone phrase {focus_slot} this clearly"),
-        ]
-        convo = [
-            P(f"Curious where {focus_slot} goes if this plays out"),
-            P(f"Real conversation people have about {focus_slot}"),
-            P(f"Been hearing similar chats around {focus_slot} lately"),
-            P(f"Low key everyone is thinking this about {focus_slot}"),
-            P(f"Interested to hear more stories around {focus_slot}"),
-        ]
-        calm = [
-            P(f"Sensible breakdown of {focus_slot} without drama"),
-            P(f"Grounded walk through {focus_slot} step by step"),
-            P(f"Helps keep {focus_slot} in perspective over hype"),
-            P(f"Good reminder not to overreact to {focus_slot} stuff"),
-            P(f"Frames {focus_slot} without the usual noise"),
-        ]
-        vibe = [
-            P(f"{focus_slot} feels very timeline core right now"),
-            P(f"The vibe around {focus_slot} here is pretty real"),
-            P(f"This hits the everyday side of {focus_slot} nicely"),
-            P(f"Quietly one of the better posts on {focus_slot}"),
-        ]
-        nuance = [
-            P(f"Nuance around {focus_slot} helps more than takes"),
-            P(f"Not pushing an extreme angle on {focus_slot} actually helps"),
-            P(f"Good mix of context and restraint around {focus_slot}"),
-        ]
-        quick = [
-            P(f"Honestly this is how {focus_slot} tends to go"),
-            P(f"Kind of exactly what {focus_slot} looks like in practice"),
-            P(f"Hard not to recognise {focus_slot} in this"),
-        ]
-
-        buckets: Dict[str, List[str]] = {
-            "react": react, "conversation": convo, "calm": calm,
-            "vibe": vibe, "nuanced": nuance, "quick": quick,
-        }
-        if topic == "chart":
-            buckets["chart"] = [
-                P(f"Those levels on {focus_slot} line up with price memory"),
-                P(f"Risk/reward around {focus_slot} is laid out cleanly"),
-                P(f"Helps frame entries and exits around {focus_slot}"),
-            ]
-        elif topic == "meme":
-            buckets["meme"] = [
-                P(f"This is exactly how {focus_slot} feels some days"),
-                P(f"Can not unsee this version of {focus_slot} now"),
-                P(f"Joke lands because {focus_slot} is way too real"),
-            ]
-        elif topic == "complaint":
-            buckets["complaint"] = [
-                P(f"Totally fair to be burnt out by {focus_slot}"),
-                P(f"Nice to see someone admit {focus_slot} is exhausting"),
-                P(f"Feels like no one in charge understands {focus_slot}"),
-            ]
-        elif topic in ("announcement", "update"):
-            buckets["announcement"] = [
-                P(f"Ship first talk later energy around {focus_slot} is nice"),
-                P(f"Concrete steps on {focus_slot} beat teasers"),
-                P(f"Real update on {focus_slot} > vague roadmap"),
-            ]
-        elif topic == "thread":
-            buckets["thread"] = [
-                P(f"Thread layers context on {focus_slot} well"),
-                P(f"Bookmarking this as a reference for {focus_slot}"),
-                P(f"Clean structure makes {focus_slot} easy to follow"),
-            ]
-        elif topic == "one_liner":
-            buckets["one_liner"] = [
-                P(f"Blunt but fair on {focus_slot}"),
-                P(f"Straightforward way to frame {focus_slot} without fluff"),
-            ]
-        if is_crypto:
-            buckets["crypto"] = [
-                P(f"Onchain side of {focus_slot} finally getting discussed honestly"),
-                P(f"Nice blend of risk and conviction for {focus_slot} here"),
-                P(f"Better than the usual moon talk around {focus_slot}"),
-            ]
-        if self.random.random() < 0.5 and ctx.get("author_name"):
-            first = ctx["author_name"].split()[0]
-            buckets["author"] = [
-                P(f"{first} keeps a plain language angle on {focus_slot}"),
-                P(f"Trust {first} more on {focus_slot} after posts like this"),
-            ]
-        return buckets
-
-    def _english_candidate(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
-        topic = detect_topic(text); crypto = is_crypto_tweet(text); key = extract_keywords(text)
-        if random.random() < 0.6:
-            out = _combinator(ctx, key)
-        else:
-            buckets = self._fixed_buckets(ctx, topic, crypto)
-            kind = random.choice(list(buckets.keys()))
-            tmpl = random.choice(buckets[kind])
-            if template_burned(tmpl): return None
-            focus = pick_focus_token(key) or "this"
-            out = tmpl.format(focus=focus)
-        out = self._tidy_en(out)
-        return out or None
-
-    def _accept(self, line: str) -> bool:
-        if self._violates_ai_blocklist(line): return False
-        if not self._diversity_ok(line): return False
-        if comment_seen(line): return False
-        return True
-
-    def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
-        remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
-        remember_comment(line, url=url, lang=lang)
-        remember_opener(_openers(line))
-        remember_ngrams(line)
-
-    def generate_two(self, text: str, author: Optional[str], handle: Optional[str], lang_hint: Optional[str], url: str = "") -> List[Dict[str, Any]]:
-        # language profile
-        ctx = build_context_profile(text, url=url, tweet_author=author, handle=handle)
-        out: List[Dict[str, Any]] = []
-        non_en = ctx["script"] != "latn"
-
-        # if non-Latin, try to include one native + one EN
-        if non_en:
-            native = self._make_native_comment(text, ctx)
-            if native and self._accept(native):
-                native = enforce_word_count_natural(native, 6, 13)
-                self._commit(native, url=url, lang=ctx["script"])
-                out.append({"lang": ctx["script"], "text": native})
-
-        # fill with English until we have 2
-        tries = 0
-        while len(out) < 2 and tries < 80:
-            tries += 1
-            cand = self._english_candidate(text, ctx)
-            if not cand: continue
-            cand = enforce_word_count_natural(cand, 6, 13)
-            if not cand: continue
-            if any(cand.strip().lower() == c["text"].strip().lower() for c in out): continue
-            if self._accept(cand):
-                self._commit(cand, url=url, lang="en")
-                out.append({"lang": "en", "text": cand})
-
-        # hard guarantee two comments
-        if len(out) < 2:
-            out += [{"lang": "en", "text": enforce_word_count_natural(s, 6, 13)} for s in _rescue_two(text)]
-            out = [c for c in out if c["text"]][:2]
-
-        return out[:2]
-
-# Utilities used by the generator
-def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
-    text = (raw_text or "").strip()
-    if url and not handle:
-        try:
-            p = urlparse(url); segs = [s for s in p.path.split("/") if s]
-            if segs: handle = segs[0]
-        except Exception: pass
-    script = "latn"
-    blocks = [("bn", r"[\u0980-\u09FF]"), ("hi", r"[\u0900-\u097F]"), ("ar", r"[\u0600-\u06FF]"),
-              ("ta", r"[\u0B80-\u0BFF]"), ("te", r"[\u0C00-\u0C7F]"), ("ur", r"[\u0600-\u06FF]")]
-    text_no_urls = re.sub(r"https?://\S+", "", text)
-    total_letters = len(re.findall(r"[^\W\d_]", text_no_urls, flags=re.UNICODE))
-    for code, pat in blocks:
-        cnt = len(re.findall(pat, text_no_urls))
-        if total_letters and (cnt / max(1, total_letters)) >= 0.25:
-            script = code; break
-    return {"author_name": (tweet_author or "").strip() or None,
-            "handle": (handle or "").strip() or None,
-            "script": script}
-
-def _rescue_two(tweet_text: str) -> List[str]:
-    base = re.sub(r"https?://\S+|[@#]\S+", "", tweet_text or "").strip()
-    kw = (re.findall(r"[A-Za-z]{3,}", base) or ["this"])[0].lower()
-    a = enforce_word_count_natural(f"Fair point on {kw}, makes sense right now", 6, 13)
-    b = enforce_word_count_natural(f"Curious where {kw} goes next, watching closely", 6, 13)
-    if not a: a = "Makes sense right now honestly tbh still though right"
-    if not b: b = "Curious where this goes honestly tbh still though right"
-    return [a, b]
-
-def _extract_handle_from_url(url: str) -> Optional[str]:
+def parse_json_request() -> Dict[str, Any]:
     try:
-        m = re.search(r"https?://(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/([^/]+)/status/", url, re.I)
-        return m.group(1) if m else None
+        data = request.get_json(force=True, silent=False)
     except Exception:
-        return None
+        raise CrownTALKError("invalid_json", code="invalid_json")
+    if not isinstance(data, dict):
+        raise CrownTALKError("invalid_body", code="invalid_body")
+    return data
 
-generator = OfflineCommentGenerator()
-
-# --- Minimal helpers used by Groq path ---
-def words(text: str) -> list[str]:
-    return re.findall(r"[A-Za-z0-9']+", text or "")
-
-def _sanitize_comment(raw: str) -> str:
-    txt = re.sub(r"https?://\S+", "", raw or "")
-    txt = re.sub(r"[@#]\S+", "", txt)
-    txt = re.sub(r"\s+", " ", txt).strip()
-    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    txt = EMOJI_PATTERN.sub("", txt)
-    return txt
-
-def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
-    txt = _sanitize_comment(raw)
-    toks = words(txt)
-    if not toks:
-        return ""
-    if len(toks) > max_w:
-        toks = toks[:max_w]
-    fillers = ["honestly", "tbh", "still", "though", "right"]
-    i = 0
-    while len(toks) < min_w and i < len(fillers):
-        toks.append(fillers[i]); i += 1
-    out = " ".join(toks).strip()
-    if any(b in out.lower() for b in AI_BLOCKLIST):
-        out = " ".join([t for t in toks if t.lower() not in {"honestly", "tbh"}]) or out
-        out = out.strip()
-    return out
-
-def enforce_unique(candidates: list[str]) -> list[str]:
-    out: list[str] = []
-    for c in candidates:
-        c = enforce_word_count_natural(c)
-        if not c:
-            continue
-        if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
-            continue
-        if not comment_seen(c):
-            remember_comment(c); remember_opener(_openers(c)); remember_ngrams(c)
-            out.append(c)
-        else:
-            toks = words(c)
-            if len(toks) < 13:
-                alt = enforce_word_count_natural(c + " today")
-                if alt and not comment_seen(alt):
-                    remember_comment(alt); remember_opener(_openers(alt)); remember_ngrams(alt)
-                    out.append(alt)
-    return out
-
-def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
-    items = generator.generate_two(text, author or None, None, None)
-    en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
-    non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
-    result: list[str] = []
-    if en: result.append(en[0])
-    if len(en) >= 2: result.append(en[1])
-    elif non: result.append(non[0])
-    result = enforce_unique(result)
-    return result[:2]
-
-# ------------------------------------------------------------------------------
-# Groq generator (exactly 2, 6–13 words, tolerant parsing)
-# ------------------------------------------------------------------------------
-def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
-    if not (USE_GROQ and _groq_client):
-        raise RuntimeError("Groq disabled or client not available")
-
-    sys_prompt = (
-        "You write extremely short, human comments for social posts.\n"
-        "- Output exactly two comments.\n"
-        "- Each comment must be 6-13 words.\n"
-        "- Natural conversational tone, as if you just read the post.\n"
-        "- The two comments must have different vibes (e.g., supportive vs curious).\n"
-        "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
-        "- Avoid repetitive templates; vary syntax and rhythm.\n"
-        "- Prefer returning a pure JSON array of two strings, like: "
-        "[\"first comment\", \"second comment\"].\n"
-        "- If you cannot return JSON, return two lines separated by a newline.\n"
-    )
-
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
-
-    resp = None
-    for attempt in range(3):
-        try:
-            resp = _groq_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                n=1,
-                max_tokens=160,
-                temperature=0.8,
-            )
-            break
-        except Exception as e:
-            wait_secs = 0
-            try:
-                hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
-                ra = hdrs.get("Retry-After")
-                if ra:
-                    wait_secs = max(1, int(ra))
-            except Exception:
-                pass
-            msg = str(e).lower()
-            if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
-                wait_secs = 2 + attempt
-            if wait_secs:
-                time.sleep(wait_secs); continue
-            raise
-
-    if resp is None:
-        raise RuntimeError("Groq call failed after retries")
-
-    raw = (resp.choices[0].message.content or "").strip()
-
-    def _parse_two(raw_text: str) -> list[str]:
-        out: list[str] = []
-        try:
-            m = re.search(r"\[[\s\S]*\]", raw_text)
-            candidate = m.group(0) if m else raw_text
-            data = json.loads(candidate)
-            if isinstance(data, dict):
-                data = data.get("comments") or data.get("items") or data.get("data")
-            if isinstance(data, list):
-                out = [str(x).strip() for x in data if str(x).strip()]
-        except Exception:
-            out = []
-        if len(out) >= 2:
-            return out[:2]
-        quoted = re.findall(r'["“](.+?)["”]', raw_text)
-        if len(quoted) >= 2:
-            return [q.strip() for q in quoted[:2]]
-        parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|[-•*])\s*", raw_text)
-        parts = [p.strip() for p in parts if p and not p.isspace()]
-        parts = [p for p in parts if len(p.split()) >= 3]
-        if len(parts) >= 2:
-            return parts[:2]
-        lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
-        if len(lines) >= 2:
-            return lines[:2]
-        m2 = re.split(r"\s*[;|/\\]+\s*", raw_text)
-        if len(m2) >= 2:
-            return [m2[0].strip(), m2[1].strip()]
-        return []
-
-    candidates = _parse_two(raw)
-    candidates = [enforce_word_count_natural(c) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates)
-
-    if len(candidates) < 2:
-        sents = re.split(r"[.!?]\s+", raw)
-        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
-        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-        candidates = enforce_unique(candidates + sents[:2])
-
-    tries = 0
-    while len(candidates) < 2 and tries < 2:
-        tries += 1
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
-
-    if len(candidates) < 2:
-        raise RuntimeError("Could not produce two valid comments")
-
-    return candidates[:2]
-
-# ------------------------------------------------------------------------------
-# API routes (batching + pacing)
-# ------------------------------------------------------------------------------
-def chunked(seq, size):
-    size = max(1, int(size))
-    for i in range(0, len(seq), size):
-        yield seq[i:i+size]
+def make_comment_record(url: str, handle: str, lang: str, text: str) -> Dict[str, Any]:
+    sig = _style_signature(text, lang)
+    with sqlite3.connect(DB_PATH) as conn:
+        conn.execute("INSERT INTO comments(url,handle,lang,comment,style_sig,created_at) VALUES(?,?,?,?,?,?)",
+                     (url, handle, lang, text, sig, _now()))
+        conn.commit()
+    return {"lang": lang, "text": text}
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
-def comment_endpoint():
-    if request.method == "OPTIONS":
-        return ("", 204)
-
+def comment():
+    if request.method == "OPTIONS": return ("",204)
     try:
-        payload = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        return jsonify({"error": "Invalid JSON body", "code": "invalid_json"}), 400
+        data = parse_json_request()
+        urls_raw = data.get("urls") or ""
+        handle = (data.get("handle") or "").strip().lstrip("@")[:32]
+        urls = clean_and_normalize_urls(urls_raw)
+        if not urls: raise CrownTALKError("no_urls", code="no_urls")
 
-    urls = payload.get("urls")
-    if not isinstance(urls, list) or not urls:
-        return jsonify({"error": "Body must contain non-empty 'urls' array", "code": "bad_request"}), 400
+        results, failed = [], []
+        for i in range(0, len(urls), BATCH_SIZE):
+            batch = urls[i:i+BATCH_SIZE]
+            for url in batch:
+                try:
+                    t = fetch_tweet_data(url)
+                except CrownTALKError as e:
+                    failed.append({"url": url, "error": e.code}); continue
+                except Exception:
+                    logger.exception("fetch_tweet_data failed for %s", url)
+                    failed.append({"url": url, "error": "fetch_failed"}); continue
 
-    try:
-        cleaned = clean_and_normalize_urls(urls)
+                time.sleep(PER_URL_SLEEP)
+                tgt_lang = detect_lang(t.lang, t.text)
+
+                try:
+                    two = gen_two_with_providers(t.text, tgt_lang)
+                    # extra guard: sanitize again here
+                    clean_two = []
+                    for c in two:
+                        sc = sanitize_and_validate(c, tgt_lang)
+                        if sc: clean_two.append(sc)
+                    if len(clean_two) < 2:
+                        clean_two = offline_gen.two_comments(tgt_lang)
+                except Exception:
+                    logger.exception("generation failed for %s", url)
+                    clean_two = offline_gen.two_comments(tgt_lang)
+
+                comments_payload = [make_comment_record(url, t.handle or "", tgt_lang, c) for c in clean_two[:2]]
+
+                results.append({
+                    "url": url,
+                    "handle": t.handle or "",
+                    "lang": tgt_lang,
+                    "author_name": t.author_name or "",
+                    "comments": comments_payload,
+                })
+
+        return jsonify({"results": results, "failed": failed}), 200
+
     except CrownTALKError as e:
         return jsonify({"error": str(e), "code": e.code}), 400
     except Exception:
-        return jsonify({"error": "url_clean_error", "code": "url_clean_error"}), 400
+        logger.exception("Unhandled error during /comment")
+        return jsonify({"error": "internal_error", "code": "internal_error"}), 500
 
-    results, failed = [], []
-    for batch in chunked(cleaned, BATCH_SIZE):
-        for url in batch:
-            try:
-                t = fetch_tweet_data(url)
-                handle = _extract_handle_from_url(url)
-
-                if USE_GROQ and _groq_client:
-                    try:
-                        two = [{"lang": "en", "text": c} for c in groq_two_comments(t.text, t.author_name or None)]
-                    except Exception as sub_err:
-                        logger.warning("Groq failed for %s: %s — falling back to offline", url, sub_err)
-                        two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
-                else:
-                    two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
-
-                results.append({"url": url, "comments": two})
-            except CrownTALKError as e:
-                failed.append({"url": url, "reason": str(e), "code": e.code})
-            except Exception:
-                logger.exception("Unhandled error %s", url)
-                failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
-            time.sleep(PER_URL_SLEEP)  # <- spacing per URL to avoid spikes
-
-    return jsonify({"results": results, "failed": failed}), 200
-
-@app.route("/reroll", methods=["POST", "OPTIONS"])
-def reroll_endpoint():
-    if request.method == "OPTIONS":
-        return ("", 204)
+@app.route("/reroll", methods=["POST"])
+def reroll():
     try:
-        data = request.get_json(force=True, silent=True) or {}
-        url = data.get("url") or ""
-        if not url:
-            return jsonify({"error": "Missing 'url' field", "comments": [], "code": "bad_request"}), 400
+        data = parse_json_request()
+        url = (data.get("url") or "").strip()
+        handle = (data.get("handle") or "").strip().lstrip("@")[:32]
+        if not url: raise CrownTALKError("no_url", code="no_url")
 
-        t = fetch_tweet_data(url)
-        handle = _extract_handle_from_url(url)
+        try:
+            t = fetch_tweet_data(url)
+        except CrownTALKError as e:
+            return jsonify({"url": url, "error": e.code, "comments": []}), 502
+        except Exception:
+            logger.exception("fetch_tweet_data failed for %s", url)
+            return jsonify({"url": url, "error": "fetch_failed", "comments": []}), 502
 
-        if USE_GROQ and _groq_client:
-            try:
-                two = [{"lang": "en", "text": c} for c in groq_two_comments(t.text, t.author_name or None)]
-            except Exception as sub_err:
-                logger.warning("Groq reroll failed for %s: %s — falling back", url, sub_err)
-                two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
-        else:
-            two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
+        tgt_lang = detect_lang(t.lang, t.text)
+        try:
+            arr = gen_two_with_providers(t.text, tgt_lang)
+            clean_two = []
+            for c in arr:
+                sc = sanitize_and_validate(c, tgt_lang)
+                if sc: clean_two.append(sc)
+            if len(clean_two) < 2:
+                clean_two = offline_gen.two_comments(tgt_lang)
+        except Exception:
+            logger.exception("reroll generation failed for %s", url)
+            clean_two = offline_gen.two_comments(tgt_lang)
 
-        return jsonify({"url": url, "comments": two}), 200
+        comments = [make_comment_record(url, t.handle or "", tgt_lang, c) for c in clean_two[:2]]
+        return jsonify({"url": url, "comments": comments}), 200
+
     except CrownTALKError as e:
         return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
     except Exception:
         logger.exception("Unhandled error during reroll for %s", url)
         return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
 
-# ------------------------------------------------------------------------------
-# Boot
-# ------------------------------------------------------------------------------
 def main() -> None:
     init_db()
-    # threading.Thread(target=keep_alive, daemon=True).start()  # optional
     app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
