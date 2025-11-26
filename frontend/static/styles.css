@@ -2060,32 +2060,16 @@ body.low-motion.is-generating #progressBarFill::before{
 }
 
 /* =========================================
-   CrownTALK – Premium micro FX patch (x6)
+   CrownTALK – Premium micro FX patch (no live halo)
    ========================================= */
 
-/* 1) Generate button – live halo while generating */
-body.is-generating .btn{
-  position: relative;
-  box-shadow:
-    0 0 0 1px rgba(var(--btn-glow), .35),
-    0 0 18px rgba(var(--btn-glow), .55),
-    0 0 36px rgba(var(--btn-glow), .25);
+/* 1) Card type accent strip: Results / Failed / History */
+.card-results,
+.card-failed,
+.card-history{
+  position: relative; /* ensure the strip anchors correctly */
 }
 
-@media (pointer: fine) and (prefers-reduced-motion: no-preference){
-  body.is-generating .btn{
-    animation: ct-btn-breathe 2.4s ease-in-out infinite;
-  }
-}
-
-@keyframes ct-btn-breathe{
-  0%   { transform: translateY(0) scale(1); }
-  50%  { transform: translateY(-1px) scale(1.02); }
-  100% { transform: translateY(0) scale(1); }
-}
-
-
-/* 2) Card type accent strip: Results / Failed / History */
 .card-results::before,
 .card-failed::before,
 .card-history::before{
@@ -2124,7 +2108,7 @@ body.is-generating .btn{
 }
 
 
-/* 3) Comment line hover highlight (desktop only) */
+/* 2) Comment line hover highlight (desktop only) */
 @media (pointer: fine){
   .comment-line{
     transition:
@@ -2149,7 +2133,7 @@ body.is-generating .btn{
 }
 
 
-/* 4) History row soft badge */
+/* 3) History row soft badge */
 .history-item{
   position: relative;
 }
@@ -2179,7 +2163,7 @@ body.is-generating .btn{
 }
 
 
-/* 5) Footer CrownDEX link shimmer (desktop, low-motion only) */
+/* 4) Footer CrownDEX link shimmer (desktop, low-motion only) */
 @media (pointer: fine) and (prefers-reduced-motion: no-preference){
   .footer a{
     position: relative;
@@ -2200,7 +2184,7 @@ body.is-generating .btn{
       rgba(var(--btn-glow), .9) 60%,
       transparent 100%
     );
-    opacity:.0;
+    opacity:0;
     pointer-events:none;
     transform: translateX(-20%);
     animation: ct-footer-link-sheen 9s ease-in-out infinite;
@@ -2215,7 +2199,7 @@ body.is-generating .btn{
 }
 
 
-/* 6) Skeleton heartbeat while generating (desktop only) */
+/* 5) Skeleton heartbeat while generating (desktop only) */
 @media (pointer: fine) and (prefers-reduced-motion: no-preference){
   body.is-generating .tweet-skeleton{
     /* keep shimmer + add soft pulse */
@@ -2229,4 +2213,229 @@ body.is-generating .btn{
   0%   { opacity: .92; }
   50%  { opacity: 1; }
   100% { opacity: .92; }
+}
+
+
+/* 6) Theme dot subtle premium glow (very light, no extra lag) */
+.theme-dot.is-active{
+  box-shadow:
+    0 0 0 4px rgba(var(--glow), .12),
+    0 0 16px rgba(var(--glow), .35);
+}
+
+/* tiny “breathing” only on desktop + full motion */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .theme-dot.is-active{
+    animation: ct-theme-dot-breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes ct-theme-dot-breathe{
+    0%   { transform: translateY(0) scale(1); }
+    50%  { transform: translateY(-1px) scale(1.03); }
+    100% { transform: translateY(0) scale(1); }
+  }
+}
+
+
+/* 7) Tweet card hover lift (desktop only) */
+@media (pointer: fine){
+  .tweet{
+    transition:
+      transform .12s ease,
+      box-shadow .16s ease,
+      border-color .16s ease,
+      background .16s ease;
+  }
+
+  .tweet:hover{
+    transform: translateY(-2px);
+    border-color: rgba(148,163,184,.6);
+    background: radial-gradient(
+        circle at 0% 0%,
+        rgba(255,255,255,.06),
+        transparent 55%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(15,23,42,.98),
+        rgba(15,23,42,.86)
+      );
+    box-shadow:
+      0 10px 22px rgba(0,0,0,.8);
+  }
+}
+
+
+/* =========================================
+   CrownTALK – Premium micro-upgrades + status chip
+   ========================================= */
+
+/* 1) Textarea polish */
+.url-textarea{
+  transition:
+    border-color .18s ease,
+    box-shadow .22s ease,
+    background .22s ease;
+}
+
+/* hover only on pointer devices */
+@media (pointer: fine){
+  .url-textarea:not(:focus):hover{
+    border-color: rgba(148,163,184,.85);
+    background: radial-gradient(circle at 0% 0%,
+        rgba(148,163,184,.12),
+        rgba(9,17,35,.92) 55%
+      );
+    box-shadow:
+      0 10px 26px rgba(6,12,24,.5),
+      0 0 0 1px rgba(15,23,42,1);
+  }
+}
+
+/* while generating: calm accent trim, no animation */
+body.is-generating .url-textarea{
+  border-color: var(--accent-soft-strong);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 12px 30px rgba(0,0,0,.85);
+}
+
+
+/* 2) Copy buttons – small hover feedback (no layout shift) */
+.copy-btn,
+.copy-btn-en,
+.history-copy-btn{
+  transition:
+    background-color .16s ease,
+    box-shadow .18s ease,
+    transform .10s ease;
+}
+
+.copy-btn:hover,
+.copy-btn-en:hover,
+.history-copy-btn:hover{
+  background-color: #e6eefb;
+  box-shadow:
+    0 4px 10px rgba(15,23,42,.45);
+  transform: translateY(-1px);
+}
+
+/* keep pressed feeling consistent */
+.copy-btn:active,
+.copy-btn-en:active,
+.history-copy-btn:active{
+  transform: translateY(0);
+  box-shadow:
+    0 1px 4px rgba(15,23,42,.6);
+}
+
+
+/* 3) Reroll button – refined hover (desktop only) */
+@media (pointer: fine){
+  .reroll-btn{
+    transition:
+      outline-color .22s ease,
+      transform .12s ease,
+      filter .16s ease;
+  }
+
+  .reroll-btn:hover{
+    transform: translateY(-1px);
+    filter: drop-shadow(0 8px 18px rgba(var(--reroll-secondary), .55));
+  }
+
+  .reroll-btn:active{
+    transform: translateY(1px);
+    filter: none;
+  }
+}
+
+
+/* 4) Keyboard focus ring – subtle but clear */
+button:focus-visible,
+.theme-dot:focus-visible,
+.url-textarea:focus-visible,
+.footer a:focus-visible{
+  outline: 2px solid rgba(var(--btn-glow), .9);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 0 0 4px rgba(var(--btn-glow), .35);
+}
+
+
+/* 5) Progress row + status chip (READY / GENERATING) */
+.progress-row{
+  gap: 6px;
+}
+
+/* turn .helper-text into a small status pill */
+.helper-text{
+  align-self: flex-start;
+  position: relative;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 3px 10px;
+  border-radius: 999px;
+
+  background: rgba(15,23,42,.96);
+  border: 1px solid rgba(148,163,184,.65);
+
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+
+  /* hide original text visually but keep it in DOM */
+  color: transparent;
+
+  gap: 6px;
+  overflow: hidden;
+
+  transition:
+    background .18s ease,
+    border-color .18s ease,
+    box-shadow .18s ease,
+    color .18s ease,
+    opacity .15s ease;
+}
+
+/* label text */
+.helper-text::before{
+  content: "Ready";
+  color: var(--text-muted);
+}
+
+/* tiny status dot */
+.helper-text::after{
+  content:"";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34,197,94,.9);
+}
+
+/* generating state – warm accent */
+body.is-generating .helper-text{
+  background: radial-gradient(
+    circle at 0% 0%,
+    rgba(129,140,248,.22),
+    rgba(15,23,42,.98) 70%
+  );
+  border-color: var(--accent-soft-strong);
+  box-shadow:
+    0 6px 16px rgba(0,0,0,.85);
+}
+
+body.is-generating .helper-text::before{
+  content: "Generating";
+  color: var(--accent);
+}
+
+body.is-generating .helper-text::after{
+  background: #f97316;
+  box-shadow: 0 0 10px rgba(249,115,22,.9);
 }
