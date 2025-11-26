@@ -125,6 +125,12 @@ def init_db() -> None:
         )
         conn.commit()
 
+# === NEW: ensure DB exists when running under Gunicorn import ===
+try:
+    init_db()
+except Exception as e:
+    logger.exception("DB init failed on import: %s", e)
+
 # -------- Language detection --------
 _CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 _JA_RE  = re.compile(r"[\u3040-\u30ff\u31f0-\u31ff\uFF66-\uFF9D]")
@@ -451,6 +457,14 @@ def add_headers(response):
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-CT-Key"
     return response
+
+# === NEW: safety net when the first HTTP request arrives ===
+@app.before_first_request
+def _ensure_db_before_first_request():
+    try:
+        init_db()
+    except Exception as e:
+        logger.exception("DB init failed before first request: %s", e)
 
 # -------- Routes --------
 @app.route("/", methods=["GET"])
