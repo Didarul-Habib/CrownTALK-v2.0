@@ -2058,3 +2058,175 @@ body.low-motion.is-generating #progressBarFill::before{
     animation: none !important;
   }
 }
+
+/* =========================================
+   CrownTALK – Premium micro FX patch (x6)
+   ========================================= */
+
+/* 1) Generate button – live halo while generating */
+body.is-generating .btn{
+  position: relative;
+  box-shadow:
+    0 0 0 1px rgba(var(--btn-glow), .35),
+    0 0 18px rgba(var(--btn-glow), .55),
+    0 0 36px rgba(var(--btn-glow), .25);
+}
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  body.is-generating .btn{
+    animation: ct-btn-breathe 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes ct-btn-breathe{
+  0%   { transform: translateY(0) scale(1); }
+  50%  { transform: translateY(-1px) scale(1.02); }
+  100% { transform: translateY(0) scale(1); }
+}
+
+
+/* 2) Card type accent strip: Results / Failed / History */
+.card-results::before,
+.card-failed::before,
+.card-history::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:10px;
+  bottom:10px;
+  width:3px;
+  border-radius:999px;
+  opacity:.9;
+  pointer-events:none;
+}
+
+/* subtle colours per type */
+.card-results::before{
+  background: linear-gradient(
+    180deg,
+    rgba(56,189,248,.9),
+    rgba(129,140,248,.95)
+  );
+}
+.card-failed::before{
+  background: linear-gradient(
+    180deg,
+    rgba(248,113,113,.95),
+    rgba(185,28,28,.95)
+  );
+}
+.card-history::before{
+  background: linear-gradient(
+    180deg,
+    rgba(45,212,191,.9),
+    rgba(148,163,184,.9)
+  );
+}
+
+
+/* 3) Comment line hover highlight (desktop only) */
+@media (pointer: fine){
+  .comment-line{
+    transition:
+      transform .12s ease,
+      box-shadow .16s ease,
+      border-color .16s ease,
+      background .16s ease;
+  }
+
+  .comment-line:hover{
+    transform: translateY(-1px);
+    border-color: var(--accent-soft-strong);
+    background: linear-gradient(
+      90deg,
+      rgba(148,163,184,.22),
+      rgba(15,23,42,.95)
+    );
+    box-shadow:
+      0 0 0 1px rgba(148,163,184,.45),
+      0 8px 18px rgba(0,0,0,.6);
+  }
+}
+
+
+/* 4) History row soft badge */
+.history-item{
+  position: relative;
+}
+
+.history-item::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:50%;
+  transform: translateY(-50%);
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background: radial-gradient(
+    circle,
+    var(--accent) 0,
+    rgba(148,163,184,1) 60%,
+    transparent 100%
+  );
+  opacity:.9;
+  pointer-events:none;
+}
+
+/* keep text shifted a bit so dot doesn’t overlap */
+.history-text{
+  padding-left: 6px;
+}
+
+
+/* 5) Footer CrownDEX link shimmer (desktop, low-motion only) */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .footer a{
+    position: relative;
+    overflow: hidden;
+  }
+
+  .footer a::before{
+    content:"";
+    position:absolute;
+    top:0;
+    bottom:0;
+    left:-40%;
+    width:40%;
+    background: linear-gradient(
+      115deg,
+      transparent 0%,
+      rgba(255,255,255,.65) 45%,
+      rgba(var(--btn-glow), .9) 60%,
+      transparent 100%
+    );
+    opacity:.0;
+    pointer-events:none;
+    transform: translateX(-20%);
+    animation: ct-footer-link-sheen 9s ease-in-out infinite;
+  }
+
+  @keyframes ct-footer-link-sheen{
+    0%   { transform: translateX(-40%); opacity: 0; }
+    8%   { opacity: .9; }
+    18%  { transform: translateX(140%); opacity: 0; }
+    100% { transform: translateX(140%); opacity: 0; }
+  }
+}
+
+
+/* 6) Skeleton heartbeat while generating (desktop only) */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  body.is-generating .tweet-skeleton{
+    /* keep shimmer + add soft pulse */
+    animation:
+      shimmer 1.3s linear infinite,
+      ct-skeleton-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes ct-skeleton-pulse{
+  0%   { opacity: .92; }
+  50%  { opacity: 1; }
+  100% { opacity: .92; }
+}
