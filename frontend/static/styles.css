@@ -1385,39 +1385,45 @@ body:not(.is-generating) #progressBarFill::before{
 
 
 /* =====================================
-   CrownTALK – Desktop “zoomed-out” scale +
-   extra mobile perf trims
+   CrownTALK – Desktop viewport fit tweak
+   (make 100% feel closer to your 75% view)
    ===================================== */
 
-/* big monitors: gently scale the whole app like browser zoom ~90% */
-@media (min-width: 1440px) and (min-height: 900px){
+/* 1) Slightly stronger global scale on big screens */
+@media (min-width: 1366px) and (min-height: 800px){
   body{
-    padding-top: 10px;
-    padding-bottom: 10px;
+    padding-top: 8px;
+    padding-bottom: 8px;
   }
+
   .app-shell{
-    transform: scale(.9);
+    transform: scale(.85);          /* was .90 – shrink a bit more */
     transform-origin: top center;
   }
 }
 
-/* phones/tablets: strip some decorative effects to reduce lag */
-@media (max-width: 768px){
-  /* kill orbit ring entirely on mobile – gradients stay, less GPU */
-  .card::after{
-    display: none;
-  }
-
-  /* also stop the theme-dot orbit animation (still looks good static) */
-  .theme-dot.is-active::after{
-    animation: none;
-  }
+/* 2) Trim card heights a bit so more fits vertically */
+.card-input{
+  min-height: 170px;                /* was 200px */
 }
 
-/* ultra tiny phones: remove parallax glow layers too */
-@media (max-width: 480px){
-  .hero-orbit::before,
-  .hero-orbit::after{
-    display: none;
-  }
+.card-results{
+  min-height: 170px;                /* was 200px */
+}
+
+.card-failed{
+  min-height: 70px;                 /* was 84px */
+}
+
+.card-history{
+  min-height: 100px;                /* was 120px */
+}
+
+/* 3) Shave a little vertical spacing between cards + footer */
+.main{
+  row-gap: 14px;                    /* was 18px */
+}
+
+.footer{
+  margin-top: 12px;                 /* was 18px */
 }
