@@ -1,32 +1,30 @@
 # ===== Base =====
 FROM python:3.11-slim
 
-# Faster, cleaner Python
+# Fast, clean Python
 ENV PYTHONDONTWRITEBYTECODE=1 \
     PYTHONUNBUFFERED=1 \
     PIP_NO_CACHE_DIR=1
 
-# System deps (minimal)
+# Minimal OS deps
 RUN apt-get update && apt-get install -y --no-install-recommends \
     ca-certificates \
  && rm -rf /var/lib/apt/lists/*
 
 WORKDIR /app
 
-# Install Python deps first (better layer caching)
+# Install Python deps first (better layer cache)
 COPY requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# Copy app source
-COPY main.py utils.py gunicorn_config.py /app/
-COPY static /app/static
-COPY index.html /app/index.html
+# Copy the whole project (frontend + backend)
+COPY . /app
 
-# Create non-root user
+# Create non-root user and fix ownership
 RUN useradd -m appuser && chown -R appuser:appuser /app
 USER appuser
 
-# Render sets $PORT; default to 10000 for local runs
+# Port + runtime settings
 ENV PORT=10000
 EXPOSE 10000
 
