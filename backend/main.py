@@ -142,7 +142,7 @@ def detect_lang(tweet_lang_hint: str, text: str) -> str:
 
 # -------- Human-only filters --------
 EMOJI_RE = re.compile(
-    "["                       # emoji ranges
+    "["
     "\U0001F600-\U0001F64F"
     "\U0001F300-\U0001F5FF"
     "\U0001F680-\U0001F6FF"
@@ -540,8 +540,14 @@ def reroll():
     if guard: return guard
     try:
         data = parse_json_request()
-        url = (data.get("url") or "").strip()
-        if not url: raise CrownTALKError("no_url", code="no_url")
+        original_url = (data.get("url") or "").strip()
+        if not original_url: raise CrownTALKError("no_url", code="no_url")
+
+        # Normalize so response shows the clean URL (no ?query)
+        norm_list = clean_and_normalize_urls([original_url])
+        if not norm_list:
+            return jsonify({"url": original_url, "error": "no_valid_url", "comments": []}), 400
+        url = norm_list[0]
 
         try:
             t = fetch_tweet_data(url)
@@ -568,10 +574,10 @@ def reroll():
         return jsonify({"url": url, "comments": comments}), 200
 
     except CrownTALKError as e:
-        return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
+        return jsonify({"url": original_url, "error": str(e), "comments": [], "code": e.code}), 502
     except Exception:
-        logger.exception("Unhandled error during reroll for %s", url)
-        return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
+        logger.exception("Unhandled error during reroll for %s", original_url)
+        return jsonify({"url": original_url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
 
 def main() -> None:
     init_db()
