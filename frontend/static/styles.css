@@ -1213,7 +1213,7 @@ body:not(.is-generating) #progressBarFill::before{
     background .16s ease,
     border-color .16s ease,
     color .16s ease,
-    opacity .15s ease;
+    opacity .15s.ease;
 }
 
 /* top gloss like a real key surface */
@@ -1231,21 +1231,21 @@ body:not(.is-generating) #progressBarFill::before{
   pointer-events: none;
 }
 
-/* label text (since we’re not using the icon) */
+/* label text */
 #clearBtn.btn-secondary.subtle::after{
   content: "CLEAR";
   position: relative;
   z-index: 1;
 }
 
-/* completely hide the old trash SVG so no lid/body shows */
+/* hide old trash SVG */
 #clearBtn .svgIcon,
 #clearBtn .bin-top,
 #clearBtn .bin-bottom{
   display: none !important;
 }
 
-/* HOVER: brighter edge & top, slight pop */
+/* hover */
 #clearBtn.btn-secondary.subtle:hover{
   background:
     radial-gradient(circle at 20% 0%, rgba(255,255,255,.26), transparent 65%),
@@ -1260,7 +1260,7 @@ body:not(.is-generating) #progressBarFill::before{
     0 10px 20px rgba(0,0,0,.8);
 }
 
-/* PRESSED: key goes “down” */
+/* pressed */
 #clearBtn.btn-secondary.subtle:active{
   transform: translateY(2px);
   box-shadow:
@@ -1268,7 +1268,7 @@ body:not(.is-generating) #progressBarFill::before{
     0 4px 10px rgba(0,0,0,.85);
 }
 
-/* MOBILE: keep it tighter on small screens */
+/* MOBILE clear */
 @media (max-width: 480px){
   #clearBtn.btn-secondary.subtle{
     min-width: 72px;
@@ -1278,7 +1278,7 @@ body:not(.is-generating) #progressBarFill::before{
   }
 }
 
-/* More breathing room between the action buttons */
+/* more breathing room between action buttons */
 .controls{
   gap: 16px;
 }
@@ -1313,14 +1313,12 @@ body:not(.is-generating) #progressBarFill::before{
   align-items: center;
   justify-content: center;
 
-  /* keep your “CANCEL” vibe */
   font-size: 11px;
   font-weight: 700;
   letter-spacing: .14em;
   text-transform: uppercase;
   color: #fef2f2;
 
-  /* 3D key shadow */
   box-shadow:
     0 3px 0 rgba(127,29,29,.95),
     0 8px 16px rgba(0,0,0,.75);
@@ -1330,14 +1328,14 @@ body:not(.is-generating) #progressBarFill::before{
 
   transition:
     transform .12s ease,
-    box-shadow .14s ease,
-    background .18s ease,
-    border-color .18s ease,
-    color .18s ease,
-    opacity .15s ease;
+    box-shadow .14s.ease,
+    background .18s.ease,
+    border-color .18s.ease,
+    color .18s.ease,
+    opacity .15s.ease;
 }
 
-/* glossy highlight strip on top face */
+/* glossy highlight strip */
 #cancelBtn.btn-secondary::before{
   content: "";
   position: absolute;
@@ -1352,7 +1350,7 @@ body:not(.is-generating) #progressBarFill::before{
   pointer-events: none;
 }
 
-/* HOVER – brighter, more “alert”, a bit of glow */
+/* hover */
 #cancelBtn.btn-secondary:hover:not(:disabled){
   background:
     radial-gradient(circle at 18% 0%, rgba(255,255,255,.4), transparent 60%),
@@ -1368,7 +1366,7 @@ body:not(.is-generating) #progressBarFill::before{
   color: #fff;
 }
 
-/* ACTIVE – pressed key effect */
+/* active */
 #cancelBtn.btn-secondary:active{
   transform: translateY(2px);
   box-shadow:
@@ -1376,7 +1374,7 @@ body:not(.is-generating) #progressBarFill::before{
     0 4px 10px rgba(0,0,0,.8);
 }
 
-/* DISABLED – softer, less alarming */
+/* disabled */
 #cancelBtn.btn-secondary:disabled{
   opacity: .55;
   cursor: default;
@@ -1385,3 +1383,41 @@ body:not(.is-generating) #progressBarFill::before{
     0 4px 8px rgba(0,0,0,.6);
 }
 
+
+/* =====================================
+   CrownTALK – Desktop “zoomed-out” scale +
+   extra mobile perf trims
+   ===================================== */
+
+/* big monitors: gently scale the whole app like browser zoom ~90% */
+@media (min-width: 1440px) and (min-height: 900px){
+  body{
+    padding-top: 10px;
+    padding-bottom: 10px;
+  }
+  .app-shell{
+    transform: scale(.9);
+    transform-origin: top center;
+  }
+}
+
+/* phones/tablets: strip some decorative effects to reduce lag */
+@media (max-width: 768px){
+  /* kill orbit ring entirely on mobile – gradients stay, less GPU */
+  .card::after{
+    display: none;
+  }
+
+  /* also stop the theme-dot orbit animation (still looks good static) */
+  .theme-dot.is-active::after{
+    animation: none;
+  }
+}
+
+/* ultra tiny phones: remove parallax glow layers too */
+@media (max-width: 480px){
+  .hero-orbit::before,
+  .hero-orbit::after{
+    display: none;
+  }
+}
