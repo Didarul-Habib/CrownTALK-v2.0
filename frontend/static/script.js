@@ -1,181 +1,120 @@
-/* ============================================
-   CrownTALK — Access Gate + App Logic (resilient)
-   - User enters ANY code
-   - We store it and send as X-CT-Key
-   - Backend validates (ACCESS_KEY on Render)
-   - Multiple submit triggers supported:
-       • Enter key in input
-       • Click on element [data-ct="submit-access"]
-       • Click on the lock <svg> inside the gate
-       • Form submit on #adminGate form
-   ============================================ */
+/* ============================================================
+   CrownTALK — Gate + App (stable revert)
+   - Gate required; code saved once per browser
+   - Sends X-CT-Key on every request
+   - Works with #adminGate, #password, and the lock SVG
+   ============================================================ */
 
-/* ---------- Gate (single source of truth) ---------- */
-(() => {
-  // storage keys
-  const AUTH_FLAG   = 'crowntalk_access_v1';   // UI unlocked flag
-  const KEY_STORAGE = 'crowntalk_key_v1';      // where we persist the code
-  const COOKIE_AUTH = 'crowntalk_access_v1';
-  const COOKIE_KEY  = 'crowntalk_key_v1';
+/* ---------- Storage helpers ---------- */
+const AUTH_FLAG   = 'crowntalk_access_v1';
+const KEY_STORAGE = 'crowntalk_key_v1';
+const COOKIE_AUTH = 'crowntalk_access_v1';
+const COOKIE_KEY  = 'crowntalk_key_v1';
 
-  function q(sel, root=document){ return root.querySelector(sel); }
-  function qa(sel, root=document){ return Array.from(root.querySelectorAll(sel)); }
+function saveKey(key) {
+  try { localStorage.setItem(KEY_STORAGE, key); } catch {}
+  try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
+  try { document.cookie = `${COOKIE_KEY}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+}
+function getKeyFromCookie() {
+  try {
+    const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEY}=([^;]*)`));
+    return m ? decodeURIComponent(m[1]) : '';
+  } catch { return ''; }
+}
+function getKey() {
+  try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+  try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
+  return getKeyFromCookie();
+}
+function markAuthorized() {
+  try { localStorage.setItem(AUTH_FLAG, '1'); } catch {}
+  try { sessionStorage.setItem(AUTH_FLAG, '1'); } catch {}
+  try { document.cookie = `${COOKIE_AUTH}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+}
+function isAuthorized() {
+  const k = getKey();
+  if (k && k.length > 0) return true;
+  try { if (localStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
+  try { if (sessionStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
+  try { if (document.cookie.includes(`${COOKIE_AUTH}=1`)) return true; } catch {}
+  return false;
+}
 
-  function saveKey(key) {
-    try { localStorage.setItem(KEY_STORAGE, key); } catch {}
-    try { sessionStorage.setItem(KEY_STORAGE, key); } catch {}
-    try { document.cookie = `${COOKIE_KEY}=${encodeURIComponent(key)}; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+/* ---------- Gate UI helpers ---------- */
+function gateEls() {
+  const gate = document.getElementById('adminGate');
+  const input = gate ? (gate.querySelector('#password') || gate.querySelector('input[type="password"]') || gate.querySelector('input')) : null;
+  const lockIcon = gate ? gate.querySelector('svg') : null;
+  const form = gate ? gate.querySelector('form') : null;
+  return { gate, input, lockIcon, form };
+}
+function showGate(msg) {
+  const { gate, input } = gateEls();
+  if (!gate) return;
+  gate.hidden = false;
+  gate.style.display = 'grid';
+  document.body.style.overflow = 'hidden';
+  if (input) {
+    if (msg) input.placeholder = msg;
+    input.value = '';
+    setTimeout(() => input.focus(), 0);
   }
-  function getKeyFromCookie() {
-    try {
-      const m = document.cookie.match(new RegExp(`(?:^|; )${COOKIE_KEY}=([^;]*)`));
-      return m ? decodeURIComponent(m[1]) : '';
-    } catch { return ''; }
+}
+function hideGate() {
+  const { gate } = gateEls();
+  if (!gate) return;
+  gate.hidden = true;
+  gate.style.display = 'none';
+  document.body.style.overflow = '';
+}
+function tryAuth() {
+  const { input } = gateEls();
+  if (!input) { hideGate(); bootAppUI(); return; }
+  const val = (input.value || '').trim();
+  if (!val) {
+    input.classList.add('ct-shake');
+    setTimeout(() => input.classList.remove('ct-shake'), 350);
+    return;
   }
-  function getKey() {
-    try { const v = localStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
-    try { const v = sessionStorage.getItem(KEY_STORAGE); if (v) return v; } catch {}
-    return getKeyFromCookie();
-  }
-  function markAuthorized() {
-    try { localStorage.setItem(AUTH_FLAG, '1'); } catch {}
-    try { sessionStorage.setItem(AUTH_FLAG, '1'); } catch {}
-    try { document.cookie = `${COOKIE_AUTH}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
-  }
-  function isAuthorized() {
-    const k = getKey();
-    if (k && k.length > 0) return true;
-    try { if (localStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
-    try { if (sessionStorage.getItem(AUTH_FLAG) === '1') return true; } catch {}
-    try { if (document.cookie.includes(`${COOKIE_AUTH}=1`)) return true; } catch {}
-    return false;
-  }
-
-  function getGateEls() {
-    const gate  = q('#adminGate') || q('[data-ct="access-gate"]') || document.body;
-    // Resolve the input robustly
-    let input = q('#password', gate)
-            || q('[data-ct="access-input"]', gate)
-            || q('input[type="password"]', gate)
-            || q('input', gate);
-    // Optional submit button(s)
-    const submitBtn = q('[data-ct="submit-access"]', gate);
-    const lockIcon  = q('svg', gate);
-    const form      = q('form', gate);
-    return { gate, input, submitBtn, lockIcon, form };
-  }
-
-  function showGate(placeholderMsg) {
-    const { gate, input } = getGateEls();
-    if (!gate) return;
-    gate.hidden = false;
-    gate.style.display = 'grid';
-    document.body.style.overflow = 'hidden';
-    if (input) {
-      if (placeholderMsg) input.placeholder = placeholderMsg;
-      input.value = '';
-      setTimeout(() => input.focus(), 0);
-    }
-  }
-  function hideGate() {
-    const { gate } = getGateEls();
-    if (!gate) return;
-    gate.hidden = true;
-    gate.style.display = 'none';
-    document.body.style.overflow = '';
-  }
-
-  async function tryAuth() {
-    const { input } = getGateEls();
-    if (!input) { hideGate(); bootAppUI?.(); return; }
-    const val = (input.value || '').trim();
-    if (!val) {
-      input.classList.add('ct-shake');
-      setTimeout(() => input.classList.remove('ct-shake'), 350);
-      return;
-    }
-    // Save what the user typed; server will validate later.
-    saveKey(val);
-    markAuthorized();
-    hideGate();
-    // boot app UI now that we’re unlocked
-    bootAppUI?.();
-  }
-
-  function bindGate() {
-    const { gate, input, submitBtn, lockIcon, form } = getGateEls();
-    if (!gate) return;
-
-    // Enter to submit (works even if inside a form; we prevent duplicate submits)
-    input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
-        e.preventDefault();
-        tryAuth();
-      }
-    });
-
-    // Explicit submit trigger
-    submitBtn?.addEventListener('click', (e) => {
-      e.preventDefault();
-      tryAuth();
-    });
-
-    // Lock icon click
-    if (lockIcon) {
-      lockIcon.style.cursor = 'pointer';
-      lockIcon.addEventListener('click', (e) => {
-        e.preventDefault();
-        tryAuth();
-      });
-    }
-
-    // Form submit (if the gate is wrapped in a <form>)
-    form?.addEventListener('submit', (e) => {
-      e.preventDefault();
-      tryAuth();
+  saveKey(val);
+  markAuthorized();
+  hideGate();
+  bootAppUI();
+}
+function bindGate() {
+  const { gate, input, lockIcon, form } = gateEls();
+  if (!gate) return;
+  if (input) {
+    input.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') { e.preventDefault(); tryAuth(); }
     });
   }
-
-  function init() {
-    // expose helpers for app code
-    window.CTGate = {
-      getKey,
-      requireKey: () => { showGate('➤ ENTER ACCESS KEY'); },
-      show403: () => { showGate('Access denied. Enter valid key'); },
-      hide: hideGate,
-      submit: tryAuth, // for onclick="CTGate.submit()" if needed
-    };
-
-    // If we already have a key from a previous session, unlock
-    if (isAuthorized()) {
-      hideGate();
-      bootAppUI?.();
-    } else {
-      showGate('➤ ENTER ACCESS KEY');
-      bindGate();
-    }
+  if (lockIcon) {
+    lockIcon.style.cursor = 'pointer';
+    lockIcon.addEventListener('click', (e) => { e.preventDefault(); tryAuth(); });
   }
-
-  // Init on DOM ready
-  if (document.readyState === 'loading') {
-    document.addEventListener('DOMContentLoaded', init);
-  } else {
-    init();
+  if (form) {
+    form.addEventListener('submit', (e) => { e.preventDefault(); tryAuth(); });
   }
-})();
+}
 
-/* ========= App code (unchanged UI; now adds X-CT-Key) ========= */
+/* ---------- Expose helper for other code ---------- */
+window.CTGate = {
+  getKey,
+  requireKey: () => showGate('➤ ENTER ACCESS KEY'),
+  show403: () => showGate('Access denied. Enter valid key'),
+  hide: hideGate,
+  submit: tryAuth
+};
 
-// ------------------------
-// Backend endpoints
-// ------------------------
+/* ============================================================
+   App code (unchanged UI; now always sends X-CT-Key)
+   ============================================================ */
 const backendBase = "https://crowntalk.onrender.com";
 const commentURL  = `${backendBase}/comment`;
 const rerollURL   = `${backendBase}/reroll`;
 
-// ------------------------
-// DOM elements
-// ------------------------
 const urlInput        = document.getElementById("urlInput");
 const generateBtn     = document.getElementById("generateBtn");
 const cancelBtn       = document.getElementById("cancelBtn");
@@ -190,87 +129,38 @@ const historyEl       = document.getElementById("history");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 const yearEl          = document.getElementById("year");
 
-// theme dots
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
-
-// ------------------------
-// State
-// ------------------------
-let cancelled    = false;
+let cancelled = false;
 let historyItems = [];
 
-// ------------------------
-// Backend helpers (warmup + timeout fetch)
-// ------------------------
-function warmBackendOnce() {
-  try {
-    fetch(backendBase + "/", {
-      method: "GET",
-      cache: "no-store",
-      mode: "no-cors",
-      keepalive: true,
-    }).catch(() => {});
-  } catch {}
-}
-let lastWarmAt = 0;
-function maybeWarmBackend() {
-  const now = Date.now();
-  const FIVE_MIN = 5 * 60 * 1000;
-  if (now - lastWarmAt > FIVE_MIN) {
-    lastWarmAt = now;
-    warmBackendOnce();
-  }
-}
-async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+function warmBackendOnce(){ try{ fetch(backendBase + "/", {method:"GET",cache:"no-store",mode:"no-cors",keepalive:true}).catch(()=>{});}catch{} }
+let lastWarmAt=0;
+function maybeWarmBackend(){ const now=Date.now(), FIVE=5*60*1000; if(now-lastWarmAt>FIVE){ lastWarmAt=now; warmBackendOnce(); } }
+
+async function fetchWithTimeout(url, options={}, timeoutMs=45000){
   if (typeof AbortController === "undefined") return fetch(url, options);
-  const controller = new AbortController();
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(id);
-    return res;
-  } catch (err) {
-    clearTimeout(id);
-    throw err;
-  }
+  const controller = new AbortController(); const id=setTimeout(()=>controller.abort(), timeoutMs);
+  try { const res = await fetch(url, {...options, signal: controller.signal}); clearTimeout(id); return res; }
+  catch (e){ clearTimeout(id); throw e; }
 }
 
-// ------------------------
-// Utilities
-// ------------------------
-function parseURLs(raw) {
-  if (!raw) return [];
-  return raw.split(/\r?\n/).map((l)=>l.trim()).filter(Boolean).map((l)=>l.replace(/^\s*\d+\.\s*/, "").trim());
-}
-function setProgressText(t){ if (progressEl) progressEl.textContent = t || ""; }
-function setProgressRatio(r){ if (progressBarFill) progressBarFill.style.width = (Math.max(0,Math.min(1,+r||0))*100).toFixed(2)+"%"; }
+function parseURLs(raw){ if(!raw) return []; return raw.split(/\r?\n/).map(l=>l.trim()).filter(Boolean).map(l=>l.replace(/^\s*\d+\.\s*/,"").trim()); }
+function setProgressText(t){ if(progressEl) progressEl.textContent=t||""; }
+function setProgressRatio(r){ if(progressBarFill) progressBarFill.style.width=(Math.max(0,Math.min(1,+r||0))*100).toFixed(2)+"%"; }
 function resetProgress(){ setProgressText(""); setProgressRatio(0); }
-function resetResults(){
-  if (resultsEl) resultsEl.innerHTML="";
-  if (failedEl) failedEl.innerHTML="";
-  if (resultCountEl) resultCountEl.textContent="0";
-  if (failedCountEl) failedCountEl.textContent="0";
-}
+function resetResults(){ if(resultsEl) resultsEl.innerHTML=""; if(failedEl) failedEl.innerHTML=""; if(resultCountEl) resultCountEl.textContent="0"; if(failedCountEl) failedCountEl.textContent="0"; }
 async function copyToClipboard(text){
   if (!text) return;
   if (navigator.clipboard?.writeText){ try{ await navigator.clipboard.writeText(text); return; }catch{} }
   const helper=document.createElement("span"); helper.textContent=text; helper.style.position="fixed"; helper.style.left="-9999px"; helper.style.top="0"; helper.style.whiteSpace="pre";
   document.body.appendChild(helper);
   const sel=window.getSelection(), range=document.createRange(); range.selectNodeContents(helper); sel.removeAllRanges(); sel.addRange(range);
-  try{ document.execCommand("copy"); }catch{}
-  sel.removeAllRanges(); document.body.removeChild(helper);
+  try{ document.execCommand("copy"); }catch{} sel.removeAllRanges(); document.body.removeChild(helper);
 }
 function formatTweetCount(n){ n=Number(n)||0; return `${n}`; }
-function autoResizeTextarea(){ if (!urlInput) return; urlInput.style.height="auto"; urlInput.style.height=Math.max(180,urlInput.scrollHeight)+"px"; }
+function autoResizeTextarea(){ if(!urlInput) return; urlInput.style.height="auto"; urlInput.style.height=Math.max(180,urlInput.scrollHeight)+"px"; }
 
-// ------------------------
-// History
-// ------------------------
-function addToHistory(text){
-  if (!text) return;
-  const timestamp=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"});
-  historyItems.push({ text, timestamp }); renderHistory();
-}
+function addToHistory(text){ if(!text) return; const ts=new Date().toLocaleTimeString([], {hour:"2-digit",minute:"2-digit"}); historyItems.push({text, timestamp:ts}); renderHistory(); }
 function renderHistory(){
   if (!historyEl) return; historyEl.innerHTML="";
   if (!historyItems.length){ historyEl.textContent="Copied comments will show up here."; return; }
@@ -280,7 +170,7 @@ function renderHistory(){
     const right=document.createElement("div"); right.style.display="flex"; right.style.flexDirection="column"; right.style.alignItems="flex-end"; right.style.gap="4px";
     const meta=document.createElement("div"); meta.className="history-meta"; meta.textContent=item.timestamp;
     const btn=document.createElement("button"); btn.className="history-copy-btn";
-    const main=document.createElement("span"); main.innerHTML=`<svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 467 512.22"><path fill-rule="nonzero" d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z"></path></svg> Copy`;
+    const main=document.createElement("span"); main.innerHTML=`<svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 467 512.22"><path fill-rule="nonzero" d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47-10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z"></path></svg> Copy`;
     const alt=document.createElement("span"); alt.textContent="Copied";
     btn.appendChild(main); btn.appendChild(alt); btn.dataset.text=item.text;
     right.appendChild(meta); right.appendChild(btn);
@@ -289,9 +179,6 @@ function renderHistory(){
   });
 }
 
-// ------------------------
-// Rendering helpers
-// ------------------------
 function buildTweetBlock(result){
   const url=result.url||""; const comments=Array.isArray(result.comments)?result.comments:[];
   const tweet=document.createElement("div"); tweet.className="tweet"; tweet.dataset.url=url;
@@ -315,7 +202,7 @@ function buildTweetBlock(result){
     const copyBtn=document.createElement("button"); let copyLabel="Copy";
     if (multilingual){ if (comment.lang==="en"){ copyBtn.className="copy-btn-en"; copyLabel="Copy EN"; } else { copyBtn.className="copy-btn"; } } else { copyBtn.className="copy-btn"; }
 
-    const copyMain=document.createElement("span"); copyMain.innerHTML=`<svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 467 512.22"><path fill-rule="nonzero" d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z"></path></svg> ${copyLabel}`;
+    const copyMain=document.createElement("span"); copyMain.innerHTML=`<svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 467 512.22"><path fill-rule="nonzero" d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47-10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78z"></path></svg> ${copyLabel}`;
     const copyAlt=document.createElement("span"); copyAlt.textContent="Copied";
     copyBtn.appendChild(copyMain); copyBtn.appendChild(copyAlt); copyBtn.dataset.text=comment.text;
 
@@ -352,15 +239,12 @@ function showSkeletons(count){
   }
 }
 
-// ------------------------
-// Generate flow
-// ------------------------
 async function handleGenerate(){
   const raw=urlInput.value; const urls=parseURLs(raw);
   if (!urls.length){ alert("Please paste at least one tweet URL."); return; }
 
-  const key = window.CTGate?.getKey?.() || "";
-  if (!key){ window.CTGate?.requireKey?.(); return; }
+  const key = getKey(); // gate stored key
+  const headers = { "Content-Type":"application/json", "X-CT-Key": key || "" };
 
   maybeWarmBackend();
   cancelled=false; document.body.classList.add("is-generating");
@@ -368,28 +252,13 @@ async function handleGenerate(){
   setProgressText(`Processing ${urls.length} URL${urls.length===1?"":"s"}…`); setProgressRatio(0.03);
   showSkeletons(urls.length);
 
-  const payload=JSON.stringify({ urls });
-  const requestOptions={
-    method:"POST",
-    headers:{ "Content-Type":"application/json", "X-CT-Key": key },
-    body: payload,
-  };
-
   try{
     let res;
-    try{ res = await fetchWithTimeout(commentURL, requestOptions, 45000); }
+    try { res = await fetchWithTimeout(commentURL, { method:"POST", headers, body: JSON.stringify({ urls }) }, 45000); }
     catch(e){ setProgressText("Waking CrownTALK engine… retrying once."); warmBackendOnce();
-              res = await fetchWithTimeout(commentURL, requestOptions, 45000); }
+              res = await fetchWithTimeout(commentURL, { method:"POST", headers, body: JSON.stringify({ urls }) }, 45000); }
 
-    if (res.status === 403){
-      window.CTGate?.show403?.();
-      document.body.classList.remove("is-generating");
-      generateBtn.disabled=false; cancelBtn.disabled=true;
-      setProgressText("Access denied. Enter valid key.");
-      setProgressRatio(0);
-      return;
-    }
-
+    if (res.status === 403){ window.CTGate.show403(); document.body.classList.remove("is-generating"); generateBtn.disabled=false; cancelBtn.disabled=true; setProgressText("Access denied. Enter valid key."); setProgressRatio(0); return; }
     if (!res.ok) throw new Error(`Backend error: ${res.status}`);
 
     const data = await res.json();
@@ -438,19 +307,11 @@ async function handleGenerate(){
   }
 }
 
-// ------------------------
-// Cancel & Clear
-// ------------------------
-function handleCancel(){ cancelled=true; document.body.classList.remove("is-generating");
-  generateBtn.disabled=false; cancelBtn.disabled=true; setProgressText("Cancelled."); setProgressRatio(0); }
+function handleCancel(){ cancelled=true; document.body.classList.remove("is-generating"); generateBtn.disabled=false; cancelBtn.disabled=true; setProgressText("Cancelled."); setProgressRatio(0); }
 function handleClear(){ urlInput.value=""; resetResults(); resetProgress(); autoResizeTextarea(); }
 
-// ------------------------
-// Reroll
-// ------------------------
 async function handleReroll(tweetEl){
   const url=tweetEl?.dataset.url; if (!url) return;
-  const key = window.CTGate?.getKey?.() || ""; if (!key){ window.CTGate?.requireKey?.(); return; }
 
   const button=tweetEl.querySelector(".reroll-btn"); if (!button) return;
   const oldLabel=button.textContent; button.disabled=true; button.textContent="Rerolling…";
@@ -462,13 +323,9 @@ async function handleReroll(tweetEl){
   }
 
   try{
-    const res = await fetch(rerollURL, {
-      method:"POST",
-      headers:{ "Content-Type":"application/json", "X-CT-Key": key },
-      body: JSON.stringify({ url }),
-    });
-
-    if (res.status === 403){ window.CTGate?.show403?.(); setProgressText("Access denied for reroll."); return; }
+    const headers = { "Content-Type":"application/json", "X-CT-Key": getKey() || "" };
+    const res = await fetch(rerollURL, { method:"POST", headers, body: JSON.stringify({ url }) });
+    if (res.status === 403){ window.CTGate.show403(); return; }
     if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
 
     const data = await res.json();
@@ -485,12 +342,9 @@ async function handleReroll(tweetEl){
   }
 }
 
-// ------------------------
-// Theme
-// ------------------------
+/* ---------- Theme ---------- */
 const THEME_STORAGE_KEY="crowntalk_theme";
 const ALLOWED_THEMES=["white","dark-purple","gold","blue","black","emerald","crimson"];
-
 function sanitizeThemeDots(){
   themeDots.forEach((dot)=>{
     if (!dot?.dataset) return;
@@ -518,7 +372,7 @@ function initTheme(){
   applyTheme(theme);
 }
 
-/* ---------- Boot UI once unlocked ---------- */
+/* ---------- Boot sequence ---------- */
 function bootAppUI(){
   if (yearEl) yearEl.textContent=String(new Date().getFullYear());
   initTheme(); renderHistory(); autoResizeTextarea();
@@ -562,7 +416,19 @@ function bootAppUI(){
   themeDots.forEach((dot)=>{ dot.addEventListener("click", ()=>{ const t=dot.dataset.theme; if (t) applyTheme(t); }); });
 }
 
-// Keep the backend warm while the tab is open (no effect if tab is hidden)
+/* Show gate first; unlock if already authorized */
+function bootWithGate(){
+  if (isAuthorized()){ hideGate(); bootAppUI(); }
+  else { showGate('➤ ENTER ACCESS KEY'); bindGate(); }
+}
+
+if (document.readyState === 'loading') {
+  document.addEventListener('DOMContentLoaded', bootWithGate);
+} else {
+  bootWithGate();
+}
+
+/* Keep backend warm */
 (function keepAliveWhileVisible(){
   const PING_MS = 4 * 60 * 1000;
   let timer=null;
@@ -570,9 +436,7 @@ function bootAppUI(){
     clearInterval(timer);
     if (document.visibilityState === "visible"){
       timer = setInterval(()=>{
-        fetch("https://crowntalk.onrender.com/ping", {
-          method:"GET", cache:"no-store", mode:"no-cors", keepalive:true,
-        }).catch(()=>{});
+        fetch("https://crowntalk.onrender.com/ping", { method:"GET", cache:"no-store", mode:"no-cors", keepalive:true }).catch(()=>{});
       }, PING_MS);
     }
   }
