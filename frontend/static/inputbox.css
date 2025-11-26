@@ -14,57 +14,77 @@
   --ib-subtle:      var(--muted, #9aa0a6);
   --ib-placeholder: var(--placeholder, #9aa0a6);
 
-  /* Accent uses the same glow tuple your button uses if available */
-  --ib-accent-rgb:  var(--btn-glow, 129,140,248);   /* r,g,b */
-  --ib-accent:      var(--btn-base, #6d28d9);       /* hex */
-  --ib-key-bg:      rgba(255,255,255,.06);
+  /* Status + accent */
+  --ib-ok:          #10b981;
+  --ib-warn:        #f59e0b;
+  --ib-bad:         #ef4444;
+
+  /* Button glow color picks up from your theme tokens if present */
+  --ib-accent-rgb:  99,102,241; /* indigo as safe default */
+
+  /* Input backdrop layers */
+  --ib-sheen:       linear-gradient(180deg, rgba(255,255,255,.04), rgba(255,255,255,0));
+  --ib-overlay:     linear-gradient(180deg, rgba(0,0,0,0) 0%, rgba(0,0,0,.25) 100%);
 }
 
-/* ---------- Layout shell ---------- */
+/* ---------- Wrapper & container ---------- */
 .ai-chat-input {
-  margin-top: 10px;
+  position: relative;
 }
 
 .ai-chat-input .chat-container {
   position: relative;
-  background: var(--ib-bg);
   border: 1px solid var(--ib-border);
   border-radius: 16px;
-  padding: 14px;
-  box-shadow:
-    0 1px 0 rgba(255,255,255,0.06) inset,
-    0 10px 30px rgba(0,0,0,0.25);
+  background: var(--ib-bg);
   overflow: hidden;
+  box-shadow:
+    0 10px 40px rgba(0,0,0,.35),
+    inset 0 0 0 1px rgba(255,255,255,.02);
+  will-change: transform, box-shadow;
 }
 
-/* ---------- Header (title + badges) ---------- */
+/* faint top sheen */
+.ai-chat-input .chat-container::before {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: var(--ib-sheen);
+  pointer-events: none;
+}
+
+/* ---------- Header ---------- */
 .ai-chat-input .chat-header {
   display: flex;
   align-items: center;
   justify-content: space-between;
   gap: 12px;
-  margin-bottom: 10px;
+  padding: 10px 12px;
+  border-bottom: 1px solid var(--ib-border);
+  background: var(--ib-sheen);
 }
 
 .ai-chat-input .status-section {
   display: inline-flex;
   align-items: center;
   gap: 8px;
-  color: var(--ib-text);
-  font-weight: 600;
 }
 
 .ai-chat-input .status-indicator {
-  width: 10px;
-  height: 10px;
+  width: 8px;
+  height: 8px;
   border-radius: 999px;
-  background: rgb(var(--ib-accent-rgb));
-  box-shadow: 0 0 0 0 rgba(var(--ib-accent-rgb), 0.6);
-  animation: ib-ping 1.8s ease-out infinite;
+  background: var(--ib-ok);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--ib-ok), transparent 70%),
+    0 0 6px color-mix(in srgb, var(--ib-ok), transparent 70%);
 }
 
 .ai-chat-input .status-text {
-  letter-spacing: .2px;
+  font-size: 12px;
+  letter-spacing: .12em;
+  text-transform: uppercase;
+  color: var(--ib-subtle);
 }
 
 .ai-chat-input .badges {
@@ -74,97 +94,74 @@
 }
 
 .ai-chat-input .badge {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 2px 8px;
-  border-radius: 9999px;
+  height: 20px;
+  padding: 0 8px;
+  border-radius: 999px;
+  font-size: 11px;
+  letter-spacing: .1em;
+  text-transform: uppercase;
+  display: inline-grid;
+  place-items: center;
   border: 1px solid var(--ib-border);
-  color: var(--ib-text);
-  font-weight: 600;
-  font-size: 0.72rem;
-  letter-spacing: .2px;
-  background: linear-gradient(to bottom,
-              rgba(255,255,255,.06),
-              rgba(0,0,0,.12));
-  box-shadow: 0 1px 0 rgba(255,255,255,.06) inset;
-}
-
-.ai-chat-input .badge-gpt {
-  border-color: rgba(var(--ib-accent-rgb), .45);
-  color: #fff;
-  background:
-    linear-gradient(180deg,
-      color-mix(in srgb, var(--ib-accent) 100%, #ffffff 0%) 0%,
-      color-mix(in srgb, var(--ib-accent) 80%, #000000 20%) 100%);
-}
-
-.ai-chat-input .badge-pro {
-  border-color: rgba(234,179,8,.48); /* amber-500 */
-  background:
-    linear-gradient(180deg, rgba(234,179,8,.25), rgba(180,120,0,.15));
-  color: #fde68a;
+  background: linear-gradient(180deg, rgba(255,255,255,.05), rgba(255,255,255,0));
+  color: var(--ib-subtle);
 }
 
 /* ---------- Input section ---------- */
 .ai-chat-input .input-section {
   position: relative;
+  padding: 10px 12px 12px;
 }
 
 .ai-chat-input .main-input {
   width: 100%;
-  min-height: 140px;
-  max-height: 40vh;
-  padding: 14px 14px 44px 14px; /* bottom space for gradient hint */
-  background: transparent;
+  min-height: 160px;
+  max-height: 50vh;
+  background: color-mix(in srgb, var(--ib-bg) 90%, black 10%);
   color: var(--ib-text);
   border: 1px solid var(--ib-border);
   border-radius: 12px;
+  padding: 14px 14px;
   outline: none;
   resize: vertical;
+  font: inherit;
+  font-size: 14px;
   line-height: 1.5;
-  font: 500 0.95rem/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
-  box-shadow:
-    0 1px 0 rgba(255,255,255,.04) inset,
-    0 6px 18px rgba(0,0,0,.18);
+  box-shadow: inset 0 1px 0 rgba(255,255,255,.04);
+  transition: border-color .15s ease, box-shadow .15s ease, background-color .15s ease;
 }
 
 .ai-chat-input .main-input::placeholder {
   color: var(--ib-placeholder);
-  opacity: .92;
 }
 
+/* Focus ring aligned with your theme tokens */
 .ai-chat-input .main-input:focus {
-  border-color: rgba(var(--ib-accent-rgb), .75);
+  border-color: color-mix(in srgb, rgb(var(--ib-accent-rgb)) 70%, white 30%);
   box-shadow:
-    0 0 0 3px rgba(var(--ib-accent-rgb), .12),
-    0 1px 0 rgba(255,255,255,.06) inset,
-    0 10px 26px rgba(0,0,0,.24);
+    0 0 0 2px color-mix(in srgb, rgb(var(--ib-accent-rgb)) 30%, transparent 70%),
+    0 0 0 1px inset rgba(255,255,255,.06);
 }
 
-/* fade hint at the bottom of the textarea (non-interactive) */
+/* Gradient overlay at the bottom to soften scroll edge */
 .ai-chat-input .gradient-overlay {
   position: absolute;
-  left: 12px;
-  right: 12px;
-  bottom: 12px;
-  height: 36px;
+  inset: auto 12px 12px 12px;
+  height: 32px;
+  background: linear-gradient(180deg, rgba(0,0,0,0), rgba(0,0,0,.55));
+  border-bottom-left-radius: 12px;
+  border-bottom-right-radius: 12px;
   pointer-events: none;
-  background:
-    linear-gradient(to bottom, transparent, var(--ib-bg));
-  border-bottom-left-radius: 10px;
-  border-bottom-right-radius: 10px;
+  opacity: .45;
 }
 
-/* ---------- Footer info row ---------- */
+/* ---------- Footer info ---------- */
 .ai-chat-input .footer-info {
   display: flex;
   align-items: center;
   justify-content: space-between;
-  gap: 10px;
-  margin-top: 10px;
-  color: var(--ib-subtle);
-  font-size: .85rem;
+  gap: 12px;
+  padding: 0 12px 12px 12px;
 }
 
 .ai-chat-input .shortcut-info,
@@ -172,65 +169,58 @@
   display: inline-flex;
   align-items: center;
   gap: 8px;
-}
-
-.ai-chat-input .info-icon {
-  width: 16px;
-  height: 16px;
-  opacity: .75;
+  color: var(--ib-subtle);
+  font-size: 12px;
 }
 
 .ai-chat-input .shortcut-key {
-  display: inline-flex;
-  align-items: center;
-  justify-content: center;
-  height: 20px;
-  min-width: 22px;
-  padding: 0 6px;
-  border-radius: 6px;
+  background: color-mix(in srgb, var(--ib-bg) 80%, white 20%);
   border: 1px solid var(--ib-border);
   border-bottom-width: 2px;
-  box-shadow:
-    0 1px 0 rgba(255,255,255,.06) inset,
-    0 1.5px 0 rgba(0,0,0,.4);
-  background: var(--ib-key-bg);
-  color: var(--ib-text);
-  font: 600 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  border-right-width: 2px;
+  padding: 2px 6px;
+  border-radius: 6px;
+  display: inline-grid;
+  place-items: center;
+  min-width: 20px;
+}
+
+.ai-chat-input .info-icon {
+  width: 14px;
+  height: 14px;
+  color: var(--ib-subtle);
 }
 
 .ai-chat-input .system-indicator {
-  width: 8px;
-  height: 8px;
+  width: 6px;
+  height: 6px;
   border-radius: 999px;
-  background: #34d399; /* green */
-  box-shadow: 0 0 0 0 rgba(52,211,153,.6);
-  animation: ib-pulse 2s ease-out infinite;
+  background: var(--ib-ok);
+  box-shadow:
+    0 0 0 2px color-mix(in srgb, var(--ib-ok), transparent 70%),
+    0 0 6px color-mix(in srgb, var(--ib-ok), transparent 70%);
 }
 
-/* ---------- Decorative floating overlay ---------- */
+/* ---------- Floating overlay / depth polish ---------- */
 .ai-chat-input .floating-overlay {
   position: absolute;
-  inset: -1px;
-  border-radius: 16px;
+  inset: 0;
   pointer-events: none;
-  mix-blend-mode: screen;
-  opacity: .25;
-  background:
-    radial-gradient(120% 80% at 0% 0%, rgba(var(--ib-accent-rgb), .18), transparent 60%),
-    radial-gradient(120% 80% at 100% 0%, rgba(255,255,255,.06), transparent 60%);
+  background: radial-gradient(60% 60% at 50% 0%, rgba(255,255,255,.04), transparent 60%);
+  opacity: .75;
 }
 
-/* ---------- Animations ---------- */
-@keyframes ib-ping {
-  0%   { box-shadow: 0 0 0 0 rgba(var(--ib-accent-rgb), 0.6); }
-  80%  { box-shadow: 0 0 0 10px rgba(var(--ib-accent-rgb), 0); }
-  100% { box-shadow: 0 0 0 0 rgba(var(--ib-accent-rgb), 0); }
+/* ---------- Progress row alignment helpers ---------- */
+.progress-row .helper-text {
+  min-width: 140px;
 }
 
-@keyframes ib-pulse {
-  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(52,211,153,.4); }
-  50%  { transform: scale(1.12);box-shadow: 0 0 0 6px rgba(52,211,153,0); }
-  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+/* ---------- Reduced motion ---------- */
+@media (prefers-reduced-motion: reduce) {
+  .ai-chat-input .status-indicator,
+  .ai-chat-input .system-indicator {
+    box-shadow: none;
+  }
 }
 
 /* ---------- Mobile tweaks ---------- */
@@ -238,4 +228,29 @@
   .ai-chat-input .chat-container { padding: 12px; border-radius: 14px; }
   .ai-chat-input .badge { font-size: .7rem; padding: 2px 7px; }
   .ai-chat-input .main-input {
-    min-height
+    min-height: 140px;
+    font-size: 14px;
+  }
+  .progress-row .helper-text { display: none; }
+}
+
+/* ---------- Safety for legacy browsers without color-mix ---------- */
+@supports not (color-mix(in srgb, red, blue)) {
+  .ai-chat-input .main-input:focus {
+    border-color: rgba(var(--ib-accent-rgb), .75);
+    box-shadow:
+      0 0 0 2px rgba(var(--ib-accent-rgb), .25),
+      0 0 0 1px inset rgba(255,255,255,.06);
+  }
+}
+
+/* ---------- Tiny “alive” pulse for status (optional) ---------- */
+.ai-chat-input .system-indicator.is-pulsing {
+  animation: ib-pulse 2s ease-in-out infinite;
+}
+
+@keyframes ib-pulse {
+  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(16,185,129,.35); }
+  50%  { transform: scale(1.12);box-shadow: 0 0 0 6px rgba(16,185,129,0); }
+  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(16,185,129,0); }
+}
