@@ -1862,11 +1862,19 @@ body.low-motion.is-generating #progressBarFill::before{
 
   /* b) Simpler card background for GPUs */
   .card{
-    background-image: linear-gradient(
+  background-image:
+    /* keep only subtle top-side reflections */
+    radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, var(--card-bg) 0px, transparent 85%),
+    /* base smooth gradient, no bottom ellipse */
+    linear-gradient(
       145deg,
-      rgba(15,23,42,.98),
-      rgba(15,23,42,.9)
+      rgba(15,23,42,.96),
+      color-mix(in oklab, var(--accent) 8%, var(--card-bg) 92%),
+      rgba(15,23,42,.98)
     );
+}
     box-shadow:
       0 4px 10px rgba(0,0,0,.6);
   }
