@@ -1905,23 +1905,20 @@ body.low-motion.is-generating #progressBarFill::before{
    CrownTALK – Premium micro interactions (desktop-only where possible)
    ===================================== */
 
-/* 1) Card micro tilt / depth (desktop pointer only) */
-@media (pointer: fine) and (min-width: 900px){
-  .card{
-    transform-origin: center top;
-    transition:
-      transform .18s ease-out,
-      box-shadow .20s ease-out,
-      border-color .18s ease-out;
-  }
-
-  .card:hover{
-    transform: perspective(1100px) rotateX(3deg) translateY(-2px);
-    box-shadow:
-      0 14px 32px rgba(0,0,0,.70),
-      inset 0 -16px 24px rgba(255,255,255,0.10);
-    border-color: color-mix(in oklab, var(--card-border) 55%, var(--accent) 45%);
-  }
+/* Fix: remove big oval glow inside cards */
+.card{
+  background-image:
+    /* keep only subtle top-side reflections */
+    radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, var(--card-bg) 0px, transparent 85%),
+    /* base smooth gradient, no bottom ellipse */
+    linear-gradient(
+      145deg,
+      rgba(15,23,42,.96),
+      color-mix(in oklab, var(--accent) 8%, var(--card-bg) 92%),
+      rgba(15,23,42,.98)
+    );
 }
 
 /* 2) Card header micro “chrome” line */
