@@ -1,17 +1,16 @@
 /* =========================================================
    CrownTALK — Chat-style URL Input Panel
    - Works with your existing HTML structure
-   - Theme-aware via fallbacks to your global tokens
-   - Mobile-friendly, safe-area aware, crisp focus states
+   - Theme-aware via global tokens
+   - Mobile-friendly, crisp focus states
 ========================================================= */
 
 /* ---------- Theme hooks & fallbacks ---------- */
 :root {
-  /* Try to inherit from your global theme variables; fallback provided */
   --ib-bg:          var(--card-bg, rgba(255,255,255,0.04));
   --ib-border:      var(--card-border, rgba(255,255,255,0.12));
   --ib-text:        var(--text, #e7e7ea);
-  --ib-subtle:      var(--muted, #9aa0a6);
+  --ib-subtle:      var(--text-muted, #9aa0a6);
   --ib-placeholder: var(--placeholder, #9aa0a6);
 
   /* Accent uses the same glow tuple your button uses if available */
@@ -84,9 +83,11 @@
   font-weight: 600;
   font-size: 0.72rem;
   letter-spacing: .2px;
-  background: linear-gradient(to bottom,
-              rgba(255,255,255,.06),
-              rgba(0,0,0,.12));
+  background: linear-gradient(
+    to bottom,
+    rgba(255,255,255,.06),
+    rgba(0,0,0,.12)
+  );
   box-shadow: 0 1px 0 rgba(255,255,255,.06) inset;
 }
 
@@ -94,9 +95,11 @@
   border-color: rgba(var(--ib-accent-rgb), .45);
   color: #fff;
   background:
-    linear-gradient(180deg,
+    linear-gradient(
+      180deg,
       color-mix(in srgb, var(--ib-accent) 100%, #ffffff 0%) 0%,
-      color-mix(in srgb, var(--ib-accent) 80%, #000000 20%) 100%);
+      color-mix(in srgb, var(--ib-accent) 80%, #000000 20%) 100%
+    );
 }
 
 .ai-chat-input .badge-pro {
@@ -123,7 +126,8 @@
   outline: none;
   resize: vertical;
   line-height: 1.5;
-  font: 500 0.95rem/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter, "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
+  font: 500 0.95rem/1.5 system-ui, -apple-system, Segoe UI, Roboto, Inter,
+        "Helvetica Neue", Arial, "Noto Sans", "Apple Color Emoji","Segoe UI Emoji";
   box-shadow:
     0 1px 0 rgba(255,255,255,.04) inset,
     0 6px 18px rgba(0,0,0,.18);
@@ -134,12 +138,13 @@
   opacity: .92;
 }
 
+/* focus ring – matches premium theme glow */
 .ai-chat-input .main-input:focus {
-  border-color: rgba(var(--ib-accent-rgb), .75);
+  border-color: rgba(var(--ib-accent-rgb), .95);
   box-shadow:
-    0 0 0 3px rgba(var(--ib-accent-rgb), .12),
-    0 1px 0 rgba(255,255,255,.06) inset,
-    0 10px 26px rgba(0,0,0,.24);
+    0 0 0 1px rgba(var(--ib-accent-rgb), .85),
+    0 0 0 3px rgba(var(--ib-accent-rgb), .38),
+    0 18px 42px rgba(0,0,0,.9);
 }
 
 /* fade hint at the bottom of the textarea (non-interactive) */
@@ -150,8 +155,7 @@
   bottom: 12px;
   height: 36px;
   pointer-events: none;
-  background:
-    linear-gradient(to bottom, transparent, var(--ib-bg));
+  background: linear-gradient(to bottom, transparent, var(--ib-bg));
   border-bottom-left-radius: 10px;
   border-bottom-right-radius: 10px;
 }
@@ -195,7 +199,8 @@
     0 1.5px 0 rgba(0,0,0,.4);
   background: var(--ib-key-bg);
   color: var(--ib-text);
-  font: 600 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  font: 600 0.72rem/1 ui-monospace, SFMono-Regular, Menlo, Consolas,
+        "Liberation Mono", monospace;
 }
 
 .ai-chat-input .system-indicator {
@@ -228,14 +233,74 @@
 }
 
 @keyframes ib-pulse {
-  0%   { transform: scale(1);   box-shadow: 0 0 0 0 rgba(52,211,153,.4); }
-  50%  { transform: scale(1.12);box-shadow: 0 0 0 6px rgba(52,211,153,0); }
-  100% { transform: scale(1);   box-shadow: 0 0 0 0 rgba(52,211,153,0); }
+  0%   { transform: scale(1);    box-shadow: 0 0 0 0 rgba(52,211,153,.4); }
+  50%  { transform: scale(1.12); box-shadow: 0 0 0 6px rgba(52,211,153,0); }
+  100% { transform: scale(1);    box-shadow: 0 0 0 0 rgba(52,211,153,0); }
 }
 
 /* ---------- Mobile tweaks ---------- */
 @media (max-width: 640px) {
-  .ai-chat-input .chat-container { padding: 12px; border-radius: 14px; }
-  .ai-chat-input .badge { font-size: .7rem; padding: 2px 7px; }
+  .ai-chat-input .chat-container {
+    padding: 12px;
+    border-radius: 14px;
+  }
+
+  .ai-chat-input .badge {
+    font-size: .7rem;
+    padding: 2px 7px;
+  }
+
   .ai-chat-input .main-input {
-    min-height
+    min-height: 120px;
+    max-height: 50vh;
+    font-size: 0.9rem;
+    padding: 12px 12px 40px 12px;
+  }
+
+  .ai-chat-input .footer-info {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 6px;
+    font-size: .78rem;
+  }
+}
+
+/* ---------- Premium textarea scrollbar (desktop) ---------- */
+@media (pointer: fine){
+  .ai-chat-input .main-input{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--ib-accent-rgb), .75) rgba(15,23,42,.96);
+  }
+
+  .ai-chat-input .main-input::-webkit-scrollbar{
+    width: 7px;
+  }
+
+  .ai-chat-input .main-input::-webkit-scrollbar-track{
+    background: radial-gradient(
+      circle at 0% 0%,
+      rgba(255,255,255,.06),
+      rgba(15,23,42,.98)
+    );
+    border-radius: 999px;
+  }
+
+  .ai-chat-input .main-input::-webkit-scrollbar-thumb{
+    border-radius: 999px;
+    background: linear-gradient(
+      180deg,
+      rgba(var(--ib-accent-rgb), .95),
+      rgba(var(--ib-accent-rgb), .65)
+    );
+    box-shadow: 0 0 12px rgba(var(--ib-accent-rgb), .75);
+  }
+}
+
+/* ---------- Respect reduced motion ---------- */
+@media (prefers-reduced-motion: reduce){
+  .ai-chat-input .status-indicator,
+  .ai-chat-input .system-indicator{
+    animation: none !important;
+    box-shadow: none;
+  }
+}
