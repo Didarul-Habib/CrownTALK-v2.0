@@ -1407,3 +1407,7 @@ function bootAppUI() {
   })();
 
 })();
+
+// Remove Dense toggle button and neutralize any leftover dense state
+document.querySelectorAll('.ct-density-toggle, .ct-switch').forEach(el => el.remove());
+document.body.classList.remove('ct-dense');
