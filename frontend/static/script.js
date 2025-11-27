@@ -1412,13 +1412,12 @@ function bootAppUI() {
 document.querySelectorAll('.ct-density-toggle, .ct-switch').forEach(el => el.remove());
 document.body.classList.remove('ct-dense');
 
-<!-- No markup changes required; this only reads #progressBarFill + body -->
-<script>
 /* CrownTALK — Progress helper (indeterminate + determinate)
    Works with:
      - body.is-generating
      - #progressBarFill (your existing inner bar)
-   Public API: ctProgress.start(), ctProgress.step(pct), ctProgress.done(), ctProgress.cancel()
+   Public API: ctProgress.start(), ctProgress.step(pct),
+               ctProgress.done(), ctProgress.cancel()
 */
 (function () {
   const BODY = document.body;
@@ -1470,5 +1469,3 @@ document.body.classList.remove('ct-dense');
     }
   };
 })();
-</script>
-
