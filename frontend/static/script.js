@@ -837,3 +837,219 @@ function bootAppUI() {
   window.addEventListener("pagehide", () => clearInterval(timer));
   schedule();
 })();
+
+/* =========================================================
+   CrownTALK – Premium Lite JS (features 3,4,7,10,11,13,14,15)
+   Safe to append at end of script.js
+========================================================= */
+
+(function(){
+  const $ = (sel,root=document)=>root.querySelector(sel);
+  const $$ = (sel,root=document)=>[...root.querySelectorAll(sel)];
+
+  // ---------- [10] Ambient progress: flag first card while generating ----------
+  const firstCard = $('.card');
+  const body = document.body;
+  const obs = new MutationObserver(() => {
+    if (body.classList.contains('is-generating')) firstCard?.classList.add('is-ambient-progress');
+    else firstCard?.classList.remove('is-ambient-progress');
+  });
+  obs.observe(body,{attributes:true, attributeFilter:['class']});
+
+  // ---------- [3] Dense view toggle (UI inject into Results header) ----------
+  (function addDensityToggle(){
+    const resultsHeader = $$('.card .card-head')[1] || $('.card-head'); // results card
+    if (!resultsHeader || resultsHeader.querySelector('.ct-density-toggle')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'ct-density-toggle';
+    wrap.innerHTML = `
+      <span>Dense</span>
+      <button class="ct-switch" type="button" aria-pressed="false"></button>
+    `;
+    resultsHeader.appendChild(wrap);
+    const btn = wrap.querySelector('.ct-switch');
+    const apply = (on)=>{ document.body.classList.toggle('ct-dense', !!on); btn.setAttribute('aria-pressed', on?'true':'false'); };
+    // restore
+    apply(localStorage.getItem('ct_dense') === '1');
+    btn.addEventListener('click', ()=>{
+      const on = !(localStorage.getItem('ct_dense') === '1');
+      localStorage.setItem('ct_dense', on?'1':'0'); apply(on);
+    });
+  })();
+
+  // ---------- [7] Processing pipeline (static badges) ----------
+  (function addPipeline(){
+    const row = $('.progress-row');
+    if (!row || row.querySelector('.ct-pipe')) return;
+    const el = document.createElement('div');
+    el.className = 'ct-pipe';
+    el.innerHTML = `
+      <span class="ct-step"><i class="ct-dot"></i>Fetch</span>
+      <span class="ct-step"><i class="ct-dot"></i>Parse</span>
+      <span class="ct-step"><i class="ct-dot"></i>Generate</span>
+      <span class="ct-step"><i class="ct-dot"></i>Validate</span>
+      <span class="ct-step"><i class="ct-dot"></i>Render</span>`;
+    row.appendChild(el);
+    // Light the steps at rough times while generating (very cheap)
+    let timer = null;
+    const steps = $$('.ct-step', el);
+    const setOn = (n)=>steps.forEach((s,i)=>s.classList.toggle('is-on', i<=n));
+    const pump = ()=>{
+      setOn(0); timer = setTimeout(()=>{ setOn(1); timer = setTimeout(()=>{ setOn(2); timer = setTimeout(()=>{ setOn(3); timer = setTimeout(()=>setOn(4), 400); }, 600); }, 800); }, 300);
+    };
+    const mo = new MutationObserver(()=>{
+      clearTimeout(timer);
+      if (body.classList.contains('is-generating')) pump(); else setOn(-1);
+    });
+    mo.observe(body,{attributes:true, attributeFilter:['class']});
+  })();
+
+  // ---------- [11] Auto low-motion (safe-mode) ----------
+  (function autoLowMotion(){
+    const prefers = matchMedia('(prefers-reduced-motion: reduce)').matches;
+    const weakHW = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
+                   (navigator.deviceMemory && navigator.deviceMemory <= 4);
+    let low = prefers || weakHW;
+    // quick FPS probe
+    if (!low) {
+      let t=performance.now(), frames=0;
+      function tick(now){
+        frames++; if (now - t < 1000) return requestAnimationFrame(tick);
+        const fps = frames; if (fps < 45) low = true;
+        if (low) document.body.classList.add('low-motion');
+      }
+      requestAnimationFrame(tick);
+    } else {
+      document.body.classList.add('low-motion');
+    }
+    // tiny pill to toggle off/on
+    if (!$('#ctLowPill')) {
+      const pill = document.createElement('button');
+      pill.id = 'ctLowPill';
+      pill.className = 'ct-lowmotion-pill';
+      pill.textContent = 'Low-motion';
+      pill.title = 'Click to toggle low-motion for this session';
+      pill.addEventListener('click', ()=> document.body.classList.toggle('low-motion'));
+      document.body.appendChild(pill);
+    }
+  })();
+
+  // ---------- [4] Session restore (URLs + theme + dense) ----------
+  (function sessionStore(){
+    const input = $('#urlInput');
+    if (!input) return;
+    const THEME_KEY = 'ct_theme';
+    const URLS_KEY  = 'ct_urls';
+    const DENSE_KEY = 'ct_dense';
+
+    // Save URLs as you type (debounced)
+    let h=null;
+    input.addEventListener('input', ()=>{
+      clearTimeout(h); h=setTimeout(()=>localStorage.setItem(URLS_KEY, input.value), 250);
+      if (document.body.classList.contains('ct-compact-on')) updateMirror();
+    });
+
+    // When theme switches (your theme dots already set data-theme on <html>)
+    $$('.theme-dot').forEach(dot=>{
+      dot.addEventListener('click', ()=> {
+        const th = dot.getAttribute('data-theme');
+        localStorage.setItem(THEME_KEY, th);
+      });
+    });
+
+    // Insert “Restore session” link by Generate row (only if data exists)
+    (function addRestore(){
+      if (!localStorage.getItem(URLS_KEY)) return;
+      const controls = $('.controls'); if (!controls || $('#ctRestore')) return;
+      const b = document.createElement('button');
+      b.id='ctRestore'; b.className='btn-secondary subtle'; b.textContent='Restore session';
+      b.style.marginLeft = 'auto';
+      b.addEventListener('click', ()=>{
+        const urls = localStorage.getItem(URLS_KEY) || '';
+        input.value = urls; input.dispatchEvent(new Event('input'));
+        const t = localStorage.getItem(THEME_KEY);
+        if (t) document.documentElement.setAttribute('data-theme', t);
+        if (localStorage.getItem(DENSE_KEY)==='1') document.body.classList.add('ct-dense'); else document.body.classList.remove('ct-dense');
+      });
+      controls.appendChild(b);
+    })();
+  })();
+
+  // ---------- [13] URL “compact view” (mirror overlay) ----------
+  (function urlCompact(){
+    const container = $('.ai-chat-input .input-section');
+    const input = $('#urlInput');
+    if (!container || !input) return;
+
+    // Toggle button
+    const btn = document.createElement('button');
+    btn.id = 'ctUrlCompactToggle';
+    btn.type = 'button';
+    btn.title = 'Toggle compact URLs (visual only)';
+    btn.innerHTML = `<svg width="16" height="16" viewBox="0 0 24 24" fill="none"><path d="M3 12h18M3 6h18M3 18h18" stroke="currentColor" stroke-width="1.6" stroke-linecap="round"/></svg>`;
+    container.appendChild(btn);
+
+    // Mirror
+    const mirror = document.createElement('pre');
+    mirror.id = 'ctUrlMirror';
+    container.appendChild(mirror);
+
+    const shorten = (line)=>{
+      // keep domain + /status/… tail
+      try{
+        const url = new URL(line.trim());
+        const segs = url.pathname.split('/').filter(Boolean);
+        if (segs.length >= 2){
+          const user = segs[0];
+          const tail = segs.slice(-1)[0];
+          return `https://${url.host}/${user}/…/${tail}`;
+        }
+        return `https://${url.host}${url.pathname}`;
+      }catch(_){ return line.length > 56 ? line.slice(0, 32) + '…' + line.slice(-18) : line; }
+    };
+    const updateMirror = ()=>{
+      const lines = input.value.split(/\r?\n/).map(l=>l.trim()).filter(Boolean);
+      mirror.textContent = lines.map((l,i)=>`${i+1}. ${shorten(l)}`).join('\n');
+      mirror.scrollTop = input.scrollTop; // track scroll
+    };
+    input.addEventListener('input', updateMirror);
+    input.addEventListener('scroll', ()=>{ mirror.scrollTop = input.scrollTop; });
+
+    btn.addEventListener('click', ()=>{
+      document.body.classList.toggle('ct-compact-on');
+      if (document.body.classList.contains('ct-compact-on')) updateMirror();
+    });
+
+    // expose for session module
+    window.updateMirror = updateMirror;
+  })();
+
+  // ---------- [14] Micro confetti after 10 copies (desktop, not low-motion) ----------
+  (function copyConfetti(){
+    if (matchMedia('(pointer:coarse)').matches) return; // skip touch
+    document.addEventListener('click', (e)=>{
+      const t = e.target.closest('.copy-btn,.copy-btn-en,.history-copy-btn');
+      if (!t) return;
+      const k = 'ct_copy_count';
+      const n = (parseInt(sessionStorage.getItem(k)||'0',10)+1);
+      sessionStorage.setItem(k, n);
+      if (n === 10 && !document.body.classList.contains('low-motion')) {
+        const wrap = document.createElement('div'); wrap.className='ct-confetti';
+        wrap.innerHTML = '<i style="--dx:-60px; --dy:-88px"></i><i style="--dx:66px; --dy:-84px"></i><i style="--dx:-88px; --dy:-62px"></i><i style="--dx:84px; --dy:-72px"></i><i style="--dx:-70px; --dy:-90px"></i><i style="--dx:60px; --dy:-68px"></i>';
+        document.body.appendChild(wrap);
+        setTimeout(()=>wrap.remove(), 750);
+      }
+    });
+  })();
+
+  // ---------- [15] Theme hover preview on hero ----------
+  (function heroPreview(){
+    const hero = $('.hero'); if (!hero) return;
+    $$('.theme-dot').forEach(dot=>{
+      const th = dot.getAttribute('data-theme');
+      dot.addEventListener('mouseenter', ()=> hero.setAttribute('data-preview-theme', th));
+      dot.addEventListener('mouseleave', ()=> hero.removeAttribute('data-preview-theme'));
+    });
+  })();
+
+})();
