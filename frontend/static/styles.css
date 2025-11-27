@@ -3508,3 +3508,56 @@ body.focus-mode .card.is-focused{ filter: none; }
 
 /* Keep things clean if focus mode + low motion both on */
 body.focus-mode.low-motion .card{ transition: none !important; }
+
+/* ==== Theme dots: ONLY the active dot gets a rotating mini-arc ==== */
+/* kill any container-wide arc that may have slipped in */
+.theme-dots::before,
+.theme-dots::after{
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* per-dot arc scaffold (off by default) */
+.theme-dot{
+  position: relative;
+  overflow: visible;
+  --ring-thick: 2px;
+  --arc-angle: 0deg;
+  --arc-size: 60deg;
+  --glow: var(--btn-glow);
+}
+
+/* the partial ring; hidden unless .is-active */
+.theme-dot::after{
+  content: "";
+  position: absolute;
+  /* a small ring just outside the 16px dot */
+  inset: -6px;
+  border-radius: 999px;
+  padding: var(--ring-thick);
+  background:
+    conic-gradient(from var(--arc-angle),
+      rgba(var(--glow), .95) 0 var(--arc-size),
+      transparent var(--arc-size) 360deg);
+  -webkit-mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+          mask:
+    radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+  opacity: 0;            /* off for non-active dots */
+  pointer-events: none;
+}
+
+/* rotate ONLY for the active dot */
+.theme-dot.is-active::after{
+  opacity: 1;
+  animation: ct-dot-orbit 6s linear infinite;
+}
+@keyframes ct-dot-orbit{ to { --arc-angle: 360deg; } }
+
+/* ==== Kill theme preview-on-hover effect in the header entirely ==== */
+.hero[data-preview-theme]{ box-shadow: none !important; }
+
+/* ==== Hide the Dense toggle UI and neutralize the class if present ==== */
+.ct-density-toggle,
+.ct-switch{ display: none !important; }
