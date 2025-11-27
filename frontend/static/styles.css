@@ -2464,3 +2464,51 @@ body.is-generating .helper-text::after{
   display: none !important;
   animation: none !important;
 }
+
+/* =====================================
+   CrownTALK – Premium scrollbar for URL textarea
+   (desktop only, mobile keeps native scroll)
+   ===================================== */
+
+@media (pointer: fine){
+  .url-textarea{
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .75) rgba(15,23,42,.96);
+  }
+
+  .url-textarea::-webkit-scrollbar{
+    width: 8px;                  /* slim bar */
+  }
+
+  .url-textarea::-webkit-scrollbar-track{
+    background: radial-gradient(
+      circle at 50% 0%,
+      rgba(255,255,255,.08),
+      transparent 55%
+    );
+    border-radius: 999px;
+    box-shadow:
+      inset 0 0 0 1px rgba(15,23,42,.95);
+  }
+
+  .url-textarea::-webkit-scrollbar-thumb{
+    border-radius: 999px;
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .98),
+      rgba(var(--btn-glow), .65)
+    );
+    box-shadow:
+      0 0 10px rgba(var(--btn-glow), .75);
+    border: 1px solid rgba(15,23,42,1);   /* small dark rim */
+  }
+
+  .url-textarea::-webkit-scrollbar-thumb:hover{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), 1),
+      rgba(var(--btn-glow), .8)
+    );
+  }
+}
