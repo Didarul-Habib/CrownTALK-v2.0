@@ -1411,3 +1411,64 @@ function bootAppUI() {
 // Remove Dense toggle button and neutralize any leftover dense state
 document.querySelectorAll('.ct-density-toggle, .ct-switch').forEach(el => el.remove());
 document.body.classList.remove('ct-dense');
+
+<!-- No markup changes required; this only reads #progressBarFill + body -->
+<script>
+/* CrownTALK — Progress helper (indeterminate + determinate)
+   Works with:
+     - body.is-generating
+     - #progressBarFill (your existing inner bar)
+   Public API: ctProgress.start(), ctProgress.step(pct), ctProgress.done(), ctProgress.cancel()
+*/
+(function () {
+  const BODY = document.body;
+  const FILL = document.getElementById('progressBarFill');
+  let finishTimer = null;
+
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+  function setGenerating(on){
+    BODY.classList.toggle('is-generating', !!on);
+    if (on) {
+      // if caller forgets to set width, ensure there's *some* visible fill
+      if (FILL && (!FILL.style.width || FILL.style.width === '0%')) FILL.style.width = '8%';
+    }
+  }
+  function flashDone(ms = 420){
+    BODY.classList.add('ct-progress-done');
+    clearTimeout(finishTimer);
+    finishTimer = setTimeout(() => BODY.classList.remove('ct-progress-done'), ms);
+  }
+
+  window.ctProgress = {
+    // Start the animated state; optionally seed a starting width (0–100)
+    start(initialPct = 0){
+      setGenerating(true);
+      if (FILL && typeof initialPct === 'number') {
+        FILL.style.width = (clamp01(initialPct / 100) * 100).toFixed(2) + '%';
+      }
+    },
+
+    // Update bar width during work (0–100). Safe to call often.
+    step(pct){
+      if (!FILL || typeof pct !== 'number') return;
+      FILL.style.width = (clamp01(pct / 100) * 100).toFixed(2) + '%';
+    },
+
+    // Stop the animated state. Options:
+    //   flash: play green/orange finish sweep (default true)
+    //   resetWidth: reset inner bar back to 0% (default true)
+    done({ flash = true, resetWidth = true } = {}){
+      setGenerating(false);
+      if (flash) flashDone();
+      if (resetWidth && FILL) FILL.style.width = '0%';
+    },
+
+    // Cancel immediately (no finish flash)
+    cancel(){
+      setGenerating(false);
+      if (FILL) FILL.style.width = '0%';
+    }
+  };
+})();
+</script>
+
