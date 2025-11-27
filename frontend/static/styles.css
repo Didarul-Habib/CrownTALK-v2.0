@@ -3576,3 +3576,85 @@ body.focus-mode.low-motion .card{ transition: none !important; }
 
 /* Dense toggle: hide if still present */
 .ct-density-toggle, .ct-switch{ display:none !important; }
+
+/* =========================================
+   CrownTALK — Processing Bar Animation (drop-in)
+   - Keeps your current DOM & IDs
+   - Works whether width is static or updated
+   - Auto-stops when body loses .is-generating
+   ========================================= */
+
+/* make sure the track can host an overlay */
+.progress-bar-outer{
+  position: relative;            /* anchor for ::after runner */
+  overflow: hidden;              /* hide the runner edges */
+}
+
+/* 1) Indeterminate runner (thin light sweep) */
+body.is-generating .progress-bar-outer::after{
+  content:"";
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 35%;                    /* size of the sweeping highlight */
+  height: 100%;
+  pointer-events: none;
+
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,.45) 45%,
+    rgba(255,255,255,0) 100%
+  );
+
+  /* subtle theme glow so it feels integrated */
+  box-shadow: 0 0 12px rgba(var(--btn-glow, 129,140,248), .35);
+
+  animation: ct-progress-runner 1.35s linear infinite;
+}
+
+@keyframes ct-progress-runner{
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
+}
+
+/* 2) Flowing gradient on the actual fill (if you set width) */
+body.is-generating #progressBarFill{
+  background-image: linear-gradient(
+    120deg,
+    #22c55e,
+    #a855f7,
+    #f97316,
+    #22c55e
+  ) !important;
+  background-size: 200% 100%;
+  animation: ct-progress-flow 1.25s linear infinite;
+  /* slight glow so it reads “active” */
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.14),
+    0 0 18px rgba(var(--btn-glow,129,140,248), .65);
+}
+
+@keyframes ct-progress-flow{
+  0%   { background-position:   0% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Optional: quick “done” flash you can trigger by toggling .ct-progress-done on body
+   (no JS change needed if you don’t use it) */
+body.ct-progress-done .progress-bar-outer::after{
+  animation: none !important;
+  background: linear-gradient(90deg,
+    rgba(34,197,94,0),
+    rgba(34,197,94,.65),
+    rgba(34,197,94,0)
+  );
+  left: 0;
+  width: 100%;
+  animation: ct-progress-finish 380ms ease-out 1;
+}
+
+@keyframes ct-progress-finish{
+  0%   { opacity: 0; }
+  25%  { opacity: 1; }
+  100% { opacity: 0; }
+}
