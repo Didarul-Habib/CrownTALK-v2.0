@@ -3155,3 +3155,35 @@ body .ai-chat-input .main-input:focus{
     animation: none !important;
   }
 }
+
+/* ===== Header rectangle cleanup (theme switcher pill → transparent) ===== */
+.theme-switcher { isolation: auto; } /* keep z-order sane, no extra backgrounds */
+
+.theme-dots{
+  background: transparent !important;   /* kill the slab */
+  box-shadow: none !important;          /* no drop-shadow rectangle */
+  padding: 0 2px;                       /* tighter, still clickable */
+  border-radius: 999px;                 /* keep round group shape */
+  gap: 10px;                            /* maintain spacing */
+}
+
+/* keep dots crisp without the pill; add subtle hover/active only */
+.theme-dot{
+  border: 2px solid var(--ring);
+  box-shadow: none;
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.theme-dot:hover{ transform: translateY(-1px) scale(1.05); }
+.theme-dot.is-active{
+  border-color: rgba(var(--glow), .9);
+  box-shadow:
+    0 0 0 4px rgba(var(--glow), .10),
+    0 0 18px rgba(var(--glow), .35);
+}
+
+/* optional: nudge tooltip so it’s not clipped by the header edge */
+.theme-dot::before{ transform: translateX(-50%) translateY(-10px); }
+
+/* guard: if any earlier hero/header background leftovers exist, make them transparent */
+.hero { background: transparent !important; }
+
