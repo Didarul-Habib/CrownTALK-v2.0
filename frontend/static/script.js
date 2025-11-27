@@ -1053,3 +1053,357 @@ function bootAppUI() {
   })();
 
 })();
+
+/* ===============================
+   CrownTALK Premium Patch Pack
+   Features: 16,19,21,22,27,29
+   No renames; all hooks are additive
+=================================*/
+(function () {
+  // ---------- small helpers ----------
+  const $ = (sel, root = document) => root.querySelector(sel);
+  const $$ = (sel, root = document) => Array.from(root.querySelectorAll(sel));
+  const on = (el, ev, cb, opts) => el && el.addEventListener(ev, cb, opts);
+  const storage = {
+    get(k, d = null) { try { return JSON.parse(localStorage.getItem(k)) ?? d; } catch { return d; } },
+    set(k, v) { localStorage.setItem(k, JSON.stringify(v)); }
+  };
+
+  // try to find your existing elements (names from your baseline)
+  const textarea = document.querySelector('.url-textarea, .ai-chat-input .main-input');
+  const resultsContainer = document.getElementById('results') || document.querySelector('.results-list');
+  const progressFill = document.getElementById('progressBarFill');
+  const generateBtn = document.getElementById('generateBtn') || document.querySelector('.controls .btn');
+  const cancelBtn = document.getElementById('cancelBtn');
+
+  // ---------------------------------------------------
+  // 16) Smart Paste+  (sanitize, dedupe, normalize)
+  // ---------------------------------------------------
+  const URL_RE = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^ \n]+/gi;
+
+  function normalizeX(url) {
+    try {
+      const u = new URL(url.trim());
+      // normalize twitter -> x and strip tracking/query/hash
+      if (u.hostname === 'twitter.com') u.hostname = 'x.com';
+      u.search = ''; u.hash = '';
+      // remove trailing slash variations like .../status/1234/
+      u.pathname = u.pathname.replace(/\/+$/, '');
+      return u.toString();
+    } catch { return null; }
+  }
+
+  function smartPasteTransform(text) {
+    // grab links, normalize, dedupe, keep numeric ordering if prefixed 1., 2., etc.
+    const lines = text.split(/\r?\n/);
+    const out = [];
+    const seen = new Set();
+
+    for (let raw of lines) {
+      const matches = raw.match(URL_RE);
+      if (!matches) { out.push(raw); continue; }
+      let replaced = raw;
+      for (const m of matches) {
+        const clean = normalizeX(m);
+        if (!clean) continue;
+        replaced = replaced.replace(m, clean);
+      }
+      out.push(replaced);
+    }
+
+    // re-scan and compile unique URL list preserving line order
+    const flat = out.join('\n').match(URL_RE) || [];
+    const uniq = [];
+    for (const u of flat) {
+      const n = normalizeX(u);
+      if (n && !seen.has(n)) { seen.add(n); uniq.push(n); }
+    }
+
+    // if content looks like “only URLs”, return enumerated nice list; otherwise return normalized text
+    const onlyUrls = lines.every(l => l.trim() === '' || URL_RE.test(l));
+    if (onlyUrls) {
+      return uniq.map((u, i) => `${i + 1}. ${u}`).join('\n');
+    }
+    return out.join('\n');
+  }
+
+  if (textarea) {
+    // on paste -> transform input
+    on(textarea, 'paste', (e) => {
+      const items = (e.clipboardData || window.clipboardData);
+      if (!items) return;
+      const text = items.getData('text/plain');
+      if (!text) return;
+      // prevent default and inject cleaned text
+      e.preventDefault();
+      const cleaned = smartPasteTransform(text);
+      const [start, end] = [textarea.selectionStart, textarea.selectionEnd];
+      const before = textarea.value.slice(0, start);
+      const after = textarea.value.slice(end);
+      textarea.value = before + cleaned + after;
+      const pos = (before + cleaned).length;
+      textarea.setSelectionRange(pos, pos);
+      textarea.dispatchEvent(new Event('input', { bubbles: true }));
+    });
+  }
+
+  // ---------------------------------------------------
+  // 19) Memory-Aware Re-roll (session + localStorage)
+  // ---------------------------------------------------
+  const MEMORY_KEY = 'ct_comment_memory_v1';
+  const memory = new Set(storage.get(MEMORY_KEY, []));
+
+  function remember(line) {
+    if (!line) return;
+    memory.add(line.trim());
+    storage.set(MEMORY_KEY, Array.from(memory));
+  }
+
+  // hook copy buttons in results to remember copied phrases
+  function wireCopyMemory(root = document) {
+    $$('.copy-btn, .copy-btn-en, .history-copy-btn', root).forEach(btn => {
+      if (btn._ct_mem) return;
+      btn._ct_mem = true;
+      on(btn, 'click', () => {
+        const row = btn.closest('.comment-line');
+        const text = row?.querySelector('.comment-text')?.textContent?.trim();
+        remember(text);
+      });
+    });
+  }
+  wireCopyMemory(document);
+  // MutationObserver to pick up new result rows
+  const mo = new MutationObserver(m => m.forEach(rec => rec.addedNodes.forEach(n => wireCopyMemory(n))));
+  if (resultsContainer) mo.observe(resultsContainer, { childList: true, subtree: true });
+
+  // public hook for your existing re-roll: filter out memorized phrases
+  // call `window.ctFilterGenerated(commentsArray)` before rendering
+  window.ctFilterGenerated = function (arr) {
+    if (!Array.isArray(arr)) return arr;
+    return arr.filter(txt => !memory.has((txt || '').trim()));
+  };
+
+  // ---------------------------------------------------
+  // 21) Session Save/Restore (inputs, results, theme)
+  // ---------------------------------------------------
+  const SESS_KEY = 'ct_sessions_v1';
+  const sessions = storage.get(SESS_KEY, {});
+
+  function makeSessionSnapshot() {
+    return {
+      ts: Date.now(),
+      theme: document.documentElement.getAttribute('data-theme') || 'dark-purple',
+      input: textarea ? textarea.value : '',
+      results: (resultsContainer ? resultsContainer.innerHTML : ''),
+      flags: {
+        lowMotion: document.body.classList.contains('low-motion'),
+        focusMode: document.body.classList.contains('focus-mode')
+      }
+    };
+  }
+
+  function saveSession(name) {
+    if (!name) return;
+    sessions[name] = makeSessionSnapshot();
+    storage.set(SESS_KEY, sessions);
+    hudToast(`Saved session “${name}”`);
+  }
+
+  function loadSession(name) {
+    const s = sessions[name];
+    if (!s) return hudToast(`No session “${name}”`, 'warn');
+    document.documentElement.setAttribute('data-theme', s.theme);
+    if (textarea) textarea.value = s.input || '';
+    if (resultsContainer) resultsContainer.innerHTML = s.results || '';
+    document.body.classList.toggle('low-motion', !!s.flags?.lowMotion);
+    document.body.classList.toggle('focus-mode', !!s.flags?.focusMode);
+    hudToast(`Loaded session “${name}”`);
+  }
+
+  // expose minimal API (you can bind to UI later)
+  window.ctSessions = {
+    list: () => Object.keys(sessions).sort(),
+    save: saveSession,
+    load: loadSession,
+    remove: (name) => { delete sessions[name]; storage.set(SESS_KEY, sessions); },
+  };
+
+  // quick keyboard helpers:
+  // Ctrl/Cmd+S => save prompt
+  // Ctrl/Cmd+O => load prompt
+  on(document, 'keydown', (e) => {
+    const mod = e.ctrlKey || e.metaKey;
+    if (!mod) return;
+    if (e.key.toLowerCase() === 's') {
+      e.preventDefault();
+      const name = prompt('Save session as:');
+      if (name) saveSession(name.trim());
+    } else if (e.key.toLowerCase() === 'o') {
+      e.preventDefault();
+      const keys = Object.keys(sessions);
+      if (!keys.length) return hudToast('No saved sessions yet', 'warn');
+      const name = prompt(`Load which session?\n${keys.join('\n')}`);
+      if (name) loadSession(name.trim());
+    }
+  });
+
+  // ---------------------------------------------------
+  // 22) Rate-Safe Scheduler (batch drip)
+  // ---------------------------------------------------
+  const scheduler = (function () {
+    // simple token bucket-ish throttle
+    const cfg = {
+      perMinute: 25,      // max requests per minute (tune for your backend/api)
+      concurrency: 1,     // one at a time to keep UI simple
+      retryBackoffMs: 2500
+    };
+
+    let queue = [];
+    let running = 0;
+    let tickTimestamps = [];
+
+    function canFire() {
+      const now = Date.now();
+      tickTimestamps = tickTimestamps.filter(t => now - t < 60_000);
+      return tickTimestamps.length < cfg.perMinute && running < cfg.concurrency;
+    }
+
+    async function runOne(job) {
+      running++;
+      tickTimestamps.push(Date.now());
+      try {
+        const t0 = performance.now();
+        const res = await job.fn();
+        const dt = performance.now() - t0;
+        hudUpdate({ lastLatency: dt });
+        job.resolve(res);
+      } catch (e) {
+        if (job.retries > 0) {
+          job.retries--;
+          setTimeout(() => { queue.push(job); pump(); }, cfg.retryBackoffMs);
+        } else {
+          job.reject(e);
+        }
+      } finally {
+        running--;
+        pump();
+      }
+    }
+
+    function pump() {
+      while (queue.length && canFire()) {
+        const job = queue.shift();
+        runOne(job);
+      }
+      hudUpdate();
+    }
+
+    function schedule(fn, desc = 'job', retries = 1) {
+      return new Promise((resolve, reject) => {
+        queue.push({ fn, desc, retries, resolve, reject });
+        pump();
+      });
+    }
+
+    // small HUD hooks
+    function info() {
+      const now = Date.now();
+      tickTimestamps = tickTimestamps.filter(t => now - t < 60_000);
+      const margin = Math.max(cfg.perMinute - tickTimestamps.length, 0);
+      return { queue: queue.length + running, margin, rate: cfg.perMinute, running };
+    }
+
+    return { schedule, info, cfg };
+  })();
+
+  window.ctSchedule = scheduler; // expose for your generate loop if you want
+
+  // Example integration:
+  // wherever you fire fetch to /comment or /reroll, wrap with scheduler.schedule(() => fetch(...))
+  // That’s all—no renames required.
+
+  // ---------------------------------------------------
+  // 27) Live System HUD
+  // ---------------------------------------------------
+  const hud = (function () {
+    const el = document.createElement('div');
+    el.id = 'ctHud';
+    el.innerHTML = `
+      <div class="ct-hud__row">
+        <span class="ct-hud__dot"></span>
+        <strong>HUD</strong>
+        <span class="ct-hud__sp">·</span>
+        <span id="ctHudQueue">Q:0</span>
+        <span id="ctHudRate">/min:–</span>
+        <span id="ctHudMargin">free:–</span>
+        <span id="ctHudLatency">lat:–</span>
+      </div>
+      <div id="ctHudToast" class="ct-hud__toast" aria-live="polite"></div>
+    `;
+    document.body.appendChild(el);
+    const state = { lastLatency: null };
+    function update(extra = {}) {
+      Object.assign(state, extra);
+      const inf = scheduler.info();
+      $('#ctHudQueue').textContent = `Q:${inf.queue}`;
+      $('#ctHudRate').textContent = `/min:${inf.rate}`;
+      $('#ctHudMargin').textContent = `free:${inf.margin}`;
+      $('#ctHudLatency').textContent = state.lastLatency ? `lat:${Math.round(state.lastLatency)}ms` : 'lat:–';
+      el.classList.toggle('is-hot', inf.margin < Math.max(2, Math.round(inf.rate * 0.1)));
+    }
+    function toast(msg, kind = 'ok') {
+      const t = $('#ctHudToast');
+      t.textContent = msg;
+      t.dataset.kind = kind;
+      t.classList.add('show');
+      setTimeout(() => t.classList.remove('show'), 1800);
+    }
+    return { update, toast, el };
+  })();
+
+  function hudUpdate(extra) { hud.update(extra); }
+  function hudToast(msg, kind) { hud.toast(msg, kind); }
+  hudUpdate();
+
+  // ---------------------------------------------------
+  // 29) Accessibility & Focus Mode
+  //   - Focus mode dims everything except active card
+  //   - Low-motion toggle (reduces animations)
+  // ---------------------------------------------------
+  // keyboard:
+  //   F => toggle focus mode
+  //   M => toggle low-motion
+  on(document, 'keydown', (e) => {
+    if (e.target && /input|textarea/i.test(e.target.tagName)) {
+      if (e.key.toLowerCase() === 'f' && (e.ctrlKey || e.metaKey)) { // Ctrl/Cmd+F would clash; use plain 'f'
+        return;
+      }
+    }
+    if (e.key.toLowerCase() === 'f') {
+      document.body.classList.toggle('focus-mode');
+      hudToast(`Focus mode: ${document.body.classList.contains('focus-mode') ? 'on' : 'off'}`);
+    }
+    if (e.key.toLowerCase() === 'm') {
+      document.body.classList.toggle('low-motion');
+      hudToast(`Low-motion: ${document.body.classList.contains('low-motion') ? 'on' : 'off'}`);
+    }
+  });
+
+  // when textarea/card gains focus, mark that card as active (for focus mode visuals)
+  $$('.card').forEach(card => {
+    on(card, 'focusin', () => card.classList.add('is-focused'));
+    on(card, 'focusout', () => card.classList.remove('is-focused'));
+  });
+
+  // ---------------------------------------------------
+  // Remove the preview button near the input (if present)
+  // (Earlier “compact preview” toggle was #ctUrlCompactToggle. Hide & detach events.)
+  // ---------------------------------------------------
+  (function killPreviewButton() {
+    const btn = document.getElementById('ctUrlCompactToggle') || document.querySelector('.ct-preview-toggle, .url-preview-btn');
+    if (btn) {
+      btn.remove(); // hard remove so it won’t occupy space
+    }
+  })();
+
+})();
