@@ -26,6 +26,7 @@ BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onr
 # Batch & pacing (env-tunable)
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "2"))                 # ← process N at a time
 PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.1"))  # ← sleep after every URL
+MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "25"))  # ← hard cap per request
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
@@ -42,6 +43,37 @@ if USE_GROQ:
         _groq_client = None
         USE_GROQ = False
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+
+# ------------------------------------------------------------------------------
+# Optional OpenAI
+# ------------------------------------------------------------------------------
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+USE_OPENAI = bool(OPENAI_API_KEY)
+_openai_client = None
+if USE_OPENAI:
+    try:
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception:
+        _openai_client = None
+        USE_OPENAI = False
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# ------------------------------------------------------------------------------
+# Optional Gemini
+# ------------------------------------------------------------------------------
+GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
+USE_GEMINI = bool(GEMINI_API_KEY)
+_gemini_model = None
+if USE_GEMINI:
+    try:
+        import google.generativeai as genai
+        genai.configure(api_key=GEMINI_API_KEY)
+        GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        _gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
+    except Exception:
+        _gemini_model = None
+        USE_GEMINI = False
 
 # ------------------------------------------------------------------------------
 # Keepalive (Render free – optional)
@@ -497,13 +529,33 @@ class OfflineCommentGenerator:
             return [f"{f} هو الجزء العملي بعيداً عن الضجيج",
                     f"لو ركّزنا على {f} الصورة توضّح",
                     f"{f} هنا يغيّر النتيجة فعلاً"]
+        if script == "ja":
+            return [f"{f} の実務的な部分が要点だよ",
+                    f"{f} に注目すると全体が見えてくる",
+                    f"{f} が効いてるから話が進む"]
+        if script == "ko":
+            return [f"{f} 가 핵심이고 나머진 따라와요",
+                    f"{f} 보고 있으면 그림이 깔끔해져요",
+                    f"{f} 얘기가 제일 현실적이에요"]
+        if script == "zh":
+            return [f"{f} 才是重點，別被噪音帶偏",
+                    f"抓住 {f}，其他自然順起來",
+                    f"{f} 才是實打實的關鍵"]
         return [f"{f} is the practical bit here",
                 f"keep eyes on {f}, rest follows",
                 f"{f} is where it turns real"]
 
+    def _enforce_length_cjk(self, s: str, min_chars: int = 12, max_chars: int = 48) -> str:
+        """Lightweight length guard for CJK/ja/ko where 'word' counts aren't meaningful."""
+        s = re.sub(r"\s+", " ", s or "").strip()
+        if len(s) > max_chars:
+            s = s[:max_chars].rstrip()
+        return s
+
     def _make_native_comment(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
         key = extract_keywords(text); focus = pick_focus_token(key) or "this"
-        buckets = self._native_buckets(ctx.get("script", "latn"))
+        script = ctx.get("script", "latn")
+        buckets = self._native_buckets(script)
         last = ""
         for _ in range(32):
             out = normalize_ws(random.choice(buckets).format(focus=focus))
@@ -514,8 +566,14 @@ class OfflineCommentGenerator:
             remember_comment(out)
             remember_opener(_openers(out))
             remember_ngrams(out)
+            if script in {"ja","ko","zh"}:
+                return self._enforce_length_cjk(out) or out
             return enforce_word_count_natural(out, 6, 13)
-        return enforce_word_count_natural(last, 6, 13) if last else None
+        if last:
+            if script in {"ja","ko","zh"}:
+                return self._enforce_length_cjk(last) or last
+            return enforce_word_count_natural(last, 6, 13)
+        return None
 
     def _fixed_buckets(self, ctx: Dict[str, Any], topic: str, is_crypto: bool) -> Dict[str, List[str]]:
         focus_slot = "{focus}"
@@ -652,7 +710,10 @@ class OfflineCommentGenerator:
         if non_en:
             native = self._make_native_comment(text, ctx)
             if native and self._accept(native):
-                native = enforce_word_count_natural(native, 6, 13)
+                if ctx["script"] in {"ja","ko","zh"}:
+                    native = self._enforce_length_cjk(native)
+                else:
+                    native = enforce_word_count_natural(native, 6, 13)
                 self._commit(native, url=url, lang=ctx["script"])
                 out.append({"lang": ctx["script"], "text": native})
 
@@ -685,14 +746,43 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
             if segs: handle = segs[0]
         except Exception: pass
     script = "latn"
-    blocks = [("bn", r"[\u0980-\u09FF]"), ("hi", r"[\u0900-\u097F]"), ("ar", r"[\u0600-\u06FF]"),
-              ("ta", r"[\u0B80-\u0BFF]"), ("te", r"[\u0C00-\u0C7F]"), ("ur", r"[\u0600-\u06FF]")]
+    # Count script signals (order matters for disambiguation)
     text_no_urls = re.sub(r"https?://\S+", "", text)
     total_letters = len(re.findall(r"[^\W\d_]", text_no_urls, flags=re.UNICODE))
-    for code, pat in blocks:
-        cnt = len(re.findall(pat, text_no_urls))
-        if total_letters and (cnt / max(1, total_letters)) >= 0.25:
-            script = code; break
+
+    # Heuristics for scripts
+    counts = {
+        "ja_hira_kata": len(re.findall(r"[\u3040-\u30FF]", text_no_urls)),   # Hiragana + Katakana
+        "ko": len(re.findall(r"[\uAC00-\uD7AF]", text_no_urls)),             # Hangul Syllables
+        "cjk": len(re.findall(r"[\u4E00-\u9FFF]", text_no_urls)),            # CJK Unified Ideographs
+        "bn": len(re.findall(r"[\u0980-\u09FF]", text_no_urls)),
+        "hi": len(re.findall(r"[\u0900-\u097F]", text_no_urls)),
+        "ar": len(re.findall(r"[\u0600-\u06FF]", text_no_urls)),
+        "ta": len(re.findall(r"[\u0B80-\u0BFF]", text_no_urls)),
+        "te": len(re.findall(r"[\u0C00-\u0C7F]", text_no_urls)),
+        "ur": len(re.findall(r"[\u0600-\u06FF]", text_no_urls)),
+    }
+    if total_letters:
+        # Prefer Japanese if kana present significantly
+        if counts["ja_hira_kata"] / total_letters >= 0.15:
+            script = "ja"
+        elif counts["ko"] / total_letters >= 0.25:
+            script = "ko"
+        elif counts["cjk"] / total_letters >= 0.25:
+            script = "zh"
+        elif counts["bn"] / total_letters >= 0.25:
+            script = "bn"
+        elif counts["hi"] / total_letters >= 0.25:
+            script = "hi"
+        elif counts["ar"] / total_letters >= 0.25:
+            script = "ar"
+        elif counts["ta"] / total_letters >= 0.25:
+            script = "ta"
+        elif counts["te"] / total_letters >= 0.25:
+            script = "te"
+        elif counts["ur"] / total_letters >= 0.25:
+            script = "ur"
+
     return {"author_name": (tweet_author or "").strip() or None,
             "handle": (handle or "").strip() or None,
             "script": script}
@@ -776,6 +866,39 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     return result[:2]
 
 # ------------------------------------------------------------------------------
+# LLM parsing helper shared by providers
+# ------------------------------------------------------------------------------
+def parse_two_comments_flex(raw_text: str) -> list[str]:
+    out: list[str] = []
+    try:
+        m = re.search(r"\[[\s\S]*\]", raw_text)
+        candidate = m.group(0) if m else raw_text
+        data = json.loads(candidate)
+        if isinstance(data, dict):
+            data = data.get("comments") or data.get("items") or data.get("data")
+        if isinstance(data, list):
+            out = [str(x).strip() for x in data if str(x).strip()]
+    except Exception:
+        out = []
+    if len(out) >= 2:
+        return out[:2]
+    quoted = re.findall(r'["“](.+?)["”]', raw_text)
+    if len(quoted) >= 2:
+        return [q.strip() for q in quoted[:2]]
+    parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|[-•*])\s*", raw_text)
+    parts = [p.strip() for p in parts if p and not p.isspace()]
+    parts = [p for p in parts if len(p.split()) >= 3]
+    if len(parts) >= 2:
+        return parts[:2]
+    lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
+    if len(lines) >= 2:
+        return lines[:2]
+    m2 = re.split(r"\s*[;|/\\]+\s*", raw_text)
+    if len(m2) >= 2:
+        return [m2[0].strip(), m2[1].strip()]
+    return []
+
+# ------------------------------------------------------------------------------
 # Groq generator (exactly 2, 6–13 words, tolerant parsing)
 # ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
@@ -834,38 +957,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         raise RuntimeError("Groq call failed after retries")
 
     raw = (resp.choices[0].message.content or "").strip()
-
-    def _parse_two(raw_text: str) -> list[str]:
-        out: list[str] = []
-        try:
-            m = re.search(r"\[[\s\S]*\]", raw_text)
-            candidate = m.group(0) if m else raw_text
-            data = json.loads(candidate)
-            if isinstance(data, dict):
-                data = data.get("comments") or data.get("items") or data.get("data")
-            if isinstance(data, list):
-                out = [str(x).strip() for x in data if str(x).strip()]
-        except Exception:
-            out = []
-        if len(out) >= 2:
-            return out[:2]
-        quoted = re.findall(r'["“](.+?)["”]', raw_text)
-        if len(quoted) >= 2:
-            return [q.strip() for q in quoted[:2]]
-        parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|[-•*])\s*", raw_text)
-        parts = [p.strip() for p in parts if p and not p.isspace()]
-        parts = [p for p in parts if len(p.split()) >= 3]
-        if len(parts) >= 2:
-            return parts[:2]
-        lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
-        if len(lines) >= 2:
-            return lines[:2]
-        m2 = re.split(r"\s*[;|/\\]+\s*", raw_text)
-        if len(m2) >= 2:
-            return [m2[0].strip(), m2[1].strip()]
-        return []
-
-    candidates = _parse_two(raw)
+    candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates)
@@ -885,6 +977,134 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         raise RuntimeError("Could not produce two valid comments")
 
     return candidates[:2]
+
+# ------------------------------------------------------------------------------
+# OpenAI / Gemini generators (same constraints as Groq)
+# ------------------------------------------------------------------------------
+def _llm_sys_prompt() -> str:
+    return (
+        "You write extremely short, human comments for social posts.\n"
+        "- Output exactly two comments.\n"
+        "- Each comment must be 6-13 words.\n"
+        "- Natural conversational tone, as if you just read the post.\n"
+        "- The two comments must have different vibes (e.g., supportive vs curious).\n"
+        "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
+        "- Avoid repetitive templates; vary syntax and rhythm.\n"
+        "- Prefer returning a pure JSON array of two strings, like: "
+        "[\"first comment\", \"second comment\"].\n"
+        "- If you cannot return JSON, return two lines separated by a newline.\n"
+    )
+
+def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+    if not (USE_OPENAI and _openai_client):
+        raise RuntimeError("OpenAI disabled or client not available")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    resp = _openai_client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": _llm_sys_prompt()},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=160,
+        temperature=0.8,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [enforce_word_count_natural(c) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates)
+    if len(candidates) < 2:
+        raise RuntimeError("OpenAI did not produce two valid comments")
+    return candidates[:2]
+
+def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+    if not (USE_GEMINI and _gemini_model):
+        raise RuntimeError("Gemini disabled or client not available")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    prompt = _llm_sys_prompt() + "\n\n" + user_prompt
+    resp = _gemini_model.generate_content(prompt)
+    raw = ""
+    try:
+        parts = getattr(getattr(resp, "candidates", [None])[0], "content", None)
+        if parts and getattr(parts, "parts", None):
+            raw = "".join(getattr(p, "text", "") for p in parts.parts)
+        elif hasattr(resp, "text"):
+            raw = resp.text
+        else:
+            raw = str(resp)
+    except Exception:
+        raw = str(resp)
+    raw = (raw or "").strip()
+
+    candidates = parse_two_comments_flex(raw)
+    candidates = [enforce_word_count_natural(c) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates)
+    if len(candidates) < 2:
+        raise RuntimeError("Gemini did not produce two valid comments")
+    return candidates[:2]
+
+def generate_two_comments_with_providers(
+    tweet_text: str,
+    author: Optional[str],
+    handle: Optional[str],
+    lang: Optional[str],
+    url: Optional[str] = None,
+) -> List[Dict[str, Any]]:
+    """Groq -> OpenAI -> Gemini -> offline; returns list of {'lang','text'} dicts."""
+    candidates: list[str] = []
+
+    if USE_GROQ and _groq_client:
+        try:
+            candidates = groq_two_comments(tweet_text, author)
+        except Exception as e:
+            logger.warning("Groq failed: %s", e)
+
+    if (not candidates or len(candidates) < 2) and USE_OPENAI and _openai_client:
+        try:
+            more = openai_two_comments(tweet_text, author)
+            candidates = enforce_unique(candidates + more)
+        except Exception as e:
+            logger.warning("OpenAI failed: %s", e)
+
+    if (not candidates or len(candidates) < 2) and USE_GEMINI and _gemini_model:
+        try:
+            more = gemini_two_comments(tweet_text, author)
+            candidates = enforce_unique(candidates + more)
+        except Exception as e:
+            logger.warning("Gemini failed: %s", e)
+
+    if len(candidates) < 2:
+        try:
+            offline = offline_two_comments(tweet_text, author)
+            candidates = enforce_unique(candidates + offline)
+        except Exception as e:
+            logger.warning("Offline generator failed: %s", e)
+
+    out: List[Dict[str, Any]] = []
+    for c in candidates:
+        if not c:
+            continue
+        out.append({"lang": lang or "en", "text": c})
+        if len(out) >= 2:
+            break
+
+    if not out:
+        try:
+            out = generator.generate_two(tweet_text, author or None, handle, lang, url=url)
+        except Exception as e:
+            logger.exception("Total failure in provider cascade: %s", e)
+            raise
+
+    return out
 
 # ------------------------------------------------------------------------------
 # API routes (batching + pacing)
@@ -915,6 +1135,15 @@ def comment_endpoint():
     except Exception:
         return jsonify({"error": "url_clean_error", "code": "url_clean_error"}), 400
 
+    # Hard cap per request
+    if len(cleaned) > MAX_URLS_PER_REQUEST:
+        return jsonify({
+            "error": f"Too many URLs in one request; send at most {MAX_URLS_PER_REQUEST} links at a time.",
+            "code": "too_many_urls",
+            "max_urls_per_request": MAX_URLS_PER_REQUEST,
+            "hint": "For best results, chunk your list into batches of around 20–25 links.",
+        }), 400
+
     results, failed = [], []
     for batch in chunked(cleaned, BATCH_SIZE):
         for url in batch:
@@ -922,14 +1151,9 @@ def comment_endpoint():
                 t = fetch_tweet_data(url)
                 handle = _extract_handle_from_url(url)
 
-                if USE_GROQ and _groq_client:
-                    try:
-                        two = [{"lang": "en", "text": c} for c in groq_two_comments(t.text, t.author_name or None)]
-                    except Exception as sub_err:
-                        logger.warning("Groq failed for %s: %s — falling back to offline", url, sub_err)
-                        two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
-                else:
-                    two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
+                two = generate_two_comments_with_providers(
+                    t.text, t.author_name or None, handle, t.lang or None, url=url
+                )
 
                 results.append({"url": url, "comments": two})
             except CrownTALKError as e:
@@ -954,14 +1178,9 @@ def reroll_endpoint():
         t = fetch_tweet_data(url)
         handle = _extract_handle_from_url(url)
 
-        if USE_GROQ and _groq_client:
-            try:
-                two = [{"lang": "en", "text": c} for c in groq_two_comments(t.text, t.author_name or None)]
-            except Exception as sub_err:
-                logger.warning("Groq reroll failed for %s: %s — falling back", url, sub_err)
-                two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
-        else:
-            two = generator.generate_two(t.text, t.author_name or None, handle, t.lang or None, url=url)
+        two = generate_two_comments_with_providers(
+            t.text, t.author_name or None, handle, t.lang or None, url=url
+        )
 
         return jsonify({"url": url, "comments": two}), 200
     except CrownTALKError as e:
