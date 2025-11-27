@@ -2842,3 +2842,316 @@ body.is-generating .helper-text::after{
     animation: none !important;
   }
 }
+
+/* =====================================================
+   CrownTALK – Premium Pack v2 (global, safe)
+   ===================================================== */
+
+/* ---------------------------------
+   1) Ambient card edge glow (static)
+   --------------------------------- */
+
+.card{
+  position: relative;
+  /* keep your existing shadows but slightly deepen them */
+  box-shadow:
+    inset 0 -16px 24px rgba(255,255,255,0.10),
+    0 12px 28px rgba(0,0,0,0.75);
+}
+
+/* subtle static ring hugging each card, no animation */
+.card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  pointer-events:none;
+  border:1px solid rgba(15,23,42,0.95);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 0 22px rgba(var(--btn-glow), .14);
+}
+
+/* reset any older animated ::before usage */
+.card::before{
+  content:none;
+}
+
+/* ---------------------------------------------------
+   2) Glass reflection strip on the first (input) card
+   --------------------------------------------------- */
+
+.main .card:first-of-type::before{
+  content:"";
+  position:absolute;
+  left:10%;
+  right:10%;
+  top:0;
+  height:26px;
+  border-radius:0 0 999px 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,.38),
+    rgba(255,255,255,0)
+  );
+  opacity:.22;
+  pointer-events:none;
+}
+
+/* ------------------------------------------
+   3) Hero ambient micro particles (desktop)
+   ------------------------------------------ */
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .hero{
+    position:relative;
+    overflow:visible;
+  }
+
+  .hero::before,
+  .hero::after{
+    content:"";
+    position:absolute;
+    inset:-40px -80px;
+    pointer-events:none;
+    z-index:-1;
+    background:
+      radial-gradient(circle at 10% 80%, rgba(255,255,255,.18) 0, transparent 50%),
+      radial-gradient(circle at 30% 10%, rgba(var(--btn-glow), .22) 0, transparent 45%),
+      radial-gradient(circle at 80% 30%, rgba(129,140,248,.18) 0, transparent 48%),
+      radial-gradient(circle at 65% 90%, rgba(15,23,42,.75) 0, transparent 55%);
+    opacity:.45;
+    filter: blur(4px);
+    transform: translate3d(0, 0, 0);
+    animation: ct-hero-dust 24s linear infinite;
+  }
+
+  .hero::after{
+    animation-duration: 32s;
+    opacity:.35;
+  }
+
+  @keyframes ct-hero-dust{
+    0%   { transform: translate3d(0, 6px, 0); }
+    50%  { transform: translate3d(0, -6px, 0); }
+    100% { transform: translate3d(0, 6px, 0); }
+  }
+}
+
+/* ------------------------------------------
+   4) Hero logo frame theme accent (static)
+   ------------------------------------------ */
+
+.hero-orbit{
+  position:relative;
+  border-radius:999px;
+  outline: 1px solid rgba(var(--btn-glow), .55);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,0.95),
+    0 0 32px rgba(var(--btn-glow), .55);
+}
+
+/* ------------------------------------------------------
+   5) Micro shadow ripple on main actions (desktop only)
+   ------------------------------------------------------ */
+
+@media (pointer: fine){
+  .controls .btn,
+  #cancelBtn.btn-secondary,
+  #clearBtn.btn-secondary.subtle{
+    transition:
+      transform .14s ease,
+      box-shadow .18s ease,
+      filter .16s ease;
+  }
+
+  .controls .btn:hover:not(:disabled),
+  #cancelBtn.btn-secondary:hover:not(:disabled),
+  #clearBtn.btn-secondary.subtle:hover{
+    transform: translateY(-1px) scale(1.015);
+    filter: saturate(1.05);
+  }
+}
+
+/* ---------------------------------------------
+   6) Premium input focus ring (textarea helper)
+   --------------------------------------------- */
+/* (JS / HTML are unchanged – this just sweetens the glow) */
+
+body .ai-chat-input .main-input:focus{
+  box-shadow:
+    0 0 0 1px rgba(var(--btn-glow), .85),
+    0 0 0 3px rgba(var(--btn-glow), .35),
+    0 16px 40px rgba(0,0,0,.85);
+  border-color: rgba(var(--btn-glow), .95);
+}
+
+/* ---------------------------------------------
+   7) Micro dividers in long lists (results/history)
+   --------------------------------------------- */
+
+.tweet + .tweet,
+.failed-item + .failed-item,
+.history-item + .history-item{
+  border-top: 1px solid rgba(15,23,42,.90);
+}
+
+/* ---------------------------------------------
+   8) Crown “signature” hover on copy buttons
+   --------------------------------------------- */
+
+.copy-btn,
+.copy-btn-en,
+.history-copy-btn{
+  position:relative;
+  overflow:hidden;
+}
+
+.copy-btn::before,
+.copy-btn-en::before,
+.history-copy-btn::before{
+  content:"";
+  position:absolute;
+  inset:-40%;
+  border-radius:999px;
+  background: radial-gradient(
+    circle at 20% 0%,
+    rgba(251,191,36,.75),
+    transparent 55%
+  );
+  opacity:0;
+  transform: translate3d(-30%, 40%, 0);
+  pointer-events:none;
+  transition:
+    opacity .22s ease,
+    transform .22s ease;
+}
+
+.copy-btn:hover::before,
+.copy-btn-en:hover::before,
+.history-copy-btn:hover::before{
+  opacity:.9;
+  transform: translate3d(0, 0, 0);
+}
+
+/* ---------------------------------------------
+   9) Failed card header emphasis (subtle, static)
+   --------------------------------------------- */
+
+.main .card:nth-of-type(3) .card-head h2{
+  position:relative;
+  color:#fee2e2;
+}
+
+.main .card:nth-of-type(3) .card-head h2::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:-3px;
+  height:2px;
+  width:38px;
+  border-radius:999px;
+  background: linear-gradient(
+    90deg,
+    rgba(248,113,113,.95),
+    rgba(127,29,29,.95)
+  );
+  opacity:.85;
+}
+
+/* ---------------------------------------------
+   10) System status signal wave
+   --------------------------------------------- */
+
+.system-status{
+  position:relative;
+}
+
+.system-indicator{
+  position:relative;
+  width:8px;
+  height:8px;
+  border-radius:999px;
+}
+
+.system-indicator::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  border:1px solid rgba(34,197,94,.65);
+  opacity:0;
+  pointer-events:none;
+}
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .system-indicator::after{
+    animation: ct-signal-wave 2.4s ease-out infinite;
+  }
+
+  @keyframes ct-signal-wave{
+    0%{
+      transform: scale(1);
+      opacity:.45;
+    }
+    60%{
+      transform: scale(2.2);
+      opacity:0;
+    }
+    100%{
+      transform: scale(2.2);
+      opacity:0;
+    }
+  }
+}
+
+/* ---------------------------------------------
+   11) Desktop-only glass scrollbars for lists
+   --------------------------------------------- */
+
+@media (pointer: fine){
+  .results-list,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95);
+  }
+
+  .results-list::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
+  }
+
+  .results-list::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
+  }
+
+  .results-list::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .6)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
+  }
+}
+
+/* ---------------------------------------------
+   12) Respect reduced motion for new effects
+   --------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce){
+  .hero::before,
+  .hero::after,
+  .system-indicator::after{
+    animation: none !important;
+  }
+}
