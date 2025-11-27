@@ -161,9 +161,80 @@ body.is-generating #generateBtn .tb-2 { display: inline; }
 body.is-generating #generateBtn::before {
   animation: gen-pulse 1.35s ease-in-out infinite;
 }
+
 @keyframes gen-pulse {
   0%,100% {
     box-shadow:
       0 0 0 1px rgba(var(--btn-glow), .55) inset,
       0 10px 26px rgba(var(--btn-glow), .28),
       0 1px 0 rgba(255,255,255,.18) inset;
+  }
+  50% {
+    box-shadow:
+      0 0 0 1px rgba(var(--btn-glow), .75) inset,
+      0 14px 32px rgba(var(--btn-glow), .35),
+      0 1px 0 rgba(255,255,255,.24) inset;
+  }
+}
+
+/* =========================================
+   CrownTALK – Generate keycap gloss skin
+   (scoped only to #generateBtn)
+   ========================================= */
+
+#generateBtn.btn::before{
+  /* keep all positioning from original, just change the look */
+  background:
+    /* top specular highlight like Cancel/Clear */
+    radial-gradient(
+      circle at 20% 0%,
+      rgba(255,255,255,.42),
+      transparent 60%
+    ),
+    /* main keycap gradient using theme colour */
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--btn-base) 28%, #ffffff 72%),
+      color-mix(in oklab, var(--btn-base) 88%, #020617 12%)
+    );
+
+  /* 3D key shadow + subtle inner highlight */
+  box-shadow:
+    0 3px 0 color-mix(in oklab, var(--btn-edge) 84%, #000 16%),   /* bottom rim */
+    0 8px 16px rgba(0,0,0,.78),                                   /* drop shadow */
+    0 12px 26px rgba(var(--btn-glow), .32),                       /* coloured glow */
+    0 1px 0 rgba(255,255,255,.22) inset;                          /* top inner edge */
+}
+
+/* hover: a bit brighter + slightly stronger shadow */
+#generateBtn.btn:hover:not(:disabled)::before{
+  background:
+    radial-gradient(
+      circle at 20% 0%,
+      rgba(255,255,255,.48),
+      transparent 62%
+    ),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--btn-base) 36%, #ffffff 64%),
+      color-mix(in oklab, var(--btn-base) 90%, #020617 10%)
+    );
+  box-shadow:
+    0 3px 0 color-mix(in oklab, var(--btn-edge) 88%, #000 12%),
+    0 10px 20px rgba(0,0,0,.85),
+    0 14px 30px rgba(var(--btn-glow), .38),
+    0 1px 0 rgba(255,255,255,.26) inset;
+}
+
+/* pressed: key goes down a touch */
+#generateBtn.btn:active:not(:disabled)::before{
+  box-shadow:
+    0 1px 0 color-mix(in oklab, var(--btn-edge) 88%, #000 12%),
+    0 4px 10px rgba(0,0,0,.85),
+    0 8px 18px rgba(var(--btn-glow), .25),
+    0 1px 0 rgba(255,255,255,.18) inset;
+}
+
+
+
+   
