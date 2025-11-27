@@ -3345,3 +3345,79 @@ body.low-motion .ct-lowmotion-pill{ display:inline-block; }
     animation:none !important; display:none !important;
   }
 }
+
+/* =========================================================
+   CrownTALK — Switcher Orbit + Hero/Preview Cleanup + Dense OFF
+   (safe overrides; no class/id changes)
+   ========================================================= */
+
+/* ---- 1) Theme switcher: bring back a rotating arc around the group ---- */
+.theme-dots{
+  position: relative;
+  background: transparent !important;   /* keep the pill gone */
+  box-shadow: none !important;
+  padding: 0 2px;
+}
+.theme-dots::after{
+  /* outer orbit arc with a small gap from the dots */
+  --ring: 2px;
+  --angle: 0deg;
+
+  content: "";
+  position: absolute;
+  inset: -10px;                         /* arc sits outside the group */
+  border-radius: 999px;
+  padding: var(--ring);
+
+  /* single moving arc */
+  background:
+    conic-gradient(from var(--angle),
+      rgba(var(--btn-glow), .0) 0deg,
+      rgba(var(--btn-glow), .35) 0deg 42deg,
+      transparent 42deg 360deg);
+
+  /* carve the arc into a thin ring with a gap */
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+
+  filter: drop-shadow(0 0 10px rgba(var(--btn-glow), .35));
+  pointer-events: none;
+  animation: ct-theme-ring-rotate 6s linear infinite;
+}
+@keyframes ct-theme-ring-rotate { to { --angle: 360deg; } }
+
+/* keep each dot clean (no individual orbit circle) */
+.theme-dot::after{ content:none !important; }
+
+/* ---- 2) Remove “theme hover preview” glow on the hero ---- */
+.hero[data-preview-theme],
+.hero[data-preview-theme="blue"],
+.hero[data-preview-theme="emerald"],
+.hero[data-preview-theme="gold"],
+.hero[data-preview-theme="crimson"],
+.hero[data-preview-theme="black"],
+.hero[data-preview-theme="white"]{
+  box-shadow: none !important;
+}
+
+/* ---- 3) Kill the hero rectangle/overlays completely ---- */
+.hero{ background: transparent !important; box-shadow: none !important; }
+.hero::before,
+.hero::after{ content: none !important; }
+
+/* If any earlier patch outlined the hero logo heavily, soften it */
+.hero-orbit{
+  outline: none !important;
+  box-shadow: 0 0 30px rgba(0,0,0,0) !important; /* neutralize big aura */
+}
+
+/* ---- 4) Hide the Dense toggle and neutralize its effects ---- */
+.ct-density-toggle,
+.ct-switch{ display: none !important; }
+
+/* revert any compact spacing if body still has .ct-dense */
+body.ct-dense .results-list .comment-line{ padding: 5px 7px !important; }
+body.ct-dense .history-item{ padding: 5px 7px !important; }
+body.ct-dense .tweet{ padding: 10px 10px 8px !important; }
+body.ct-dense .results-list{ gap: 10px !important; }
+
