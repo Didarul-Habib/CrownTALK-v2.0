@@ -3421,3 +3421,90 @@ body.ct-dense .history-item{ padding: 5px 7px !important; }
 body.ct-dense .tweet{ padding: 10px 10px 8px !important; }
 body.ct-dense .results-list{ gap: 10px !important; }
 
+/* ===============================
+   CrownTALK Premium Pack CSS
+   Features: 16,19,21,22,27,29
+   Non-destructive, additive only
+=================================*/
+
+/* Remove the little preview button beside the URL box (if it exists) */
+#ctUrlCompactToggle,
+.ct-preview-toggle,
+.url-preview-btn { display: none !important; }
+
+/* ---------- 27) Live System HUD ---------- */
+#ctHud{
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 9999;
+  font: 600 11px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+  color: var(--text-main);
+  pointer-events: none;
+  filter: drop-shadow(0 6px 20px rgba(0,0,0,.65));
+}
+#ctHud .ct-hud__row{
+  display: inline-flex; align-items: center; gap: 8px;
+  background: radial-gradient(circle at 0% 0%, rgba(255,255,255,.10), transparent 60%),
+              rgba(15,23,42,.96);
+  border: 1px solid rgba(148,163,184,.45);
+  padding: 8px 10px;
+  border-radius: 10px;
+  pointer-events: auto;
+}
+#ctHud .ct-hud__dot{
+  width: 8px; height: 8px; border-radius: 999px;
+  background: radial-gradient(circle at 30% 0%, #22c55e, #16a34a 70%);
+  box-shadow: 0 0 10px rgba(34,197,94,.9);
+}
+#ctHud.is-hot .ct-hud__dot{
+  background: radial-gradient(circle at 30% 0%, #f97316, #b45309 70%);
+  box-shadow: 0 0 10px rgba(249,115,22,.9);
+}
+#ctHud .ct-hud__sp{ opacity: .5; }
+
+/* HUD toast bubble */
+#ctHud .ct-hud__toast{
+  position: absolute;
+  right: 0; bottom: 40px;
+  background: rgba(15,23,42,.98);
+  border: 1px solid rgba(148,163,184,.45);
+  padding: 6px 10px;
+  border-radius: 8px;
+  transform: translateY(10px);
+  opacity: 0;
+  transition: transform .2s ease, opacity .2s ease;
+  pointer-events: none;
+}
+#ctHud .ct-hud__toast.show{ transform: translateY(0); opacity: 1; }
+#ctHud .ct-hud__toast[data-kind="warn"]{ border-color: rgba(244,63,94,.8); }
+
+/* ---------- 29) Accessibility & Focus Mode ---------- */
+/* Dim everything except the currently focused card */
+body.focus-mode .card{ filter: brightness(.88) saturate(.9); transition: filter .15s ease; }
+body.focus-mode .card.is-focused{ filter: none; }
+
+/* Reduce motion (your JS toggles body.low-motion as well) */
+@media (prefers-reduced-motion: reduce){
+  #ctHud, #ctHud *{ transition: none !important; animation: none !important; }
+}
+
+/* Slight highlight on active card’s header when focused */
+.card.is-focused .card-header::after,
+.card.is-focused .card-head::after{
+  opacity: .9;
+}
+
+/* ---------- 22) Scheduler: subtle progress cue when queue hot ---------- */
+#ctHud.is-hot .ct-hud__row{
+  box-shadow: 0 0 0 1px rgba(var(--btn-glow), .85), 0 8px 20px rgba(0,0,0,.75);
+}
+
+/* ---------- 16) Smart Paste+ small visual cue on textarea focus ---------- */
+.url-textarea:focus{
+  background-image: radial-gradient(circle at 0% 0%, rgba(148,163,184,.10), transparent 60%),
+                    rgba(9,17,35,.92);
+}
+
+/* Keep things clean if focus mode + low motion both on */
+body.focus-mode.low-motion .card{ transition: none !important; }
