@@ -2444,3 +2444,23 @@ body.is-generating .helper-text::after{
   background: #f97316;
   box-shadow: 0 0 10px rgba(249,115,22,.9);
 }
+
+/* =====================================
+   CrownTALK – Kill conic / orbit rings
+   ===================================== */
+
+/* Remove any rotating / conic borders on cards */
+.card::before,
+.card::after{
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+}
+
+/* Hard-disable legacy Uiverse border ring as well */
+.uiverse-card .card__border,
+.uiverse-card .card__border::before{
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+}
