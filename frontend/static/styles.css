@@ -2512,3 +2512,333 @@ body.is-generating .helper-text::after{
     );
   }
 }
+
+/* =========================================================
+   CrownTALK – Final Premium Patch (safe to append at end)
+   - Removes weird conic circles / tilt
+   - Adds premium hovers, scroll, and status styling
+   - Mobile-friendly (no extra lag)
+   ========================================================= */
+
+/* 0) Kill old conic orbit rings on cards & theme dots */
+.card::before,
+.card::after,
+.theme-dot::after{
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* 1) Card micro-lift (desktop, no leaning forwards) */
+@media (pointer: fine) and (min-width: 900px){
+  .card{
+    transform-origin: center top;
+    transition:
+      transform .16s ease-out,
+      box-shadow .18s ease-out,
+      border-color .18s ease-out;
+  }
+
+  .card:hover{
+    transform: translateY(-2px);
+    box-shadow:
+      0 16px 32px rgba(0,0,0,.70);
+    border-color: rgba(var(--btn-glow), .75);
+  }
+}
+
+/* 2) Results list container (ID #results) */
+#results{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 3) Premium scrollbars for lists (desktop only) */
+@media (pointer: fine){
+  #results,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .7) rgba(15,23,42,.95);
+  }
+
+  #results::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
+  }
+
+  #results::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
+  }
+
+  #results::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .6)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
+  }
+}
+
+/* 4) Card head chrome line + tidy titles */
+.card-head{
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-head h2{
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.card-head .muted{
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* subtle chrome line under header */
+.card-head::after{
+  content:"";
+  position:absolute;
+  left:-4px;
+  right:-4px;
+  bottom:-3px;
+  height:1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148,163,184,.65),
+    transparent
+  );
+  opacity:.45;
+  pointer-events:none;
+}
+
+/* 5) System status pill + glowing dot */
+.system-status{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* support both old .system-indicator and new .system-status-dot */
+.system-status-dot,
+.system-indicator{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 0%,
+    #22c55e,
+    #16a34a 70%
+  );
+  box-shadow: 0 0 12px rgba(34,197,94,.85);
+}
+
+/* 6) Results / Failed / History vertical accent strips */
+.card-results,
+.card-failed,
+.card-history{
+  position: relative;
+}
+
+.card-results::before,
+.card-failed::before,
+.card-history::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:10px;
+  bottom:10px;
+  width:3px;
+  border-radius:999px;
+  opacity:.9;
+  pointer-events:none;
+}
+
+.card-results::before{
+  background: linear-gradient(
+    180deg,
+    rgba(56,189,248,.9),
+    rgba(129,140,248,.95)
+  );
+}
+.card-failed::before{
+  background: linear-gradient(
+    180deg,
+    rgba(248,113,113,.95),
+    rgba(185,28,28,.95)
+  );
+}
+.card-history::before{
+  background: linear-gradient(
+    180deg,
+    rgba(45,212,191,.9),
+    rgba(148,163,184,.9)
+  );
+}
+
+/* shift inner content a tiny bit so strip doesn’t overlap */
+.card-results > *,
+.card-failed > *,
+.card-history > *{
+  position: relative;
+  z-index: 1;
+  padding-left: 4px;
+}
+
+/* 7) Comment + history hover polish (desktop only) */
+@media (pointer: fine){
+  .comment-line,
+  .history-item{
+    transition:
+      background .16s ease,
+      border-color .16s ease,
+      box-shadow .16s ease,
+      transform .12s ease;
+  }
+
+  .comment-line:hover,
+  .history-item:hover{
+    transform: translateY(-1px);
+    border-color: var(--accent-soft-strong);
+    background: linear-gradient(
+      90deg,
+      rgba(148,163,184,.22),
+      rgba(15,23,42,.95)
+    );
+    box-shadow:
+      0 0 0 1px rgba(148,163,184,.45),
+      0 8px 18px rgba(0,0,0,.6);
+  }
+
+  .comment-line:hover .comment-tag{
+    letter-spacing: .16em;
+    color: var(--accent);
+  }
+}
+
+/* 8) History dot badge */
+.history-item{
+  position: relative;
+}
+
+.history-item::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:50%;
+  transform: translateY(-50%);
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background: radial-gradient(
+    circle,
+    var(--accent) 0,
+    rgba(148,163,184,1) 60%,
+    transparent 100%
+  );
+  opacity:.9;
+  pointer-events:none;
+}
+
+.history-text{
+  padding-left: 6px;
+}
+
+/* 9) Tweet card hover lift (desktop only) */
+@media (pointer: fine){
+  .tweet{
+    transition:
+      transform .12s ease,
+      box-shadow .16s ease,
+      border-color .16s ease,
+      background .16s ease;
+  }
+
+  .tweet:hover{
+    transform: translateY(-2px);
+    border-color: rgba(148,163,184,.6);
+    background:
+      radial-gradient(
+        circle at 0% 0%,
+        rgba(255,255,255,.06),
+        transparent 55%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(15,23,42,.98),
+        rgba(15,23,42,.86)
+      );
+    box-shadow:
+      0 10px 22px rgba(0,0,0,.8);
+  }
+}
+
+/* 10) Theme dot premium glow (no orbit circle) */
+.theme-dot.is-active{
+  box-shadow:
+    0 0 0 4px rgba(var(--glow, var(--btn-glow)), .12),
+    0 0 16px rgba(var(--glow, var(--btn-glow)), .35);
+}
+
+/* subtle breathing only on desktop + full motion */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .theme-dot.is-active{
+    animation: ct-theme-dot-breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes ct-theme-dot-breathe{
+    0%   { transform: translateY(0) scale(1); }
+    50%  { transform: translateY(-1px) scale(1.03); }
+    100% { transform: translateY(0) scale(1); }
+  }
+}
+
+/* 11) Mobile performance: calm everything down */
+@media (max-width: 768px){
+  .card{
+    transform: none !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,.6);
+  }
+
+  .tweet,
+  .comment-line,
+  .history-item{
+    transform: none !important;
+    box-shadow: none;
+  }
+}
+
+/* 12) Respect reduced motion – kill fancy transitions if user asks */
+@media (prefers-reduced-motion: reduce){
+  .card,
+  .tweet,
+  .comment-line,
+  .history-item,
+  .theme-dot{
+    transition: none !important;
+    animation: none !important;
+  }
+}
