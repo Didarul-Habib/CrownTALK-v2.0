@@ -3187,3 +3187,162 @@ body .ai-chat-input .main-input:focus{
 /* guard: if any earlier hero/header background leftovers exist, make them transparent */
 .hero { background: transparent !important; }
 
+/* =========================================================
+   CrownTALK — Premium Lite (feature pack 3,4,5,7,10,11,13,14,15)
+   Safe to append at end of styles.css
+========================================================= */
+
+/* ---------- [5] Per-theme micro accent tuning ---------- */
+[data-theme="dark-purple"] .chip,
+[data-theme="dark-purple"] .comment-line { border-color: rgba(167,139,250,.42); }
+[data-theme="blue"] .chip,
+[data-theme="blue"] .comment-line { border-color: rgba(59,130,246,.42); }
+[data-theme="emerald"] .chip,
+[data-theme="emerald"] .comment-line { border-color: rgba(16,185,129,.42); }
+[data-theme="gold"] .chip,
+[data-theme="gold"] .comment-line { border-color: rgba(251,191,36,.42); }
+[data-theme="crimson"] .chip,
+[data-theme="crimson"] .comment-line { border-color: rgba(244,63,94,.42); }
+[data-theme="black"] .chip,
+[data-theme="black"] .comment-line { border-color: rgba(209,213,219,.38); }
+[data-theme="white"] .chip,
+[data-theme="white"] .comment-line { border-color: rgba(37,99,235,.35); }
+
+/* progress gradient nudges per theme */
+[data-theme="emerald"] #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(16,185,129,.65); }
+[data-theme="gold"]    #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(251,191,36,.65); }
+[data-theme="crimson"] #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(244,63,94,.65); }
+
+/* ---------- [3] Dense toggle styles ---------- */
+.ct-density-toggle{
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:11px; color:var(--text-muted);
+  user-select:none;
+}
+.ct-switch{
+  --w:34px; --h:18px;
+  width:var(--w); height:var(--h); border-radius:999px; position:relative;
+  background:rgba(148,163,184,.28); border:1px solid rgba(148,163,184,.45);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.35);
+  cursor:pointer;
+}
+.ct-switch::after{
+  content:""; position:absolute; top:1px; left:1px;
+  width: calc(var(--h) - 2px); height: calc(var(--h) - 2px);
+  border-radius:999px; background:#fff; transition: transform .18s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+body.ct-dense .ct-switch::after{ transform: translateX(16px); }
+body.ct-dense .results-list .comment-line,
+body.ct-dense .history-item{ padding:4px 6px; }
+body.ct-dense .tweet{ padding:8px 8px 6px; }
+body.ct-dense .results-list{ gap:6px; }
+
+/* ---------- [7] Pipeline badges (static, no animation) ---------- */
+.ct-pipe{
+  display:flex; align-items:center; gap:10px;
+  font-size:10px; color:var(--text-muted); margin-top:8px;
+}
+.ct-step{ display:inline-flex; align-items:center; gap:6px; }
+.ct-dot{ width:7px; height:7px; border-radius:999px; background:#475569; box-shadow:0 0 0 1px rgba(148,163,184,.35) inset; }
+.ct-step.is-on .ct-dot{ background:rgba(var(--btn-glow),.9); box-shadow:0 0 10px rgba(var(--btn-glow),.6); }
+
+/* ---------- [10] Ambient top progress on first card ---------- */
+.card.is-ambient-progress::before{
+  content:""; position:absolute; left:10px; right:10px; top:6px; height:2px;
+  border-radius:999px; overflow:hidden;
+  background: rgba(148,163,184,.22);
+}
+.card.is-ambient-progress::after{
+  content:""; position:absolute; left:10px; top:6px; height:2px; width:0%;
+  border-radius:999px;
+  background: linear-gradient(90deg, rgba(var(--btn-glow),.95), rgba(var(--btn-glow),.5));
+  box-shadow: 0 0 10px rgba(var(--btn-glow),.6);
+  animation: ct-ambient-line 2.2s ease-in-out infinite;
+}
+@keyframes ct-ambient-line{
+  0%{ width:0%; }
+  55%{ width: 86%; }
+  100%{ width:0%; }
+}
+body:not(.is-generating) .card.is-ambient-progress::before,
+body:not(.is-generating) .card.is-ambient-progress::after{ display:none; }
+
+/* ---------- [11] Low-motion badge (optional helper) ---------- */
+.ct-lowmotion-pill{
+  display:none; position:fixed; bottom:12px; left:12px; z-index:20;
+  font-size:11px; color:#111; background:#e5e7eb; border-radius:999px; padding:4px 8px;
+  box-shadow:0 6px 16px rgba(0,0,0,.35);
+}
+body.low-motion .ct-lowmotion-pill{ display:inline-block; }
+
+/* ---------- [13] URL “compact view” mirror ---------- */
+.ai-chat-input{ position:relative; }
+#ctUrlCompactToggle{
+  position:absolute; right:16px; top:38px; z-index:3; cursor:pointer;
+  width:24px; height:24px; border-radius:6px; border:1px solid rgba(148,163,184,.45);
+  background: radial-gradient(circle at 30% 0%, rgba(255,255,255,.18), transparent 60%);
+  display:flex; align-items:center; justify-content:center; color:#e5e7eb;
+}
+#ctUrlMirror{
+  position:absolute; inset:0; z-index:1; border-radius:12px; pointer-events:none;
+  color: rgba(229,231,235,.92);
+  font: 500 0.95rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  padding: 14px 14px 44px 14px; white-space:pre-wrap;
+  overflow:auto; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+.ct-compact-on .main-input{ color: transparent; caret-color: #fff; position: relative; z-index:2; }
+.ct-compact-on #ctUrlMirror{ display:block; }
+#ctUrlMirror{ display:none; }
+
+/* Premium scrollbar on the mirror */
+#ctUrlMirror::-webkit-scrollbar{ width:8px; }
+#ctUrlMirror::-webkit-scrollbar-thumb{ background:linear-gradient(180deg, rgba(var(--btn-glow),.95), rgba(var(--btn-glow),.6)); border-radius:999px; }
+#ctUrlMirror{ scrollbar-width: thin; scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95); }
+
+/* ---------- [14] Confetti (tiny, 6 particles) ---------- */
+.ct-confetti{ position:fixed; inset:0; pointer-events:none; z-index:10000; }
+.ct-confetti i{
+  position:absolute; width:8px; height:8px; border-radius:2px;
+  background: currentColor; top:50%; left:50%;
+  transform: translate(-50%,-50%); opacity:0; animation: ct-pop .7s ease forwards;
+}
+.ct-confetti i:nth-child(1){ color:#60a5fa; transform: translate(-50%,-50%) rotate(12deg); }
+.ct-confetti i:nth-child(2){ color:#a78bfa; transform: translate(-50%,-50%) rotate(-24deg); }
+.ct-confetti i:nth-child(3){ color:#34d399; transform: translate(-50%,-50%) rotate(36deg); }
+.ct-confetti i:nth-child(4){ color:#fbbf24; transform: translate(-50%,-50%) rotate(-48deg); }
+.ct-confetti i:nth-child(5){ color:#f43f5e; transform: translate(-50%,-50%) rotate(22deg); }
+.ct-confetti i:nth-child(6){ color:#e5e7eb; transform: translate(-50%,-50%) rotate(-12deg); }
+@keyframes ct-pop{
+  0%{ opacity:0; transform: translate(-50%,-50%) scale(.6); }
+  30%{ opacity:1; }
+  100%{ opacity:0; transform: translate(var(--dx,60px), var(--dy,-80px)) rotate(160deg) scale(1); }
+}
+
+/* ---------- [15] Theme hover preview (header only) ---------- */
+.hero[data-preview-theme="blue"]{
+  box-shadow: 0 0 30px rgba(59,130,246,.45), 0 0 70px rgba(239,246,255,.25) inset;
+}
+.hero[data-preview-theme="emerald"]{
+  box-shadow: 0 0 30px rgba(16,185,129,.45), 0 0 70px rgba(45,212,191,.25) inset;
+}
+.hero[data-preview-theme="gold"]{
+  box-shadow: 0 0 30px rgba(251,191,36,.35), 0 0 70px rgba(252,211,77,.22) inset;
+}
+.hero[data-preview-theme="crimson"]{
+  box-shadow: 0 0 30px rgba(244,63,94,.45), 0 0 70px rgba(255,228,230,.28) inset;
+}
+.hero[data-preview-theme="black"]{
+  box-shadow: 0 0 30px rgba(209,213,219,.25), 0 0 70px rgba(107,114,128,.18) inset;
+}
+.hero[data-preview-theme="white"]{
+  box-shadow: 0 0 30px rgba(15,23,42,.25), 0 0 70px rgba(250,204,21,.22) inset;
+}
+
+/* ---------- Mobile perf guard: the new bits obey low-motion ---------- */
+@media (max-width: 768px){
+  body.low-motion .card.is-ambient-progress::after,
+  body.low-motion .card.is-ambient-progress::before{
+    animation:none !important; display:none !important;
+  }
+}
