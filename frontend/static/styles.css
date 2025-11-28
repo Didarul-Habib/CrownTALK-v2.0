@@ -3658,3 +3658,167 @@ body.ct-progress-done .progress-bar-outer::after{
   25%  { opacity: 1; }
   100% { opacity: 0; }
 }
+
+
+/* CrownTALK — Desktop Premium Patch v1 (CSS)
+   Desktop-only, motion-respectful. No HTML changes required. */
+@media (pointer:fine) and (hover:hover) {
+
+  /* ---------- Premium Progress Bar ---------- */
+  /* Works whether you drive width% or transform:scaleX */
+  #progressBarFill {
+    position: relative;
+    transform-origin: 0 50%;
+    will-change: transform, width, background-position, box-shadow;
+    /* base glassy fill + subtle texture */
+    background-image:
+      linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.04)),
+      linear-gradient(90deg, rgba(255,255,255,.12), rgba(255,255,255,0)),
+      repeating-linear-gradient(135deg, rgba(255,255,255,.06) 0 6px, transparent 6px 12px);
+    background-size: 100% 100%, 100% 100%, 16px 16px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.08) inset,
+      0 6px 18px rgba(0,0,0,.28),
+      0 8px 28px rgba(var(--btn-glow, 80,160,255), .24);
+    border-radius: 10px;
+  }
+  /* animated inner sheen + head spark while generating */
+  body.is-generating #progressBarFill::before,
+  body.is-generating #progressBarFill::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+  /* moving diagonal ripple */
+  body.is-generating #progressBarFill::before {
+    inset: 0;
+    background:
+      linear-gradient(115deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 60%);
+    mix-blend-mode: screen;
+    opacity: .55;
+    animation: ct-ripple 1.8s linear infinite;
+    border-radius: inherit;
+  }
+  /* tiny spark that clings to the leading edge (width or scaleX both work) */
+  body.is-generating #progressBarFill::after {
+    top: -1px; bottom: -1px; right: -1px; width: 10px;
+    border-radius: 8px;
+    background: radial-gradient(10px 12px at 60% 50%, rgba(255,255,255,.9), transparent 65%);
+    opacity: .75;
+    animation: ct-spark 1.6s ease-in-out infinite;
+  }
+  /* finish flash (triggered by your code toggling body.ct-progress-done) */
+  body.ct-progress-done #progressBarFill {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.10) inset,
+      0 10px 26px rgba(0,0,0,.3),
+      0 0 0 2px rgba(60,220,160,.45),
+      0 16px 40px rgba(60,220,160,.35);
+  }
+
+  @keyframes ct-ripple { to { background-position: 0 0, 160px 0, 160px 0; } }
+  @keyframes ct-spark  { 0%,100% {opacity:.35; transform:translateX(0)} 50% {opacity:.95; transform:translateX(2px)} }
+
+  /* ---------- Magnetic transform slot (no conflict with existing transforms) ---------- */
+  /* Uses CSS vars we set from JS; keeps current transforms intact on most modern browsers via translate property */
+  #generateBtn, .reroll-btn, .card {
+    translate: var(--ct-tx, 0) var(--ct-ty, 0);
+    transition: translate .12s cubic-bezier(.2,.8,.2,1);
+  }
+
+  /* ---------- Active theme “comet” tick (active dot only) ---------- */
+  .theme-dot.is-active { position: relative; }
+  .theme-dot.is-active::after {
+    content:"";
+    position:absolute; inset:0; border-radius:50%;
+    --sz: 8%;
+    background:
+      conic-gradient(from var(--ct-a,0deg),
+        transparent 0 330deg,
+        rgba(255,255,255,.9) 330deg 360deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent calc(100% - var(--sz)), #000 100%);
+            mask: radial-gradient(circle closest-side, transparent calc(100% - var(--sz)), #000 100%);
+    opacity:.85;
+    animation: ct-comet 2.4s linear infinite;
+  }
+  @keyframes ct-comet { to { --ct-a: 360deg; } }
+
+  /* ---------- Cursor snap tooltip ---------- */
+  #ctTip {
+    position: fixed; z-index: 9999; pointer-events: none;
+    padding: 6px 9px; border-radius: 10px; font-size: 12px; line-height: 1;
+    background: rgba(20,22,28,.92); color: #fff;
+    box-shadow: 0 4px 18px rgba(0,0,0,.35);
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  #ctTip.show { opacity: 1; transform: translateY(-2px); }
+
+  /* ---------- Focus halo sweep (works with your .is-focused hook) ---------- */
+  .card { position: relative; }
+  .card.is-focused::after, .card:focus-within::after {
+    content:""; position:absolute; inset:-1px; border-radius: 14px; pointer-events:none;
+    background: conic-gradient(from var(--h,0deg),
+                rgba(var(--btn-glow, 80,160,255), .6) 10deg,
+                transparent 60deg 360deg);
+    animation: ct-halo 1s ease;
+  }
+  @keyframes ct-halo { 0%{opacity:.0; --h:0deg} 20%{opacity:.6} 100%{opacity:0; --h:360deg} }
+  body.low-motion .card.is-focused::after, body.low-motion .card:focus-within::after { display:none; }
+
+  /* ---------- Copy success micro-flicker ---------- */
+  .comment-line.copied .comment-text { animation: ct-blip .18s ease; }
+  @keyframes ct-blip { 0%{filter:brightness(1)} 50%{filter:brightness(1.35)} 100%{filter:brightness(1)} }
+
+  /* ---------- Background aurora while generating ---------- */
+  .hero { position: relative; z-index: 0; }
+  body.is-generating .hero::before {
+    content:""; position:absolute; inset:-10%;
+    background:
+      radial-gradient(40% 30% at 20% 10%, rgba(var(--btn-glow,120,180,255),.10), transparent 60%),
+      radial-gradient(50% 35% at 80% 90%, rgba(180,120,255,.10), transparent 60%);
+    filter: blur(18px);
+    animation: ct-aurora 12s linear infinite;
+    pointer-events:none; z-index:0;
+  }
+  @keyframes ct-aurora { to { transform: translate3d(2%, -2%, 0) } }
+
+  /* ---------- Premium modal / card ---------- */
+  .ct-modal {
+    position: fixed; inset: 0; display: none; place-items: center;
+    background: rgba(8, 10, 14, .45); backdrop-filter: blur(6px);
+    z-index: 9998;
+  }
+  .ct-modal.show { display: grid; }
+  .ct-card {
+    width: min(520px, 92vw); color:#fff; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+    border-radius: 20px; border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 24px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.05) inset;
+    padding: 22px;
+  }
+  .ct-card::before {
+    content:""; position:absolute; inset:-30%;
+    background: radial-gradient(45% 35% at 30% 0%, rgba(var(--btn-glow,120,170,255),.18), transparent 60%);
+    filter: blur(16px);
+  }
+  .ct-card h3 { margin: 0 0 8px; font-size: 20px; }
+  .ct-card p { margin: 0 0 16px; line-height: 1.35; opacity: .9; }
+  .ct-actions { display:flex; gap:10px; justify-content:flex-end; }
+  .ct-card .btn-ghost, .ct-card .btn-primary {
+    appearance:none; border:0; border-radius: 999px; padding: 10px 16px; font-weight:600; cursor:pointer;
+  }
+  .ct-card .btn-ghost  { background: rgba(255,255,255,.08); color:#fff; }
+  .ct-card .btn-primary{
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--btn-base, #7aa2ff) 10%, #fff 90%),
+      var(--btn-base, #7aa2ff));
+    color:#111; box-shadow: 0 10px 20px rgba(var(--btn-glow, 80,160,255), .35);
+  }
+  .ct-card .btn-primary:active { transform: translateY(1px); }
+}
+
+/* Respect user’s low-motion preference globally */
+body.low-motion #progressBarFill::before,
+body.low-motion #progressBarFill::after,
+body.low-motion .hero::before { animation: none !important; }
