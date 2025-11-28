@@ -3822,3 +3822,63 @@ body.ct-progress-done .progress-bar-outer::after{
 body.low-motion #progressBarFill::before,
 body.low-motion #progressBarFill::after,
 body.low-motion .hero::before { animation: none !important; }
+
+
+/* CrownTALK — Desktop Premium Animation Pack
+   Desktop-only, motion-respectful, zero HTML changes. */
+@media (pointer:fine) and (hover:hover) {
+
+  /* -------- Results scroll-edge glow (top/bottom) -------- */
+  #results { position: relative; }
+  #results::before,
+  #results::after {
+    content:""; position:absolute; left:0; right:0; height:18px; pointer-events:none;
+    opacity:0; transition:opacity .18s ease; z-index:2;
+  }
+  #results::before { top:0;    background:linear-gradient(to bottom, rgba(255,255,255,.18), rgba(255,255,255,0)); }
+  #results::after  { bottom:0; background:linear-gradient(to top,    rgba(255,255,255,.14), rgba(255,255,255,0)); }
+  #results.ct-can-scroll-up::before    { opacity:1; }
+  #results.ct-can-scroll-down::after   { opacity:1; }
+
+  /* -------- Skeleton shimmer (only while generating) -------- */
+  .tweet-skeleton-line { position:relative; overflow:hidden; border-radius:6px; }
+  body.is-generating .tweet-skeleton-line::before{
+    content:""; position:absolute; inset:0;
+    background:linear-gradient(90deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.14) 45%, rgba(255,255,255,0.06) 100%);
+    background-size:200% 100%;
+    animation: ct-shimmer 1.2s linear infinite;
+  }
+  @keyframes ct-shimmer { to { background-position:-200% 0; } }
+
+  /* -------- Generate button click ripple (subtle) -------- */
+  #generateBtn { position:relative; overflow:hidden; }
+  #generateBtn .ct-rip{
+    position:absolute; left:var(--x); top:var(--y);
+    width:12px; height:12px; border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle, rgba(255,255,255,.9) 0, rgba(255,255,255,.35) 35%, transparent 60%);
+    opacity:.9; pointer-events:none;
+    animation: ct-rip 600ms ease-out forwards;
+  }
+  @keyframes ct-rip { to { width:240px; height:240px; opacity:0; } }
+
+  /* -------- Results counter odometer micro-anim -------- */
+  #resultCount{ display:inline-block; will-change:transform; }
+  .ct-odo{ display:inline-block; }
+  .ct-odo.up{ animation: ct-odo-up .28s ease; }
+  @keyframes ct-odo-up { from{ transform:translateY(6px); opacity:.3 } to{ transform:translateY(0); opacity:1 } }
+
+  /* -------- Copy fly chip -------- */
+  .ct-fly{
+    position:fixed; z-index:9999; pointer-events:none;
+    padding:6px 10px; border-radius:999px; font-size:12px; line-height:1;
+    background:rgba(255,255,255,.92); color:#111;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);
+    transform:translate3d(0,0,0); transition:transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s ease;
+  }
+  .ct-fly.hide{ opacity:0; }
+}
+
+/* Global low-motion kill switches for this pack */
+body.low-motion .tweet-skeleton-line::before,
+body.low-motion #generateBtn .ct-rip { animation:none !important; }
