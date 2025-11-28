@@ -1469,3 +1469,149 @@ document.body.classList.remove('ct-dense');
     }
   };
 })();
+
+
+/* CrownTALK — Desktop Premium Patch v1 (JS)
+   Desktop-only. No HTML changes required. */
+(function () {
+  if (!matchMedia('(pointer:fine) and (hover:hover)').matches) return;
+
+  const $  = (s, r=document) => r.querySelector(s);
+  const $$ = (s, r=document) => [...r.querySelectorAll(s)];
+
+  /* ---------- Magnetic hover (tiny) ---------- */
+  function addMagnetic(el, amt = 6) {
+    if (!el || el._ctMag) return; el._ctMag = true;
+    let raf = 0;
+    el.addEventListener('mousemove', e => {
+      const r = el.getBoundingClientRect();
+      const x = ((e.clientX - r.left) / r.width  - .5) * amt;
+      const y = ((e.clientY - r.top)  / r.height - .5) * amt;
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        el.style.setProperty('--ct-tx', x.toFixed(2) + 'px');
+        el.style.setProperty('--ct-ty', y.toFixed(2) + 'px');
+      });
+    });
+    el.addEventListener('mouseleave', () => {
+      el.style.setProperty('--ct-tx', '0px');
+      el.style.setProperty('--ct-ty', '0px');
+    });
+  }
+  ['#generateBtn', '.reroll-btn', '.card'].forEach(sel => $$(sel).forEach(addMagnetic));
+
+  /* ---------- Cursor snap tooltip ---------- */
+  const tip = document.createElement('div');
+  tip.id = 'ctTip';
+  document.body.appendChild(tip);
+
+  function attachTip(el, text) {
+    if (!el || el.dataset.ctTip) return;
+    el.dataset.ctTip = text;
+    el.addEventListener('mousemove', (e) => {
+      tip.textContent = el.dataset.ctTip || '';
+      tip.style.left = (e.clientX + 12) + 'px';
+      tip.style.top  = (e.clientY + 12) + 'px';
+      tip.classList.add('show');
+    });
+    const hide = () => tip.classList.remove('show');
+    el.addEventListener('mouseleave', hide);
+    el.addEventListener('blur', hide);
+  }
+  attachTip($('#generateBtn'), 'Generate');
+  $$('.reroll-btn').forEach(b => attachTip(b, 'Reroll'));
+  $$('.copy-btn,.copy-btn-en').forEach(b => attachTip(b, 'Copy'));
+
+  // results are dynamic: observe and attach tips + magnetic
+  const results = $('#results');
+  if (results) {
+    new MutationObserver(muts => muts.forEach(mu => mu.addedNodes.forEach(n => {
+      if (!(n instanceof HTMLElement)) return;
+      n.querySelectorAll?.('.reroll-btn').forEach(b => { attachTip(b, 'Reroll'); addMagnetic(b, 5); });
+      n.querySelectorAll?.('.copy-btn,.copy-btn-en').forEach(b => attachTip(b, 'Copy'));
+      if (n.matches?.('.card')) addMagnetic(n, 4);
+    }))).observe(results, {childList: true, subtree: true});
+  }
+
+  /* ---------- Focus halo: rely on your existing .is-focused hooks ---------- */
+  $$('.card').forEach(card => {
+    card.addEventListener('focusin',  () => card.classList.add('is-focused'));
+    card.addEventListener('focusout', () => card.classList.remove('is-focused'));
+  });
+
+  /* ---------- Premium modals (welcome & empty-generate) ---------- */
+  let modal;
+  function ensureModal() {
+    if (modal) return modal;
+    modal = document.createElement('div');
+    modal.className = 'ct-modal';
+    modal.innerHTML = `
+      <div class="ct-card" role="dialog" aria-modal="true" aria-labelledby="ctTitle">
+        <h3 id="ctTitle"></h3>
+        <p id="ctBody"></p>
+        <div class="ct-actions">
+          <button type="button" class="btn-ghost" id="ctCancel">Close</button>
+          <button type="button" class="btn-primary" id="ctOk">OK</button>
+        </div>
+      </div>`;
+    document.body.appendChild(modal);
+    modal.addEventListener('click', (e) => { if (e.target === modal) hideModal(); });
+    modal.querySelector('#ctCancel').addEventListener('click', hideModal);
+    modal.querySelector('#ctOk').addEventListener('click', () => {
+      if (modal.dataset.kind === 'empty') $('#urlInput')?.focus();
+      hideModal();
+    });
+    return modal;
+  }
+  function showModal(kind) {
+    ensureModal();
+    modal.dataset.kind = kind;
+    const title = modal.querySelector('#ctTitle');
+    const body  = modal.querySelector('#ctBody');
+    const ok    = modal.querySelector('#ctOk');
+
+    if (kind === 'welcome') {
+      title.textContent = 'Welcome to CrownTALK ✨';
+      body.textContent  = 'Paste one or more tweet links, press Generate, then copy your favorites. Smart Paste+ cleans and dedupes automatically.';
+      ok.textContent    = 'Let’s go';
+    } else {
+      title.textContent = 'Nothing to generate';
+      body.textContent  = 'Add at least one tweet URL to get started.';
+      ok.textContent    = 'Got it';
+    }
+    modal.classList.add('show');
+  }
+  function hideModal() { modal?.classList.remove('show'); }
+
+  // daily welcome on desktop (first visit each day)
+  (function dailyWelcome(){
+    const k = (()=>{ const d=new Date(); return `ct_welcome_${d.getFullYear()}${String(d.getMonth()+1).padStart(2,'0')}${String(d.getDate()).padStart(2,'0')}`; })();
+    if (!localStorage.getItem(k)) {
+      showModal('welcome');
+      localStorage.setItem(k, '1');
+    }
+  })();
+
+  // intercept Generate click when no URLs present (capture phase so it runs before existing handler)
+  const genBtn = $('#generateBtn');
+  if (genBtn) {
+    genBtn.addEventListener('click', (e) => {
+      const val = ($('#urlInput')?.value || '').trim();
+      if (!val) {
+        e.preventDefault(); e.stopImmediatePropagation();
+        showModal('empty');
+      }
+    }, true);
+  }
+
+  /* ---------- Optional: mark active theme dot for comet tick ---------- */
+  // If your applyTheme already toggles .is-active, nothing to do. If not, keep this tiny guard:
+  (function ensureActiveDot(){
+    const htmlTheme = document.documentElement.getAttribute('data-theme');
+    const active = $(`.theme-dot[data-theme="${htmlTheme}"]`);
+    if (active && !active.classList.contains('is-active')) {
+      $$('.theme-dot').forEach(d => d.classList.remove('is-active'));
+      active.classList.add('is-active');
+    }
+  })();
+})();
