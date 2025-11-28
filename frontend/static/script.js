@@ -1615,3 +1615,115 @@ document.body.classList.remove('ct-dense');
     }
   })();
 })();
+
+
+/* CrownTALK — Desktop Premium Animation Pack (trimmed) */
+(function(){
+  const isDesktop = matchMedia('(pointer:fine) and (hover:hover)').matches;
+  const lowMotion = () => document.body.classList.contains('low-motion') ||
+                          matchMedia('(prefers-reduced-motion: reduce)').matches;
+  if (!isDesktop) return;
+
+  const $  = (s, r=document)=>r.querySelector(s);
+
+  /* -------- Live favicon spinner while generating -------- */
+  (function faviconSpinner(){
+    let raf=0, a=0, running=false;
+    const link = document.querySelector('link[rel~="icon"]') || (()=>{ const l=document.createElement('link'); l.rel='icon'; document.head.appendChild(l); return l; })();
+    const originalHref = link.href || '';
+    const cvs = document.createElement('canvas');
+    const ctx = cvs.getContext('2d');
+    function draw(){
+      const dpr = Math.max(1, Math.min(window.devicePixelRatio||1, 2));
+      const sz = 32*dpr; cvs.width = cvs.height = sz;
+      ctx.clearRect(0,0,sz,sz);
+      const cx=sz/2, cy=sz/2, r=sz*0.36, lw=Math.max(2*dpr, 3);
+      ctx.globalAlpha = .22; ctx.lineWidth=lw; ctx.strokeStyle='#ffffff';
+      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
+      ctx.globalAlpha = .95; ctx.strokeStyle='rgba(120,180,255,1)';
+      ctx.beginPath(); ctx.arc(cx,cy,r, a, a + Math.PI*1.1); ctx.stroke();
+      const sx = cx + r*Math.cos(a+Math.PI*1.1), sy = cy + r*Math.sin(a+Math.PI*1.1);
+      const grd = ctx.createRadialGradient(sx,sy,0,sx,sy,4*dpr);
+      grd.addColorStop(0,'#fff'); grd.addColorStop(1,'rgba(255,255,255,0)');
+      ctx.fillStyle = grd; ctx.globalAlpha = .9;
+      ctx.beginPath(); ctx.arc(sx,sy,4*dpr,0,Math.PI*2); ctx.fill();
+      try { link.href = cvs.toDataURL('image/png'); } catch {}
+    }
+    function loop(){ a += 0.10; draw(); raf = requestAnimationFrame(loop); }
+    const mo = new MutationObserver(()=>{
+      const gen = document.body.classList.contains('is-generating');
+      if (gen && !running && !lowMotion()){ running=true; loop(); }
+      else if ((!gen || lowMotion()) && running){ running=false; cancelAnimationFrame(raf); if (originalHref) link.href = originalHref; }
+    });
+    mo.observe(document.body, {attributes:true, attributeFilter:['class']});
+  })();
+
+  /* -------- Results scroll-edge glow -------- */
+  (function scrollHints(){
+    const el = $('#results'); if (!el) return;
+    const update = ()=>{
+      const canUp   = el.scrollTop > 2;
+      const canDown = el.scrollHeight - el.clientHeight - el.scrollTop > 2;
+      el.classList.toggle('ct-can-scroll-up', canUp);
+      el.classList.toggle('ct-can-scroll-down', canDown);
+    };
+    el.addEventListener('scroll', update, {passive:true});
+    if ('ResizeObserver' in window) new ResizeObserver(update).observe(el);
+    requestAnimationFrame(update);
+  })();
+
+  /* -------- Generate button ripple -------- */
+  (function ripple(){
+    const btn = $('#generateBtn'); if (!btn) return;
+    btn.addEventListener('click', (e)=>{
+      if (lowMotion()) return;
+      const r = btn.getBoundingClientRect();
+      const rip = document.createElement('span');
+      rip.className = 'ct-rip';
+      rip.style.setProperty('--x', (e.clientX - r.left)+'px');
+      rip.style.setProperty('--y', (e.clientY - r.top )+'px');
+      btn.appendChild(rip);
+      setTimeout(()=>rip.remove(), 620);
+    }, {capture:true});
+  })();
+
+  /* -------- Copy fly-to-history -------- */
+  (function flyToHistory(){
+    const history = $('#history'); if (!history) return;
+    document.addEventListener('click', (e)=>{
+      const btn = e.target.closest?.('.copy-btn,.copy-btn-en,.history-copy-btn'); if (!btn) return;
+      if (lowMotion()) return;
+      const line = btn.closest('.comment-line'); const txt = (line?.querySelector('.comment-text')?.textContent || 'Copied').trim();
+      const pill = document.createElement('div'); pill.className='ct-fly'; pill.textContent = txt.length>28 ? (txt.slice(0,26)+'…') : txt;
+      document.body.appendChild(pill);
+      const s = btn.getBoundingClientRect();
+      const h = history.getBoundingClientRect();
+      const startX = s.left + s.width/2, startY = s.top + s.height/2;
+      const endX   = h.left + 28,       endY   = h.top + 16;
+      pill.style.left = startX+'px'; pill.style.top  = startY+'px';
+      requestAnimationFrame(()=>{
+        pill.style.transform = `translate3d(${endX-startX}px, ${endY-startY}px, 0)`;
+        pill.classList.add('hide');
+      });
+      setTimeout(()=>pill.remove(), 520);
+    });
+  })();
+
+  /* -------- Results counter odometer -------- */
+  (function odo(){
+    const el = $('#resultCount'); if (!el) return;
+    let prev = 0;
+    const getNum = (t)=> parseInt(String(t).match(/\d+/)?.[0]||'0',10);
+    const fmt = (n)=> `${n} tweet${n===1?'':'s'}`;
+    const mo = new MutationObserver(()=>{
+      const next = getNum(el.textContent);
+      if (Number.isNaN(next) || next===prev) { prev = next; return; }
+      const start = prev, end = next, dur = 260; let t0=null;
+      const span = document.createElement('span'); span.className='ct-odo up'; el.innerHTML=''; el.appendChild(span);
+      function tick(ts){ if (!t0) t0 = ts; const p = Math.min((ts-t0)/dur,1); const v = Math.round(start + (end-start)*p); span.textContent = fmt(v); if (p<1) requestAnimationFrame(tick); }
+      requestAnimationFrame(tick);
+      prev = next;
+    });
+    mo.observe(el, {childList:true, characterData:true, subtree:true});
+  })();
+})();
