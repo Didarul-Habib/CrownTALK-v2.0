@@ -2012,3 +2012,239 @@ document.body.classList.remove('ct-dense');
   if (progressTrack) moProgress.observe(progressTrack, { childList:true });
 
 })();
+
+
+/* ===========================================
+   CrownTALK Premium Patch JS
+   Features: 4,5,7,8,12,13,19,20
+   Desktop-only, motion-aware. No HTML edits.
+=========================================== */
+(function () {
+  const isDesktop = matchMedia('(pointer:fine)').matches;
+  const lowMotion = () => document.body.classList.contains('low-motion');
+
+  const $  = (s,r=document)=>r.querySelector(s);
+  const $$ = (s,r=document)=>Array.from(r.querySelectorAll(s));
+
+  const urlInput = document.getElementById('urlInput');
+  const results  = document.getElementById('results');
+
+  /* ---------- [20] Mini Toast Queue ---------- */
+  const toasts = document.createElement('div'); toasts.id = 'ctToasts'; document.body.appendChild(toasts);
+  function ctToast(msg, kind='ok', ms=1800) {
+    const el = document.createElement('div');
+    el.className = 'ct-toast';
+    el.dataset.kind = kind;
+    el.textContent = msg;
+    toasts.appendChild(el);
+    const t = setTimeout(() => { el.classList.add('ct-leave'); setTimeout(()=>el.remove(), 260); }, ms);
+    el.addEventListener('click', () => { clearTimeout(t); el.classList.add('ct-leave'); setTimeout(()=>el.remove(), 160); });
+  }
+  window.ctToast = ctToast;
+
+  /* ---------- [8] Ambient Aurora (Generating Only) ---------- */
+  const aur = document.createElement('div'); aur.id = 'ctAurora'; document.body.appendChild(aur);
+
+  /* ---------- [13] Tab Title Signals ---------- */
+  const originalTitle = document.title;
+  let lastPercent = 0;
+  function setTitleProcessing(label, pct) {
+    document.title = `⏳ CrownTALK — ${label}${Number.isFinite(pct) ? ` (${Math.round(pct)}%)` : ''}`;
+  }
+  function setTitleDone() {
+    document.title = '✅ CrownTALK — done';
+    setTimeout(() => { document.title = originalTitle; }, 1200);
+  }
+  // wrap existing progress helpers if present
+  const _setProgressText  = typeof window.setProgressText === 'function' ? window.setProgressText : null;
+  const _setProgressRatio = typeof window.setProgressRatio === 'function' ? window.setProgressRatio : null;
+
+  if (_setProgressText) {
+    window.setProgressText = function patchedProgressText(txt) {
+      try {
+        // pick up "Processed X/Y" if available for nicer label
+        const m = /Processed\s+(\d+)(?:\/(\d+))?/i.exec(txt || '');
+        if (m) {
+          const x = parseInt(m[1], 10); const y = parseInt(m[2] || '0', 10);
+          setTitleProcessing(`${x}${y?'/'+y:''}`, lastPercent);
+        } else {
+          setTitleProcessing((txt||'processing'), lastPercent);
+        }
+      } catch {}
+      return _setProgressText.apply(this, arguments);
+    };
+  }
+  if (_setProgressRatio) {
+    window.setProgressRatio = function patchedProgressRatio(ratio) {
+      lastPercent = Math.max(0, Math.min(100, (ratio||0)*100));
+      if (document.body.classList.contains('is-generating')) {
+        setTitleProcessing('processing', lastPercent);
+      }
+      return _setProgressRatio.apply(this, arguments);
+    };
+  }
+
+  // also observe generating state to flip the title
+  const genObs = new MutationObserver(() => {
+    if (document.body.classList.contains('is-generating')) {
+      setTitleProcessing('processing', lastPercent || 1);
+    } else {
+      setTitleDone();
+    }
+  });
+  genObs.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+  /* ---------- [12] Cursor Trail (Generating Only) ---------- */
+  let trail, lastMove = 0;
+  function ensureTrail() {
+    if (trail) return trail;
+    trail = document.createElement('div');
+    trail.className = 'ct-trail';
+    document.body.appendChild(trail);
+    return trail;
+  }
+  if (isDesktop) {
+    window.addEventListener('mousemove', (e) => {
+      if (!document.body.classList.contains('is-generating') || lowMotion()) return;
+      const now = performance.now();
+      if (now - lastMove < 24) return; // throttle ~40fps
+      lastMove = now;
+      const wrap = ensureTrail();
+      const dot1 = document.createElement('div');
+      const dot2 = document.createElement('div');
+      dot1.className = 'ct-trail-dot';
+      dot2.className = 'ct-trail-dot';
+      dot1.style.left = dot2.style.left = (e.clientX) + 'px';
+      dot1.style.top  = dot2.style.top  = (e.clientY) + 'px';
+      wrap.appendChild(dot1); wrap.appendChild(dot2);
+      setTimeout(()=>dot1.remove(), 380);
+      setTimeout(()=>dot2.remove(), 380);
+    }, { passive: true });
+  }
+
+  /* ---------- [4] Caret Spark (press Enter) ---------- */
+  function caretSpark() {
+    if (!urlInput || !isDesktop || lowMotion()) return;
+    // compute caret pixel position using a mirror
+    const rect = urlInput.getBoundingClientRect();
+    const mirror = document.createElement('div');
+    mirror.style.cssText = `
+      position: fixed; left:${rect.left}px; top:${rect.top}px;
+      width:${rect.width}px; padding:${getComputedStyle(urlInput).padding};
+      font:${getComputedStyle(urlInput).font};
+      line-height:${getComputedStyle(urlInput).lineHeight};
+      white-space: pre-wrap; word-wrap: break-word; visibility:hidden;
+    `;
+    const pre = document.createElement('span');
+    const caret = document.createElement('span');
+    caret.textContent = '·';
+    caret.style.opacity = '0';
+    const val = urlInput.value.slice(0, urlInput.selectionStart);
+    pre.textContent = val;
+    mirror.appendChild(pre); mirror.appendChild(caret);
+    document.body.appendChild(mirror);
+    const cx = caret.getBoundingClientRect().left;
+    const cy = caret.getBoundingClientRect().top;
+    mirror.remove();
+
+    const spark = document.createElement('i');
+    spark.className = 'ct-caret-spark';
+    spark.style.left = (Number.isFinite(cx)? cx : rect.left + 12) + 'px';
+    spark.style.top  = (Number.isFinite(cy)? cy : rect.top + 10) + 'px';
+    document.body.appendChild(spark);
+    setTimeout(()=>spark.remove(), 220);
+  }
+  if (urlInput) {
+    urlInput.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter' && isDesktop) caretSpark();
+    });
+  }
+
+  /* ---------- [5] URL Gutter Lights & [19] Hover Hint Line ---------- */
+  (function setupGutter() {
+    if (!urlInput || !isDesktop) return;
+    const wrapper = urlInput.closest('.ai-chat-input .input-section') || urlInput.parentElement || document.body;
+    wrapper.style.position = wrapper.style.position || 'relative';
+
+    const gutter = document.createElement('div'); gutter.className = 'ct-url-gutter';
+    const hover  = document.createElement('div'); hover.className  = 'ct-url-hoverline';
+    wrapper.appendChild(gutter); wrapper.appendChild(hover);
+
+    const URL_RE = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^ \n]+/i;
+
+    let raf = 0;
+    function refresh() {
+      cancelAnimationFrame(raf);
+      raf = requestAnimationFrame(() => {
+        gutter.innerHTML = '';
+        const lh = parseFloat(getComputedStyle(urlInput).lineHeight) || 22;
+        const padTop = parseFloat(getComputedStyle(urlInput).paddingTop) || 12;
+        const lines = urlInput.value.split(/\r?\n/);
+        // sync gutter height to content height
+        for (let i=0;i<lines.length;i++){
+          const led = document.createElement('i'); led.className = 'ct-led';
+          const t = lines[i].trim();
+          if (!t) { led.classList.add('warn'); }
+          else if (URL_RE.test(t)) { led.classList.add('ok'); }
+          else { led.classList.add('err'); }
+          led.style.position = 'absolute';
+          led.style.top = (padTop + i*lh - 2 + (-urlInput.scrollTop)) + 'px';
+          gutter.appendChild(led);
+        }
+      });
+    }
+
+    function hoverLine(e){
+      const rect = urlInput.getBoundingClientRect();
+      const y = e.clientY - rect.top + urlInput.scrollTop;
+      const lh = parseFloat(getComputedStyle(urlInput).lineHeight) || 22;
+      const padTop = parseFloat(getComputedStyle(urlInput).paddingTop) || 12;
+      const idx = Math.max(0, Math.round((y - padTop - lh/2)/lh));
+      hover.style.top = (padTop + idx*lh - urlInput.scrollTop) + 'px';
+      hover.style.opacity = '1';
+    }
+    function leave(){ hover.style.opacity = '0'; }
+
+    urlInput.addEventListener('input', refresh);
+    urlInput.addEventListener('scroll', refresh, { passive:true });
+    if (isDesktop) {
+      urlInput.addEventListener('mousemove', hoverLine, { passive:true });
+      urlInput.addEventListener('mouseleave', leave);
+    }
+    refresh();
+  })();
+
+  /* ---------- [7] Reroll “Shuffle Merge” ---------- */
+  (function hookRerollAnimation(){
+    if (typeof window.updateTweetBlock !== 'function') return;
+    const _updateTweetBlock = window.updateTweetBlock;
+    window.updateTweetBlock = function animatedUpdate(tweetEl, result) {
+      try {
+        // animate existing lines out
+        const oldLines = $$('.comment-line', tweetEl);
+        oldLines.forEach(l => l.classList.add('ct-out'));
+        // wait briefly, then perform original DOM swap
+        setTimeout(() => {
+          _updateTweetBlock(tweetEl, result);
+          // animate new lines in
+          $$('.comment-line', tweetEl).forEach(l => l.classList.add('ct-in'));
+          setTimeout(() => $$('.comment-line', tweetEl).forEach(l => l.classList.remove('ct-in')), 700);
+        }, Math.min(220, Math.max(80, oldLines.length*30)));
+      } catch (e) {
+        // fallback to original if anything odd
+        _updateTweetBlock(tweetEl, result);
+      }
+    };
+  })();
+
+  /* ---------- [13] Tab Title “done” on cancellation too ---------- */
+  // when cancel button toggles state off, MutationObserver above handles it,
+  // but also catch explicit Cancel UI if used without class flip (safety).
+  const cancelBtn = document.getElementById('cancelBtn');
+  cancelBtn && cancelBtn.addEventListener('click', () => setTitleDone());
+
+  /* ---------- Friendly hooks ---------- */
+  // announce warmups/other small events if you want:
+  // window.ctToast('Warmup pinged', 'ok');
+
+})();
