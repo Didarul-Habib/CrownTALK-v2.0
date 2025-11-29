@@ -1617,7 +1617,7 @@ document.body.classList.remove('ct-dense');
 })();
 
 
-/* CrownTALK — Desktop Premium Animation Pack (trimmed) */
+/* CrownTALK — Desktop Premium Animation Pack */
 (function(){
   const isDesktop = matchMedia('(pointer:fine) and (hover:hover)').matches;
   const lowMotion = () => document.body.classList.contains('low-motion') ||
@@ -1726,4 +1726,289 @@ document.body.classList.remove('ct-dense');
     });
     mo.observe(el, {childList:true, characterData:true, subtree:true});
   })();
+})();
+
+/* ===========================
+   CrownTALK — Premium Desk Pack
+   (excludes 10,13,14,17)
+   Drop at end of script.js
+   =========================== */
+(function () {
+  const desk = matchMedia('(pointer:fine)').matches;
+  if (!desk) return;
+
+  const $  = (s, r = document) => r.querySelector(s);
+  const $$ = (s, r = document) => Array.from(r.querySelectorAll(s));
+  const on = (el, ev, fn, opt) => el && el.addEventListener(ev, fn, opt);
+
+  const results = $('#results');
+  const history = $('#history');
+  const urlInput = $('#urlInput');
+  const generateBtn = $('#generateBtn');
+  const progressFill = $('#progressBarFill');
+  const progressTrack = progressFill ? progressFill.parentElement : null;
+
+  const lowMotion = () => document.body.classList.contains('low-motion');
+
+  /* --- [20] Time-of-day ambient tint --- */
+  (function ambient() {
+    const h = (new Date()).getHours();
+    const slot = h < 12 ? 'morning' : h < 18 ? 'afternoon' : 'evening';
+    document.documentElement.setAttribute('data-ambient', slot);
+  })();
+
+  /* --- helpers --- */
+  function once(fn) { let ran = false; return (...a) => { if (ran) return; ran = true; fn(...a); }; }
+
+  /* --- [12] Tick marks overlay + progress hook --- */
+  let ticks;
+  function buildTicks() {
+    if (!progressTrack || $('#ctTicks')) return;
+    const wrap = document.createElement('div');
+    wrap.className = 'ct-ticks';
+    wrap.id = 'ctTicks';
+    progressTrack.style.position = progressTrack.style.position || 'relative';
+    progressTrack.appendChild(wrap);
+    // 10%..90%
+    for (let i=1;i<=9;i++){
+      const t = document.createElement('i');
+      t.className = 'tick';
+      t.dataset.pos = String(i*10);
+      t.style.left = i*10 + '%';
+      wrap.appendChild(t);
+    }
+    ticks = $$('.tick', wrap);
+  }
+  buildTicks();
+
+  function updateTicks(pct) {
+    if (!ticks) return;
+    ticks.forEach(t => {
+      const pos = parseInt(t.dataset.pos,10);
+      t.classList.toggle('passed', pct >= pos);
+    });
+  }
+
+  // Wrap existing setProgressRatio if present
+  (function hookProgress() {
+    const old = window.setProgressRatio;
+    window.setProgressRatio = function(ratio) {
+      if (typeof old === 'function') old(ratio);
+      const pct = Math.max(0, Math.min(100, Math.round((Number(ratio)||0)*100)));
+      updateTicks(pct);
+    };
+  })();
+
+  // Support ctProgress.step if you use it
+  if (window.ctProgress && typeof window.ctProgress.step === 'function') {
+    const origStep = window.ctProgress.step.bind(window.ctProgress);
+    window.ctProgress.step = (pct) => { origStep(pct); updateTicks(pct|0); };
+  }
+
+  /* --- [3] Scroll-edge ion glow + kinetic scrollbar state --- */
+  if (results) {
+    const refreshGlow = () => {
+      const canUp = results.scrollTop > 0;
+      const canDown = results.scrollTop < (results.scrollHeight - results.clientHeight - 1);
+      results.classList.toggle('can-up', canUp);
+      results.classList.toggle('can-down', canDown);
+    };
+    const flagScroll = () => {
+      results.classList.add('is-scrolling');
+      clearTimeout(flagScroll._t);
+      flagScroll._t = setTimeout(() => results.classList.remove('is-scrolling'), 180);
+    };
+    on(results, 'scroll', () => { refreshGlow(); flagScroll(); }, { passive: true });
+    setTimeout(refreshGlow, 0);
+  }
+
+  /* --- [2] Per-card microbar + [19] ready ping --- */
+  function attachCardEffects(card) {
+    if (!card || card._ctDecorated) return;
+    card._ctDecorated = true;
+
+    // microbar
+    const bar = document.createElement('div');
+    bar.className = 'ct-microbar';
+    card.prepend(bar);
+    requestAnimationFrame(() => { bar.classList.add('run'); });
+
+    // observe comments to ping when content appears/changes
+    const comments = card.querySelector('.comments');
+    if (comments) {
+      const m = new MutationObserver(() => {
+        if (lowMotion()) return;
+        card.classList.add('ct-ready-ping');
+        setTimeout(() => card.classList.add('off'), 120);
+        setTimeout(() => { card.classList.remove('ct-ready-ping','off'); }, 220);
+      });
+      m.observe(comments, { childList: true, subtree: true });
+    }
+  }
+
+  // Observe incoming tweets
+  if (results) {
+    const obs = new MutationObserver(recs => {
+      recs.forEach(r => r.addedNodes.forEach(n => {
+        if (n.nodeType === 1 && n.classList.contains('tweet')) attachCardEffects(n);
+      }));
+    });
+    obs.observe(results, { childList:true, subtree:true });
+  }
+
+  /* --- [8] Cursor-driven specular on cards --- */
+  if (results) {
+    let raf = null, target = null, mx = 0, my = 0;
+    on(results, 'mousemove', (e) => {
+      const t = e.target.closest('.tweet');
+      if (!t) return;
+      target = t;
+      const rect = t.getBoundingClientRect();
+      mx = ((e.clientX - rect.left) / rect.width) * 100;
+      my = ((e.clientY - rect.top) / rect.height) * 100;
+      if (!raf) raf = requestAnimationFrame(() => {
+        raf = null;
+        target?.style.setProperty('--mx', mx + '%');
+        target?.style.setProperty('--my', my + '%');
+      });
+    });
+  }
+
+  /* --- [9] Odometer flick on #resultCount --- */
+  (function odometer() {
+    const el = $('#resultCount');
+    if (!el) return;
+
+    let last = el.textContent;
+    const wrapDigits = (txt) => {
+      const parts = txt.split(/(\d)/);
+      el.innerHTML = '';
+      el.classList.add('ct-odometer');
+      parts.forEach(p => {
+        if (/\d/.test(p)) {
+          const d = document.createElement('span');
+          d.className = 'ct-digit';
+          d.innerHTML = `<span class="front">${p}</span><span class="back">${p}</span>`;
+          el.appendChild(d);
+        } else {
+          const s = document.createElement('span');
+          s.textContent = p;
+          el.appendChild(s);
+        }
+      });
+    };
+
+    wrapDigits(last);
+
+    const mo = new MutationObserver(() => {
+      const now = el.textContent;
+      if (now === last) return;
+      const olds = Array.from(el.querySelectorAll('.ct-digit .back')).map(n => n.textContent);
+      wrapDigits(now);
+      const news = el.querySelectorAll('.ct-digit');
+      news.forEach((d, i) => {
+        const back = d.querySelector('.back');
+        const front = d.querySelector('.front');
+        if (!back || !front) return;
+        // flip only where number changed
+        const prev = olds[i] ?? '';
+        if (front.textContent !== prev) d.classList.add('flip');
+        setTimeout(() => d.classList.remove('flip'), 260);
+      });
+      last = now;
+    });
+    mo.observe(el, { characterData:true, subtree:true, childList:true });
+  })();
+
+  /* --- [7] Copy heat-streak from clicked copy btn to History --- */
+  (function heatStreak() {
+    const root = document;
+    on(root, 'click', (e) => {
+      const btn = e.target.closest('.copy-btn, .copy-btn-en, .history-copy-btn');
+      if (!btn || !history) return;
+      const a = btn.getBoundingClientRect();
+      const b = history.getBoundingClientRect();
+      const startX = a.left + a.width/2, startY = a.top + a.height/2;
+      const endX = b.left + 12, endY = b.top + 12;
+
+      const dot = document.createElement('div');
+      dot.className = 'ct-streak';
+      dot.style.transform = `translate(${startX}px, ${startY}px) scale(1)`;
+      document.body.appendChild(dot);
+      // next frame => fly
+      requestAnimationFrame(() => {
+        dot.style.transform = `translate(${endX}px, ${endY}px) scale(.6)`;
+        setTimeout(() => { dot.style.opacity = 0; setTimeout(()=>dot.remove(), 180); }, 560);
+      });
+    });
+  })();
+
+  /* --- [5] Empty-state premium card (replaces alert) --- */
+  (function emptyStateCard() {
+    if (!generateBtn || !urlInput) return;
+    const show = once(() => {
+      const overlay = document.createElement('div');
+      overlay.className = 'ct-overlay';
+      overlay.id = 'ctEmptyOverlay';
+      overlay.innerHTML = `
+        <div class="ct-card" role="dialog" aria-modal="true">
+          <h3>Paste some X/Twitter links</h3>
+          <p>Tip: paste multiple lines — we’ll clean & normalize them automatically.</p>
+          <div class="ct-actions">
+            <button class="ct-btn" id="ctEmptyDismiss">Cancel</button>
+            <button class="ct-btn primary" id="ctEmptyFocus">Got it</button>
+          </div>
+        </div>`;
+      document.body.appendChild(overlay);
+      const close = () => overlay.remove();
+      on(overlay, 'click', (e)=> { if (e.target === overlay) close(); });
+      on($('#ctEmptyDismiss', overlay), 'click', close);
+      on($('#ctEmptyFocus', overlay), 'click', ()=>{ close(); urlInput.focus(); });
+      on(document, 'keydown', (e)=>{ if (e.key === 'Escape') close(); }, { once:true });
+    });
+
+    // override handleGenerate so we intercept cleanly
+    const original = window.handleGenerate;
+    window.handleGenerate = async function () {
+      const val = (urlInput.value || '').trim();
+      if (!val) { show(); return; }
+      return original?.apply(this, arguments);
+    };
+  })();
+
+  /* --- [6] Daily welcome card (once per day) --- */
+  (function dailyWelcome() {
+    if (lowMotion()) return;
+    const key = 'ct_welcome_day_v1';
+    const today = new Date().toISOString().slice(0,10);
+    try {
+      const last = localStorage.getItem(key);
+      if (last === today) return;
+      localStorage.setItem(key, today);
+    } catch { /* ignore */ }
+
+    const box = document.createElement('div');
+    box.className = 'ct-welcome';
+    const greet = (() => {
+      const h = (new Date()).getHours();
+      return h < 12 ? 'Good morning' : h < 18 ? 'Good afternoon' : 'Good evening';
+    })();
+    box.innerHTML = `<div class="title">${greet} 👋</div>
+      <div class="hint">Ready to batch? Pro tip: paste multiple links — we’ll handle the rest.</div>`;
+    document.body.appendChild(box);
+
+    const kill = () => box.remove();
+    setTimeout(kill, 2800);
+    on(box, 'click', kill, { once:true });
+  })();
+
+  /* --- [18] Laser underline already handled by CSS --- */
+
+  /* --- micro: ensure existing tweets get microbar on load --- */
+  $$('.tweet').forEach(attachCardEffects);
+
+  /* --- [1] ensure ticks overlay exists if DOM changes later --- */
+  const moProgress = new MutationObserver(buildTicks);
+  if (progressTrack) moProgress.observe(progressTrack, { childList:true });
+
 })();
