@@ -3882,3 +3882,213 @@ body.low-motion .hero::before { animation: none !important; }
 /* Global low-motion kill switches for this pack */
 body.low-motion .tweet-skeleton-line::before,
 body.low-motion #generateBtn .ct-rip { animation:none !important; }
+
+
+/* ===========================
+   CrownTALK — Premium Desk Pack
+   =========================== */
+
+@media (pointer:fine) {
+  /* --- [1] Prism Progress + spark --- */
+  #progressBarFill {
+    position: relative;
+    overflow: hidden;
+    will-change: transform;
+  }
+  /* prism band */
+  body.is-generating #progressBarFill::before {
+    content:"";
+    position:absolute; inset:0;
+    background:
+      linear-gradient(120deg,
+        rgba(255,255,255,.06) 0%,
+        rgba(255,255,255,.16) 20%,
+        rgba(255,255,255,.06) 40%,
+        rgba(255,255,255,.12) 60%,
+        rgba(255,255,255,.05) 100%),
+      repeating-linear-gradient(135deg,
+        rgba(255,255,255,.06) 0 8px,
+        rgba(255,255,255,0) 8px 16px);
+    mix-blend-mode: screen;
+    animation: ctPrism 3.4s linear infinite;
+    pointer-events:none;
+  }
+  /* specular spark hugging the right edge */
+  body.is-generating #progressBarFill::after {
+    content:"";
+    position:absolute; inset:0;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.9) 70%, rgba(255,255,255,0) 100%);
+    filter: drop-shadow(0 0 8px rgba(var(--btn-glow,14,65,143),.35));
+    -webkit-mask: linear-gradient(90deg, transparent calc(100% - 12px), #000 100%);
+            mask: linear-gradient(90deg, transparent calc(100% - 12px), #000 100%);
+    animation: ctSpark 1.8s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes ctPrism { to { background-position: 240px 0, 160px 0; } }
+  @keyframes ctSpark { 0%,100% {opacity:.5} 50% {opacity:1} }
+
+  /* --- [12] Tick marks overlay (activated via JS) --- */
+  .ct-ticks { position:absolute; inset:0; pointer-events:none; }
+  .ct-ticks .tick {
+    position:absolute; top:0; bottom:0; width:1px; opacity:.35;
+    background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0));
+    transform: translateX(-0.5px);
+    transition: opacity .18s ease, box-shadow .18s ease;
+  }
+  .ct-ticks .tick.passed {
+    opacity:.9;
+    box-shadow: 0 0 0 1px rgba(var(--btn-glow,14,65,143),.35);
+  }
+
+  /* --- [2] Per-card microbar --- */
+  .tweet { position: relative; }
+  .tweet .ct-microbar {
+    position:absolute; top:0; left:0; height:2px; width:100%;
+    transform-origin:left;
+    transform: scaleX(0);
+    background: linear-gradient(90deg,
+      rgba(var(--btn-glow,14,65,143), .0) 0%,
+      rgba(var(--btn-glow,14,65,143), .7) 35%,
+      rgba(var(--btn-glow,14,65,143), 1) 60%,
+      rgba(var(--btn-glow,14,65,143), .0) 100%);
+    filter: drop-shadow(0 0 8px rgba(var(--btn-glow,14,65,143), .35));
+  }
+  .tweet .ct-microbar.run { transition: transform .45s ease; transform: scaleX(1); }
+  body.low-motion .tweet .ct-microbar { transform: none; }
+
+  /* --- [3] Scroll-edge ion glow for results --- */
+  #results { position: relative; }
+  #results::before,
+  #results::after {
+    content:""; position:absolute; left:0; right:0; height:18px; pointer-events:none; opacity:0; transition: opacity .18s ease;
+    background: radial-gradient(80% 100% at 50% 0%, rgba(var(--btn-glow,14,65,143),.20), rgba(0,0,0,0) 70%);
+    z-index: 1;
+  }
+  #results::before { top:0; transform: scaleY(-1); }
+  #results::after  { bottom:0; }
+  #results.can-up::before { opacity: .8; }
+  #results.can-down::after { opacity: .8; }
+
+  /* --- [4] Kinetic scrollbar (WebKit only) --- */
+  #results::-webkit-scrollbar { width:8px; height:8px; }
+  #results::-webkit-scrollbar-track { background: rgba(255,255,255,.06); border-radius: 99px; }
+  #results::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--btn-glow,14,65,143),.55), rgba(var(--btn-glow,14,65,143),.25));
+    border-radius: 99px;
+    transition: all .18s ease;
+  }
+  #results:is(:hover,.is-scrolling)::-webkit-scrollbar { width:10px; }
+  #results:is(:hover,.is-scrolling)::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(var(--btn-glow,14,65,143),.85), rgba(var(--btn-glow,14,65,143),.45)); }
+
+  /* --- [8] Cursor-driven specular on cards --- */
+  .tweet::after {
+    content:""; position:absolute; inset:-2px;
+    background: radial-gradient(200px 140px at var(--mx,50%) var(--my,50%),
+      rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
+    opacity: .0; transition: opacity .18s ease;
+    pointer-events:none;
+  }
+  .tweet:hover::after { opacity:.9; }
+  body.low-motion .tweet::after { display:none; }
+
+  /* --- [9] Odometer flick on result count --- */
+  #resultCount.ct-odometer { display:inline-flex; gap:2px; }
+  .ct-digit {
+    display:inline-block; perspective:600px; width: .72ch; text-align:center;
+  }
+  .ct-digit .front, .ct-digit .back {
+    display:block; transform-origin:50% 50%;
+    backface-visibility:hidden;
+  }
+  .ct-digit.flip .front { animation: ctFlipOut .22s ease forwards; }
+  .ct-digit.flip .back  { animation: ctFlipIn  .22s ease forwards; }
+  @keyframes ctFlipOut { to { transform: rotateX(-90deg); opacity:.2; } }
+  @keyframes ctFlipIn  { from { transform: rotateX(90deg); opacity:.2; } to { transform: rotateX(0deg); opacity:1; } }
+
+  /* --- [15] Crown cursor during generate (results area only) --- */
+  body.is-generating #results { cursor: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>\
+<path fill='%23ffffff' d='M3 16l2-7 4 4 3.5-6 3.5 6 4-4 2 7H3zM5 18h14v2H5z'/>\
+</svg>") 8 8, default; }
+
+  /* --- [16] Theme dot breath (no rotate, no hover preview) --- */
+  .theme-dot.is-active { position:relative; }
+  .theme-dot.is-active::after {
+    content:""; position:absolute; inset:-6px; border-radius:50%;
+    box-shadow: 0 0 0 2px rgba(var(--btn-glow,14,65,143),.45), 0 0 24px rgba(var(--btn-glow,14,65,143),.35);
+    animation: ctBreath 2.4s ease-in-out infinite;
+  }
+  @keyframes ctBreath { 0%,100% {opacity:.9; transform: scale(1)} 50% {opacity:.65; transform: scale(.96)} }
+  body.low-motion .theme-dot.is-active::after { animation:none; }
+
+  /* --- [18] Link hover laser --- */
+  .tweet .tweet-link { position:relative; text-decoration:none; }
+  .tweet .tweet-link::after {
+    content:""; position:absolute; left:0; right:0; bottom:-2px; height:2px;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(var(--btn-glow,14,65,143),1) 50%, rgba(255,255,255,0) 100%);
+    transform: scaleX(0); transform-origin:left; transition: transform .18s ease;
+  }
+  .tweet .tweet-link:hover::after { transform: scaleX(1); }
+
+  /* --- [19] Ready ping --- */
+  .tweet.ct-ready-ping { box-shadow: inset 0 0 0 2px rgba(var(--btn-glow,14,65,143),.9); transition: box-shadow .18s ease; }
+  .tweet.ct-ready-ping.off { box-shadow: none; }
+
+  /* --- [20] Time-of-day ambient tint for .hero --- */
+  .hero { transition: background .28s ease; }
+  html[data-ambient="morning"]  .hero { background-image: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0)); }
+  html[data-ambient="afternoon"] .hero { background-image: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)); }
+  html[data-ambient="evening"]   .hero { background-image: linear-gradient(180deg, rgba(0,0,0,.14), rgba(0,0,0,0)); }
+
+  /* --- [5] Empty-state premium card & [6] Daily welcome card --- */
+  .ct-overlay {
+    position: fixed; inset:0; background: rgba(0,0,0,.45);
+    display:flex; align-items:center; justify-content:center; z-index: 9999;
+    animation: ctFade .18s ease;
+  }
+  @keyframes ctFade { from { opacity: 0 } to { opacity: 1 } }
+
+  .ct-card {
+    min-width: 320px; max-width: 560px;
+    background: rgba(20,24,34,.72);
+    backdrop-filter: blur(10px);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08) inset;
+    color: #fff; padding: 18px 20px 16px; position: relative;
+    transform: translateY(8px); animation: ctPop .2s ease forwards;
+  }
+  @keyframes ctPop { to { transform: translateY(0) } }
+
+  .ct-card h3 { margin:0 0 6px; font-size: 18px; font-weight: 700; letter-spacing:.2px; }
+  .ct-card p { margin: 0; opacity:.88; }
+  .ct-card .ct-actions { margin-top:12px; display:flex; gap:8px; justify-content:flex-end; }
+  .ct-btn {
+    border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+    color:#fff;
+  }
+  .ct-btn.primary {
+    background: linear-gradient(180deg, rgba(var(--btn-glow,14,65,143),.85), rgba(var(--btn-glow,14,65,143),.55));
+    box-shadow: 0 12px 28px rgba(var(--btn-glow,14,65,143),.38);
+  }
+
+  .ct-welcome {
+    position: fixed; top:16px; right:16px; z-index: 9998;
+    background: rgba(20,24,34,.78); backdrop-filter: blur(8px);
+    border-radius: 14px; padding: 12px 14px; color:#fff;
+    box-shadow: 0 12px 40px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.08) inset;
+    animation: ctWelcome .22s ease;
+  }
+  @keyframes ctWelcome { from { opacity:0; transform: translateY(-6px) } to { opacity:1; transform:none } }
+  .ct-welcome .title { font-weight:700; margin-bottom:4px; }
+  .ct-welcome .hint { opacity:.86; font-size:.95rem; }
+
+  /* --- [7] Copy heat-streak (only desktop) --- */
+  .ct-streak {
+    position: fixed; width: 10px; height: 10px; border-radius: 999px;
+    background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,0) 60%), rgba(var(--btn-glow,14,65,143),.85);
+    box-shadow: 0 0 18px rgba(var(--btn-glow,14,65,143),.65);
+    pointer-events:none; z-index: 9999; opacity:.9;
+    transition: transform .55s cubic-bezier(.2,.9,.2,1), opacity .2s linear;
+  }
+}
