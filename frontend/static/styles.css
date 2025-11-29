@@ -3824,8 +3824,7 @@ body.low-motion #progressBarFill::after,
 body.low-motion .hero::before { animation: none !important; }
 
 
-/* CrownTALK — Desktop Premium Animation Pack
-   Desktop-only, motion-respectful, zero HTML changes. */
+/* CrownTALK — Desktop Premium Animation Pack */
 @media (pointer:fine) and (hover:hover) {
 
   /* -------- Results scroll-edge glow (top/bottom) -------- */
@@ -4092,3 +4091,161 @@ body.low-motion #generateBtn .ct-rip { animation:none !important; }
     transition: transform .55s cubic-bezier(.2,.9,.2,1), opacity .2s linear;
   }
 }
+
+
+/* ============================
+   CrownTALK Premium Patch CSS
+============================ */
+
+/* ----------Ambient Aurora (Generating Only) ---------- */
+#ctAurora {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(40vmax 40vmax at 15% 20%, rgba(0, 204, 255, .12), transparent 60%),
+    radial-gradient(38vmax 38vmax at 85% 25%, rgba(255, 0, 185, .10), transparent 60%),
+    radial-gradient(45vmax 45vmax at 50% 110%, rgba(0, 255, 163, .10), transparent 60%);
+  transition: opacity .4s ease;
+}
+body.is-generating #ctAurora:not(.low-motion) { opacity: .95; }
+body.low-motion #ctAurora { opacity: 0 !important; }
+
+/* ---------- Caret Spark ---------- */
+.ct-caret-spark {
+  position: fixed;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255,255,255,.9), rgba(var(--btn-glow, 56,189,248), .6) 50%, transparent 70%);
+  filter: drop-shadow(0 0 8px rgba(var(--btn-glow,56,189,248),.65));
+  animation: ct-spark-pop 180ms ease-out forwards;
+  z-index: 9999;
+}
+@keyframes ct-spark-pop {
+  from { transform: translate(-50%,-50%) scale(.6); opacity: .95; }
+  to   { transform: translate(-50%,-50%) scale(1.25); opacity: 0; }
+}
+
+/* ---------- URL Gutter Lights + [19] Hover Hint Line ---------- */
+.ct-url-gutter {
+  position: absolute;
+  left: 0; top: 0;
+  width: 8px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+.ct-led {
+  width: 6px; height: 6px;
+  margin: 6px 1px;
+  border-radius: 50%;
+  opacity: .65;
+  box-shadow: 0 0 6px currentColor;
+}
+.ct-led.ok { color: #22c55e; }        /* green */
+.ct-led.warn { color: #f59e0b; }      /* amber */
+.ct-led.err { color: #ef4444; }       /* red */
+.ct-url-hoverline {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1.6em;
+  background: linear-gradient(90deg, rgba(255,255,255,.06), transparent 55%);
+  border-left: 2px solid rgba(var(--btn-glow,56,189,248),.5);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+body.low-motion .ct-url-hoverline { transition: none; }
+
+/* ---------- [7] Reroll “Shuffle Merge” ---------- */
+.comment-line.ct-out {
+  animation: ct-line-out 220ms ease forwards;
+}
+.comment-line.ct-in {
+  animation: ct-line-in 280ms cubic-bezier(.2,.8,.2,1) forwards;
+}
+@keyframes ct-line-out {
+  to { transform: translateY(-6px); filter: blur(2px); opacity: 0; }
+}
+@keyframes ct-line-in {
+  from { transform: translateY(6px); filter: blur(2px); opacity: 0; }
+  to   { transform: translateY(0); filter: blur(0); opacity: 1; }
+}
+.comment-line.ct-in .comment-text {
+  position: relative;
+}
+.comment-line.ct-in .comment-text::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+  transform: translateX(-120%);
+  animation: ct-sheen 600ms ease 120ms forwards;
+  pointer-events: none;
+}
+@keyframes ct-sheen { to { transform: translateX(120%); } }
+
+/* ---------- [12] Cursor Trail (Generating Only) ---------- */
+.ct-trail {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9998;
+}
+.ct-trail-dot {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(var(--btn-glow,56,189,248), .9);
+  filter: blur(0.2px) drop-shadow(0 0 8px rgba(var(--btn-glow,56,189,248), .55));
+  animation: ct-trail-fade 360ms ease-out forwards;
+}
+.ct-trail-dot:nth-child(2) { width: 4px; height: 4px; opacity: .85; }
+@keyframes ct-trail-fade {
+  to { transform: translateY(2px) scale(.85); opacity: 0; }
+}
+body.low-motion .ct-trail { display: none !important; }
+
+/* ---------- [13] (no CSS needed) Tab Title Signals ---------- */
+
+/* ---------- [20] Mini Toast Queue ---------- */
+#ctToasts {
+  position: fixed;
+  right: 18px; bottom: 18px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 9999; pointer-events: none;
+}
+.ct-toast {
+  min-width: 180px;
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(17,24,39,.92);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.25;
+  box-shadow: 0 10px 20px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.06) inset;
+  transform: translateY(12px);
+  opacity: 0;
+  pointer-events: auto;
+  animation: ct-toast-in 220ms cubic-bezier(.2,.8,.2,1) forwards;
+}
+.ct-toast[data-kind="ok"]    { background: linear-gradient(180deg, rgba(13,148,136,.96), rgba(6,95,70,.92)); }
+.ct-toast[data-kind="warn"]  { background: linear-gradient(180deg, rgba(234,179,8,.98), rgba(180,83,9,.95)); }
+.ct-toast[data-kind="error"] { background: linear-gradient(180deg, rgba(239,68,68,.98), rgba(153,27,27,.95)); }
+@keyframes ct-toast-in {
+  to { transform: translateY(0); opacity: 1; }
+}
+.ct-toast.ct-leave {
+  animation: ct-toast-out 240ms ease forwards;
+}
+@keyframes ct-toast-out {
+  to { transform: translateY(-6px); opacity: 0; }
+}
+
+/* ensure hero stays above aurora visuals */
+.hero { position: relative; z-index: 1; }
