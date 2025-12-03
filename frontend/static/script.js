@@ -1,13 +1,14 @@
 /* ============================================
-   CrownTALK — One-time Access Gate + App Logic (Lite+)
+   CrownTALK — One-time Access Gate + App Logic
    Access code: @CrownTALK@2026@CrownDEX
+   Persists with localStorage + cookie fallback
    ============================================ */
 
-/* ---------- Gate (single source of truth) ---------- */
+/* ---------- Gate Pass ---------- */
 (() => {
   const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
-  const STORAGE_KEY = 'crowntalk_access_v1';
-  const COOKIE_KEY  = 'crowntalk_access_v1';
+  const STORAGE_KEY = 'crowntalk_access_v1';    // local/session storage key
+  const COOKIE_KEY  = 'crowntalk_access_v1';    // cookie fallback
 
   function isAuthorized() {
     try { if (localStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
@@ -19,7 +20,9 @@
   function markAuthorized() {
     try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
     try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try { document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`; } catch {}
+    try {
+      document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`;
+    } catch {}
   }
 
   function els() {
@@ -35,7 +38,10 @@
     gate.hidden = false;
     gate.style.display = 'grid';
     document.body.style.overflow = 'hidden';
-    if (input) { input.value=''; setTimeout(()=>input.focus(),0); }
+    if (input) {
+      input.value = '';
+      setTimeout(() => input.focus(), 0);
+    }
   }
 
   function hideGate() {
@@ -58,8 +64,9 @@
       bootAppUI();
       return;
     }
+
     input.classList.add('ct-shake');
-    setTimeout(()=>input.classList.remove('ct-shake'),350);
+    setTimeout(() => input.classList.remove('ct-shake'), 350);
     input.value = '';
     input.placeholder = 'Wrong code — try again';
   }
@@ -67,22 +74,39 @@
   function bindGate() {
     const { gate, input } = els();
     if (!gate) return;
-    input?.addEventListener('keydown',(e)=>{ if(e.key==='Enter'){ e.preventDefault(); tryAuth(); } });
+
+    input?.addEventListener('keydown', (e) => {
+      if (e.key === 'Enter') {
+        e.preventDefault();
+        tryAuth();
+      }
+    });
+
     const lockIcon = gate.querySelector('svg');
-    if (lockIcon) { lockIcon.style.cursor='pointer'; lockIcon.addEventListener('click', tryAuth); }
+    if (lockIcon) {
+      lockIcon.style.cursor = 'pointer';
+      lockIcon.addEventListener('click', tryAuth);
+    }
   }
 
   function init() {
-    if (isAuthorized()) { hideGate(); bootAppUI(); }
-    else { showGate(); bindGate(); }
+    if (isAuthorized()) {
+      hideGate();
+      bootAppUI();
+    } else {
+      showGate();
+      bindGate();
+    }
   }
 
   if (document.readyState === 'loading') {
     document.addEventListener('DOMContentLoaded', init);
-  } else { init(); }
+  } else {
+    init();
+  }
 })();
 
-/* ========= App code (baseline kept) ========= */
+/* ========= App code ========= */
 
 // ------------------------
 // Backend endpoints
@@ -117,27 +141,65 @@ let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 let cancelled    = false;
 let historyItems = [];
 
-// ------------------------
-// Backend helpers
-// ------------------------
+/* =========================================================
+   === PATCH: Mini Toast + Snack (used by multiple bits) ===
+   ========================================================= */
+(function mountToast(){
+  if (document.getElementById('ctToasts')) return;
+  const box = document.createElement('div');
+  box.id = 'ctToasts';
+  document.body.appendChild(box);
+})();
+function ctToast(msg, kind='ok', ms=1800){
+  const host = document.getElementById('ctToasts');
+  if (!host) return alert(msg);
+  const el = document.createElement('div');
+  el.className = 'ct-toast';
+  el.dataset.kind = kind;
+  el.textContent = msg;
+  host.appendChild(el);
+  const t = setTimeout(()=>{ el.classList.add('ct-leave'); setTimeout(()=>el.remove(), 240); }, ms);
+  el.addEventListener('click', ()=>{ clearTimeout(t); el.classList.add('ct-leave'); setTimeout(()=>el.remove(), 160); });
+}
+
+/* =========================================================
+   Backend helpers (warmup + timeout fetch)
+   ========================================================= */
 function warmBackendOnce() {
   try {
-    fetch(backendBase + "/", { method:"GET", cache:"no-store", mode:"no-cors", keepalive:true }).catch(()=>{});
-  } catch (err) { console.warn("warmBackendOnce error", err); }
+    fetch(backendBase + "/", {
+      method: "GET",
+      cache: "no-store",
+      mode: "no-cors",
+      keepalive: true,
+    }).catch(() => {});
+  } catch (err) {
+    console.warn("warmBackendOnce error", err);
+  }
 }
 let lastWarmAt = 0;
 function maybeWarmBackend() {
   const now = Date.now();
-  if (now - lastWarmAt > 5*60*1000) { lastWarmAt = now; warmBackendOnce(); }
+  const FIVE_MIN = 5 * 60 * 1000;
+  if (now - lastWarmAt > FIVE_MIN) {
+    lastWarmAt = now;
+    warmBackendOnce();
+  }
 }
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
-  if (typeof AbortController === "undefined") return fetch(url, options);
+  if (typeof AbortController === "undefined") {
+    return fetch(url, options);
+  }
   const controller = new AbortController();
-  const id = setTimeout(()=>controller.abort(), timeoutMs);
+  const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(id); return res;
-  } catch (err) { clearTimeout(id); throw err; }
+    clearTimeout(id);
+    return res;
+  } catch (err) {
+    clearTimeout(id);
+    throw err;
+  }
 }
 
 // ------------------------
@@ -145,184 +207,267 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
 // ------------------------
 function parseURLs(raw) {
   if (!raw) return [];
-  return raw
+  // strip any leading "1. " or "2) " etc.
+  const lines = raw
     .split(/\r?\n/)
-    .map((line)=>line.trim())
-    .filter(Boolean)
-    .map((line)=>line.replace(/^\s*\d+\.\s*/, "").trim());
+    .map((line) => line.replace(/^\s*(?:\d+[\.)]\s*)?/, "").trim())
+    .filter(Boolean);
+
+  // normalize X/Twitter urls, remove query/hash, unify host, drop trailing "/"
+  const norm = lines.map((line) => {
+    try {
+      const u = new URL(line);
+      if (/^(?:www\.)?twitter\.com$/i.test(u.hostname)) u.hostname = 'x.com';
+      u.search = ''; u.hash = '';
+      u.pathname = u.pathname.replace(/\/+$/, '');
+      return u.toString();
+    } catch {
+      return line;
+    }
+  });
+
+  // de-dupe while preserving order
+  const seen = new Set();
+  const unique = [];
+  for (const v of norm) {
+    if (!seen.has(v)) { seen.add(v); unique.push(v); }
+  }
+  return unique;
 }
-function setProgressText(text){ if (progressEl) progressEl.textContent = text || ""; }
-function setProgressRatio(ratio){
+function setProgressText(text) {
+  if (progressEl) progressEl.textContent = text || "";
+}
+function setProgressRatio(ratio) {
   if (!progressBarFill) return;
   const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
   progressBarFill.style.transform = `scaleX(${clamped})`;
+  // === PATCH: micro-shadow sync + comet power var
+  document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(clamped*100)));
+  document.documentElement.style.setProperty('--ct-progress-frac', String(clamped));
 }
-function resetProgress(){ setProgressText(""); setProgressRatio(0); }
-function resetResults(){
+function resetProgress() {
+  setProgressText("");
+  setProgressRatio(0);
+}
+function resetResults() {
   if (resultsEl) resultsEl.innerHTML = "";
   if (failedEl) failedEl.innerHTML = "";
   if (resultCountEl) resultCountEl.textContent = "0 tweets";
   if (failedCountEl) failedCountEl.textContent = "0";
 }
-async function copyToClipboard(text){
+async function copyToClipboard(text) {
   if (!text) return;
   if (navigator.clipboard?.writeText) {
-    try { await navigator.clipboard.writeText(text); return; } catch {}
+    try { await navigator.clipboard.writeText(text); return; }
+    catch (err) { console.warn("navigator.clipboard failed, using fallback", err); }
   }
   const helper = document.createElement("span");
-  helper.textContent = text; helper.style.position="fixed"; helper.style.left="-9999px"; helper.style.top="0";
-  helper.style.whiteSpace="pre"; document.body.appendChild(helper);
-  const sel = window.getSelection(); const range = document.createRange(); range.selectNodeContents(helper);
-  sel.removeAllRanges(); sel.addRange(range);
-  try { document.execCommand("copy"); } catch {}
-  sel.removeAllRanges(); helper.remove();
+  helper.textContent = text;
+  helper.style.position = "fixed";
+  helper.style.left = "-9999px";
+  helper.style.top = "0";
+  helper.style.whiteSpace = "pre";
+  document.body.appendChild(helper);
+  const selection = window.getSelection();
+  const range = document.createRange();
+  range.selectNodeContents(helper);
+  selection.removeAllRanges();
+  selection.addRange(range);
+  try { document.execCommand("copy"); } catch (err) { console.error("execCommand copy failed", err); }
+  selection.removeAllRanges();
+  document.body.removeChild(helper);
 }
-function formatTweetCount(count){ const n = Number(count)||0; return `${n} tweet${n===1?"":"s"}`; }
-function autoResizeTextarea(){
+function formatTweetCount(count) {
+  const n = Number(count) || 0;
+  return `${n} tweet${n === 1 ? "" : "s"}`;
+}
+function autoResizeTextarea() {
   if (!urlInput) return;
   urlInput.style.height = "auto";
-  const base = 180; urlInput.style.height = Math.max(base, urlInput.scrollHeight) + "px";
-}
-// === URL helpers: normalize + enumerate + dedupe ===
-const CT_URL_RE = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/\S+/i;
-
-function ctNormalizeUrl(u) {
-  try {
-    const url = new URL(u.trim());
-    if (url.hostname === 'twitter.com') url.hostname = 'x.com';
-    url.search = ''; url.hash = '';
-    url.pathname = url.pathname.replace(/\/+$/, '');
-    return url.toString();
-  } catch { return null; }
+  const base = 180;
+  const newHeight = Math.max(base, urlInput.scrollHeight);
+  urlInput.style.height = newHeight + "px";
 }
 
-function ctEnumerateUnique(raw) {
-  const lines = String(raw || '').split(/\r?\n/);
-  const seen = new Set();
-  const urls = [];
-  for (const line of lines) {
-    const m = line.match(CT_URL_RE);
-    if (!m) continue;
-    const n = ctNormalizeUrl(m[0]);
-    if (!n) continue;
-    if (!seen.has(n)) { seen.add(n); urls.push(n); }
+/* =========================================================
+   === numbering + dedupe + gentle renumber UI ===
+   ========================================================= */
+function renumberTextareaAndDedupe(showToasts=true) {
+  if (!urlInput) return { changed:false, removed:0 };
+  const original = urlInput.value;
+  // parseURLs already strips numbering + dedupes.
+  const uniq = parseURLs(original);
+  // write back with clean 1.,2.,3. numbers so your UI shows correct sequence
+  const enumerated = uniq.map((u, i) => `${i+1}. ${u}`).join('\n');
+  const removed = original.split(/\r?\n/).filter(Boolean).length - uniq.length;
+  const changed = enumerated !== original;
+  if (changed) {
+    urlInput.value = enumerated;
+    urlInput.dispatchEvent(new Event('input', {bubbles:true}));
+    if (showToasts && removed > 0) {
+      ctToast(`Removed ${removed} duplicate URL${removed>1?'s':''}.`, 'ok');
+    }
   }
-  const text = urls.map((u, i) => `${i + 1}. ${u}`).join('\n');
-  // dupCount = total found - unique
-  const totalFound = lines.filter(l => CT_URL_RE.test(l)).length;
-  const dupCount = Math.max(0, totalFound - urls.length);
-  return { text, urls, dupCount };
+  return { changed, removed };
 }
 
-/** Quick, unobtrusive popup reusing your lite modal */
-function ctNotify(msg) {
-  try {
-    showLiteModal('Heads up', msg, null);
-  } catch {
-    alert(msg); // ultimate fallback
-  }
-}
-// ------------------------
-// History
-// ------------------------
-function addToHistory(text){
+/* =========================================================
+                        History
+   ========================================================= */
+function addToHistory(text) {
   if (!text) return;
-  const timestamp = new Date().toLocaleTimeString([], {hour:"2-digit", minute:"2-digit"});
-  historyItems.push({ text, timestamp }); renderHistory();
+  const timestamp = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  historyItems.push({ text, timestamp });
+  renderHistory();
 }
-function renderHistory(){
+function renderHistory() {
   if (!historyEl) return;
   historyEl.innerHTML = "";
-  if (!historyItems.length) { historyEl.textContent = "Copied comments will show up here."; return; }
-  [...historyItems].reverse().forEach((item)=>{
+  if (!historyItems.length) {
+    historyEl.textContent = "Copied comments will show up here.";
+    return;
+  }
+  [...historyItems].reverse().forEach((item) => {
     const entry = document.createElement("div");
     entry.className = "history-item";
     const textSpan = document.createElement("div");
-    textSpan.className = "history-text"; textSpan.textContent = item.text;
+    textSpan.className = "history-text";
+    textSpan.textContent = item.text;
     const right = document.createElement("div");
-    right.style.display="flex"; right.style.flexDirection="column"; right.style.alignItems="flex-end"; right.style.gap="4px";
-    const meta = document.createElement("div"); meta.className="history-meta"; meta.textContent = item.timestamp;
-    const btn = document.createElement("button"); btn.className="history-copy-btn";
+    right.style.display = "flex";
+    right.style.flexDirection = "column";
+    right.style.alignItems = "flex-end";
+    right.style.gap = "4px";
+    const meta = document.createElement("div");
+    meta.className = "history-meta";
+    meta.textContent = item.timestamp;
+    const btn = document.createElement("button");
+    btn.className = "history-copy-btn";
     const main = document.createElement("span");
     main.innerHTML = `
       <svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg"
-        shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
-        image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
-        viewBox="0 0 467 512.22"><path fill-rule="nonzero"
-          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z"></path></svg>
-      Copy`;
-    const alt = document.createElement("span"); alt.textContent = "Copied";
-    btn.appendChild(main); btn.appendChild(alt); btn.dataset.text = item.text;
-    right.appendChild(meta); right.appendChild(btn);
-    entry.appendChild(textSpan); entry.appendChild(right);
+           shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
+           image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
+           viewBox="0 0 467 512.22">
+        <path fill-rule="nonzero"
+          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z">
+        </path>
+      </svg>
+      Copy
+    `;
+    const alt = document.createElement("span");
+    alt.textContent = "Copied";
+    btn.appendChild(main);
+    btn.appendChild(alt);
+    btn.dataset.text = item.text;
+    right.appendChild(meta);
+    right.appendChild(btn);
+    entry.appendChild(textSpan);
+    entry.appendChild(right);
     historyEl.appendChild(entry);
   });
 }
 
-// ------------------------
-// Rendering helpers
-// ------------------------
-function buildTweetBlock(result){
+/* =========================================================
+                    Rendering helpers
+   ========================================================= */
+function buildTweetBlock(result) {
   const url = result.url || "";
   const comments = Array.isArray(result.comments) ? result.comments : [];
 
-  const tweet = document.createElement("div"); tweet.className = "tweet"; tweet.dataset.url = url;
+  const tweet = document.createElement("div");
+  tweet.className = "tweet";
+  tweet.dataset.url = url;
 
-  const header = document.createElement("div"); header.className = "tweet-header";
+  const header = document.createElement("div");
+  header.className = "tweet-header";
+
   const link = document.createElement("a");
-  link.className="tweet-link"; link.href = url || "#"; link.target="_blank"; link.rel="noopener noreferrer";
-  link.textContent = url || "(no url)"; link.title="Open tweet (tap to open)";
-  const actions = document.createElement("div"); actions.className = "tweet-actions";
-  const rerollBtn = document.createElement("button"); rerollBtn.className="reroll-btn"; rerollBtn.textContent="Reroll";
-  actions.appendChild(rerollBtn); header.appendChild(link); header.appendChild(actions); tweet.appendChild(header);
+  link.className = "tweet-link";
+  link.href = url || "#";
+  link.target = "_blank";
+  link.rel = "noopener noreferrer";
+  link.textContent = url || "(no url)";
+  link.title = "Open tweet (tap to open)";
 
-  const commentsWrap = document.createElement("div"); commentsWrap.className="comments";
+  const actions = document.createElement("div");
+  actions.className = "tweet-actions";
 
-  const hasNative = comments.some((c)=>c && c.lang && c.lang !== "en");
+  const rerollBtn = document.createElement("button");
+  rerollBtn.className = "reroll-btn";
+  rerollBtn.textContent = "Reroll";
+
+  actions.appendChild(rerollBtn);
+  header.appendChild(link);
+  header.appendChild(actions);
+  tweet.appendChild(header);
+
+  const commentsWrap = document.createElement("div");
+  commentsWrap.className = "comments";
+
+  const hasNative = comments.some((c) => c && c.lang && c.lang !== "en");
   const multilingual = hasNative;
 
-  comments.forEach((comment, idx)=>{
+  comments.forEach((comment, idx) => {
     if (!comment || !comment.text) return;
-    const line = document.createElement("div"); line.className = "comment-line";
+
+    const line = document.createElement("div");
+    line.className = "comment-line";
     if (comment.lang) line.dataset.lang = comment.lang;
 
-    const tag = document.createElement("span"); tag.className="comment-tag";
-    tag.textContent = multilingual ? (comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase())
-                                   : `EN #${idx+1}`;
+    const tag = document.createElement("span");
+    tag.className = "comment-tag";
+    tag.textContent = multilingual
+      ? (comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase())
+      : `EN #${idx + 1}`;
 
-    const bubble = document.createElement("span"); bubble.className="comment-text"; bubble.textContent = comment.text;
+    const bubble = document.createElement("span");
+    bubble.className = "comment-text";
+    bubble.textContent = comment.text;
 
     const copyBtn = document.createElement("button");
     let copyLabel = "Copy";
     if (multilingual) {
-      if (comment.lang === "en") { copyBtn.className = "copy-btn-en"; copyLabel = "Copy EN"; }
-      else { copyBtn.className = "copy-btn"; }
-    } else { copyBtn.className = "copy-btn"; }
+      if (comment.lang === "en") {
+        copyBtn.className = "copy-btn-en";
+        copyLabel = "Copy EN";
+      } else {
+        copyBtn.className = "copy-btn";
+      }
+    } else {
+      copyBtn.className = "copy-btn";
+    }
 
     const copyMain = document.createElement("span");
     copyMain.innerHTML = `
       <svg width="12" height="12" fill="#0E418F" xmlns="http://www.w3.org/2000/svg"
-        shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
-        image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
-        viewBox="0 0 467 512.22"><path fill-rule="nonzero"
-          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z"></path></svg>
-      ${copyLabel}`;
-    const copyAlt = document.createElement("span"); copyAlt.textContent = "Copied";
-    copyBtn.appendChild(copyMain); copyBtn.appendChild(copyAlt); copyBtn.dataset.text = comment.text;
-
-    line.appendChild(tag); line.appendChild(bubble); line.appendChild(copyBtn);
+           shape-rendering="geometricPrecision" text-rendering="geometricPrecision"
+           image-rendering="optimizeQuality" fill-rule="evenodd" clip-rule="evenodd"
+           viewBox="0 0 467 512.22">
+        <path fill-rule="nonzero"
+          d="M131.07 372.11c.37 1 .57 2.08.57 3.2 0 1.13-.2 2.21-.57 3.21v75.91c0 10.74 4.41 20.53 11.5 27.62s16.87 11.49 27.62 11.49h239.02c10.75 0 20.53-4.4 27.62-11.49s11.49-16.88 11.49-27.62V152.42c0-10.55-4.21-20.15-11.02-27.18l-.47-.43c-7.09-7.09-16.87-11.5-27.62-11.5H170.19c-10.75 0-20.53 4.41-27.62 11.5s-11.5 16.87-11.5 27.61v219.69zm-18.67 12.54H57.23c-15.82 0-30.1-6.58-40.45-17.11C6.41 356.97 0 342.4 0 326.52V57.79c0-15.86 6.5-30.3 16.97-40.78l.04-.04C27.51 6.49 41.94 0 57.79 0h243.63c15.87 0 30.3 6.51 40.77 16.98l.03.03c10.48 10.48 16.99 24.93 16.99 40.78v36.85h50c15.9 0 30.36 6.5 40.82 16.96l.54.58c10.15 10.44 16.43 24.66 16.43 40.24v302.01c0 15.9-6.5 30.36-16.96 40.82-10.47 10.47-24.93 16.97-40.83 16.97H170.19c-15.9 0-30.35-6.5-40.82-16.97-10.47-10.46-16.97-24.92-16.97-40.82v-69.78zM340.54 94.64V57.79c0-10.74-4.41-20.53-11.5-27.63-7.09-7.08-16.86-11.48-27.62-11.48H57.79c-10.78 0-20.56 4.38-27.62 11.45l-.04.04c-7.06 7.06-11.45 16.84-11.45 27.62v268.73c0 10.86 4.34 20.79 11.38 27.97 6.95 7.07 16.54 11.49 27.17 11.49h55.17V152.42c0-15.9 6.5-30.35 16.97-40.82 10.47-10.47 24.92-16.96 40.82-16.96h170.35z">
+        </path>
+      </svg>
+      ${copyLabel}
+    `;
+    const copyAlt = document.createElement("span");
+    copyAlt.textContent = "Copied";
+    copyBtn.appendChild(copyMain);
+    copyBtn.appendChild(copyAlt);
+    copyBtn.dataset.text = comment.text;
+    line.appendChild(tag);
+    line.appendChild(bubble);
+    line.appendChild(copyBtn);
     commentsWrap.appendChild(line);
   });
 
   tweet.appendChild(commentsWrap);
   return tweet;
 }
-
 function appendResultBlock(result) {
   const block = buildTweetBlock(result);
   resultsEl.appendChild(block);
 }
-
 function updateTweetBlock(tweetEl, result) {
   if (!tweetEl) return;
   tweetEl.dataset.url = result.url || tweetEl.dataset.url || "";
@@ -335,73 +480,124 @@ function updateTweetBlock(tweetEl, result) {
   const oldTransform = tweetEl.style.transform;
   tweetEl.style.boxShadow = "0 0 0 2px rgba(56,189,248,0.9)";
   tweetEl.style.transform = "translateY(-1px)";
-  setTimeout(()=>{ tweetEl.style.boxShadow = oldShadow; tweetEl.style.transform = oldTransform; }, 420);
+  setTimeout(() => {
+    tweetEl.style.boxShadow = oldShadow;
+    tweetEl.style.transform = oldTransform;
+  }, 420);
 }
-
-function appendFailedItem(failure){
-  const wrapper = document.createElement("div"); wrapper.className="failed-item";
-  const urlSpan = document.createElement("div"); urlSpan.className="failed-url"; urlSpan.textContent = failure.url || "(unknown URL)";
-  const reasonSpan = document.createElement("div"); reasonSpan.className="failed-reason"; reasonSpan.textContent = failure.reason || "Unknown error";
-  wrapper.appendChild(urlSpan); wrapper.appendChild(reasonSpan); failedEl.appendChild(wrapper);
+function appendFailedItem(failure) {
+  const wrapper = document.createElement("div");
+  wrapper.className = "failed-item";
+  const urlSpan = document.createElement("div");
+  urlSpan.className = "failed-url";
+  urlSpan.textContent = failure.url || "(unknown URL)";
+  const reasonSpan = document.createElement("div");
+  reasonSpan.className = "failed-reason";
+  reasonSpan.textContent = failure.reason || "Unknown error";
+  wrapper.appendChild(urlSpan);
+  wrapper.appendChild(reasonSpan);
+  failedEl.appendChild(wrapper);
 }
-
-function showSkeletons(count){
+function showSkeletons(count) {
   resultsEl.innerHTML = "";
-  const num = Math.min(Math.max(count,1), 6);
-  for (let i=0;i<num;i++){
-    const sk = document.createElement("div"); sk.className="tweet-skeleton";
-    for (let j=0;j<3;j++){ const line=document.createElement("div"); line.className="tweet-skeleton-line"; sk.appendChild(line); }
+  const num = Math.min(Math.max(count, 1), 6);
+  for (let i = 0; i < num; i++) {
+    const sk = document.createElement("div");
+    sk.className = "tweet-skeleton";
+    for (let j = 0; j < 3; j++) {
+      const line = document.createElement("div");
+      line.className = "tweet-skeleton-line";
+      sk.appendChild(line);
+    }
     resultsEl.appendChild(sk);
   }
 }
 
-// ------------------------
-// Generate flow
-// ------------------------
+/* =========================================================
+   =============      Batch ETA Whisper ====================
+   ========================================================= */
+(function mountETA(){
+  if (!progressEl || document.getElementById('progressEta')) return;
+  const et = document.createElement('div');
+  et.id = 'progressEta';
+  et.className = 'progress-eta';
+  progressEl.parentElement?.appendChild(et);
+})();
+let __ctStartTs = 0;
+function __updateETAFromText(txt){
+  const et = document.getElementById('progressEta');
+  if (!et) return;
+  const m = /Processed\s+(\d+)\s*\/\s*(\d+)/i.exec(txt || '');
+  if (!m) { et.textContent = ''; return; }
+  const done = parseInt(m[1],10), total = parseInt(m[2],10);
+  if (!total || done<0) { et.textContent=''; return; }
+  const now = performance.now();
+  if (!__ctStartTs) __ctStartTs = now;
+  const elapsed = Math.max(1, (now-__ctStartTs)/1000);
+  const rate = done/elapsed; // items per sec
+  const left = Math.max(0, total - done);
+  const eta = rate>0 ? Math.round(left/rate) : 0;
+  if (done === total) { et.textContent = 'Done'; __ctStartTs = 0; }
+  else et.textContent = `~${eta}s left`;
+}
+const __origSetProgressText = setProgressText;
+setProgressText = function patchedSetProgressText(t){
+  __updateETAFromText(t || '');
+  return __origSetProgressText.apply(this, arguments);
+};
+
+/* =========================================================
+                         Generate flow
+   ========================================================= */
 async function handleGenerate() {
-  // Build unique, normalized list from the current textarea
-  const { text: enumerated, urls, dupCount } = ctEnumerateUnique(urlInput.value);
+  const raw = urlInput.value;
 
-  // If we found URLs, push the clean, numbered list back into the textarea (so user sees 1..n)
-  if (urls.length) {
-    urlInput.value = enumerated;
-    urlInput.dispatchEvent(new Event('input'));
-  }
+  // === PATCH: preflight renumber + dedupe BEFORE parse ===
+  const { removed } = renumberTextareaAndDedupe(true);
 
+  const urls = parseURLs(raw);
   if (!urls.length) {
-    showLiteModal('Nothing to generate', 'Add at least one tweet URL to get started.', () => urlInput?.focus());
+    alert("Please paste at least one tweet URL.");
     return;
   }
 
-  if (dupCount > 0) {
-    ctNotify(`${dupCount} duplicate link${dupCount>1?'s':''} removed. Proceeding with ${urls.length}.`);
-  }
-
-
   maybeWarmBackend();
+
   cancelled = false;
   document.body.classList.add("is-generating");
 
+  // === PATCH: Ultra-Lite mode if phone/low-motion ===
+  if (matchMedia('(pointer:coarse)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    document.documentElement.classList.add('ultralite-on');
+  }
+
   generateBtn.disabled = true;
   cancelBtn.disabled   = false;
-  resetResults(); resetProgress();
+  resetResults();
+  resetProgress();
 
   setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
   setProgressRatio(0.03);
   showSkeletons(urls.length);
 
   const payload = JSON.stringify({ urls });
-  const requestOptions = { method:"POST", headers:{ "Content-Type":"application/json" }, body: payload };
+  const requestOptions = {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: payload,
+  };
 
   try {
     let res;
     try {
       res = await fetchWithTimeout(commentURL, requestOptions, 45000);
     } catch (firstErr) {
+      console.warn("First generate attempt failed, warming backend then retrying…", firstErr);
       setProgressText("Waking CrownTALK engine… retrying once.");
       warmBackendOnce();
       res = await fetchWithTimeout(commentURL, requestOptions, 45000);
     }
+
     if (!res.ok) throw new Error(`Backend error: ${res.status}`);
 
     const data = await res.json();
@@ -410,45 +606,39 @@ async function handleGenerate() {
     const results = Array.isArray(data.results) ? data.results : [];
     const failed  = Array.isArray(data.failed)  ? data.failed  : [];
 
-    resultsEl.innerHTML = ""; failedEl.innerHTML = "";
+    resultsEl.innerHTML = "";
+    failedEl.innerHTML  = "";
 
     let processed = 0;
     const total = results.length || urls.length;
 
-    // --- Lite render-yield to keep UI responsive on desktop ---
-    let delay = 0;
-    const BATCH = 3;
-    for (let i=0; i<results.length; i++) {
-      // stagger a tiny bit to avoid burst
-      setTimeout(async () => {
+    let delay = 50;
+    results.forEach((item) => {
+      setTimeout(() => {
         if (cancelled) return;
-        appendResultBlock(results[i]);
+        appendResultBlock(item);
         processed += 1;
         const ratio = total ? processed / total : 1;
         setProgressRatio(ratio);
         setProgressText(`Processed ${processed}/${total} tweets…`);
         resultCountEl.textContent = formatTweetCount(processed);
-
-        // Yield a frame every BATCH inserts (only if requestAnimationFrame exists)
-        if (i % BATCH === 0 && typeof requestAnimationFrame === 'function') {
-          await new Promise(r => requestAnimationFrame(()=>r()));
-        }
-
         if (processed === total) {
           setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
           document.body.classList.remove("is-generating");
+          document.documentElement.classList.remove('ultralite-on'); // PATCH off
           generateBtn.disabled = false;
           cancelBtn.disabled   = true;
         }
       }, delay);
-      delay += 40; // tiny stagger
-    }
+      delay += 120;
+    });
 
-    failed.forEach((f)=>appendFailedItem(f));
+    failed.forEach((f) => appendFailedItem(f));
     failedCountEl.textContent = String(failed.length);
 
     if (!results.length) {
       document.body.classList.remove("is-generating");
+      document.documentElement.classList.remove('ultralite-on'); // PATCH off
       generateBtn.disabled = false;
       cancelBtn.disabled   = true;
       setProgressText(failed.length ? "All URLs failed to process." : "No comments returned.");
@@ -456,7 +646,18 @@ async function handleGenerate() {
     }
   } catch (err) {
     console.error("Generate error", err);
+    // === PATCH: Crash Guard snapshot
+    try {
+      const snap = {
+        when: Date.now(),
+        input: urlInput?.value || '',
+        resultsHTML: resultsEl?.innerHTML || '',
+        failedHTML: failedEl?.innerHTML || ''
+      };
+      localStorage.setItem('ct_crash_snapshot_v1', JSON.stringify(snap));
+    } catch {}
     document.body.classList.remove("is-generating");
+    document.documentElement.classList.remove('ultralite-on'); // PATCH off
     generateBtn.disabled = false;
     cancelBtn.disabled   = true;
     setProgressText("Error contacting CrownTALK backend. Please try again.");
@@ -467,44 +668,92 @@ async function handleGenerate() {
 // ------------------------
 // Cancel & Clear
 // ------------------------
-function handleCancel(){
+let __lastClear = null; // === PATCH: Undo Clear buffer
+function handleCancel() {
   cancelled = true;
   document.body.classList.remove("is-generating");
+  document.documentElement.classList.remove('ultralite-on'); // PATCH off
   generateBtn.disabled = false;
   cancelBtn.disabled   = true;
-  setProgressText("Cancelled."); setProgressRatio(0);
+  setProgressText("Cancelled.");
+  setProgressRatio(0);
 }
-function handleClear(){ urlInput.value=""; resetResults(); resetProgress(); autoResizeTextarea(); }
+function handleClear() {
+  // === PATCH: capture for undo
+  __lastClear = {
+    input: urlInput.value,
+    results: resultsEl.innerHTML,
+    failed: failedEl.innerHTML,
+    rc: resultCountEl.textContent,
+    fc: failedCountEl.textContent
+  };
+  if (!document.getElementById('ctUndo')) {
+    const u = document.createElement('div');
+    u.id = 'ctUndo';
+    u.className = 'ct-snack';
+    u.innerHTML = `<span>Cleared.</span><button type="button" class="ct-snack-btn">Undo</button>`;
+    document.body.appendChild(u);
+    u.querySelector('button').addEventListener('click', ()=> {
+      if (!__lastClear) return;
+      urlInput.value = __lastClear.input;
+      resultsEl.innerHTML = __lastClear.results;
+      failedEl.innerHTML = __lastClear.failed;
+      resultCountEl.textContent = __lastClear.rc;
+      failedCountEl.textContent = __lastClear.fc;
+      autoResizeTextarea();
+      u.classList.remove('show');
+      ctToast('Restore complete', 'ok');
+    });
+  }
+  setTimeout(()=>document.getElementById('ctUndo')?.classList.add('show'), 10);
+  urlInput.value = "";
+  resetResults();
+  resetProgress();
+  autoResizeTextarea();
+}
+function hideUndoSnackSoon(){
+  const s = document.getElementById('ctUndo');
+  if (!s) return;
+  setTimeout(()=> s.classList.remove('show'), 4000);
+}
 
 // ------------------------
 // Reroll
 // ------------------------
-async function handleReroll(tweetEl){
-  const url = tweetEl?.dataset.url; if (!url) return;
-  const button = tweetEl.querySelector(".reroll-btn"); if (!button) return;
-
-  const oldLabel = button.textContent; button.disabled=true; button.textContent="Rerolling…";
-
+async function handleReroll(tweetEl) {
+  const url = tweetEl?.dataset.url;
+  if (!url) return;
+  const button = tweetEl.querySelector(".reroll-btn");
+  if (!button) return;
+  const oldLabel = button.textContent;
+  button.disabled = true;
+  button.textContent = "Rerolling…";
   const commentsWrap = tweetEl.querySelector(".comments");
   if (commentsWrap) {
     commentsWrap.innerHTML = "";
-    const sk1=document.createElement("div"); sk1.className="tweet-skeleton-line";
-    const sk2=document.createElement("div"); sk2.className="tweet-skeleton-line";
+    const sk1 = document.createElement("div"); sk1.className = "tweet-skeleton-line";
+    const sk2 = document.createElement("div"); sk2.className = "tweet-skeleton-line";
     commentsWrap.appendChild(sk1); commentsWrap.appendChild(sk2);
   }
-
-  try{
-    const res = await fetch(rerollURL, { method:"POST", headers:{ "Content-Type":"application/json" }, body: JSON.stringify({ url }) });
+  try {
+    const res = await fetch(rerollURL, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ url }),
+    });
     if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
     const data = await res.json();
     if (data && Array.isArray(data.comments)) {
       updateTweetBlock(tweetEl, { url: data.url || url, comments: data.comments });
-    } else { setProgressText("Reroll failed for this tweet."); }
-  } catch(err){
+    } else {
+      setProgressText("Reroll failed for this tweet.");
+    }
+  } catch (err) {
     console.error("Reroll error", err);
     setProgressText("Network error during reroll.");
   } finally {
-    button.disabled=false; button.textContent = oldLabel;
+    button.disabled = false;
+    button.textContent = oldLabel;
   }
 }
 
@@ -513,9 +762,8 @@ async function handleReroll(tweetEl){
 // ------------------------
 const THEME_STORAGE_KEY = "crowntalk_theme";
 const ALLOWED_THEMES = ["white","dark-purple","gold","blue","black","emerald","crimson"];
-
-function sanitizeThemeDots(){
-  themeDots.forEach((dot)=>{
+function sanitizeThemeDots() {
+  themeDots.forEach((dot) => {
     if (!dot?.dataset) return;
     const t = (dot.dataset.theme || "").trim();
     if (t === "texture") {
@@ -526,14 +774,18 @@ function sanitizeThemeDots(){
   });
   themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 }
-function applyTheme(themeName){
+function applyTheme(themeName) {
   const html = document.documentElement;
   const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
   html.setAttribute("data-theme", t);
-  themeDots.forEach((dot)=> dot.classList.toggle("is-active", dot.dataset.theme === t));
-  try { localStorage.setItem(THEME_STORAGE_KEY, t); } catch {}
+  themeDots.forEach((dot) =>
+    dot.classList.toggle("is-active", dot.dataset.theme === t)
+  );
+  try {
+    localStorage.setItem(THEME_STORAGE_KEY, t);
+  } catch {}
 }
-function initTheme(){
+function initTheme() {
   sanitizeThemeDots();
   let theme = "dark-purple";
   try {
@@ -547,167 +799,220 @@ function initTheme(){
   applyTheme(theme);
 }
 
-/* ---------- Lightweight premium helpers (kept) ---------- */
-
-// Smart Paste+: normalize, dedupe, sequential numbering
-(function smartPaste(){
-  if (!urlInput) return;
-  urlInput.addEventListener('paste', (e)=>{
-    const data = (e.clipboardData || window.clipboardData);
-    if (!data) return;
-    const text = data.getData('text/plain');
-    if (!text) return;
-
-    e.preventDefault();
-
-    // Build unique list from pasted chunk
-    const { text: enumerated, urls, dupCount } = ctEnumerateUnique(text);
-
-    // Insert into caret position
-    const [s, eSel] = [urlInput.selectionStart, urlInput.selectionEnd];
-    const before = urlInput.value.slice(0, s);
-    const after  = urlInput.value.slice(eSel);
-    const insert = enumerated || text; // if no URLs found, fall back to raw
-
-    urlInput.value = before + insert + (insert && after ? '\n' : '') + after;
-
-    const pos = (before + insert).length + (insert && after ? 1 : 0);
-    urlInput.setSelectionRange(pos, pos);
-    urlInput.dispatchEvent(new Event('input', { bubbles:true }));
-
-    if (urls.length && dupCount > 0) {
-      ctNotify(`${dupCount} duplicate link${dupCount>1?'s':''} removed from paste.`);
-    }
-  });
-})();
-
-
-// Minimal empty-state / welcome modal (no external links, very light)
-let __ctModal = null;
-function showLiteModal(title, body, okCb){
-  if (!__ctModal){
-    __ctModal = document.createElement('div');
-    __ctModal.className = 'ct-lite-modal';
-    __ctModal.innerHTML = `
-      <div class="ct-lite-card" role="dialog" aria-modal="true" aria-labelledby="ctLiteTitle">
-        <h3 id="ctLiteTitle"></h3>
-        <p id="ctLiteBody"></p>
-        <div class="ct-lite-actions">
-          <button type="button" id="ctLiteClose">Close</button>
-          <button type="button" id="ctLiteOk">OK</button>
-        </div>
-      </div>`;
-    document.body.appendChild(__ctModal);
-    __ctModal.addEventListener('click', (e)=>{ if(e.target===__ctModal) __ctModal.classList.remove('show'); });
-    __ctModal.querySelector('#ctLiteClose').addEventListener('click', ()=> __ctModal.classList.remove('show'));
-    __ctModal.querySelector('#ctLiteOk').addEventListener('click', ()=>{
-      __ctModal.classList.remove('show');
-      try { okCb && okCb(); } catch {}
-    });
-  }
-  __ctModal.querySelector('#ctLiteTitle').textContent = title || '';
-  __ctModal.querySelector('#ctLiteBody').textContent  = body  || '';
-  __ctModal.classList.add('show');
-}
-
-// Daily welcome (once per day)
-(function dailyWelcome(){
-  const key = 'ct_welcome_day_v1';
-  const today = new Date().toISOString().slice(0,10);
-  try {
-    const last = localStorage.getItem(key);
-    if (last === today) return;
-    localStorage.setItem(key, today);
-    showLiteModal('Welcome to CrownTALK ✨', 'Paste one or more tweet links, press Generate, then copy your favorites.', null);
-  } catch {}
-})();
-
-// Simple Session Restore (save URLs as you type + quick restore button)
-(function sessionRestore(){
-  if (!urlInput) return;
-  const URLS_KEY = 'ct_urls_v1';
-  let t = null;
-  urlInput.addEventListener('input', ()=>{
-    clearTimeout(t);
-    t = setTimeout(()=>{ try { localStorage.setItem(URLS_KEY, urlInput.value); } catch {} }, 250);
-  });
-  const controls = document.querySelector('.controls');
-  if (controls && !document.getElementById('ctRestore')) {
-    const b = document.createElement('button');
-    b.id='ctRestore'; b.className='btn-secondary subtle'; b.textContent='Restore session';
-    b.style.marginLeft='auto';
-    b.addEventListener('click', ()=>{
-      try {
-        const urls = localStorage.getItem(URLS_KEY) || '';
-        if (urls) { urlInput.value = urls; urlInput.dispatchEvent(new Event('input')); }
-      } catch {}
-    });
-    controls.appendChild(b);
-  }
-})();
-
 /* ---------- Boot UI once unlocked ---------- */
 function bootAppUI() {
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
-  initTheme(); renderHistory(); autoResizeTextarea();
+  initTheme();
+  renderHistory();
+  autoResizeTextarea();
 
-  // Gentle warmup shortly after UI becomes usable
-  setTimeout(()=>maybeWarmBackend(), 4000);
+  setTimeout(() => { maybeWarmBackend(); }, 4000);
 
   urlInput?.addEventListener("input", autoResizeTextarea);
+
+  // === PATCH: keep numbering correct as user types (light)
+  urlInput?.addEventListener('blur', ()=> renumberTextareaAndDedupe(false));
 
   generateBtn?.addEventListener("click", () => {
     if (!document.body.classList.contains("is-generating")) handleGenerate();
   });
 
+  // === PATCH: pre-click guard to renumber/dedupe & hide undo soon
+  generateBtn?.addEventListener('click', () => { renumberTextareaAndDedupe(true); hideUndoSnackSoon(); }, true);
+
   cancelBtn?.addEventListener("click", handleCancel);
   clearBtn?.addEventListener("click", handleClear);
 
-  clearHistoryBtn?.addEventListener("click", () => { historyItems = []; renderHistory(); });
+  clearHistoryBtn?.addEventListener("click", () => {
+    historyItems = [];
+    renderHistory();
+  });
 
   resultsEl?.addEventListener("click", async (event) => {
     const copyBtn  = event.target.closest(".copy-btn, .copy-btn-en");
     const rerollBtn = event.target.closest(".reroll-btn");
 
     if (copyBtn) {
-      const text = copyBtn.dataset.text || ""; if (!text) return;
-      await copyToClipboard(text); addToHistory(text);
-      const line = copyBtn.closest(".comment-line"); if (line) line.classList.add("copied");
+      const text = copyBtn.dataset.text || "";
+      if (!text) return;
+      await copyToClipboard(text);
+      addToHistory(text);
+      const line = copyBtn.closest(".comment-line");
+      if (line) line.classList.add("copied");
       copyBtn.classList.add("is-copied");
-      const old = copyBtn.textContent; copyBtn.textContent="Copied"; copyBtn.disabled=true;
-      setTimeout(()=>{ copyBtn.textContent=old; copyBtn.disabled=false; }, 700);
+      const old = copyBtn.textContent;
+      copyBtn.textContent = "Copied";
+      copyBtn.disabled = true;
+      setTimeout(() => {
+        copyBtn.textContent = old;
+        copyBtn.disabled = false;
+      }, 700);
     }
 
     if (rerollBtn) {
-      const tweetEl = rerollBtn.closest(".tweet"); if (tweetEl) handleReroll(tweetEl);
+      const tweetEl = rerollBtn.closest(".tweet");
+      if (tweetEl) handleReroll(tweetEl);
     }
   });
 
   historyEl?.addEventListener("click", async (event) => {
-    const btn = event.target.closest(".history-copy-btn"); if (!btn) return;
-    const text = btn.dataset.text || ""; if (!text) return;
+    const btn = event.target.closest(".history-copy-btn");
+    if (!btn) return;
+    const text = btn.dataset.text || "";
+    if (!text) return;
     await copyToClipboard(text);
-    const old = btn.textContent; btn.textContent="Copied"; btn.disabled=true;
-    setTimeout(()=>{ btn.textContent=old; btn.disabled=false; }, 700);
+    const old = btn.textContent;
+    btn.textContent = "Copied";
+    btn.disabled = true;
+    setTimeout(() => {
+      btn.textContent = old;
+      btn.disabled = false;
+    }, 700);
   });
 
-  themeDots.forEach((dot)=> dot.addEventListener("click", ()=> {
-    const t = dot.dataset.theme; if (t) applyTheme(t);
-  }));
+  themeDots.forEach((dot) => {
+    dot.addEventListener("click", () => {
+      const t = dot.dataset.theme;
+      if (t) applyTheme(t);
+    });
+  });
 }
 
-// Keep backend warm while the tab is visible
-(function keepAliveWhileVisible(){
-  const PING_MS = 4*60*1000; let timer=null;
-  function schedule(){
+/* =========================================================
+   Keep the backend warm
+   ========================================================= */
+(function keepAliveWhileVisible() {
+  const PING_MS = 4 * 60 * 1000;
+  let timer = null;
+  function schedule() {
     clearInterval(timer);
     if (document.visibilityState === "visible") {
-      timer = setInterval(()=>{
-        fetch("https://crowntalk.onrender.com/ping", { method:"GET", cache:"no-store", mode:"no-cors", keepalive:true }).catch(()=>{});
+      timer = setInterval(() => {
+        fetch("https://crowntalk.onrender.com/ping", {
+          method: "GET",
+          cache: "no-store",
+          mode: "no-cors",
+          keepalive: true,
+        }).catch(() => {});
       }, PING_MS);
     }
   }
   document.addEventListener("visibilitychange", schedule);
-  window.addEventListener("pagehide", ()=>clearInterval(timer));
+  window.addEventListener("pagehide", () => clearInterval(timer));
   schedule();
+})();
+
+/* =========================================================
+   CrownTALK — Progress helper (indeterminate + determinate)
+========================================================= */
+(function () {
+  const BODY = document.body;
+  const FILL = document.getElementById('progressBarFill');
+  let finishTimer = null;
+
+  function clamp01(x){ return Math.max(0, Math.min(1, x)); }
+  function setGenerating(on){
+    BODY.classList.toggle('is-generating', !!on);
+    if (on) {
+      if (FILL && (!FILL.style.width || FILL.style.width === '0%')) FILL.style.width = '8%';
+    }
+  }
+  function flashDone(ms = 420){
+    BODY.classList.add('ct-progress-done');
+    clearTimeout(finishTimer);
+    finishTimer = setTimeout(() => BODY.classList.remove('ct-progress-done'), ms);
+  }
+
+  window.ctProgress = {
+    start(initialPct = 0){
+      setGenerating(true);
+      if (FILL && typeof initialPct === 'number') {
+        FILL.style.width = (clamp01(initialPct / 100) * 100).toFixed(2) + '%';
+      }
+    },
+    step(pct){
+      if (!FILL || typeof pct !== 'number') return;
+      FILL.style.width = (clamp01(pct / 100) * 100).toFixed(2) + '%';
+      // keep CSS vars in sync for comet/shadow
+      document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(Math.max(0,Math.min(100,pct)))));
+      document.documentElement.style.setProperty('--ct-progress-frac', String(Math.max(0,Math.min(1,pct/100))));
+    },
+    done({ flash = true, resetWidth = true } = {}){
+      setGenerating(false);
+      if (flash) flashDone();
+      if (resetWidth && FILL) FILL.style.width = '0%';
+      document.documentElement.style.setProperty('--ct-progress-pct','0');
+      document.documentElement.style.setProperty('--ct-progress-frac','0');
+    },
+    cancel(){
+      setGenerating(false);
+      if (FILL) FILL.style.width = '0%';
+      document.documentElement.style.setProperty('--ct-progress-pct','0');
+      document.documentElement.style.setProperty('--ct-progress-frac','0');
+    }
+  };
+})();
+
+/* =========================================================
+   ==========  Smooth URL Dropzone (desktop only) ==========
+   ========================================================= */
+(function urlDropzone(){
+  if (!urlInput) return;
+  const desktop = matchMedia('(pointer:fine)').matches;
+  if (!desktop) return;
+
+  let halo;
+  function showHalo(){
+    if (halo) return; halo = document.createElement('div');
+    halo.className = 'ct-drop-halo';
+    document.body.appendChild(halo);
+  }
+  function hideHalo(){ halo?.remove(); halo = null; }
+
+  window.addEventListener('dragover', (e)=>{ e.preventDefault(); showHalo(); }, false);
+  window.addEventListener('dragleave', (e)=>{ if (e.target === document) hideHalo(); }, false);
+  window.addEventListener('drop', (e)=>{
+    e.preventDefault(); hideHalo();
+    let txt = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '';
+    if (!txt) return;
+    // append cleanly
+    const curr = urlInput.value.trim();
+    const toAdd = txt.trim();
+    urlInput.value = curr ? (curr + '\n' + toAdd) : toAdd;
+    urlInput.dispatchEvent(new Event('input', {bubbles:true}));
+    // auto-fix numbering & dedupe
+    const { removed } = renumberTextareaAndDedupe(true);
+    ctToast(removed>0 ? 'Link added · duplicates removed' : 'Link added', 'ok');
+  }, false);
+})();
+
+/* =========================================================
+   =============  Crash Guard restore banner ===============
+   ========================================================= */
+(function crashGuardRestore(){
+  try {
+    const raw = localStorage.getItem('ct_crash_snapshot_v1');
+    if (!raw) return;
+    const snap = JSON.parse(raw);
+    if (!snap || !snap.input) return;
+    const bar = document.createElement('div');
+    bar.className = 'ct-restore';
+    bar.innerHTML = `
+      <span>Recovered previous session</span>
+      <button type="button" class="ct-restore-btn">Restore</button>
+      <button type="button" class="ct-restore-skip">Dismiss</button>`;
+    document.body.appendChild(bar);
+    bar.querySelector('.ct-restore-btn').addEventListener('click', ()=>{
+      if (urlInput) { urlInput.value = snap.input; urlInput.dispatchEvent(new Event('input',{bubbles:true})); }
+      if (resultsEl) resultsEl.innerHTML = snap.resultsHTML || '';
+      if (failedEl)  failedEl.innerHTML  = snap.failedHTML || '';
+      ctToast('Restored', 'ok');
+      bar.remove();
+      localStorage.removeItem('ct_crash_snapshot_v1');
+    });
+    bar.querySelector('.ct-restore-skip').addEventListener('click', ()=>{
+      bar.remove();
+      localStorage.removeItem('ct_crash_snapshot_v1');
+    });
+  } catch {}
 })();
