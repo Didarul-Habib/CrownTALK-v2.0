@@ -839,7 +839,7 @@ function bootAppUI() {
 })();
 
 /* =========================================================
-   CrownTALK – Premium Lite JS (features 3,4,7,10,11,13,14,15)
+   CrownTALK – Premium Lite JS
    Safe to append at end of script.js
 ========================================================= */
 
@@ -877,7 +877,7 @@ function bootAppUI() {
     });
   })();
 
-  // ---------- [7] Processing pipeline (static badges) ----------
+  // ---------- Processing pipeline (static badges) ----------
   (function addPipeline(){
     const row = $('.progress-row');
     if (!row || row.querySelector('.ct-pipe')) return;
@@ -904,7 +904,7 @@ function bootAppUI() {
     mo.observe(body,{attributes:true, attributeFilter:['class']});
   })();
 
-  // ---------- [11] Auto low-motion (safe-mode) ----------
+  // ---------- Auto low-motion (safe-mode) ----------
   (function autoLowMotion(){
     const prefers = matchMedia('(prefers-reduced-motion: reduce)').matches;
     const weakHW = (navigator.hardwareConcurrency && navigator.hardwareConcurrency <= 4) ||
@@ -934,7 +934,7 @@ function bootAppUI() {
     }
   })();
 
-  // ---------- [4] Session restore (URLs + theme + dense) ----------
+  // ---------- Session restore (URLs + theme + dense) ----------
   (function sessionStore(){
     const input = $('#urlInput');
     if (!input) return;
@@ -1042,7 +1042,7 @@ function bootAppUI() {
     });
   })();
 
-  // ---------- [15] Theme hover preview on hero ----------
+  // ---------- Theme hover preview on hero ----------
   (function heroPreview(){
     const hero = $('.hero'); if (!hero) return;
     $$('.theme-dot').forEach(dot=>{
@@ -1148,7 +1148,7 @@ function bootAppUI() {
   }
 
   // ---------------------------------------------------
-  // 19) Memory-Aware Re-roll (session + localStorage)
+  // Memory-Aware Re-roll (session + localStorage)
   // ---------------------------------------------------
   const MEMORY_KEY = 'ct_comment_memory_v1';
   const memory = new Set(storage.get(MEMORY_KEY, []));
@@ -1184,7 +1184,7 @@ function bootAppUI() {
   };
 
   // ---------------------------------------------------
-  // 21) Session Save/Restore (inputs, results, theme)
+  // Session Save/Restore (inputs, results, theme)
   // ---------------------------------------------------
   const SESS_KEY = 'ct_sessions_v1';
   const sessions = storage.get(SESS_KEY, {});
@@ -1248,7 +1248,7 @@ function bootAppUI() {
   });
 
   // ---------------------------------------------------
-  // 22) Rate-Safe Scheduler (batch drip)
+  // Rate-Safe Scheduler (batch drip)
   // ---------------------------------------------------
   const scheduler = (function () {
     // simple token bucket-ish throttle
@@ -1323,7 +1323,7 @@ function bootAppUI() {
   // That’s all—no renames required.
 
   // ---------------------------------------------------
-  // 27) Live System HUD
+  // Live System HUD
   // ---------------------------------------------------
   const hud = (function () {
     const el = document.createElement('div');
@@ -1366,7 +1366,7 @@ function bootAppUI() {
   hudUpdate();
 
   // ---------------------------------------------------
-  // 29) Accessibility & Focus Mode
+  // Accessibility & Focus Mode
   //   - Focus mode dims everything except active card
   //   - Low-motion toggle (reduces animations)
   // ---------------------------------------------------
@@ -1626,37 +1626,101 @@ document.body.classList.remove('ct-dense');
 
   const $  = (s, r=document)=>r.querySelector(s);
 
-  /* -------- Live favicon spinner while generating -------- */
-  (function faviconSpinner(){
-    let raf=0, a=0, running=false;
-    const link = document.querySelector('link[rel~="icon"]') || (()=>{ const l=document.createElement('link'); l.rel='icon'; document.head.appendChild(l); return l; })();
-    const originalHref = link.href || '';
-    const cvs = document.createElement('canvas');
-    const ctx = cvs.getContext('2d');
-    function draw(){
-      const dpr = Math.max(1, Math.min(window.devicePixelRatio||1, 2));
-      const sz = 32*dpr; cvs.width = cvs.height = sz;
-      ctx.clearRect(0,0,sz,sz);
-      const cx=sz/2, cy=sz/2, r=sz*0.36, lw=Math.max(2*dpr, 3);
-      ctx.globalAlpha = .22; ctx.lineWidth=lw; ctx.strokeStyle='#ffffff';
-      ctx.beginPath(); ctx.arc(cx,cy,r,0,Math.PI*2); ctx.stroke();
-      ctx.globalAlpha = .95; ctx.strokeStyle='rgba(120,180,255,1)';
-      ctx.beginPath(); ctx.arc(cx,cy,r, a, a + Math.PI*1.1); ctx.stroke();
-      const sx = cx + r*Math.cos(a+Math.PI*1.1), sy = cy + r*Math.sin(a+Math.PI*1.1);
-      const grd = ctx.createRadialGradient(sx,sy,0,sx,sy,4*dpr);
-      grd.addColorStop(0,'#fff'); grd.addColorStop(1,'rgba(255,255,255,0)');
-      ctx.fillStyle = grd; ctx.globalAlpha = .9;
-      ctx.beginPath(); ctx.arc(sx,sy,4*dpr,0,Math.PI*2); ctx.fill();
-      try { link.href = cvs.toDataURL('image/png'); } catch {}
+  /* -------- Live favicon spinner while generating (THROTTLED) -------- */
+(function faviconSpinnerThrottled(){
+  const isDesktop = matchMedia('(pointer:fine) and (hover:hover)').matches;
+  if (!isDesktop) return;
+
+  const lowMotion = () =>
+    document.body.classList.contains('low-motion') ||
+    matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  let link = document.querySelector('link[rel~="icon"]');
+  if (!link) { link = document.createElement('link'); link.rel = 'icon'; document.head.appendChild(link); }
+
+  const originalHref = link.href || '';
+  const cvs = document.createElement('canvas');
+  const ctx = cvs.getContext('2d', { willReadFrequently: false });
+
+  let running = false;
+  let raf = 0;
+  let angle = 0;
+  let lastUpdate = 0;
+  let currentBlobURL = null;
+
+  function revokeBlobURL() {
+    if (currentBlobURL) { URL.revokeObjectURL(currentBlobURL); currentBlobURL = null; }
+  }
+
+  function drawAndSetFavicon(now) {
+    // Throttle to ~2 fps (every ~500ms)
+    if ((now - lastUpdate) < 500) return;
+    lastUpdate = now;
+
+    const dpr = Math.max(1, Math.min(window.devicePixelRatio || 1, 2));
+    const sz = 32 * dpr; cvs.width = cvs.height = sz;
+
+    // draw ring
+    ctx.clearRect(0, 0, sz, sz);
+    const cx = sz / 2, cy = sz / 2, r = sz * 0.36, lw = Math.max(2 * dpr, 3);
+    ctx.globalAlpha = 0.22; ctx.lineWidth = lw; ctx.strokeStyle = '#ffffff';
+    ctx.beginPath(); ctx.arc(cx, cy, r, 0, Math.PI * 2); ctx.stroke();
+
+    // arc
+    ctx.globalAlpha = 0.95; ctx.strokeStyle = 'rgba(120,180,255,1)';
+    ctx.beginPath(); ctx.arc(cx, cy, r, angle, angle + Math.PI * 1.1); ctx.stroke();
+
+    // glow dot
+    const sx = cx + r * Math.cos(angle + Math.PI * 1.1);
+    const sy = cy + r * Math.sin(angle + Math.PI * 1.1);
+    const grd = ctx.createRadialGradient(sx, sy, 0, sx, sy, 4 * dpr);
+    grd.addColorStop(0, '#fff'); grd.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = grd; ctx.globalAlpha = 0.9;
+    ctx.beginPath(); ctx.arc(sx, sy, 4 * dpr, 0, Math.PI * 2); ctx.fill();
+
+    // set favicon via Blob (lighter than dataURL), cleanup previous
+    cvs.toBlob((blob) => {
+      if (!blob) return;
+      revokeBlobURL();
+      currentBlobURL = URL.createObjectURL(blob);
+      try { link.href = currentBlobURL; } catch {}
+    }, 'image/png');
+
+    angle += 0.35; // slower spin
+  }
+
+  function loop(now) {
+    if (!running) return;
+    // Pause work if tab hidden or low-motion
+    if (document.visibilityState === 'visible' && !lowMotion()) {
+      drawAndSetFavicon(now || performance.now());
     }
-    function loop(){ a += 0.10; draw(); raf = requestAnimationFrame(loop); }
-    const mo = new MutationObserver(()=>{
-      const gen = document.body.classList.contains('is-generating');
-      if (gen && !running && !lowMotion()){ running=true; loop(); }
-      else if ((!gen || lowMotion()) && running){ running=false; cancelAnimationFrame(raf); if (originalHref) link.href = originalHref; }
-    });
-    mo.observe(document.body, {attributes:true, attributeFilter:['class']});
-  })();
+    raf = requestAnimationFrame(loop);
+  }
+
+  // watch is-generating flip
+  const mo = new MutationObserver(() => {
+    const gen = document.body.classList.contains('is-generating');
+    if (gen && !running && !lowMotion()) {
+      running = true; lastUpdate = 0; loop();
+    } else if (!gen || lowMotion()) {
+      running = false; cancelAnimationFrame(raf);
+      revokeBlobURL();
+      if (originalHref) link.href = originalHref;
+    }
+  });
+  mo.observe(document.body, { attributes: true, attributeFilter: ['class'] });
+
+  // also pause when tab hidden; resume when visible
+  document.addEventListener('visibilitychange', () => {
+    if (document.visibilityState !== 'visible') {
+      running = false; cancelAnimationFrame(raf);
+    } else if (document.body.classList.contains('is-generating') && !lowMotion()) {
+      running = true; lastUpdate = 0; loop();
+    }
+  });
+})();
+
 
   /* -------- Results scroll-edge glow -------- */
   (function scrollHints(){
