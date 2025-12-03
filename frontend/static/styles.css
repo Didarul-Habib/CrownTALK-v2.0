@@ -4279,3 +4279,75 @@ html.ct-safe .tweet {
 
 /* ensure hero stays above aurora visuals */
 .hero { position: relative; z-index: 1; }
+
+
+/* === (1) Spectral Progress Comet (uses your existing #progressBarFill) === */
+#progressBarFill {
+  position: relative;
+  transform-origin: left center;
+}
+#progressBarFill::after{
+  content:"";
+  position:absolute; top:-2px; bottom:-2px;
+  width:min(140px, 30%);
+  right: calc(100% - (var(--ct-progress-frac, 0) * 100%));
+  background: radial-gradient(60% 50% at 70% 50%, rgba(255,255,255,.95), rgba(255,255,255,.0) 60%),
+              linear-gradient(90deg, rgba(255,255,255,.25), rgba(255,255,255,0));
+  filter: blur(3px);
+  pointer-events:none;
+}
+
+/* === (8) Batch ETA Whisper (small line under the progress label) === */
+.progress-eta{
+  font-size:.85rem;
+  opacity:.8;
+  margin-top:4px;
+}
+
+/* === (19) Micro-Shadow Sync (cards feel more “charged” as progress rises) === */
+.tweet{
+  --pct: var(--ct-progress-frac, 0);
+  transition: box-shadow .25s ease, transform .25s ease;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.05) inset,
+    0 0 0 1px rgba(255,255,255,.06),
+    0 10px 22px rgba(0,0,0,.35),
+    0 14px 36px rgba(0, 160, 255, calc(.06 + .20 * var(--pct)));
+}
+
+/* === (14) Undo Clear snackbar & generic toasts === */
+#ctToasts{ position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:9999; }
+.ct-toast{ padding:10px 14px; border-radius:10px; background:rgba(20,24,32,.95); color:#fff; box-shadow:0 8px 24px rgba(0,0,0,.35); transform:translateY(6px); opacity:0; animation:ctToastIn .18s ease forwards; }
+.ct-toast[data-kind="ok"]{ border:1px solid rgba(56,189,248,.45); }
+.ct-toast[data-kind="warn"]{ border:1px solid rgba(255,196,64,.45); }
+.ct-toast.ct-leave{ animation:ctToastOut .16s ease forwards; }
+@keyframes ctToastIn{ to{ transform:translateY(0); opacity:1; } }
+@keyframes ctToastOut{ to{ transform:translateY(6px); opacity:0; } }
+.ct-snack{ position:fixed; left:50%; transform:translateX(-50%); bottom:-64px; opacity:0; transition:all .22s ease; background:rgba(20,24,32,.96); color:#fff; padding:10px 14px; border-radius:12px; display:flex; align-items:center; gap:12px; z-index:9998; border:1px solid rgba(56,189,248,.35); }
+.ct-snack.show{ bottom:18px; opacity:1; }
+.ct-snack .ct-snack-btn{ all:unset; background:rgba(56,189,248,.14); padding:6px 10px; border-radius:8px; cursor:pointer; }
+
+/* === (49) Crash Guard restore banner === */
+.ct-restore{ position:fixed; left:50%; transform:translateX(-50%); top:14px; background:rgba(20,24,32,.98); color:#fff; padding:10px 14px; border-radius:12px; display:flex; gap:10px; align-items:center; z-index:9998; border:1px solid rgba(56,189,248,.35); }
+.ct-restore button{ all:unset; cursor:pointer; padding:6px 10px; border-radius:8px; }
+.ct-restore-btn{ background:rgba(56,189,248,.16); }
+.ct-restore-skip{ background:rgba(255,255,255,.06); }
+
+/* === Smooth URL Dropzone halo === */
+.ct-drop-halo{
+  position:fixed; inset:0; border:3px dashed rgba(56,189,248,.55);
+  border-radius:18px; pointer-events:none; box-shadow:0 0 0 6px rgba(56,189,248,.08) inset;
+  animation:ctHalo .9s ease-in-out infinite alternate; z-index:9997;
+}
+@keyframes ctHalo{ from{ opacity:.35; } to{ opacity:.8; } }
+
+/* === (50) Ultra-Lite Mode (hide frills on phones/low-motion while generating) === */
+html.ultralite-on .hero,
+html.ultralite-on #ctHud,
+html.ultralite-on .ct-trail,
+html.ultralite-on .ambient-thread,
+html.ultralite-on #ctAurora{ display:none !important; }
+html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0 1px rgba(255,255,255,.06), 0 8px 18px rgba(0,0,0,.28) !important; }
+
+/* Small a11y tweak: ensure progress bar stays crisp */
+#progressBarFill{ will-change: transform; }
