@@ -4245,6 +4245,36 @@ body.low-motion .ct-trail { display: none !important; }
 }
 @keyframes ct-toast-out {
   to { transform: translateY(-6px); opacity: 0; }
+
+ /* CrownTALK — SAFE MODE (desktop) */
+html.ct-safe *, html.ct-safe *::before, html.ct-safe *::after {
+  animation: none !important;
+  transition: none !important;
+  filter: none !important;
+  will-change: auto !important;
+}
+
+html.ct-safe .btn::after,
+html.ct-safe .dots_border::before,
+html.ct-safe .ct-lowmotion-pill,
+html.ct-safe #ctHud,
+html.ct-safe .ambient-thread,
+html.ct-safe .sparkle,
+html.ct-safe .tweet-skeleton .tweet-skeleton-line {
+  display: none !important;
+}
+
+html.ct-safe #progressBarFill {
+  transition: transform .12s linear !important; /* cheap transform only */
+  box-shadow: none !important;
+}
+
+html.ct-safe .card,
+html.ct-safe .tweet {
+  box-shadow: 0 2px 10px rgba(0,0,0,.12) !important; /* lighter shadow */
+  transform: none !important;
+}
+  
 }
 
 /* ensure hero stays above aurora visuals */
