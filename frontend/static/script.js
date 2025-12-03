@@ -183,7 +183,45 @@ function autoResizeTextarea(){
   urlInput.style.height = "auto";
   const base = 180; urlInput.style.height = Math.max(base, urlInput.scrollHeight) + "px";
 }
+// === URL helpers: normalize + enumerate + dedupe ===
+const CT_URL_RE = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/\S+/i;
 
+function ctNormalizeUrl(u) {
+  try {
+    const url = new URL(u.trim());
+    if (url.hostname === 'twitter.com') url.hostname = 'x.com';
+    url.search = ''; url.hash = '';
+    url.pathname = url.pathname.replace(/\/+$/, '');
+    return url.toString();
+  } catch { return null; }
+}
+
+function ctEnumerateUnique(raw) {
+  const lines = String(raw || '').split(/\r?\n/);
+  const seen = new Set();
+  const urls = [];
+  for (const line of lines) {
+    const m = line.match(CT_URL_RE);
+    if (!m) continue;
+    const n = ctNormalizeUrl(m[0]);
+    if (!n) continue;
+    if (!seen.has(n)) { seen.add(n); urls.push(n); }
+  }
+  const text = urls.map((u, i) => `${i + 1}. ${u}`).join('\n');
+  // dupCount = total found - unique
+  const totalFound = lines.filter(l => CT_URL_RE.test(l)).length;
+  const dupCount = Math.max(0, totalFound - urls.length);
+  return { text, urls, dupCount };
+}
+
+/** Quick, unobtrusive popup reusing your lite modal */
+function ctNotify(msg) {
+  try {
+    showLiteModal('Heads up', msg, null);
+  } catch {
+    alert(msg); // ultimate fallback
+  }
+}
 // ------------------------
 // History
 // ------------------------
@@ -501,42 +539,38 @@ function initTheme(){
 
 /* ---------- Lightweight premium helpers (kept) ---------- */
 
-// Smart Paste+ (normalize + dedupe X/Twitter) — very light
+// Smart Paste+: normalize, dedupe, sequential numbering
 (function smartPaste(){
   if (!urlInput) return;
-  const URL_RE = /https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^\s]+/gi;
-  function normalize(url){
-    try{
-      const u = new URL(url.trim());
-      if (u.hostname === 'twitter.com') u.hostname = 'x.com';
-      u.search=''; u.hash=''; u.pathname=u.pathname.replace(/\/+$/,'');
-      return u.toString();
-    } catch { return null; }
-  }
   urlInput.addEventListener('paste', (e)=>{
-    const data = (e.clipboardData || window.clipboardData); if (!data) return;
-    const text = data.getData('text/plain'); if (!text) return;
+    const data = (e.clipboardData || window.clipboardData);
+    if (!data) return;
+    const text = data.getData('text/plain');
+    if (!text) return;
+
     e.preventDefault();
-    const lines = text.split(/\r?\n/);
-    const out = lines.map(l=>{
-      const m = l.match(URL_RE); if (!m) return l;
-      let r = l; m.forEach(mm=>{ const n = normalize(mm); if (n) r = r.replace(mm,n); });
-      return r;
-    });
-    const flat = out.join('\n').match(URL_RE) || [];
-    const seen = new Set(); const uniq = [];
-    flat.forEach(u=>{ const n=normalize(u); if (n && !seen.has(n)) { seen.add(n); uniq.push(n); } });
-    const onlyUrls = lines.every(l => !l.trim() || URL_RE.test(l));
-    const cleaned = onlyUrls ? uniq.map((u,i)=>`${i+1}. ${u}`).join('\n') : out.join('\n');
-    const [s,eSel] = [urlInput.selectionStart, urlInput.selectionEnd];
+
+    // Build unique list from pasted chunk
+    const { text: enumerated, urls, dupCount } = ctEnumerateUnique(text);
+
+    // Insert into caret position
+    const [s, eSel] = [urlInput.selectionStart, urlInput.selectionEnd];
     const before = urlInput.value.slice(0, s);
     const after  = urlInput.value.slice(eSel);
-    urlInput.value = before + cleaned + after;
-    const pos = (before + cleaned).length;
+    const insert = enumerated || text; // if no URLs found, fall back to raw
+
+    urlInput.value = before + insert + (insert && after ? '\n' : '') + after;
+
+    const pos = (before + insert).length + (insert && after ? 1 : 0);
     urlInput.setSelectionRange(pos, pos);
-    urlInput.dispatchEvent(new Event('input', {bubbles:true}));
+    urlInput.dispatchEvent(new Event('input', { bubbles:true }));
+
+    if (urls.length && dupCount > 0) {
+      ctNotify(`${dupCount} duplicate link${dupCount>1?'s':''} removed from paste.`);
+    }
   });
 })();
+
 
 // Minimal empty-state / welcome modal (no external links, very light)
 let __ctModal = null;
