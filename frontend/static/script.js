@@ -2248,3 +2248,92 @@ document.body.classList.remove('ct-dense');
   // window.ctToast('Warmup pinged', 'ok');
 
 })();
+
+/* =========================
+   CrownTALK — Emergency Desktop Safe Mode + Yielded Render
+   Paste at the VERY END of your main JS file.
+========================= */
+(function () {
+  const isDesktop = matchMedia('(pointer:fine)').matches;
+
+  // A. Global “kill switch” for animations/observers if we see a long task on desktop
+  let tripped = false;
+  if (isDesktop && 'PerformanceObserver' in window) {
+    try {
+      const po = new PerformanceObserver((list) => {
+        for (const e of list.getEntries()) {
+          if (e.duration > 120 && !tripped) {
+            tripped = true;
+            document.documentElement.classList.add('ct-safe');
+            console.warn('[CrownTALK] SAFE MODE enabled (long task detected):', e);
+          }
+        }
+      });
+      po.observe({ entryTypes: ['longtask'] });
+    } catch {}
+  }
+
+  // B. Manual toggle: Shift+Esc to toggle SAFE mode
+  window.addEventListener('keydown', (e) => {
+    if (e.key === 'Escape' && e.shiftKey) {
+      document.documentElement.classList.toggle('ct-safe');
+      console.warn('[CrownTALK] SAFE MODE toggled:', document.documentElement.classList.contains('ct-safe'));
+    }
+  });
+
+  // C. Guard: cap skeletons + yield during rendering large batches
+  // Monkey-patch showSkeletons if it exists
+  if (typeof window.showSkeletons === 'function') {
+    const _showSkeletons = window.showSkeletons;
+    window.showSkeletons = function (count) {
+      const capped = Math.min(Math.max(count, 1), 8); // cap to 8 for desktop stability
+      return _showSkeletons(capped);
+    };
+  }
+
+  // D. Yield helper for render loops: prevents main-thread stalls on desktop
+  async function yieldNow() {
+    if ('scheduler' in window && scheduler.yield) return scheduler.yield();
+    await new Promise((r) => requestAnimationFrame(() => r()));
+  }
+
+  // E. Wrap your appendResultBlock to yield every few items (if present)
+  if (typeof window.appendResultBlock === 'function') {
+    const _append = window.appendResultBlock;
+    let renderCount = 0;
+    window.appendResultBlock = async function (result) {
+      // Every 3rd card, yield a frame on desktop
+      if (isDesktop) {
+        renderCount++;
+        if (renderCount % 3 === 0) await yieldNow();
+      }
+      return _append(result);
+    };
+  }
+
+  // F. Ensure Generate flow never totally blocks: if your handleGenerate uses setTimeout
+  //    bursts, we add a defensive progress heartbeat so UI stays alive.
+  if (!window.__ctHeartbeat) {
+    window.__ctHeartbeat = setInterval(() => {
+      const el = document.getElementById('progressBarFill');
+      if (!el) return;
+      // tiny nudge to keep a repaint happening while busy
+      if (document.body.classList.contains('is-generating')) {
+        const w = parseFloat(el.style.transform?.match(/scaleX\(([^)]+)/)?.[1] || '0');
+        const nudged = Math.min(0.99, w + 0.002);
+        el.style.transform = `scaleX(${nudged})`;
+      }
+    }, 500);
+  }
+
+  // G. Disable expensive observers/HUD if present when in SAFE mode
+  const mo = new MutationObserver(() => {
+    if (document.documentElement.classList.contains('ct-safe')) {
+      // Hide HUD, confetti, ambient threads if they exist
+      const kill = (sel) => document.querySelectorAll(sel).forEach((n) => (n.style.display = 'none'));
+      kill('#ctHud, .ct-confetti, .ambient-thread');
+    }
+  });
+  mo.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+
+})();
