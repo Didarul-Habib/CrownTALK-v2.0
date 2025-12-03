@@ -359,14 +359,24 @@ function showSkeletons(count){
 // Generate flow
 // ------------------------
 async function handleGenerate() {
-  const raw = urlInput.value;
-  const urls = parseURLs(raw);
+  // Build unique, normalized list from the current textarea
+  const { text: enumerated, urls, dupCount } = ctEnumerateUnique(urlInput.value);
+
+  // If we found URLs, push the clean, numbered list back into the textarea (so user sees 1..n)
+  if (urls.length) {
+    urlInput.value = enumerated;
+    urlInput.dispatchEvent(new Event('input'));
+  }
 
   if (!urls.length) {
-    // lightweight empty-state card (no links)
     showLiteModal('Nothing to generate', 'Add at least one tweet URL to get started.', () => urlInput?.focus());
     return;
   }
+
+  if (dupCount > 0) {
+    ctNotify(`${dupCount} duplicate link${dupCount>1?'s':''} removed. Proceeding with ${urls.length}.`);
+  }
+
 
   maybeWarmBackend();
   cancelled = false;
