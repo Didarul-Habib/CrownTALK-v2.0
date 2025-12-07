@@ -78,13 +78,27 @@ if USE_GEMINI:
 # Keepalive (Render free – optional)
 # ------------------------------------------------------------------------------
 def keep_alive() -> None:
+    """
+    Background thread that periodically pings the public backend URL
+    to keep the Render free-tier instance warm.
+    """
     if not BACKEND_PUBLIC_URL:
+        logger.info("KEEPALIVE disabled: BACKEND_PUBLIC_URL not set")
         return
+
+    url = f"{BACKEND_PUBLIC_URL.rstrip('/')}/ping"
+    logger.info(
+        "KEEPALIVE thread starting. Pinging %s every %s seconds",
+        url,
+        KEEP_ALIVE_INTERVAL,
+    )
+
     while True:
         try:
-            requests.get(f"{BACKEND_PUBLIC_URL}/", timeout=5)
-        except Exception:
-            pass
+            r = requests.get(url, timeout=5)
+            logger.debug("KEEPALIVE ping %s -> %s", url, r.status_code)
+        except Exception as e:
+            logger.warning("KEEPALIVE ping failed: %s", e)
         time.sleep(KEEP_ALIVE_INTERVAL)
 
 # ------------------------------------------------------------------------------
@@ -331,9 +345,13 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "groq": bool(USE_GROQ)}), 200
+@app.route("/ping", methods=["GET"])
+def ping():
+    """
+    Lightweight healthcheck endpoint used by keep-alive threads / uptime monitors.
+    """
+    return jsonify({"status": "ok", "ts": int(time.time())}), 200
+
 
 # ------------------------------------------------------------------------------
 # Rules: word count + sanitization
@@ -1358,7 +1376,8 @@ def reroll_endpoint():
 # ------------------------------------------------------------------------------
 def main() -> None:
     init_db()
-    # threading.Thread(target=keep_alive, daemon=True).start()  # optional
+    # background keep-alive so Render free tier doesn’t sleep
+    threading.Thread(target=keep_alive, daemon=True).start()
     app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
