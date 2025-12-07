@@ -78,27 +78,13 @@ if USE_GEMINI:
 # Keepalive (Render free – optional)
 # ------------------------------------------------------------------------------
 def keep_alive() -> None:
-    """
-    Background thread that periodically pings the public backend URL
-    to keep the Render free-tier instance warm.
-    """
     if not BACKEND_PUBLIC_URL:
-        logger.info("KEEPALIVE disabled: BACKEND_PUBLIC_URL not set")
         return
-
-    url = f"{BACKEND_PUBLIC_URL.rstrip('/')}/ping"
-    logger.info(
-        "KEEPALIVE thread starting. Pinging %s every %s seconds",
-        url,
-        KEEP_ALIVE_INTERVAL,
-    )
-
     while True:
         try:
-            r = requests.get(url, timeout=5)
-            logger.debug("KEEPALIVE ping %s -> %s", url, r.status_code)
-        except Exception as e:
-            logger.warning("KEEPALIVE ping failed: %s", e)
+            requests.get(f"{BACKEND_PUBLIC_URL}/", timeout=5)
+        except Exception:
+            pass
         time.sleep(KEEP_ALIVE_INTERVAL)
 
 # ------------------------------------------------------------------------------
@@ -270,27 +256,8 @@ def remember_ngrams(text: str) -> None:
     except Exception:
         pass
 
-# style fingerprint: collapse URLs, mentions, tickers etc so we can block pattern reuse
-def style_fingerprint(text: str) -> str:
-    t = (text or "").lower()
-    t = re.sub(r"https?://\S+", "", t)
-    t = re.sub(r"@\w+", "", t)
-    t = re.sub(r"\b[0-9]+\b", "", t)
-    # remove short all-caps tickers (e.g., BTC, ETH)
-    t = " ".join(
-        w for w in t.split()
-        if not (w.isupper() and len(w) <= 6)
-    )
-    t = re.sub(r"[^\w\s']+", " ", t)
-    t = re.sub(r"\s+", " ", t).strip()
-    return t
-
 def template_burned(tmpl: str) -> bool:
-    # hash on style fingerprint so similar patterns across projects get blocked
-    fp = style_fingerprint(tmpl)
-    if not fp:
-        return False
-    thash = sha256(fp)
+    thash = sha256(tmpl)
     try:
         with get_conn() as c:
             return c.execute("SELECT 1 FROM comments_templates_seen WHERE thash=? LIMIT 1", (thash,)).fetchone() is not None
@@ -299,14 +266,10 @@ def template_burned(tmpl: str) -> bool:
 
 def remember_template(tmpl: str) -> None:
     try:
-        fp = style_fingerprint(tmpl)
-        if not fp:
-            return
-        thash = sha256(fp)
         with get_conn() as c:
             c.execute(
                 "INSERT OR IGNORE INTO comments_templates_seen(thash, created_at) VALUES (?,?)",
-                (thash, now_ts()),
+                (sha256(tmpl), now_ts()),
             )
     except Exception:
         pass
@@ -314,21 +277,6 @@ def remember_template(tmpl: str) -> None:
 def _word_trigrams(s: str) -> set:
     w = re.findall(r"[A-Za-z0-9']+", s.lower())
     return set(" ".join(w[i:i+3]) for i in range(max(0, len(w) - 2)))
-
-def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
-    """
-    Check if two comments are too similar using trigram Jaccard.
-    Used to prevent EN #1 and EN #2 from being near copies.
-    """
-    ta = _word_trigrams(a)
-    tb = _word_trigrams(b)
-    if not ta or not tb:
-        return False
-    inter = len(ta & tb)
-    uni = len(ta | tb)
-    if not uni:
-        return False
-    return (inter / uni) >= threshold
 
 def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300) -> bool:
     """Jaccard(word-3grams) vs last N comments to block paraphrase repeats."""
@@ -350,6 +298,18 @@ def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300)
             return True
     return False
 
+def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
+    """Pairwise similarity (Jaccard over trigrams) to avoid EN#1 ≈ EN#2."""
+    ta = _word_trigrams(a)
+    tb = _word_trigrams(b)
+    if not ta or not tb:
+        return False
+    inter = len(ta & tb)
+    uni = len(ta | tb)
+    if not uni:
+        return False
+    return (inter / uni) >= threshold
+
 # ------------------------------------------------------------------------------
 # CORS + Health
 # ------------------------------------------------------------------------------
@@ -361,17 +321,8 @@ def add_cors_headers(response):
     return response
 
 @app.route("/", methods=["GET"])
-@app.route("/ping", methods=["GET"])
-def ping():
-    """
-    Lightweight healthcheck endpoint used by keep-alive threads / uptime monitors.
-    """
-    return jsonify({
-        "status": "ok",
-        "groq": bool(USE_GROQ),
-        "ts": int(time.time()),
-    }), 200
-
+def health():
+    return jsonify({"status": "ok", "groq": bool(USE_GROQ)}), 200
 
 # ------------------------------------------------------------------------------
 # Rules: word count + sanitization
@@ -421,69 +372,19 @@ AI_BLOCKLIST = {
     "link in bio","in case you missed it","i think","i believe","great point","just saying","according to",
     "to be honest","actually","literally","personally i think","my take","as someone who","at the end of the day",
     "moving forward","synergy","circle back","bandwidth","double down","let that sink in","on so many levels","tbh",
-    "this resonates","food for thought","hit different"
-}
-
-# extra generic-style phrases we don't want to overuse anywhere in the sentence
-GENERIC_PHRASES = {
-    "well researched and insightful",
-    "very interesting concept",
-    "interesting concept",
-    "sounds like a game changer",
-    "game changer",
-    "big step for",
-    "that's a big step",
-    "i'm still unsure",
-    "i'm curious how scalable",
-    "can you elaborate more",
-    "what's the catch",
-    "good daily routine",
-    "great daily routine",
-    "amazing to see",
-    "glad to see a shift",
-    "i'm curious to see how",
-    "i'm curious to see how ",
-    "i'm curious to see how rails",
-    "i'm curious to see how rails xyz",
-    "i'm curious to see how this ecosystem grows",
-    "i'm curious to see how this ecosystem grows over time",
-    "i'm glad to see",
-    "good luck with",
-    "good luck to those competing",
-    "good luck ",
-    "great point about",
-    "your patience and persistence",
-    "love your take",
-    "love the concept of",
-    "love that you're emphasizing",
-    "love that aligned communities are unbreakable",
-    "i'm intrigued by the idea of",
-    "congrats ",
-    "congrats",
-    "i'll be shifting my energy towards",
-    "i'm watching ",
-    "i'm sending you strength",
-    "wishing you strength",
-    "wishing you all the strength",
-    "wishing you ",
-    "been hearing similar chats",
-    "that's a great strategy",
-    "that's a great example",
+    "this resonates","food for thought","hit different",
+    # extra overused stuff we want to kill globally
+    "love that","love the","love your","i'm curious","im curious","i am curious",
+    "thanks for sharing","thank you for sharing"
 }
 
 STARTER_BLOCKLIST = {
     "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
     "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
     "good to see the boring",
-    # stricter anti-template patterns
-    "that's a great","that's a very","that's an amazing","that's amazing","that's a big","that's a breath",
-    "that's so cool","that's interesting","that's a solid",
-    "wow ","wow,","good luck","i'm curious","i'm still unsure","i'm glad to see",
-    "wishing you","big congrats","huge congrats","congratulations on","sounds like","looks like",
-    # extras from recent samples
-    "love the concept","love that you're","i'm sending you","been hearing similar chats",
+    # extra starters we don't want repeated
+    "love that","love the","love your","i'm curious","im curious","curious about","love your take",
 }
-
 try:
     EMOJI_PATTERN = re.compile(
         r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
@@ -491,10 +392,6 @@ try:
     )
 except re.error:
     EMOJI_PATTERN = re.compile(r"[\u2600-\u27BF]+", flags=re.UNICODE)
-
-def contains_generic_phrase(text: str) -> bool:
-    t = (text or "").lower()
-    return any(p in t for p in GENERIC_PHRASES)
 
 def detect_topic(text: str) -> str:
     t = (text or "").lower()
@@ -524,6 +421,23 @@ def is_crypto_tweet(text: str) -> bool:
     ]
     return any(k in t for k in crypto_keywords) or bool(re.search(r"\$\w{2,8}", text or ""))
 
+def detect_sentiment(text: str) -> str:
+    """Very lightweight bullish / bearish tone detector for CT posts."""
+    t = (text or "").lower()
+    bull = [
+        "bullish","sending","send it","moon","mooning","ath","all time high",
+        "pump","pumping","green candles","ape in","apeing in","printing"
+    ]
+    bear = [
+        "worried","concerned","dump","dumping","rug","rugged","rekt","down only",
+        "exit liquidity","overvalued","scam","red candles","bagholding","bag holder"
+    ]
+    if any(k in t for k in bull):
+        return "bullish"
+    if any(k in t for k in bear):
+        return "bearish"
+    return "neutral"
+
 def extract_keywords(text: str) -> list[str]:
     cleaned = re.sub(r"https?://\S+", "", text or "")
     cleaned = re.sub(r"[@#]\S+", "", cleaned)
@@ -539,67 +453,12 @@ def extract_keywords(text: str) -> list[str]:
             seen.add(lw); out.append(w)
     return out[:10]
 
-FOCUS_GENERIC = {
-    "project","ecosystem","team","community","product","solution",
-    "platform","platforms","service","services","idea",
-    "rank","mindshare","challenge","consistent","consistency",
-    "dashboards",
-}
-
-# words we never want as {focus} (pronouns, question words, vague stuff)
-FOCUS_BAD = {
-    "they","them","their","theirs","everyone","every","everything",
-    "someone","something","this","that","these","those","it","its",
-    "he","she","you","your","we","our","i","me","us","u",
-    "when","where","why","how",
-}
-
 def pick_focus_token(tokens: List[str]) -> Optional[str]:
-    """
-    Choose a good focus token:
-    - avoid pronouns/determiners (FOCUS_BAD)
-    - avoid generic words (FOCUS_GENERIC)
-    - prefer capitalized / proper nouns
-    """
     if not tokens:
         return None
+    upperish = [t for t in tokens if t.isupper() or t[0].isupper()]
+    return random.choice(upperish) if upperish else random.choice(tokens)
 
-    bad = FOCUS_GENERIC | FOCUS_BAD
-
-    # Filter out generic/bad ones first
-    clean = [t for t in tokens if t.lower() not in bad] or tokens
-
-    # Prefer "proper-ish" tokens
-    upperish = [t for t in clean if (t.isupper() or t[0].isupper()) and t.lower() not in bad]
-    if upperish:
-        return random.choice(upperish)
-
-    return random.choice(clean)
-
-
-def uses_focus_token(text: str, tweet_text: Optional[str]) -> bool:
-    """
-    Ensure the comment ties to a specific keyword from the tweet (if any),
-    avoiding generic and bad focus words.
-    """
-    if not tweet_text:
-        return True
-    tokens = extract_keywords(tweet_text)
-    if not tokens:
-        return True
-
-    bad = FOCUS_GENERIC | FOCUS_BAD
-    t = (text or "").lower()
-
-    for kw in tokens:
-        lw = kw.lower()
-        if len(lw) < 4 or lw in bad:
-            continue
-        if lw in t:
-            return True
-
-    # allow generic only if nothing else worked but still want output
-    return False
 # ------------------------------------------------------------------------------
 # Variety buckets + combinator (keeps comments varied)
 # ------------------------------------------------------------------------------
@@ -667,30 +526,19 @@ class OfflineCommentGenerator:
 
     def _violates_ai_blocklist(self, text: str) -> bool:
         low = (text or "").lower()
-        if any(p in low for p in AI_BLOCKLIST): 
-            return True
-        if contains_generic_phrase(low):
-            return True
-        if re.search(r"\b(so|very|really)\s+\1\b", low): 
-            return True
-        if len(re.findall(r"\.\.\.", text or "")) > 1: 
-            return True
-        if low.count("—") > 3: 
-            return True
+        if any(p in low for p in AI_BLOCKLIST): return True
+        if re.search(r"\b(so|very|really)\s+\1\b", low): return True
+        if len(re.findall(r"\.\.\.", text or "")) > 1: return True
+        if low.count("—") > 3: return True
         return False
 
     def _diversity_ok(self, text: str) -> bool:
-        if not text: 
-            return False
+        if not text: return False
         opener = _openers(text)
-        if any(opener.startswith(b) for b in STARTER_BLOCKLIST): 
-            return False
-        if opener_seen(opener): 
-            return False
-        if trigram_overlap_bad(text, threshold=2): 
-            return False
-        if too_similar_to_recent(text): 
-            return False
+        if any(opener.startswith(b) for b in STARTER_BLOCKLIST): return False
+        if opener_seen(opener): return False
+        if trigram_overlap_bad(text, threshold=2): return False
+        if too_similar_to_recent(text): return False
         toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
         novel = [t for t in toks if t not in EN_STOPWORDS and t not in {w.lower() for w in AI_BLOCKLIST}]
         return len(set(novel)) >= 2
@@ -744,13 +592,10 @@ class OfflineCommentGenerator:
         last = ""
         for _ in range(32):
             out = normalize_ws(random.choice(buckets).format(focus=focus))
-            if self._violates_ai_blocklist(out): 
-                continue
-            if not self._diversity_ok(out): 
-                last = out; continue
-            if comment_seen(out): 
-                last = out; continue
-            remember_template(out)
+            if self._violates_ai_blocklist(out): continue
+            if not self._diversity_ok(out): last = out; continue
+            if comment_seen(out): last = out; continue
+            remember_template(re.sub(r"\b\w+\b", "w", out)[:80])
             remember_comment(out)
             remember_opener(_openers(out))
             remember_ngrams(out)
@@ -763,7 +608,7 @@ class OfflineCommentGenerator:
             return enforce_word_count_natural(last, 6, 13)
         return None
 
-    def _fixed_buckets(self, ctx: Dict[str, Any], topic: str, is_crypto: bool) -> Dict[str, List[str]]:
+    def _fixed_buckets(self, ctx: Dict[str, Any], topic: str, is_crypto: bool, sentiment: str) -> Dict[str, List[str]]:
         focus_slot = "{focus}"
         name_pref = ""
         if self.random.random() < 0.30:
@@ -771,6 +616,7 @@ class OfflineCommentGenerator:
             elif ctx.get("author_name"): name_pref = f"{ctx['author_name'].split()[0]}, "
         def P(s: str) -> str: return f"{name_pref}{s}"
 
+        # base CT / professional buckets
         react = [
             P(f"{focus_slot} take actually feels grounded"),
             P(f"Hard to disagree with this view on {focus_slot}"),
@@ -809,9 +655,18 @@ class OfflineCommentGenerator:
             P(f"Hard not to recognise {focus_slot} in this"),
         ]
 
+        # KOL / CT alpha-ish bucket
+        kol = [
+            P(f"{focus_slot} is where serious CT eyes are parked rn"),
+            P(f"{focus_slot} reads like early narrative, not exit liquidity"),
+            P(f"{focus_slot} is what desks actually model risk around"),
+            P(f"{focus_slot} feels like the lever, not the headline"),
+        ]
+
         buckets: Dict[str, List[str]] = {
             "react": react, "conversation": convo, "calm": calm,
             "vibe": vibe, "nuanced": nuance, "quick": quick,
+            "kol": kol,
         }
         if topic == "chart":
             buckets["chart"] = [
@@ -819,11 +674,21 @@ class OfflineCommentGenerator:
                 P(f"Risk/reward around {focus_slot} is laid out cleanly"),
                 P(f"Helps frame entries and exits around {focus_slot}"),
             ]
+            # risk / disclosure tone
+            buckets["chart_risk"] = [
+                P(f"Not advice but {focus_slot} risk profile matters more than hype"),
+                P(f"Position sizing around {focus_slot} matters more than narratives fr"),
+            ]
         elif topic == "meme":
             buckets["meme"] = [
                 P(f"This is exactly how {focus_slot} feels some days"),
                 P(f"Can not unsee this version of {focus_slot} now"),
                 P(f"Joke lands because {focus_slot} is way too real"),
+            ]
+            # a bit of dry sarcasm
+            buckets["sarcasm"] = [
+                P(f"Yeah {focus_slot} totally super healthy behavior obviously"),
+                P(f"{focus_slot} speedrun straight to therapist arc lol"),
             ]
         elif topic == "complaint":
             buckets["complaint"] = [
@@ -854,6 +719,19 @@ class OfflineCommentGenerator:
                 P(f"Nice blend of risk and conviction for {focus_slot} here"),
                 P(f"Better than the usual moon talk around {focus_slot}"),
             ]
+
+        # sentiment-aware tweaks
+        if sentiment == "bullish":
+            buckets["bullish"] = [
+                P(f"{focus_slot} looks like early upside, not late fomo"),
+                P(f"Respecting {focus_slot} momentum but sizing like an adult"),
+            ]
+        elif sentiment == "bearish":
+            buckets["skeptic"] = [
+                P(f"{focus_slot} feels toppy, risk needs real respect rn"),
+                P(f"Glad someone is naming {focus_slot} downside cleanly"),
+            ]
+
         if self.random.random() < 0.5 and ctx.get("author_name"):
             first = ctx["author_name"].split()[0]
             buckets["author"] = [
@@ -864,32 +742,27 @@ class OfflineCommentGenerator:
 
     def _english_candidate(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
         topic = detect_topic(text); crypto = is_crypto_tweet(text); key = extract_keywords(text)
-        if random.random() < 0.6:
+        sentiment = detect_sentiment(text)
+        if random.random() < 0.7:  # slightly more random / combinator usage
             out = _combinator(ctx, key)
         else:
-            buckets = self._fixed_buckets(ctx, topic, crypto)
+            buckets = self._fixed_buckets(ctx, topic, crypto, sentiment)
             kind = random.choice(list(buckets.keys()))
             tmpl = random.choice(buckets[kind])
-            if template_burned(tmpl): 
-                return None
+            if template_burned(tmpl): return None
             focus = pick_focus_token(key) or "this"
             out = tmpl.format(focus=focus)
         out = self._tidy_en(out)
         return out or None
 
     def _accept(self, line: str) -> bool:
-        if self._violates_ai_blocklist(line): 
-            return False
-        if not self._diversity_ok(line): 
-            return False
-        if comment_seen(line): 
-            return False
-        if contains_generic_phrase(line):
-            return False
+        if self._violates_ai_blocklist(line): return False
+        if not self._diversity_ok(line): return False
+        if comment_seen(line): return False
         return True
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
-        remember_template(line)
+        remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
         remember_comment(line, url=url, lang=lang)
         remember_opener(_openers(line))
         remember_ngrams(line)
@@ -916,15 +789,10 @@ class OfflineCommentGenerator:
         while len(out) < 2 and tries < 80:
             tries += 1
             cand = self._english_candidate(text, ctx)
-            if not cand: 
-                continue
+            if not cand: continue
             cand = enforce_word_count_natural(cand, 6, 13)
-            if not cand: 
-                continue
-            if any(cand.strip().lower() == c["text"].strip().lower() for c in out): 
-                continue
-            if not uses_focus_token(cand, text):
-                continue
+            if not cand: continue
+            if any(cand.strip().lower() == c["text"].strip().lower() for c in out): continue
             if self._accept(cand):
                 self._commit(cand, url=url, lang="en")
                 out.append({"lang": "en", "text": cand})
@@ -933,6 +801,17 @@ class OfflineCommentGenerator:
         if len(out) < 2:
             out += [{"lang": "en", "text": enforce_word_count_natural(s, 6, 13)} for s in _rescue_two(text)]
             out = [c for c in out if c["text"]][:2]
+
+        # keep EN#1 / EN#2 from being near-duplicates
+        if len(out) == 2 and _pair_too_similar(out[0]["text"], out[1]["text"]):
+            # try regenerating one backup via rescue
+            extras = [_rescue_two(text)[0]]
+            extras = [enforce_word_count_natural(e, 6, 13) for e in extras if e]
+            for e in extras:
+                if not e: continue
+                if not self._accept(e): continue
+                out[1] = {"lang": "en", "text": e}
+                break
 
         return out[:2]
 
@@ -943,8 +822,7 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
         try:
             p = urlparse(url); segs = [s for s in p.path.split("/") if s]
             if segs: handle = segs[0]
-        except Exception: 
-            pass
+        except Exception: pass
     script = "latn"
     # Count script signals (order matters for disambiguation)
     text_no_urls = re.sub(r"https?://\S+", "", text)
@@ -988,37 +866,13 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
             "script": script}
 
 def _rescue_two(tweet_text: str) -> List[str]:
-    """
-    Last-resort generator when everything else fails.
-    Uses a meaningful keyword from the tweet, avoiding generic/bad focus words.
-    """
     base = re.sub(r"https?://\S+|[@#]\S+", "", tweet_text or "").strip()
-
-    # Try to get a meaningful keyword from the tweet
-    kws = extract_keywords(base)
-    kw = None
-    if kws:
-        kw = pick_focus_token(kws)
-    if not kw or kw.lower() in FOCUS_GENERIC or kw.lower() in FOCUS_BAD:
-        kw = "this setup"
-
-    kw_l = kw.lower()
-
-    a = enforce_word_count_natural(
-        f"Fair point on {kw_l}, it makes sense right now",
-        6,
-        13,
-    )
-    b = enforce_word_count_natural(
-        f"Curious where {kw_l} goes next, watching closely",
-        6,
-        13,
-    )
-    if not a:
-        a = "Fair point, makes sense right now in context"
-    if not b:
-        b = "Curious where this goes next, watching closely"
-
+    kw = (re.findall(r"[A-Za-z]{3,}", base) or ["this"])[0].lower()
+    # CT-ish but still single thought, kept short
+    a = enforce_word_count_natural(f"Fair angle on {kw}, makes sense rn", 6, 13)
+    b = enforce_word_count_natural(f"Watching how {kw} actually plays out rn", 6, 13)
+    if not a: a = "Makes sense rn tbh still though right"
+    if not b: b = "Watching where this goes rn tbh still"
     return [a, b]
 
 def _extract_handle_from_url(url: str) -> Optional[str]:
@@ -1042,6 +896,50 @@ def _sanitize_comment(raw: str) -> str:
     txt = EMOJI_PATTERN.sub("", txt)
     return txt
 
+def _strip_second_clause(text: str) -> str:
+    """
+    Enforce 'one thought only':
+    cut trailing polite fluff like 'thanks for sharing', 'appreciate it', etc.
+    """
+    low = text.lower()
+    cut_tokens = [
+        " thanks for sharing"," thank you for sharing"," thanks for this",
+        " appreciate you"," appreciate it"," appreciate this",
+        " thanks fam"," thanks man"," thanks bro"," thank you"," thanks",
+        " cheers "," cheers,", " cheers."
+    ]
+    cut_positions = [low.find(tok) for tok in cut_tokens if low.find(tok) > 0]
+    if cut_positions:
+        cut_at = min(cut_positions)
+        text = text[:cut_at]
+    text = re.sub(r"[,\-–]+$", "", text).strip()
+    return text
+
+QUESTION_HEADS = ["how","what","why","when","where","who","can","could","do","did","are","is","will","would","should"]
+QUESTION_PHRASES = ["any chance", "curious if", "wondering if", "what's the plan", "what is the plan"]
+
+def _ensure_question_punctuation(text: str) -> str:
+    """
+    If a line clearly *reads* like a question but has no '?', add it.
+    """
+    t = text.strip()
+    low = t.lower()
+    if "?" in t:
+        return t
+    is_question = False
+    for h in QUESTION_HEADS:
+        if low.startswith(h + " "):
+            is_question = True
+            break
+    if not is_question:
+        for ph in QUESTION_PHRASES:
+            if ph in low:
+                is_question = True
+                break
+    if is_question:
+        return t + "?"
+    return t
+
 def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
     txt = _sanitize_comment(raw)
     toks = words(txt)
@@ -1054,117 +952,34 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     while len(toks) < min_w and i < len(fillers):
         toks.append(fillers[i]); i += 1
     out = " ".join(toks).strip()
+    out = _strip_second_clause(out)
     if any(b in out.lower() for b in AI_BLOCKLIST):
-        out = " ".join([t for t in toks if t.lower() not in {"honestly", "tbh"}]) or out
+        out = " ".join([t for t in out.split() if t.lower() not in {"honestly", "tbh"}]) or out
         out = out.strip()
+    out = _ensure_question_punctuation(out)
     return out
 
-# --- comment mode + diversity helpers for final selection ---
-def guess_mode(text: str) -> str:
-    t = (text or "").strip().lower()
-    if not t:
-        return "support"
-    if t.endswith("?"):
-        if any(w in t for w in ("how ", "what ", "why ", "when ", "where ", "can you", "do you")):
-            return "question"
-    if any(p in t for p in ("not sure", "unsure", "doubt", "concerned", "worried")):
-        return "skeptical"
-    if any(p in t for p in ("congrats", "congratulations", "glad to see", "happy to see", "love this", "great to see", "good luck")):
-        return "support"
-    if any(p in t for p in ("curious", "wondering", "keen to")):
-        return "question"
-    if any(p in t for p in ("how will you", "how does this", "what's your plan", "what's the roadmap", "use case", "real world")):
-        return "practical"
-    if any(p in t for p in ("i like how", "this makes me", "feels like", "reminds me")):
-        return "personal"
-    if any(p in t for p in ("ngl", "lowkey", "low key", "vibes", "meme", "lol", "kinda wild")):
-        return "playful"
-    return "support"
-
-def pick_two_diverse_text(candidates: list[str]) -> list[str]:
-    """
-    Prefer two comments with different 'modes' AND low trigram overlap.
-    If impossible, still try to minimize similarity.
-    """
-    if not candidates:
-        return []
-
-    # unique, cleaned
-    uniq = []
-    for c in candidates:
-        c = (c or "").strip()
-        if c and c not in uniq:
-            uniq.append(c)
-
-    if len(uniq) <= 2:
-        if len(uniq) == 2 and _pair_too_similar(uniq[0], uniq[1]):
-            # if they're too similar, just return the first
-            return [uniq[0]]
-        return uniq[:2]
-
-    scored = [(c, guess_mode(c)) for c in uniq]
-
-    # 1) try to find pair with different modes and low overlap
-    best_pair = None
-    best_score = 1.0  # lower is better (similarity)
-    for i, (c1, m1) in enumerate(scored):
-        for c2, m2 in scored[i + 1:]:
-            sim = 1.0
-            try:
-                sim = 1.0 if _pair_too_similar(c1, c2) else 0.0
-            except Exception:
-                sim = 1.0
-            if m1 != m2 and sim < best_score:
-                best_score = sim
-                best_pair = (c1, c2)
-    if best_pair:
-        return list(best_pair)
-
-    # 2) if modes can't differ, just pick least similar pair
-    best_pair = (uniq[0], uniq[1])
-    best_sim_val = 2.0
-    for i, c1 in enumerate(uniq):
-        for c2 in uniq[i + 1:]:
-            ta = _word_trigrams(c1)
-            tb = _word_trigrams(c2)
-            if not ta or not tb:
-                continue
-            inter = len(ta & tb)
-            uni = len(ta | tb)
-            if not uni:
-                continue
-            sim_val = inter / uni
-            if sim_val < best_sim_val:
-                best_sim_val = sim_val
-                best_pair = (c1, c2)
-    return list(best_pair)
-
-def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
+def enforce_unique(candidates: list[str]) -> list[str]:
     out: list[str] = []
     for c in candidates:
         c = enforce_word_count_natural(c)
         if not c:
             continue
-        if contains_generic_phrase(c):
-            continue
-        if tweet_text and not uses_focus_token(c, tweet_text):
-            continue
         if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
             continue
         if not comment_seen(c):
-            remember_comment(c); remember_opener(_openers(c)); remember_ngrams(c); remember_template(c)
+            remember_comment(c); remember_opener(_openers(c)); remember_ngrams(c)
             out.append(c)
         else:
             toks = words(c)
             if len(toks) < 13:
                 alt = enforce_word_count_natural(c + " today")
-                if alt and not comment_seen(alt) and not contains_generic_phrase(alt):
-                    remember_comment(alt); remember_opener(_openers(alt)); remember_ngrams(alt); remember_template(alt)
+                if alt and not comment_seen(alt):
+                    remember_comment(alt); remember_opener(_openers(alt)); remember_ngrams(alt)
                     out.append(alt)
-
-    # VERY IMPORTANT: enforce pair-level diversity
-    if len(out) >= 2:
-        out = pick_two_diverse_text(out)
+    # keep pair from being near-identical
+    if len(out) >= 2 and _pair_too_similar(out[0], out[1]):
+        out = out[:1]
     return out
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
@@ -1175,7 +990,7 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     if en: result.append(en[0])
     if len(en) >= 2: result.append(en[1])
     elif non: result.append(non[0])
-    result = enforce_unique(result, text)
+    result = enforce_unique(result)
     return result[:2]
 
 # ------------------------------------------------------------------------------
@@ -1223,16 +1038,14 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         "- Output exactly two comments.\n"
         "- Each comment must be 6-13 words.\n"
         "- Natural conversational tone, as if you just read the post.\n"
+        "- One concise thought per comment (no 'thanks for sharing' add-ons).\n"
+        "- Light CT / influencer slang (tbh, rn, ngl) is fine, but use sparingly.\n"
         "- The two comments must have different vibes (e.g., supportive vs curious).\n"
-        "- Each comment must reference at least one concrete detail from the post\n"
-        "  (a name, project, feature, metric, or phrase), not just generic words\n"
-        "  like 'project', 'ecosystem', 'team', 'community', or 'solution'.\n"
+        "- If a comment clearly reads like a question, end it with '?'.\n"
         "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
-        "- Avoid generic patterns like: \"that's a great\", \"wow\", \"good luck\",\n"
-        "  \"sounds like a game changer\", \"very interesting concept\".\n"
-        "- Vary syntax and rhythm; do not reuse the same structure.\n"
-        "- Prefer returning a pure JSON array of two strings, like:\n"
-        "  [\"first comment\", \"second comment\"].\n"
+        "- Avoid repetitive templates; vary syntax and rhythm.\n"
+        "- Prefer returning a pure JSON array of two strings, like: "
+        "[\"first comment\", \"second comment\"].\n"
         "- If you cannot return JSON, return two lines separated by a newline.\n"
     )
 
@@ -1252,7 +1065,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
                 ],
                 n=1,
                 max_tokens=160,
-                temperature=0.8,
+                temperature=0.9,
             )
             break
         except Exception as e:
@@ -1278,23 +1091,29 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text)
+    candidates = enforce_unique(candidates)
 
     if len(candidates) < 2:
         sents = re.split(r"[.!?]\s+", raw)
         sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
         sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-        candidates = enforce_unique(candidates + sents[:2], tweet_text)
+        candidates = enforce_unique(candidates + sents[:2])
 
     tries = 0
     while len(candidates) < 2 and tries < 2:
         tries += 1
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text)
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
 
     if len(candidates) < 2:
         raise RuntimeError("Could not produce two valid comments")
 
-    candidates = pick_two_diverse_text(candidates)
+    # final guard against EN#1 ≈ EN#2
+    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+        extra = offline_two_comments(tweet_text, author)
+        merged = enforce_unique(candidates + extra)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
     return candidates[:2]
 
 # ------------------------------------------------------------------------------
@@ -1306,16 +1125,14 @@ def _llm_sys_prompt() -> str:
         "- Output exactly two comments.\n"
         "- Each comment must be 6-13 words.\n"
         "- Natural conversational tone, as if you just read the post.\n"
+        "- One concise thought per comment (no 'thanks for sharing' add-ons).\n"
+        "- Light CT / influencer slang (tbh, rn, ngl) is fine, but use sparingly.\n"
         "- The two comments must have different vibes (e.g., supportive vs curious).\n"
-        "- Each comment must reference at least one concrete detail from the post\n"
-        "  (a name, project, feature, metric, or phrase), not just generic words\n"
-        "  like 'project', 'ecosystem', 'team', 'community', or 'solution'.\n"
+        "- If a comment clearly reads like a question, end it with '?'.\n"
         "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
-        "- Avoid generic patterns like: \"that's a great\", \"wow\", \"good luck\",\n"
-        "  \"sounds like a game changer\", \"very interesting concept\".\n"
-        "- Vary syntax and rhythm; do not reuse the same structure.\n"
-        "- Prefer returning a pure JSON array of two strings, like:\n"
-        "  [\"first comment\", \"second comment\"].\n"
+        "- Avoid repetitive templates; vary syntax and rhythm.\n"
+        "- Prefer returning a pure JSON array of two strings, like: "
+        "[\"first comment\", \"second comment\"].\n"
         "- If you cannot return JSON, return two lines separated by a newline.\n"
     )
 
@@ -1334,16 +1151,20 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
             {"role": "user", "content": user_prompt},
         ],
         max_tokens=160,
-        temperature=0.8,
+        temperature=0.9,
     )
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text)
+    candidates = enforce_unique(candidates)
     if len(candidates) < 2:
         raise RuntimeError("OpenAI did not produce two valid comments")
-    candidates = pick_two_diverse_text(candidates)
+    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+        extra = offline_two_comments(tweet_text, author)
+        merged = enforce_unique(candidates + extra)
+        if len(merged) >= 2:
+            candidates = merged[:2]
     return candidates[:2]
 
 def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
@@ -1372,10 +1193,14 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text)
+    candidates = enforce_unique(candidates)
     if len(candidates) < 2:
         raise RuntimeError("Gemini did not produce two valid comments")
-    candidates = pick_two_diverse_text(candidates)
+    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+        extra = offline_two_comments(tweet_text, author)
+        merged = enforce_unique(candidates + extra)
+        if len(merged) >= 2:
+            candidates = merged[:2]
     return candidates[:2]
 
 def generate_two_comments_with_providers(
@@ -1397,26 +1222,23 @@ def generate_two_comments_with_providers(
     if (not candidates or len(candidates) < 2) and USE_OPENAI and _openai_client:
         try:
             more = openai_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + more, tweet_text)
+            candidates = enforce_unique(candidates + more)
         except Exception as e:
             logger.warning("OpenAI failed: %s", e)
 
     if (not candidates or len(candidates) < 2) and USE_GEMINI and _gemini_model:
         try:
             more = gemini_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + more, tweet_text)
+            candidates = enforce_unique(candidates + more)
         except Exception as e:
             logger.warning("Gemini failed: %s", e)
 
     if len(candidates) < 2:
         try:
             offline = offline_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + offline, tweet_text)
+            candidates = enforce_unique(candidates + offline)
         except Exception as e:
             logger.warning("Offline generator failed: %s", e)
-
-    if len(candidates) >= 2:
-        candidates = pick_two_diverse_text(candidates)
 
     out: List[Dict[str, Any]] = []
     for c in candidates:
@@ -1523,8 +1345,7 @@ def reroll_endpoint():
 # ------------------------------------------------------------------------------
 def main() -> None:
     init_db()
-    # background keep-alive so Render free tier doesn’t sleep
-    threading.Thread(target=keep_alive, daemon=True).start()
+    # threading.Thread(target=keep_alive, daemon=True).start()  # optional
     app.run(host="0.0.0.0", port=PORT)
 
 if __name__ == "__main__":
