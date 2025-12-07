@@ -315,6 +315,21 @@ def _word_trigrams(s: str) -> set:
     w = re.findall(r"[A-Za-z0-9']+", s.lower())
     return set(" ".join(w[i:i+3]) for i in range(max(0, len(w) - 2)))
 
+def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
+    """
+    Check if two comments are too similar using trigram Jaccard.
+    Used to prevent EN #1 and EN #2 from being near copies.
+    """
+    ta = _word_trigrams(a)
+    tb = _word_trigrams(b)
+    if not ta or not tb:
+        return False
+    inter = len(ta & tb)
+    uni = len(ta | tb)
+    if not uni:
+        return False
+    return (inter / uni) >= threshold
+
 def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300) -> bool:
     """Jaccard(word-3grams) vs last N comments to block paraphrase repeats."""
     try:
@@ -430,6 +445,17 @@ GENERIC_PHRASES = {
     "i'm curious to see how this ecosystem grows over time",
     "i'm glad to see",
     "good luck with",
+    # new ones from your samples
+    "great point about",
+    "your patience and persistence",
+    "love your take",
+    "love that aligned communities are unbreakable",
+    "i'm intrigued by the idea of",
+    "congrats ",
+    "congrats",
+    "i'll be shifting my energy towards",
+    "i'm watching ",
+    "i'm sending you strength",
 }
 
 STARTER_BLOCKLIST = {
@@ -441,7 +467,17 @@ STARTER_BLOCKLIST = {
     "that's so cool","that's interesting","that's a solid",
     "wow ","wow,","good luck","i'm curious","i'm still unsure","i'm glad to see",
     "wishing you a","big congrats","huge congrats","congratulations on","sounds like","looks like",
+    # new starters from your examples
+    "i'm intrigued",
+    "love your",
+    "love that",
+    "congrats",
+    "i'll be shifting",
+    "i'm watching",
+    "i'm sending you",
+    "inflation risk is a crucial aspect",
 }
+
 
 try:
     EMOJI_PATTERN = re.compile(
@@ -911,13 +947,39 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
             "script": script}
 
 def _rescue_two(tweet_text: str) -> List[str]:
+    """
+    Last-resort generator when everything else fails.
+    Now uses real keywords instead of 'the' etc.
+    """
     base = re.sub(r"https?://\S+|[@#]\S+", "", tweet_text or "").strip()
-    kw = (re.findall(r"[A-Za-z]{3,}", base) or ["this"])[0].lower()
-    a = enforce_word_count_natural(f"Fair point on {kw}, makes sense right now", 6, 13)
-    b = enforce_word_count_natural(f"Curious where {kw} goes next, watching closely", 6, 13)
-    if not a: a = "Makes sense right now honestly tbh still though right"
-    if not b: b = "Curious where this goes honestly tbh still though right"
+
+    # Try to get a meaningful keyword from the tweet
+    kws = extract_keywords(base)
+    kw = None
+    if kws:
+        kw = pick_focus_token(kws)
+    if not kw or kw.lower() in FOCUS_GENERIC:
+        kw = "this setup"
+
+    kw_l = kw.lower()
+
+    a = enforce_word_count_natural(
+        f"Fair point on {kw_l}, it makes sense right now",
+        6,
+        13,
+    )
+    b = enforce_word_count_natural(
+        f"Curious where {kw_l} goes next, watching closely",
+        6,
+        13,
+    )
+    if not a:
+        a = "Fair point, makes sense right now in context"
+    if not b:
+        b = "Curious where this goes next, watching closely"
+
     return [a, b]
+
 
 def _extract_handle_from_url(url: str) -> Optional[str]:
     try:
@@ -980,23 +1042,62 @@ def guess_mode(text: str) -> str:
     return "support"
 
 def pick_two_diverse_text(candidates: list[str]) -> list[str]:
-    """Prefer two comments with different 'modes' (support vs question etc)."""
+    """
+    Prefer two comments with different 'modes' AND low trigram overlap.
+    If impossible, still try to minimize similarity.
+    """
     if not candidates:
         return []
+
+    # unique, cleaned
     uniq = []
     for c in candidates:
+        c = (c or "").strip()
         if c and c not in uniq:
             uniq.append(c)
+
     if len(uniq) <= 2:
+        if len(uniq) == 2 and _pair_too_similar(uniq[0], uniq[1]):
+            # if they're too similar, just return the first
+            return [uniq[0]]
         return uniq[:2]
+
     scored = [(c, guess_mode(c)) for c in uniq]
-    # try all pairs to find different modes
+
+    # 1) try to find pair with different modes and low overlap
+    best_pair = None
+    best_score = 1.0  # lower is better (similarity)
     for i, (c1, m1) in enumerate(scored):
-        for c2, m2 in scored[i+1:]:
-            if m1 != m2:
-                return [c1, c2]
-    # fallback: first two unique
-    return uniq[:2]
+        for c2, m2 in scored[i + 1:]:
+            sim = 1.0
+            try:
+                sim = 1.0 if _pair_too_similar(c1, c2) else 0.0
+            except Exception:
+                sim = 1.0
+            if m1 != m2 and sim < best_score:
+                best_score = sim
+                best_pair = (c1, c2)
+    if best_pair:
+        return list(best_pair)
+
+    # 2) if modes can't differ, just pick least similar pair
+    best_pair = (uniq[0], uniq[1])
+    best_sim_val = 2.0
+    for i, c1 in enumerate(uniq):
+        for c2 in uniq[i + 1:]:
+            ta = _word_trigrams(c1)
+            tb = _word_trigrams(c2)
+            if not ta or not tb:
+                continue
+            inter = len(ta & tb)
+            uni = len(ta | tb)
+            if not uni:
+                continue
+            sim_val = inter / uni
+            if sim_val < best_sim_val:
+                best_sim_val = sim_val
+                best_pair = (c1, c2)
+    return list(best_pair)
 
 def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
     out: list[str] = []
@@ -1020,7 +1121,8 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
                 if alt and not comment_seen(alt) and not contains_generic_phrase(alt):
                     remember_comment(alt); remember_opener(_openers(alt)); remember_ngrams(alt); remember_template(alt)
                     out.append(alt)
-    # prefer diverse vibes if possible
+
+    # VERY IMPORTANT: enforce pair-level diversity
     if len(out) >= 2:
         out = pick_two_diverse_text(out)
     return out
