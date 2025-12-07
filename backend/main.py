@@ -345,12 +345,17 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
+@app.route("/", methods=["GET"])
 @app.route("/ping", methods=["GET"])
 def ping():
     """
     Lightweight healthcheck endpoint used by keep-alive threads / uptime monitors.
     """
-    return jsonify({"status": "ok", "ts": int(time.time())}), 200
+    return jsonify({
+        "status": "ok",
+        "groq": bool(USE_GROQ),
+        "ts": int(time.time()),
+    }), 200
 
 
 # ------------------------------------------------------------------------------
