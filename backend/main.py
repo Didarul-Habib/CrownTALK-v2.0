@@ -456,12 +456,13 @@ GENERIC_PHRASES = {
     "i'll be shifting my energy towards",
     "i'm watching ",
     "i'm sending you strength",
+    "wishing you strength",
 }
 
 STARTER_BLOCKLIST = {
     "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
     "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
-    "good to see the boring",
+    "good to see the boring","wishing you",
     # stricter anti-template patterns
     "that's a great","that's a very","that's an amazing","that's amazing","that's a big","that's a breath",
     "that's so cool","that's interesting","that's a solid",
@@ -534,31 +535,63 @@ def extract_keywords(text: str) -> list[str]:
             seen.add(lw); out.append(w)
     return out[:10]
 
-FOCUS_GENERIC = {"project","ecosystem","team","community","product","solution","platform","service","idea"}
+FOCUS_GENERIC = {
+    "project","ecosystem","team","community","product","solution",
+    "platform","service","idea","rank","mindshare"
+}
+
+# words we never want as {focus} (pronouns, determiners, vague stuff)
+FOCUS_BAD = {
+    "they","them","their","theirs","everyone","every","everything",
+    "someone","something","this","that","these","those","it","its",
+    "he","she","you","your","we","our","i","me","us","u",
+}
 
 def pick_focus_token(tokens: List[str]) -> Optional[str]:
+    """
+    Choose a good focus token:
+    - avoid pronouns/determiners (FOCUS_BAD)
+    - avoid generic words (FOCUS_GENERIC)
+    - prefer capitalized / proper nouns
+    """
     if not tokens:
         return None
-    upperish = [t for t in tokens if t.isupper() or t[0].isupper()]
-    return random.choice(upperish) if upperish else random.choice(tokens)
+
+    bad = FOCUS_GENERIC | FOCUS_BAD
+
+    # Filter out generic/bad ones first
+    clean = [t for t in tokens if t.lower() not in bad] or tokens
+
+    # Prefer "proper-ish" tokens
+    upperish = [t for t in clean if (t.isupper() or t[0].isupper()) and t.lower() not in bad]
+    if upperish:
+        return random.choice(upperish)
+
+    return random.choice(clean)
 
 def uses_focus_token(text: str, tweet_text: Optional[str]) -> bool:
-    """Ensure the comment ties to a specific keyword from the tweet (if any)."""
+    """
+    Ensure the comment ties to a specific keyword from the tweet (if any),
+    avoiding generic and bad focus words.
+    """
     if not tweet_text:
         return True
     tokens = extract_keywords(tweet_text)
     if not tokens:
         return True
+
+    bad = FOCUS_GENERIC | FOCUS_BAD
     t = (text or "").lower()
+
     for kw in tokens:
         lw = kw.lower()
-        if len(lw) < 4 or lw in FOCUS_GENERIC:
+        if len(lw) < 4 or lw in bad:
             continue
         if lw in t:
             return True
+
     # allow generic only if nothing else worked but still want output
     return False
-
 # ------------------------------------------------------------------------------
 # Variety buckets + combinator (keeps comments varied)
 # ------------------------------------------------------------------------------
@@ -949,7 +982,7 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
 def _rescue_two(tweet_text: str) -> List[str]:
     """
     Last-resort generator when everything else fails.
-    Now uses real keywords instead of 'the' etc.
+    Uses a meaningful keyword from the tweet, avoiding generic/bad focus words.
     """
     base = re.sub(r"https?://\S+|[@#]\S+", "", tweet_text or "").strip()
 
@@ -958,7 +991,7 @@ def _rescue_two(tweet_text: str) -> List[str]:
     kw = None
     if kws:
         kw = pick_focus_token(kws)
-    if not kw or kw.lower() in FOCUS_GENERIC:
+    if not kw or kw.lower() in FOCUS_GENERIC or kw.lower() in FOCUS_BAD:
         kw = "this setup"
 
     kw_l = kw.lower()
@@ -979,7 +1012,6 @@ def _rescue_two(tweet_text: str) -> List[str]:
         b = "Curious where this goes next, watching closely"
 
     return [a, b]
-
 
 def _extract_handle_from_url(url: str) -> Optional[str]:
     try:
