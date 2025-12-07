@@ -441,14 +441,21 @@ GENERIC_PHRASES = {
     "great daily routine",
     "amazing to see",
     "glad to see a shift",
+    "i'm curious to see how",
+    "i'm curious to see how ",
+    "i'm curious to see how rails",
+    "i'm curious to see how rails xyz",
     "i'm curious to see how this ecosystem grows",
     "i'm curious to see how this ecosystem grows over time",
     "i'm glad to see",
     "good luck with",
-    # new ones from your samples
+    "good luck to those competing",
+    "good luck ",
     "great point about",
     "your patience and persistence",
     "love your take",
+    "love the concept of",
+    "love that you're emphasizing",
     "love that aligned communities are unbreakable",
     "i'm intrigued by the idea of",
     "congrats ",
@@ -457,28 +464,25 @@ GENERIC_PHRASES = {
     "i'm watching ",
     "i'm sending you strength",
     "wishing you strength",
+    "wishing you all the strength",
+    "wishing you ",
+    "been hearing similar chats",
+    "that's a great strategy",
+    "that's a great example",
 }
 
 STARTER_BLOCKLIST = {
     "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
     "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
-    "good to see the boring","wishing you",
+    "good to see the boring",
     # stricter anti-template patterns
     "that's a great","that's a very","that's an amazing","that's amazing","that's a big","that's a breath",
     "that's so cool","that's interesting","that's a solid",
     "wow ","wow,","good luck","i'm curious","i'm still unsure","i'm glad to see",
-    "wishing you a","big congrats","huge congrats","congratulations on","sounds like","looks like",
-    # new starters from your examples
-    "i'm intrigued",
-    "love your",
-    "love that",
-    "congrats",
-    "i'll be shifting",
-    "i'm watching",
-    "i'm sending you",
-    "inflation risk is a crucial aspect",
+    "wishing you","big congrats","huge congrats","congratulations on","sounds like","looks like",
+    # extras from recent samples
+    "love the concept","love that you're","i'm sending you","been hearing similar chats",
 }
-
 
 try:
     EMOJI_PATTERN = re.compile(
@@ -537,14 +541,17 @@ def extract_keywords(text: str) -> list[str]:
 
 FOCUS_GENERIC = {
     "project","ecosystem","team","community","product","solution",
-    "platform","service","idea","rank","mindshare"
+    "platform","platforms","service","services","idea",
+    "rank","mindshare","challenge","consistent","consistency",
+    "dashboards",
 }
 
-# words we never want as {focus} (pronouns, determiners, vague stuff)
+# words we never want as {focus} (pronouns, question words, vague stuff)
 FOCUS_BAD = {
     "they","them","their","theirs","everyone","every","everything",
     "someone","something","this","that","these","those","it","its",
     "he","she","you","your","we","our","i","me","us","u",
+    "when","where","why","how",
 }
 
 def pick_focus_token(tokens: List[str]) -> Optional[str]:
@@ -568,6 +575,7 @@ def pick_focus_token(tokens: List[str]) -> Optional[str]:
         return random.choice(upperish)
 
     return random.choice(clean)
+
 
 def uses_focus_token(text: str, tweet_text: Optional[str]) -> bool:
     """
