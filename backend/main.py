@@ -420,6 +420,79 @@ GENERIC_PHRASES = {
     "been hearing similar chats",
     "that's a great strategy",
     "that's a great example",
+     "this is huge",
+    "this is huge for",
+    "this could be huge",
+    "this could be huge for",
+    "this could be the change",
+    "the change the defi space has been waiting for",
+    "this is the kind of innovation",
+    "this is the kind of innovation people have been waiting for",
+    "this is the kind of innovation people have been waiting for since",
+    "this is a major breakthrough",
+    "major breakthrough",
+    "this is a genius move",
+    "genius move",
+    "that's amazing",
+    "that's actually really impressive",
+    "love the way",
+    "love the way ",
+    "love the direction",
+    "love the direction but",
+    "glad to hear",
+    "glad to hear that",
+    "glad to hear that polygon is treating you right",
+    "this is exactly what we need",
+    "this is exactly what we need in web3",
+    "this is exactly what we need in web3 transparency and accountability",
+    "this is the gap you're trying to bridge",
+    "that's the gap you're trying to bridge",
+    "this is a total game changer",
+    "sounds like a total game changer",
+    "that's a game changer for",
+    "that's a game changer for bitcoin holders",
+    "game changing approach",
+    "what a game changing approach",
+    "what a game changing approach to make defi more accessible",
+    "breaking free from silos",
+    "breaking free from silos is a bold exciting move",
+    "sounds like a solid tool",
+    "sounds like a solid tool for traders",
+    "this could be the change the defi space has been waiting for",
+    "this could be the change the defi space has been waiting for since",
+    "this could be the change the defi space has been waiting for since defi's",
+    "this could be the change the defi space has been waiting for since defi",
+    "this is the change the defi space has been waiting for",
+    "this could be the change the defi space has been waiting for",
+    "your enthusiasm is infectious",
+    "your enthusiasm is infectious can't wait to see this for myself",
+    "can't wait to see this for myself",
+    "can't wait to see this",
+    "can't wait to see it",
+    "can't wait to see how this plays out",
+    "looking forward to trying it out",
+    "looking forward to trying this out",
+    "looking forward to trying",
+    "looking forward to this",
+    "this could be huge for logistics and warehouse management",
+    "this could be huge for logistics",
+    "this is huge for bybit users",
+    "this is huge for bybit users with easy on chain access",
+    "good luck all on the sixr cricket quiz",
+    "good luck all on the sixr cricket quiz and the kudos swap points",
+    "this is a major step forward",
+    "bold exciting move",
+    "this is a bold move",
+    "this is the change",
+    "this is the change the space has been waiting for",
+    "mind blown",
+    "mind blown by the idea",
+    "idk what's going on but you've been posting tho",
+    "you've been posting tho",
+    "glad to hear that polygon is treating you right",
+    "this could be the change people have been waiting for",
+    "this is the kind of thing people have been waiting for",
+    "the space has been waiting for this",
 }
 
 def contains_generic_phrase(text: str) -> bool:
@@ -1007,38 +1080,175 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     out = _ensure_question_punctuation(out)
     return out
 
-def enforce_unique(candidates: list[str]) -> list[str]:
+def guess_mode(text: str) -> str:
+    """
+    Very rough mode guess:
+    - 'question' for obvious questions / curiosity
+    - 'skeptical' for doubt / concern
+    - 'support' for congrats / bullish / positive tone
+    - 'playful' for meme-ish language
+    """
+    t = (text or "").strip().lower()
+    if not t:
+        return "support"
+
+    if "?" in t or any(
+        ph in t
+        for ph in (
+            "how ", "what ", "why ", "when ", "where ", "can you",
+            "do you", "could you", "would you", "any chance",
+            "curious", "wondering", "what's the plan", "whats the plan",
+            "what is the plan"
+        )
+    ):
+        return "question"
+
+    if any(p in t for p in ("worried", "concerned", "not sure", "unsure", "doubt", "skeptical", "risk here")):
+        return "skeptical"
+
+    if any(
+        p in t
+        for p in (
+            "congrats", "congratulations", "glad to", "love this", "love that",
+            "bullish", "nice move", "well done", "great work", "clean work",
+            "happy to see"
+        )
+    ):
+        return "support"
+
+    if any(p in t for p in ("lol", "lmao", "meme", "kinda wild", "ratio", "cope", "ngmi")):
+        return "playful"
+
+    return "support"
+
+
+def pick_two_diverse_text(candidates: list[str]) -> list[str]:
+    """
+    Hybrid selector:
+    - prefers two comments with DIFFERENT modes (support vs question etc)
+    - also tries to keep trigram overlap low
+    - if one is a question and the other is not, order as: [statement, question]
+    """
+    # clean + dedupe
+    uniq: list[str] = []
+    for c in candidates:
+        c = (c or "").strip()
+        if c and c not in uniq:
+            uniq.append(c)
+
+    if not uniq:
+        return []
+
+    if len(uniq) == 1:
+        return uniq
+
+    # if only two, we still might reorder by mode
+    if len(uniq) == 2:
+        a, b = uniq[0], uniq[1]
+        m1, m2 = guess_mode(a), guess_mode(b)
+        # statement first, question second
+        if m1 == "question" and m2 != "question":
+            return [b, a]
+        if m2 == "question" and m1 != "question":
+            return [a, b]
+        return [a, b]
+
+    # more than two: search best pair (different modes + low similarity)
+    scored = [(c, guess_mode(c)) for c in uniq]
+    best_pair: Optional[tuple[str, str]] = None
+    best_score = 999.0  # lower better
+
+    for i, (c1, m1) in enumerate(scored):
+        for c2, m2 in scored[i + 1 :]:
+            ta = _word_trigrams(c1)
+            tb = _word_trigrams(c2)
+            if ta and tb:
+                inter = len(ta & tb)
+                uni = len(ta | tb)
+                sim = inter / uni if uni else 0.0
+            else:
+                sim = 0.0
+
+            # preference: different modes
+            mode_penalty = 0.0 if m1 != m2 else 0.4
+            score = sim + mode_penalty
+            if score < best_score:
+                best_score = score
+                best_pair = (c1, c2)
+
+    if not best_pair:
+        best_pair = (uniq[0], uniq[1])
+
+    a, b = best_pair
+    m1, m2 = guess_mode(a), guess_mode(b)
+
+    # reorder so question goes second when we have exactly one
+    if m1 == "question" and m2 != "question":
+        return [b, a]
+    if m2 == "question" and m1 != "question":
+        return [a, b]
+    return [a, b]
+
+def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
+    """
+    - sanitize + enforce 6–13 words
+    - drop generic phrases
+    - skip past repeats / templates / trigram overlaps
+    - small chance to tweak if previously seen
+    - finally: pick two diverse comments (Hybrid: statement + question if possible)
+    """
     out: list[str] = []
+
     for c in candidates:
         c = enforce_word_count_natural(c)
         if not c:
             continue
+
+        # kill very generic / overused phrases
+        if contains_generic_phrase(c):
+            continue
+
+        # structural repetition guards
         if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
             continue
+
         if not comment_seen(c):
-            remember_comment(c); remember_opener(_openers(c)); remember_ngrams(c)
+            remember_comment(c)
+            remember_opener(_openers(c))
+            remember_ngrams(c)
             out.append(c)
         else:
+            # small tweak path to rescue near-duplicate if it's short
             toks = words(c)
             if len(toks) < 13:
                 alt = enforce_word_count_natural(c + " today")
-                if alt and not comment_seen(alt):
-                    remember_comment(alt); remember_opener(_openers(alt)); remember_ngrams(alt)
+                if alt and not comment_seen(alt) and not contains_generic_phrase(alt):
+                    remember_comment(alt)
+                    remember_opener(_openers(alt))
+                    remember_ngrams(alt)
                     out.append(alt)
-    # keep pair from being near-identical
-    if len(out) >= 2 and _pair_too_similar(out[0], out[1]):
-        out = out[:1]
-    return out
+
+    # final hybrid pairing: maximize vibe diversity
+    if len(out) >= 2:
+        out = pick_two_diverse_text(out)
+
+    return out[:2]
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     items = generator.generate_two(text, author or None, None, None)
     en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
     non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
+
     result: list[str] = []
-    if en: result.append(en[0])
-    if len(en) >= 2: result.append(en[1])
-    elif non: result.append(non[0])
-    result = enforce_unique(result)
+    if en:
+        result.append(en[0])
+    if len(en) >= 2:
+        result.append(en[1])
+    elif non:
+        result.append(non[0])
+
+    # apply uniqueness + hybrid pairing
+    result = enforce_unique(result, tweet_text=text)
     return result[:2]
 
 # ------------------------------------------------------------------------------
@@ -1136,10 +1346,24 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         raise RuntimeError("Groq call failed after retries")
 
     raw = (resp.choices[0].message.content or "").strip()
-    candidates = parse_two_comments_flex(raw)
+        candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates)
+    candidates = enforce_unique(candidates, tweet_text=tweet_text)
+
+    if len(candidates) < 2:
+        sents = re.split(r"[.!?]\s+", raw)
+        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
+        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
+        candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
+
+    tries = 0
+    while len(candidates) < 2 and tries < 2:
+        tries += 1
+        candidates = enforce_unique(
+            candidates + offline_two_comments(tweet_text, author),
+            tweet_text=tweet_text,
+        )
 
     if len(candidates) < 2:
         sents = re.split(r"[.!?]\s+", raw)
@@ -1205,12 +1429,12 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates)
+    candidates = enforce_unique(candidates, tweet_text=tweet_text)
     if len(candidates) < 2:
         raise RuntimeError("OpenAI did not produce two valid comments")
     if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
         extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra)
+        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
@@ -1241,12 +1465,12 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates)
+    candidates = enforce_unique(candidates, tweet_text=tweet_text)
     if len(candidates) < 2:
         raise RuntimeError("Gemini did not produce two valid comments")
     if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
         extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra)
+        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
@@ -1270,21 +1494,21 @@ def generate_two_comments_with_providers(
     if (not candidates or len(candidates) < 2) and USE_OPENAI and _openai_client:
         try:
             more = openai_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + more)
+            candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
         except Exception as e:
             logger.warning("OpenAI failed: %s", e)
 
     if (not candidates or len(candidates) < 2) and USE_GEMINI and _gemini_model:
         try:
             more = gemini_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + more)
+            candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
         except Exception as e:
             logger.warning("Gemini failed: %s", e)
 
     if len(candidates) < 2:
         try:
             offline = offline_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + offline)
+            candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
         except Exception as e:
             logger.warning("Offline generator failed: %s", e)
 
