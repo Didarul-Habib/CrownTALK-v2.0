@@ -377,7 +377,6 @@ AI_BLOCKLIST = {
     "love that","love the","love your","i'm curious","im curious","i am curious",
     "thanks for sharing","thank you for sharing"
 }
-
 GENERIC_PHRASES = {
     "well researched and insightful",
     "very interesting concept",
@@ -424,9 +423,9 @@ GENERIC_PHRASES = {
 }
 
 def contains_generic_phrase(text: str) -> bool:
-    low = (text or "").lower()
-    return any(p in low for p in GENERIC_PHRASES)
-    
+    t = (text or "").lower()
+    return any(p in t for p in GENERIC_PHRASES)
+
 STARTER_BLOCKLIST = {
     "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
     "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
@@ -574,18 +573,12 @@ class OfflineCommentGenerator:
         self.random = random.Random()
 
     def _violates_ai_blocklist(self, text: str) -> bool:
-    low = (text or "").lower()
-    if any(p in low for p in AI_BLOCKLIST):
-        return True
-    if contains_generic_phrase(low):
-        return True
-    if re.search(r"\b(so|very|really)\s+\1\b", low):
-        return True
-    if len(re.findall(r"\.\.\.", text or "")) > 1:
-        return True
-    if low.count("—") > 3:
-        return True
-    return False
+        low = (text or "").lower()
+        if any(p in low for p in AI_BLOCKLIST): return True
+        if re.search(r"\b(so|very|really)\s+\1\b", low): return True
+        if len(re.findall(r"\.\.\.", text or "")) > 1: return True
+        if low.count("—") > 3: return True
+        return False
 
     def _diversity_ok(self, text: str) -> bool:
         if not text: return False
@@ -811,15 +804,10 @@ class OfflineCommentGenerator:
         return out or None
 
     def _accept(self, line: str) -> bool:
-    if self._violates_ai_blocklist(line):
-        return False
-    if contains_generic_phrase(line):
-        return False
-    if not self._diversity_ok(line):
-        return False
-    if comment_seen(line):
-        return False
-    return True
+        if self._violates_ai_blocklist(line): return False
+        if not self._diversity_ok(line): return False
+        if comment_seen(line): return False
+        return True
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
         remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
@@ -1025,8 +1013,6 @@ def enforce_unique(candidates: list[str]) -> list[str]:
         c = enforce_word_count_natural(c)
         if not c:
             continue
-        if contains_generic_phrase(c):
-            continue
         if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
             continue
         if not comment_seen(c):
@@ -1036,7 +1022,7 @@ def enforce_unique(candidates: list[str]) -> list[str]:
             toks = words(c)
             if len(toks) < 13:
                 alt = enforce_word_count_natural(c + " today")
-                if alt and not comment_seen(alt) and not contains_generic_phrase(alt):
+                if alt and not comment_seen(alt):
                     remember_comment(alt); remember_opener(_openers(alt)); remember_ngrams(alt)
                     out.append(alt)
     # keep pair from being near-identical
