@@ -667,13 +667,17 @@ class OfflineCommentGenerator:
 
     def _violates_ai_blocklist(self, text: str) -> bool:
         low = (text or "").lower()
-        if any(p in low for p in AI_BLOCKLIST): return True
-        if re.search(r"\b(so|very|really)\s+\1\b", low): return True
-        if len(re.findall(r"\.\.\.", text or "")) > 1: return True
-        if low.count("—") > 3: return True
+        if any(p in low for p in AI_BLOCKLIST):
+            return True
+        if re.search(r"\b(so|very|really)\s+\1\b", low):
+            return True
+        if len(re.findall(r"\.\.\.", text or "")) > 1:
+            return True
+        if low.count("—") > 3:
+            return True
         return False
 
-        def _diversity_ok(self, text: str) -> bool:
+    def _diversity_ok(self, text: str) -> bool:
         if not text:
             return False
 
@@ -689,7 +693,8 @@ class OfflineCommentGenerator:
 
         toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
         novel = [
-            t for t in toks
+            t
+            for t in toks
             if t not in EN_STOPWORDS
             and t not in {w.lower() for w in AI_BLOCKLIST}
         ]
@@ -699,6 +704,7 @@ class OfflineCommentGenerator:
         t = re.sub(r"[^\x00-\x7F]+", "", t)  # strip emojis for EN
         t = enforce_word_count_natural(t, 6, 13)
         return t
+
 
     def _native_buckets(self, script: str) -> List[str]:
         f = "{focus}"
