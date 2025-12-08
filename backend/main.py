@@ -766,13 +766,23 @@ class OfflineCommentGenerator:
             return enforce_word_count_natural(last, 6, 13)
         return None
 
-    def _fixed_buckets(self, ctx: Dict[str, Any], topic: str, is_crypto: bool, sentiment: str) -> Dict[str, List[str]]:
+        def _fixed_buckets(
+        self,
+        ctx: Dict[str, Any],
+        topic: str,
+        is_crypto: bool,
+        sentiment: str,
+    ) -> Dict[str, List[str]]:
         focus_slot = "{focus}"
         name_pref = ""
         if self.random.random() < 0.30:
-            if ctx.get("handle"): name_pref = f"@{ctx['handle']} "
-            elif ctx.get("author_name"): name_pref = f"{ctx['author_name'].split()[0]}, "
-        def P(s: str) -> str: return f"{name_pref}{s}"
+            if ctx.get("handle"):
+                name_pref = f"@{ctx['handle']} "
+            elif ctx.get("author_name"):
+                name_pref = f"{ctx['author_name'].split()[0]}, "
+
+        def P(s: str) -> str:
+            return f"{name_pref}{s}"
 
         # base CT / professional buckets
         react = [
@@ -814,7 +824,7 @@ class OfflineCommentGenerator:
         ]
 
         # KOL / CT alpha-ish bucket
-         kol = [
+        kol = [
             P(f"{focus_slot} is where serious CT eyes are parked rn"),
             P(f"{focus_slot} reads like early narrative, not exit liquidity"),
             P(f"{focus_slot} is what desks actually model risk around"),
@@ -823,10 +833,15 @@ class OfflineCommentGenerator:
         ]
 
         buckets: Dict[str, List[str]] = {
-            "react": react, "conversation": convo, "calm": calm,
-            "vibe": vibe, "nuanced": nuance, "quick": quick,
+            "react": react,
+            "conversation": convo,
+            "calm": calm,
+            "vibe": vibe,
+            "nuanced": nuance,
+            "quick": quick,
             "kol": kol,
         }
+
         if topic == "chart":
             buckets["chart"] = [
                 P(f"Those levels on {focus_slot} line up with price memory"),
@@ -872,6 +887,7 @@ class OfflineCommentGenerator:
                 P(f"Blunt but fair on {focus_slot}"),
                 P(f"Straightforward way to frame {focus_slot} without fluff"),
             ]
+
         if is_crypto:
             buckets["crypto"] = [
                 P(f"Onchain side of {focus_slot} finally getting discussed honestly"),
@@ -897,7 +913,9 @@ class OfflineCommentGenerator:
                 P(f"{first} keeps a plain language angle on {focus_slot}"),
                 P(f"Trust {first} more on {focus_slot} after posts like this"),
             ]
+
         return buckets
+
 
     def _english_candidate(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
         topic = detect_topic(text); crypto = is_crypto_tweet(text); key = extract_keywords(text)
