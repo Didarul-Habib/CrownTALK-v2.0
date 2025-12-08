@@ -661,6 +661,141 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
 # ------------------------------------------------------------------------------
 # Offline generator (with OTP guards + 6–13 words enforcement)
 # ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Offline generator (with OTP guards + 6–13 words enforcement)
+# ------------------------------------------------------------------------------
+
+class OfflineCommentGenerator:
+    def __init__(self) -> None:
+        self.random = random.Random()
+
+    def _violates_ai_blocklist(self, text: str) -> bool:
+        low = (text or "").lower()
+        if any(p in low for p in AI_BLOCKLIST):
+            return True
+        if re.search(r"\b(so|very|really)\s+\1\b", low):
+            return True
+        if len(re.findall(r"\.\.\.", text or "")) > 1:
+            return True
+        if low.count("—") > 3:
+            return True
+        return False
+
+    def _diversity_ok(self, text: str) -> bool:
+        if not text:
+            return False
+
+        opener = _openers(text)
+        if any(opener.startswith(b) for b in STARTER_BLOCKLIST):
+            return False
+        if opener_seen(opener):
+            return False
+        if trigram_overlap_bad(text, threshold=2):
+            return False
+        if too_similar_to_recent(text):
+            return False
+
+        toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
+        ai_words = {w.lower() for w in AI_BLOCKLIST if " " not in w}
+        novel = [t for t in toks if t not in EN_STOPWORDS and t not in ai_words]
+        return len(set(novel)) >= 2
+
+    def _tidy_en(self, t: str) -> str:
+        # strip emojis for EN
+        t = re.sub(r"[^\x00-\x7F]+", "", t or "")
+        t = enforce_word_count_natural(t, 6, 13)
+        return t
+
+    def _native_buckets(self, script: str) -> List[str]:
+        f = "{focus}"
+        if script == "bn":
+            return [
+                f"{f} নিয়ে সরাসরি কথা, বাড়তি হাইপ না",
+                f"{f} ঠিক থাকলে বাকিটা মিলেই যায়",
+                f"{f} ই ঠিক গেম বদলায়",
+            ]
+        if script == "hi":
+            return [
+                f"{f} यहाँ असली काम दिखता है, शोर नहीं",
+                f"{f} सही हो तो बाकी अपने आप सेट",
+                f"{f} पर टिके रहो, बातें साफ़",
+            ]
+        if script == "ar":
+            return [
+                f"{f} هو الجزء العملي بعيداً عن الضجيج",
+                f"لو ركّزنا على {f} الصورة توضّح",
+                f"{f} هنا يغيّر النتيجة فعلاً",
+            ]
+        if script == "ja":
+            return [
+                f"{f} の実務的な部分が要点だよ",
+                f"{f} に注目すると全体が見えてくる",
+                f"{f} が効いてるから話が進む",
+            ]
+        if script == "ko":
+            return [
+                f"{f} 가 핵심이고 나머진 따라와요",
+                f"{f} 보고 있으면 그림이 깔끔해져요",
+                f"{f} 얘기가 제일 현실적이에요",
+            ]
+        if script == "zh":
+            return [
+                f"{f} 才是重點，別被噪音帶偏",
+                f"抓住 {f}，其他自然順起來",
+                f"{f} 才是實打實的關鍵",
+            ]
+        # generic non-EN fallback
+        return [
+            f"{f} is the practical bit here",
+            f"keep eyes on {f}, rest follows",
+            f"{f} is where it turns real",
+        ]
+
+    def _enforce_length_cjk(
+        self,
+        s: str,
+        min_chars: int = 12,
+        max_chars: int = 48,
+    ) -> str:
+        """Length guard for CJK/ja/ko where 'word' counts aren't meaningful."""
+        s = re.sub(r"\s+", " ", s or "").strip()
+        if len(s) > max_chars:
+            s = s[:max_chars].rstrip()
+        return s
+
+    def _make_native_comment(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
+        key = extract_keywords(text)
+        focus = pick_focus_token(key) or "this"
+        script = ctx.get("script", "latn")
+        buckets = self._native_buckets(script)
+        last = ""
+
+        for _ in range(32):
+            out = normalize_ws(random.choice(buckets).format(focus=focus))
+            if self._violates_ai_blocklist(out):
+                continue
+            if not self._diversity_ok(out):
+                last = out
+                continue
+            if comment_seen(out):
+                last = out
+                continue
+
+            remember_template(re.sub(r"\b\w+\b", "w", out)[:80])
+            remember_comment(out)
+            remember_opener(_openers(out))
+            remember_ngrams(out)
+
+            if script in {"ja", "ko", "zh"}:
+                return self._enforce_length_cjk(out) or out
+            return enforce_word_count_natural(out, 6, 13)
+
+        if last:
+            if script in {"ja", "ko", "zh"}:
+                return self._enforce_length_cjk(last) or last
+            return enforce_word_count_natural(last, 6, 13)
+        return None
+
     def _fixed_buckets(
         self,
         ctx: Dict[str, Any],
@@ -670,6 +805,7 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     ) -> Dict[str, List[str]]:
         focus_slot = "{focus}"
         name_pref = ""
+
         if self.random.random() < 0.30:
             if ctx.get("handle"):
                 name_pref = f"@{ctx['handle']} "
@@ -687,6 +823,7 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
             P(f"Kinda lines up with my experience of {focus_slot}"),
             P(f"Nice to see someone phrase {focus_slot} this clearly"),
         ]
+
         convo = [
             P(f"Curious where {focus_slot} goes if this plays out"),
             P(f"Real conversation people have about {focus_slot}"),
@@ -694,6 +831,7 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
             P(f"Low key everyone is thinking this about {focus_slot}"),
             P(f"Interested to hear more stories around {focus_slot}"),
         ]
+
         calm = [
             P(f"Sensible breakdown of {focus_slot} without drama"),
             P(f"Grounded walk through {focus_slot} step by step"),
@@ -701,17 +839,20 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
             P(f"Good reminder not to overreact to {focus_slot} stuff"),
             P(f"Frames {focus_slot} without the usual noise"),
         ]
+
         vibe = [
             P(f"{focus_slot} feels very timeline core right now"),
             P(f"The vibe around {focus_slot} here is pretty real"),
             P(f"This hits the everyday side of {focus_slot} nicely"),
             P(f"Quietly one of the better posts on {focus_slot}"),
         ]
+
         nuance = [
             P(f"Nuance around {focus_slot} helps more than takes"),
             P(f"Not pushing an extreme angle on {focus_slot} actually helps"),
             P(f"Good mix of context and restraint around {focus_slot}"),
         ]
+
         quick = [
             P(f"Honestly this is how {focus_slot} tends to go"),
             P(f"Kind of exactly what {focus_slot} looks like in practice"),
@@ -743,7 +884,6 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
                 P(f"Risk/reward around {focus_slot} is laid out cleanly"),
                 P(f"Helps frame entries and exits around {focus_slot}"),
             ]
-            # risk / disclosure tone
             buckets["chart_risk"] = [
                 P(f"Not advice but {focus_slot} risk profile matters more than hype"),
                 P(f"Position sizing around {focus_slot} matters more than narratives fr"),
@@ -754,7 +894,6 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
                 P(f"Can not unsee this version of {focus_slot} now"),
                 P(f"Joke lands because {focus_slot} is way too real"),
             ]
-            # a bit of dry sarcasm
             buckets["sarcasm"] = [
                 P(f"Yeah {focus_slot} totally super healthy behavior obviously"),
                 P(f"{focus_slot} speedrun straight to therapist arc lol"),
@@ -811,239 +950,33 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
 
         return buckets
 
-
-
-    def _native_buckets(self, script: str) -> List[str]:
-        f = "{focus}"
-        if script == "bn":
-            return [f"{f} নিয়ে সরাসরি কথা, বাড়তি হাইপ না",
-                    f"{f} ঠিক থাকলে বাকিটা মিলেই যায়",
-                    f"{f} ই ঠিক গেম বদলায়"]
-        if script == "hi":
-            return [f"{f} यहाँ असली काम दिखता है, शोर नहीं",
-                    f"{f} सही हो तो बाकी अपने आप सेट",
-                    f"{f} पर टिके रहो, बातें साफ़"]
-        if script == "ar":
-            return [f"{f} هو الجزء العملي بعيداً عن الضجيج",
-                    f"لو ركّزنا على {f} الصورة توضّح",
-                    f"{f} هنا يغيّر النتيجة فعلاً"]
-        if script == "ja":
-            return [f"{f} の実務的な部分が要点だよ",
-                    f"{f} に注目すると全体が見えてくる",
-                    f"{f} が効いてるから話が進む"]
-        if script == "ko":
-            return [f"{f} 가 핵심이고 나머진 따라와요",
-                    f"{f} 보고 있으면 그림이 깔끔해져요",
-                    f"{f} 얘기가 제일 현실적이에요"]
-        if script == "zh":
-            return [f"{f} 才是重點，別被噪音帶偏",
-                    f"抓住 {f}，其他自然順起來",
-                    f"{f} 才是實打實的關鍵"]
-        return [f"{f} is the practical bit here",
-                f"keep eyes on {f}, rest follows",
-                f"{f} is where it turns real"]
-
-    def _enforce_length_cjk(self, s: str, min_chars: int = 12, max_chars: int = 48) -> str:
-        """Lightweight length guard for CJK/ja/ko where 'word' counts aren't meaningful."""
-        s = re.sub(r"\s+", " ", s or "").strip()
-        if len(s) > max_chars:
-            s = s[:max_chars].rstrip()
-        return s
-
-    def _make_native_comment(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
-        key = extract_keywords(text); focus = pick_focus_token(key) or "this"
-        script = ctx.get("script", "latn")
-        buckets = self._native_buckets(script)
-        last = ""
-        for _ in range(32):
-            out = normalize_ws(random.choice(buckets).format(focus=focus))
-            if self._violates_ai_blocklist(out): continue    
-            if not self._diversity_ok(out): last = out; continue
-            if comment_seen(out): last = out; continue
-            remember_template(re.sub(r"\b\w+\b", "w", out)[:80])
-            remember_comment(out)
-            remember_opener(_openers(out))
-            remember_ngrams(out)
-            if script in {"ja","ko","zh"}:
-                return self._enforce_length_cjk(out) or out
-            return enforce_word_count_natural(out, 6, 13)
-        if last:
-            if script in {"ja","ko","zh"}:
-                return self._enforce_length_cjk(last) or last
-            return enforce_word_count_natural(last, 6, 13)
-        return None
-
-
-        def _fixed_buckets(
-        self,
-        ctx: Dict[str, Any],
-        topic: str,
-        is_crypto: bool,
-        sentiment: str,
-    ) -> Dict[str, List[str]]:
-        focus_slot = "{focus}"
-        name_pref = ""
-        if self.random.random() < 0.30:
-            if ctx.get("handle"):
-                name_pref = f"@{ctx['handle']} "
-            elif ctx.get("author_name"):
-                name_pref = f"{ctx['author_name'].split()[0]}, "
-
-        def P(s: str) -> str:
-            return f"{name_pref}{s}"
-
-        # base CT / professional buckets
-        react = [
-            P(f"{focus_slot} take actually feels grounded"),
-            P(f"Hard to disagree with this view on {focus_slot}"),
-            P(f"Have been nodding along reading about {focus_slot}"),
-            P(f"Kinda lines up with my experience of {focus_slot}"),
-            P(f"Nice to see someone phrase {focus_slot} this clearly"),
-        ]
-        convo = [
-            P(f"Curious where {focus_slot} goes if this plays out"),
-            P(f"Real conversation people have about {focus_slot}"),
-            P(f"Been hearing similar chats around {focus_slot} lately"),
-            P(f"Low key everyone is thinking this about {focus_slot}"),
-            P(f"Interested to hear more stories around {focus_slot}"),
-        ]
-        calm = [
-            P(f"Sensible breakdown of {focus_slot} without drama"),
-            P(f"Grounded walk through {focus_slot} step by step"),
-            P(f"Helps keep {focus_slot} in perspective over hype"),
-            P(f"Good reminder not to overreact to {focus_slot} stuff"),
-            P(f"Frames {focus_slot} without the usual noise"),
-        ]
-        vibe = [
-            P(f"{focus_slot} feels very timeline core right now"),
-            P(f"The vibe around {focus_slot} here is pretty real"),
-            P(f"This hits the everyday side of {focus_slot} nicely"),
-            P(f"Quietly one of the better posts on {focus_slot}"),
-        ]
-        nuance = [
-            P(f"Nuance around {focus_slot} helps more than takes"),
-            P(f"Not pushing an extreme angle on {focus_slot} actually helps"),
-            P(f"Good mix of context and restraint around {focus_slot}"),
-        ]
-        quick = [
-            P(f"Honestly this is how {focus_slot} tends to go"),
-            P(f"Kind of exactly what {focus_slot} looks like in practice"),
-            P(f"Hard not to recognise {focus_slot} in this"),
-        ]
-
-        # KOL / CT alpha-ish bucket
-        kol = [
-            P(f"{focus_slot} is where serious CT eyes are parked rn"),
-            P(f"{focus_slot} reads like early narrative, not exit liquidity"),
-            P(f"{focus_slot} is what desks actually model risk around"),
-            P(f"{focus_slot} feels like the lever, not the headline"),
-            P(f"Respecting {focus_slot} flow, not just timeline noise"),
-        ]
-
-        buckets: Dict[str, List[str]] = {
-            "react": react,
-            "conversation": convo,
-            "calm": calm,
-            "vibe": vibe,
-            "nuanced": nuance,
-            "quick": quick,
-            "kol": kol,
-        }
-
-        if topic == "chart":
-            buckets["chart"] = [
-                P(f"Those levels on {focus_slot} line up with price memory"),
-                P(f"Risk/reward around {focus_slot} is laid out cleanly"),
-                P(f"Helps frame entries and exits around {focus_slot}"),
-            ]
-            # risk / disclosure tone
-            buckets["chart_risk"] = [
-                P(f"Not advice but {focus_slot} risk profile matters more than hype"),
-                P(f"Position sizing around {focus_slot} matters more than narratives fr"),
-            ]
-        elif topic == "meme":
-            buckets["meme"] = [
-                P(f"This is exactly how {focus_slot} feels some days"),
-                P(f"Can not unsee this version of {focus_slot} now"),
-                P(f"Joke lands because {focus_slot} is way too real"),
-            ]
-            # a bit of dry sarcasm
-            buckets["sarcasm"] = [
-                P(f"Yeah {focus_slot} totally super healthy behavior obviously"),
-                P(f"{focus_slot} speedrun straight to therapist arc lol"),
-            ]
-        elif topic == "complaint":
-            buckets["complaint"] = [
-                P(f"Totally fair to be burnt out by {focus_slot}"),
-                P(f"Nice to see someone admit {focus_slot} is exhausting"),
-                P(f"Feels like no one in charge understands {focus_slot}"),
-            ]
-        elif topic in ("announcement", "update"):
-            buckets["announcement"] = [
-                P(f"Ship first talk later energy around {focus_slot} is nice"),
-                P(f"Concrete steps on {focus_slot} beat teasers"),
-                P(f"Real update on {focus_slot} > vague roadmap"),
-            ]
-        elif topic == "thread":
-            buckets["thread"] = [
-                P(f"Thread layers context on {focus_slot} well"),
-                P(f"Bookmarking this as a reference for {focus_slot}"),
-                P(f"Clean structure makes {focus_slot} easy to follow"),
-            ]
-        elif topic == "one_liner":
-            buckets["one_liner"] = [
-                P(f"Blunt but fair on {focus_slot}"),
-                P(f"Straightforward way to frame {focus_slot} without fluff"),
-            ]
-
-        if is_crypto:
-            buckets["crypto"] = [
-                P(f"Onchain side of {focus_slot} finally getting discussed honestly"),
-                P(f"Nice blend of risk and conviction for {focus_slot} here"),
-                P(f"Better than the usual moon talk around {focus_slot}"),
-            ]
-
-        # sentiment-aware tweaks
-        if sentiment == "bullish":
-            buckets["bullish"] = [
-                P(f"{focus_slot} looks like early upside, not late fomo"),
-                P(f"Respecting {focus_slot} momentum but sizing like an adult"),
-            ]
-        elif sentiment == "bearish":
-            buckets["skeptic"] = [
-                P(f"{focus_slot} feels toppy, risk needs real respect rn"),
-                P(f"Glad someone is naming {focus_slot} downside cleanly"),
-            ]
-
-        if self.random.random() < 0.5 and ctx.get("author_name"):
-            first = ctx["author_name"].split()[0]
-            buckets["author"] = [
-                P(f"{first} keeps a plain language angle on {focus_slot}"),
-                P(f"Trust {first} more on {focus_slot} after posts like this"),
-            ]
-
-        return buckets
-
-   
     def _english_candidate(self, text: str, ctx: Dict[str, Any]) -> Optional[str]:
-        topic = detect_topic(text); crypto = is_crypto_tweet(text); key = extract_keywords(text)
+        topic = detect_topic(text)
+        crypto = is_crypto_tweet(text)
+        key = extract_keywords(text)
         sentiment = detect_sentiment(text)
-        if random.random() < 0.7:  # slightly more random / combinator usage
+
+        if random.random() < 0.7:
             out = _combinator(ctx, key)
         else:
             buckets = self._fixed_buckets(ctx, topic, crypto, sentiment)
             kind = random.choice(list(buckets.keys()))
             tmpl = random.choice(buckets[kind])
-            if template_burned(tmpl): return None
+            if template_burned(tmpl):
+                return None
             focus = pick_focus_token(key) or "this"
             out = tmpl.format(focus=focus)
+
         out = self._tidy_en(out)
         return out or None
 
     def _accept(self, line: str) -> bool:
-        if self._violates_ai_blocklist(line): return False
-        if not self._diversity_ok(line): return False
-        if comment_seen(line): return False
+        if self._violates_ai_blocklist(line):
+            return False
+        if not self._diversity_ok(line):
+            return False
+        if comment_seen(line):
+            return False
         return True
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
@@ -1052,8 +985,14 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
         remember_opener(_openers(line))
         remember_ngrams(line)
 
-    def generate_two(self, text: str, author: Optional[str], handle: Optional[str], lang_hint: Optional[str], url: str = "") -> List[Dict[str, Any]]:
-        # language profile
+    def generate_two(
+        self,
+        text: str,
+        author: Optional[str],
+        handle: Optional[str],
+        lang_hint: Optional[str],
+        url: str = "",
+    ) -> List[Dict[str, Any]]:
         ctx = build_context_profile(text, url=url, tweet_author=author, handle=handle)
         out: List[Dict[str, Any]] = []
         non_en = ctx["script"] != "latn"
@@ -1062,7 +1001,7 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
         if non_en:
             native = self._make_native_comment(text, ctx)
             if native and self._accept(native):
-                if ctx["script"] in {"ja","ko","zh"}:
+                if ctx["script"] in {"ja", "ko", "zh"}:
                     native = self._enforce_length_cjk(native)
                 else:
                     native = enforce_word_count_natural(native, 6, 13)
@@ -1074,31 +1013,39 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
         while len(out) < 2 and tries < 80:
             tries += 1
             cand = self._english_candidate(text, ctx)
-            if not cand: continue
+            if not cand:
+                continue
             cand = enforce_word_count_natural(cand, 6, 13)
-            if not cand: continue
-            if any(cand.strip().lower() == c["text"].strip().lower() for c in out): continue
+            if not cand:
+                continue
+            if any(cand.strip().lower() == c["text"].strip().lower() for c in out):
+                continue
             if self._accept(cand):
                 self._commit(cand, url=url, lang="en")
                 out.append({"lang": "en", "text": cand})
 
         # hard guarantee two comments
         if len(out) < 2:
-            out += [{"lang": "en", "text": enforce_word_count_natural(s, 6, 13)} for s in _rescue_two(text)]
+            out += [
+                {"lang": "en", "text": enforce_word_count_natural(s, 6, 13)}
+                for s in _rescue_two(text)
+            ]
             out = [c for c in out if c["text"]][:2]
 
         # keep EN#1 / EN#2 from being near-duplicates
         if len(out) == 2 and _pair_too_similar(out[0]["text"], out[1]["text"]):
-            # try regenerating one backup via rescue
             extras = [_rescue_two(text)[0]]
             extras = [enforce_word_count_natural(e, 6, 13) for e in extras if e]
             for e in extras:
-                if not e: continue
-                if not self._accept(e): continue
+                if not e:
+                    continue
+                if not self._accept(e):
+                    continue
                 out[1] = {"lang": "en", "text": e}
                 break
 
         return out[:2]
+
 
 # Utilities used by the generator
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
