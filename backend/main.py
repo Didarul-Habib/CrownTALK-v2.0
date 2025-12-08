@@ -1346,7 +1346,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         raise RuntimeError("Groq call failed after retries")
 
     raw = (resp.choices[0].message.content or "").strip()
-        candidates = parse_two_comments_flex(raw)
+    candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
