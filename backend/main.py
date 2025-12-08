@@ -766,7 +766,7 @@ class OfflineCommentGenerator:
             return enforce_word_count_natural(last, 6, 13)
         return None
 
-        def _fixed_buckets(
+   def _fixed_buckets(
         self,
         ctx: Dict[str, Any],
         topic: str,
