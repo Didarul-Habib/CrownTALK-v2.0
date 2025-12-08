@@ -377,6 +377,7 @@ AI_BLOCKLIST = {
     "love that","love the","love your","i'm curious","im curious","i am curious",
     "thanks for sharing","thank you for sharing"
 }
+
 GENERIC_PHRASES = {
     "well researched and insightful",
     "very interesting concept",
@@ -423,9 +424,9 @@ GENERIC_PHRASES = {
 }
 
 def contains_generic_phrase(text: str) -> bool:
-    t = (text or "").lower()
-    return any(p in t for p in GENERIC_PHRASES)
-
+    low = (text or "").lower()
+    return any(p in low for p in GENERIC_PHRASES)
+    
 STARTER_BLOCKLIST = {
     "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
     "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
