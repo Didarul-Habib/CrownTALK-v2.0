@@ -674,23 +674,22 @@ class OfflineCommentGenerator:
         return False
 
     def _diversity_ok(self, text: str) -> bool:
-        if not text:
-           return False
-       opener = _openers(text)
-       if any(opener.startswith(b) for b in STARTER_BLOCKLIST):
-          return False
-       if opener_seen(opener):
-          return False
-       if contains_generic_phrase(text):
-          return False
-       if trigram_overlap_bad(text, threshold=2):
-         return False
-       if too_similar_to_recent(text):
-         return False
+    if not text:
+        return False
+
+    opener = _openers(text)
+    if any(opener.startswith(b) for b in STARTER_BLOCKLIST):
+        return False
+    if opener_seen(opener):
+        return False
+    if trigram_overlap_bad(text, threshold=2):
+        return False
+    if too_similar_to_recent(text):
+        return False
+
     toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
     novel = [t for t in toks if t not in EN_STOPWORDS and t not in {w.lower() for w in AI_BLOCKLIST}]
     return len(set(novel)) >= 2
-
 
     def _tidy_en(self, t: str) -> str:
         t = re.sub(r"[^\x00-\x7F]+", "", t)  # strip emojis for EN
