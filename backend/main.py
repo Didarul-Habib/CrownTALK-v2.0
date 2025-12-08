@@ -257,19 +257,29 @@ def remember_ngrams(text: str) -> None:
         pass
 
 def template_burned(tmpl: str) -> bool:
-    thash = sha256(tmpl)
+    fp = style_fingerprint(tmpl)
+    if not fp:
+        return False
+    thash = sha256(fp)
     try:
         with get_conn() as c:
-            return c.execute("SELECT 1 FROM comments_templates_seen WHERE thash=? LIMIT 1", (thash,)).fetchone() is not None
+            return c.execute(
+                "SELECT 1 FROM comments_templates_seen WHERE thash=? LIMIT 1",
+                (thash,),
+            ).fetchone() is not None
     except Exception:
         return False
 
 def remember_template(tmpl: str) -> None:
     try:
+        fp = style_fingerprint(tmpl)
+        if not fp:
+            return
+        thash = sha256(fp)
         with get_conn() as c:
             c.execute(
                 "INSERT OR IGNORE INTO comments_templates_seen(thash, created_at) VALUES (?,?)",
-                (sha256(tmpl), now_ts()),
+                (thash, now_ts()),
             )
     except Exception:
         pass
@@ -364,6 +374,7 @@ EN_STOPWORDS = {
 }
 
 AI_BLOCKLIST = {
+    # generic hype / ai slop
     "amazing","awesome","incredible","empowering","game changer","game-changing","transformative",
     "paradigm shift","as an ai","as a language model","in conclusion","in summary","furthermore","moreover",
     "navigate this landscape","ever-evolving landscape","leverage this insight","cutting edge","state of the art",
@@ -373,10 +384,19 @@ AI_BLOCKLIST = {
     "to be honest","actually","literally","personally i think","my take","as someone who","at the end of the day",
     "moving forward","synergy","circle back","bandwidth","double down","let that sink in","on so many levels","tbh",
     "this resonates","food for thought","hit different",
-    # extra overused stuff we want to kill globally
-    "love that","love the","love your","i'm curious","im curious","i am curious",
-    "thanks for sharing","thank you for sharing"
+    "love that","love this","love the","love your","love the concept","love the direction",
+    "love where you're taking this",
+    "excited to see","excited for","can't wait to see","can’t wait to see",
+    "looking forward to","look forward to",
+    "this is huge","this could be huge","this is massive","this is insane",
+    "game changing","game-changing","total game changer","what a game changing approach",
+    "mind blown","mind-blowing","blows my mind","massive alpha",
+    "thanks for sharing","thank you for sharing","thanks for this","appreciate you",
+    "appreciate it","appreciate this","proud of you","so proud of this",
+    "the vibe around","vibe around","the vibe here is pretty real",
+    "this is what we need","exactly what we need",
 }
+
 GENERIC_PHRASES = {
     "well researched and insightful",
     "very interesting concept",
@@ -654,15 +674,23 @@ class OfflineCommentGenerator:
         return False
 
     def _diversity_ok(self, text: str) -> bool:
-        if not text: return False
-        opener = _openers(text)
-        if any(opener.startswith(b) for b in STARTER_BLOCKLIST): return False
-        if opener_seen(opener): return False
-        if trigram_overlap_bad(text, threshold=2): return False
-        if too_similar_to_recent(text): return False
-        toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
-        novel = [t for t in toks if t not in EN_STOPWORDS and t not in {w.lower() for w in AI_BLOCKLIST}]
-        return len(set(novel)) >= 2
+        if not text:
+           return False
+       opener = _openers(text)
+       if any(opener.startswith(b) for b in STARTER_BLOCKLIST):
+          return False
+       if opener_seen(opener):
+          return False
+       if contains_generic_phrase(text):
+          return False
+       if trigram_overlap_bad(text, threshold=2):
+         return False
+       if too_similar_to_recent(text):
+         return False
+    toks = re.findall(r"[A-Za-z][A-Za-z0-9']+", text.lower())
+    novel = [t for t in toks if t not in EN_STOPWORDS and t not in {w.lower() for w in AI_BLOCKLIST}]
+    return len(set(novel)) >= 2
+
 
     def _tidy_en(self, t: str) -> str:
         t = re.sub(r"[^\x00-\x7F]+", "", t)  # strip emojis for EN
@@ -777,11 +805,12 @@ class OfflineCommentGenerator:
         ]
 
         # KOL / CT alpha-ish bucket
-        kol = [
+         kol = [
             P(f"{focus_slot} is where serious CT eyes are parked rn"),
             P(f"{focus_slot} reads like early narrative, not exit liquidity"),
             P(f"{focus_slot} is what desks actually model risk around"),
             P(f"{focus_slot} feels like the lever, not the headline"),
+            P(f"Respecting {focus_slot} flow, not just timeline noise"),
         ]
 
         buckets: Dict[str, List[str]] = {
@@ -1062,21 +1091,57 @@ def _ensure_question_punctuation(text: str) -> str:
     return t
 
 def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
+    """
+    Shared final cleaner for ALL comments (offline + Groq + OpenAI + Gemini).
+    - strips links/handles/emojis
+    - enforces 6–13 tokens
+    - cuts second polite clause ("thanks for sharing" etc)
+    - removes some AI-ish fillers
+    - adds '?' to clear questions
+    """
     txt = _sanitize_comment(raw)
+
+    # kill ultra-generic openers like "love that", "excited to see"
+    txt_low = txt.lower().lstrip()
+    bad_starts = [
+        "love that ","love this ","love the ","love your ",
+        "excited to see","excited for","can't wait to","cant wait to",
+        "glad to see","happy to see","this is huge","this is massive",
+        "this could be huge","this is insane",
+    ]
+    for bs in bad_starts:
+        if txt_low.startswith(bs):
+            # drop the opener chunk
+            txt_low = txt_low[len(bs):].lstrip()
+            txt = txt_low
+            break
+
     toks = words(txt)
     if not toks:
         return ""
     if len(toks) > max_w:
         toks = toks[:max_w]
-    fillers = ["honestly", "tbh", "still", "though", "right"]
+
+    fillers = ["honestly", "still", "though", "right"]
     i = 0
     while len(toks) < min_w and i < len(fillers):
-        toks.append(fillers[i]); i += 1
+        toks.append(fillers[i])
+        i += 1
+
     out = " ".join(toks).strip()
+
+    # Enforce single thought: strip second clause like "thanks for sharing"
     out = _strip_second_clause(out)
-    if any(b in out.lower() for b in AI_BLOCKLIST):
-        out = " ".join([t for t in out.split() if t.lower() not in {"honestly", "tbh"}]) or out
+
+    # Remove our own filler if now pointless
+    low = out.lower()
+    if any(b in low for b in AI_BLOCKLIST) or contains_generic_phrase(low):
+        out = " ".join(
+            t for t in out.split()
+            if t.lower() not in {"honestly", "tbh", "still", "though"}
+        ) or out
         out = out.strip()
+
     out = _ensure_question_punctuation(out)
     return out
 
