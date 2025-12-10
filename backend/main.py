@@ -1694,10 +1694,43 @@ def generate_two_comments_with_providers(
 # ------------------------------------------------------------------------------
 # API routes (batching + pacing)
 # ------------------------------------------------------------------------------
+
 def chunked(seq, size):
     size = max(1, int(size))
     for i in range(0, len(seq), size):
         yield seq[i:i+size]
+
+
+def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
+    """
+    Build a clean x.com URL with handle + status id when we have them.
+
+    - If upstream payload gives us both handle and tweet_id:
+        https://x.com/{handle}/status/{tweet_id}
+    - Otherwise fall back to whatever url we already normalized.
+    """
+    if t.handle and t.tweet_id:
+        return f"https://x.com/{t.handle}/status/{t.tweet_id}"
+    return original_url
+
+
+@app.after_request
+def add_cors_headers(response):
+    response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    return response
+
+
+@app.route("/", methods=["GET"])
+@app.route("/ping", methods=["GET"])
+def ping():
+    return jsonify({
+        "status": "ok",
+        "groq": bool(USE_GROQ),
+        "ts": int(time.time()),
+    }), 200
+
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
@@ -1711,7 +1744,10 @@ def comment_endpoint():
 
     urls = payload.get("urls")
     if not isinstance(urls, list) or not urls:
-        return jsonify({"error": "Body must contain non-empty 'urls' array", "code": "bad_request"}), 400
+        return jsonify({
+            "error": "Body must contain non-empty 'urls' array",
+            "code": "bad_request",
+        }), 400
 
     try:
         cleaned = clean_and_normalize_urls(urls)
@@ -1729,71 +1765,108 @@ def comment_endpoint():
             "hint": "For best results, chunk your list into batches of around 20–25 links.",
         }), 400
 
-    results, failed = [], []
+    results: list[dict] = []
+    failed: list[dict] = []
+
     for batch in chunked(cleaned, BATCH_SIZE):
         for url in batch:
-             try:
+            try:
                 t = fetch_tweet_data(url)
 
-                # prefer handle from tweet object; fallback to URL
-                handle = getattr(t, "handle", None) or _extract_handle_from_url(url)
-
-                # build canonical link (fix /i/status -> /handle/status)
-                canonical_url = build_canonical_x_url(url, t)
+                # Prefer handle from upstream payload, fall back to URL parsing
+                handle = t.handle or _extract_handle_from_url(url)
 
                 two = generate_two_comments_with_providers(
                     t.text,
                     t.author_name or None,
                     handle,
                     t.lang or None,
-                    url=canonical_url,   # pass canonical into generator context
+                    url=url,
                 )
 
+                display_url = _canonical_x_url_from_tweet(url, t)
+
                 results.append({
-                    "url": canonical_url,   # what frontend will display
-                    "raw_url": url,        # (optional) original pasted link
+                    "url": display_url,
                     "comments": two,
                 })
-                except CrownTALKError as e:
-                    failed.append({"url": url, "reason": str(e), "code": e.code})
-                except Exception:
-                    logger.exception("Unhandled error %s", url)
-                    failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
-                time.sleep(PER_URL_SLEEP)  # <- spacing per URL to avoid spikes
+            except CrownTALKError as e:
+                failed.append({
+                    "url": url,
+                    "reason": str(e),
+                    "code": e.code,
+                })
+            except Exception:
+                logger.exception("Unhandled error while processing %s", url)
+                failed.append({
+                    "url": url,
+                    "reason": "internal_error",
+                    "code": "internal_error",
+                })
+            time.sleep(PER_URL_SLEEP)
 
-        return jsonify({"results": results, "failed": failed}), 200
+    return jsonify({"results": results, "failed": failed}), 200
+
 
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
+
     try:
         data = request.get_json(force=True, silent=True) or {}
         url = data.get("url") or ""
         if not url:
-            return jsonify({"error": "Missing 'url' field", "comments": [], "code": "bad_request"}), 400
+            return jsonify({
+                "error": "Missing 'url' field",
+                "comments": [],
+                "code": "bad_request",
+            }), 400
 
         t = fetch_tweet_data(url)
-        handle = _extract_handle_from_url(url)
+        handle = t.handle or _extract_handle_from_url(url)
 
         two = generate_two_comments_with_providers(
-            t.text, t.author_name or None, handle, t.lang or None, url=url
+            t.text,
+            t.author_name or None,
+            handle,
+            t.lang or None,
+            url=url,
         )
 
-        return jsonify({"url": url, "comments": two}), 200
+        display_url = _canonical_x_url_from_tweet(url, t)
+
+        return jsonify({
+            "url": display_url,
+            "comments": two,
+        }), 200
+
     except CrownTALKError as e:
-        return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
+        return jsonify({
+            "url": url,
+            "error": str(e),
+            "comments": [],
+            "code": e.code,
+        }), 502
     except Exception:
         logger.exception("Unhandled error during reroll for %s", url)
-        return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
+        return jsonify({
+            "url": url,
+            "error": "internal_error",
+            "comments": [],
+            "code": "internal_error",
+        }), 500
+
 
 # ------------------------------------------------------------------------------
 # Boot
 # ------------------------------------------------------------------------------
+
 def main() -> None:
     init_db()
-    # threading.Thread(target=keep_alive, daemon=True).start()  # optional
+    # threading.Thread(target=keep_alive, daemon=True).start()  # optional keep-alive
     app.run(host="0.0.0.0", port=PORT)
+
 
 if __name__ == "__main__":
     main()
