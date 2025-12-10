@@ -1732,39 +1732,36 @@ def comment_endpoint():
     results, failed = [], []
     for batch in chunked(cleaned, BATCH_SIZE):
         for url in batch:
-         try:
-            t = fetch_tweet_data(url)
+             try:
+                t = fetch_tweet_data(url)
 
-            # prefer handle from tweet object; fallback to URL
-            handle = getattr(t, "handle", None) or _extract_handle_from_url(url)
+                # prefer handle from tweet object; fallback to URL
+                handle = getattr(t, "handle", None) or _extract_handle_from_url(url)
 
-            # build canonical link (fix /i/status -> /handle/status)
-            canonical_url = build_canonical_x_url(url, t)
+                # build canonical link (fix /i/status -> /handle/status)
+                canonical_url = build_canonical_x_url(url, t)
 
-            two = generate_two_comments_with_providers(
-                t.text,
-                t.author_name or None,
-                handle,
-                t.lang or None,
-                url=canonical_url,   # pass canonical into generator context
-            )
+                two = generate_two_comments_with_providers(
+                    t.text,
+                    t.author_name or None,
+                    handle,
+                    t.lang or None,
+                    url=canonical_url,   # pass canonical into generator context
+                )
 
-            results.append({
-                "url": canonical_url,   # what frontend will display
-                "raw_url": url,        # (optional) original pasted link
-                "comments": two,
-            })
+                results.append({
+                    "url": canonical_url,   # what frontend will display
+                    "raw_url": url,        # (optional) original pasted link
+                    "comments": two,
+                })
+                except CrownTALKError as e:
+                    failed.append({"url": url, "reason": str(e), "code": e.code})
+                except Exception:
+                    logger.exception("Unhandled error %s", url)
+                    failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
+                time.sleep(PER_URL_SLEEP)  # <- spacing per URL to avoid spikes
 
-
-    
-            except CrownTALKError as e:
-                failed.append({"url": url, "reason": str(e), "code": e.code})
-            except Exception:
-                logger.exception("Unhandled error %s", url)
-                failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
-            time.sleep(PER_URL_SLEEP)  # <- spacing per URL to avoid spikes
-
-    return jsonify({"results": results, "failed": failed}), 200
+        return jsonify({"results": results, "failed": failed}), 200
 
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
