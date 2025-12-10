@@ -139,8 +139,11 @@ def clean_and_normalize_urls(urls: List[str]) -> List[str]:
 @dataclass
 class TweetData:
     text: str
-    author_name: str | None
+    author_name: str
+    handle: str | None       # NEW
+    tweet_id: str | None     # NEW
     lang: str | None
+
 
 _VX_FMT = "https://api.vxtwitter.com/{handle}/status/{status_id}"
 _FX_FMT = "https://api.fxtwitter.com/{handle}/status/{status_id}"
@@ -170,26 +173,54 @@ def _read_json_payload(resp: requests.Response) -> dict:
 
 def _parse_payload(payload: dict) -> TweetData:
     """
-    Extract tweet text, author name, and language from the VX/FX-style payload.
-    We accept both top-level and nested 'tweet' structures.
+    Extract tweet text, author name, handle, tweet_id and language from
+    the VX/FX-style payload. We accept both top-level and nested 'tweet'
+    structures.
     """
     lang = payload.get("lang") or payload.get("tweet", {}).get("lang")
+
     text = (
         payload.get("text")
         or payload.get("full_text")
         or payload.get("tweet", {}).get("text")
         or payload.get("tweet", {}).get("full_text")
     )
+
     user_name = (
         payload.get("user_name")
         or payload.get("user", {}).get("name")
         or payload.get("tweet", {}).get("user", {}).get("name")
     )
+
+    # NEW: try to pull the author's handle (screen_name) out of the payload
+    handle = (
+        payload.get("user_screen_name")
+        or payload.get("user", {}).get("screen_name")
+        or payload.get("tweet", {}).get("user", {}).get("screen_name")
+    )
+
+    # NEW: try to pull the tweet id / id_str
+    raw_id = (
+        payload.get("id_str")
+        or payload.get("id")
+        or payload.get("tweet", {}).get("id_str")
+        or payload.get("tweet", {}).get("id")
+    )
+    tweet_id = str(raw_id) if raw_id is not None else None
+
     if not text:
         raise CrownTALKError("Tweet text missing in upstream payload", code="upstream_shape_changed")
+
     # Normalize whitespace a bit to avoid weird spacing
     text = re.sub(r"\s+", " ", text).strip()
-    return TweetData(text=text, author_name=user_name, lang=lang)
+
+    return TweetData(
+        text=text,
+        author_name=user_name,
+        handle=handle,
+        tweet_id=tweet_id,
+        lang=lang,
+    )
 
 # optional small in-process cache to avoid hitting upstream multiple times
 # for the exact same status in a short window
