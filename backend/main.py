@@ -1731,8 +1731,8 @@ def comment_endpoint():
 
     results, failed = [], []
     for batch in chunked(cleaned, BATCH_SIZE):
-    for url in batch:
-        try:
+        for url in batch:
+         try:
             t = fetch_tweet_data(url)
 
             # prefer handle from tweet object; fallback to URL
@@ -1754,6 +1754,9 @@ def comment_endpoint():
                 "raw_url": url,        # (optional) original pasted link
                 "comments": two,
             })
+
+
+    
             except CrownTALKError as e:
                 failed.append({"url": url, "reason": str(e), "code": e.code})
             except Exception:
