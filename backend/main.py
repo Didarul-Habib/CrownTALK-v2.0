@@ -1107,6 +1107,21 @@ def _rescue_two(tweet_text: str) -> List[str]:
     if not b: b = "Watching where this goes rn tbh still"
     return [a, b]
 
+def build_canonical_x_url(original_url: str, t: Any) -> str:
+    """
+    Build https://x.com/<handle>/status/<tweet_id> when possible.
+    Fallback: return original_url.
+    """
+    try:
+        handle = getattr(t, "handle", None)
+        tweet_id = getattr(t, "tweet_id", None) or getattr(t, "id", None)
+
+        if handle and tweet_id:
+            return f"https://x.com/{handle}/status/{tweet_id}"
+    except Exception:
+        pass
+    return original_url
+
 def _extract_handle_from_url(url: str) -> Optional[str]:
     try:
         m = re.search(r"https?://(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/([^/]+)/status/", url, re.I)
@@ -1716,16 +1731,29 @@ def comment_endpoint():
 
     results, failed = [], []
     for batch in chunked(cleaned, BATCH_SIZE):
-        for url in batch:
-            try:
-                t = fetch_tweet_data(url)
-                handle = _extract_handle_from_url(url)
+    for url in batch:
+        try:
+            t = fetch_tweet_data(url)
 
-                two = generate_two_comments_with_providers(
-                    t.text, t.author_name or None, handle, t.lang or None, url=url
-                )
+            # prefer handle from tweet object; fallback to URL
+            handle = getattr(t, "handle", None) or _extract_handle_from_url(url)
 
-                results.append({"url": url, "comments": two})
+            # build canonical link (fix /i/status -> /handle/status)
+            canonical_url = build_canonical_x_url(url, t)
+
+            two = generate_two_comments_with_providers(
+                t.text,
+                t.author_name or None,
+                handle,
+                t.lang or None,
+                url=canonical_url,   # pass canonical into generator context
+            )
+
+            results.append({
+                "url": canonical_url,   # what frontend will display
+                "raw_url": url,        # (optional) original pasted link
+                "comments": two,
+            })
             except CrownTALKError as e:
                 failed.append({"url": url, "reason": str(e), "code": e.code})
             except Exception:
