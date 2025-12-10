@@ -1637,6 +1637,20 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
             candidates = merged[:2]
     return candidates[:2]
 
+def _available_providers() -> list[tuple[str, callable]]:
+    """
+    Build a list of (name, fn) for all enabled LLM providers.
+    Order is randomized per request by the caller.
+    """
+    providers: list[tuple[str, callable]] = []
+    if USE_GROQ and _groq_client:
+        providers.append(("groq", groq_two_comments))
+    if USE_OPENAI and _openai_client:
+        providers.append(("openai", openai_two_comments))
+    if USE_GEMINI and _gemini_model:
+        providers.append(("gemini", gemini_two_comments))
+    return providers
+
 def generate_two_comments_with_providers(
     tweet_text: str,
     author: Optional[str],
@@ -1644,52 +1658,95 @@ def generate_two_comments_with_providers(
     lang: Optional[str],
     url: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
-    """Groq -> OpenAI -> Gemini -> offline; returns list of {'lang','text'} dicts."""
+    """
+    Hybrid provider strategy with randomness:
+
+    - For each request, randomize the order of enabled providers (Groq, OpenAI, Gemini).
+    - Try them in that random order, accumulating comments.
+    - As soon as we have 2 solid comments, stop.
+    - If all fail or give < 2, fall back to offline generator.
+    """
     candidates: list[str] = []
 
-    if USE_GROQ and _groq_client:
-        try:
-            candidates = groq_two_comments(tweet_text, author)
-        except Exception as e:
-            logger.warning("Groq failed: %s", e)
+    providers = _available_providers()
+    if providers:
+        # randomize call order each request
+        random.shuffle(providers)
 
-    if (not candidates or len(candidates) < 2) and USE_OPENAI and _openai_client:
-        try:
-            more = openai_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
-        except Exception as e:
-            logger.warning("OpenAI failed: %s", e)
+        for name, fn in providers:
+            try:
+                more = fn(tweet_text, author)
+                if more:
+                    # merge + dedupe / anti-pattern logic
+                    candidates = enforce_unique(candidates + more)
+            except Exception as e:
+                logger.warning("%s provider failed: %s", name, e)
 
-    if (not candidates or len(candidates) < 2) and USE_GEMINI and _gemini_model:
-        try:
-            more = gemini_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
-        except Exception as e:
-            logger.warning("Gemini failed: %s", e)
+            if len(candidates) >= 2:
+                break
 
+    # If we still don't have 2 comments, offline generator rescues
     if len(candidates) < 2:
         try:
             offline = offline_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
+            if offline:
+                candidates = enforce_unique(candidates + offline)
         except Exception as e:
             logger.warning("Offline generator failed: %s", e)
 
-    out: List[Dict[str, Any]] = []
-    for c in candidates:
-        if not c:
-            continue
-        out.append({"lang": lang or "en", "text": c})
-        if len(out) >= 2:
-            break
-
-    if not out:
+    # Last-chance fallback: call OfflineCommentGenerator directly
+    if len(candidates) < 2:
         try:
-            out = generator.generate_two(tweet_text, author or None, handle, lang, url=url)
+            extra_items = generator.generate_two(
+                tweet_text,
+                author or None,
+                handle,
+                lang,
+                url=url,
+            )
+            extra = [i.get("text", "") for i in extra_items if i.get("text")]
+            if extra:
+                candidates = enforce_unique(candidates + extra)
         except Exception as e:
             logger.exception("Total failure in provider cascade: %s", e)
-            raise
 
-    return out
+    # If still nothing, hard fallback to 2 simple offline lines
+    if not candidates:
+        raw = _rescue_two(tweet_text)
+        candidates = enforce_unique(raw) or raw
+
+    # Limit to exactly 2 text comments
+    candidates = [c for c in candidates if c][:2]
+
+    out: List[Dict[str, Any]] = []
+    for c in candidates:
+        out.append({"lang": lang or "en", "text": c})
+
+    # If somehow we still ended up with < 2 dicts, ask offline generator directly
+    if len(out) < 2:
+        try:
+            extra_items = generator.generate_two(
+                tweet_text,
+                author or None,
+                handle,
+                lang,
+                url=url,
+            )
+            for item in extra_items:
+                if len(out) >= 2:
+                    break
+                txt = item.get("text")
+                if not txt:
+                    continue
+                out.append({
+                    "lang": item.get("lang") or lang or "en",
+                    "text": txt,
+                })
+        except Exception:
+            pass
+
+    # Final hard cap: exactly 2
+    return out[:2]
 
 # ------------------------------------------------------------------------------
 # API routes (batching + pacing)
