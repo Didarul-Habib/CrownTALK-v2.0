@@ -30,7 +30,7 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "25"))  # ← 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
 # ------------------------------------------------------------------------------
-# Optional Groq (free-tier). If not set, we run fully offline.
+# Groq (free-tier)
 # ------------------------------------------------------------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 USE_GROQ = bool(GROQ_API_KEY)
@@ -44,22 +44,7 @@ if USE_GROQ:
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # ------------------------------------------------------------------------------
-# Optional OpenAI
-# ------------------------------------------------------------------------------
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-USE_OPENAI = bool(OPENAI_API_KEY)
-_openai_client = None
-if USE_OPENAI:
-    try:
-        from openai import OpenAI
-        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    except Exception:
-        _openai_client = None
-        USE_OPENAI = False
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
-# ------------------------------------------------------------------------------
-# Optional Gemini
+# Gemini
 # ------------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 USE_GEMINI = bool(GEMINI_API_KEY)
@@ -75,7 +60,22 @@ if USE_GEMINI:
         USE_GEMINI = False
 
 # ------------------------------------------------------------------------------
-# Keepalive (Render free – optional)
+# Mistral
+# ------------------------------------------------------------------------------
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
+USE_MISTRAL = bool(MISTRAL_API_KEY)
+_mistral_client = None
+if USE_MISTRAL:
+    try:
+        from mistralai import Mistral
+        _mistral_client = Mistral(api_key=MISTRAL_API_KEY)
+    except Exception:
+        _mistral_client = None
+        USE_MISTRAL = False
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
+
+# ------------------------------------------------------------------------------
+# Keepalive
 # ------------------------------------------------------------------------------
 def keep_alive() -> None:
     if not BACKEND_PUBLIC_URL:
@@ -657,14 +657,9 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     out = re.sub(r"\s([,.;:?!])", r"\1", out)
     out = re.sub(r"[.!?;:…]+$", "", out)
     return out
-
 # ------------------------------------------------------------------------------
 # Offline generator (with OTP guards + 6–13 words enforcement)
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-# Offline generator (with OTP guards + 6–13 words enforcement)
-# ------------------------------------------------------------------------------
-
+#
 class OfflineCommentGenerator:
     def __init__(self) -> None:
         self.random = random.Random()
@@ -1283,7 +1278,6 @@ def guess_mode(text: str) -> str:
 
     return "support"
 
-
 def pick_two_diverse_text(candidates: list[str]) -> list[str]:
     """
     Hybrid selector:
@@ -1413,9 +1407,10 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     result = enforce_unique(result, tweet_text=text)
     return result[:2]
 
+
 # ------------------------------------------------------------------------------
+
 # LLM parsing helper shared by providers
-# ------------------------------------------------------------------------------
 def parse_two_comments_flex(raw_text: str) -> list[str]:
     out: list[str] = []
     try:
@@ -1447,7 +1442,7 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
     return []
 
 # ------------------------------------------------------------------------------
-# Groq generator (exactly 2, 6–13 words, tolerant parsing)
+# Groq generator
 # ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
@@ -1551,7 +1546,79 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     return candidates[:2]
 
 # ------------------------------------------------------------------------------
-# OpenAI / Gemini generators (same constraints as Groq)
+# Mistral provider
+# ------------------------------------------------------------------------------
+def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+    """
+    Generate exactly two short comments using Mistral client, with same constraints
+    as other providers. Parsing is tolerant to possible client return shapes.
+    """
+    if not (USE_MISTRAL and _mistral_client):
+        raise RuntimeError("Mistral disabled or client not available")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    prompt = _llm_sys_prompt() + "\n\n" + user_prompt
+
+    raw = ""
+    try:
+        # Try common Mistral client call shapes. adapt if your mistral client differs.
+        # Preferred: .generate / .completion style
+        try:
+            resp = _mistral_client.generate(model=MISTRAL_MODEL, input=prompt, max_tokens=160, temperature=0.9)
+            # Try different possible attributes
+            if hasattr(resp, "generations") and resp.generations:
+                # resp.generations may be list of lists or objects
+                gen = resp.generations[0]
+                if isinstance(gen, (list, tuple)) and gen:
+                    raw = getattr(gen[0], "text", str(gen[0])) or ""
+                else:
+                    raw = getattr(gen, "text", str(gen)) or ""
+            elif hasattr(resp, "output"):
+                raw = getattr(resp, "output", "") or str(resp)
+            else:
+                raw = str(resp)
+        except Exception:
+            # fallback to a simpler call shape
+            resp = _mistral_client.create(prompt=prompt, model=MISTRAL_MODEL, max_tokens=160, temperature=0.9)
+            raw = str(resp)
+    except Exception as e:
+        raise RuntimeError(f"Mistral call failed: {e}")
+
+    raw = (raw or "").strip()
+
+    candidates = parse_two_comments_flex(raw)
+    candidates = [enforce_word_count_natural(c) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates, tweet_text=tweet_text)
+    if len(candidates) < 2:
+        # try splitting sentences from raw
+        sents = re.split(r"[.!?]\s+", raw)
+        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
+        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
+        candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
+
+    tries = 0
+    while len(candidates) < 2 and tries < 2:
+        tries += 1
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+
+    if len(candidates) < 2:
+        raise RuntimeError("Could not produce two valid comments from Mistral")
+
+    # final guard vs near duplicates
+    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+        extra = offline_two_comments(tweet_text, author)
+        merged = enforce_unique(candidates + extra)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
+    return candidates[:2]
+
+# ------------------------------------------------------------------------------
+# Gemini generator (same constraints as Groq)
 # ------------------------------------------------------------------------------
 def _llm_sys_prompt() -> str:
     return (
@@ -1569,37 +1636,6 @@ def _llm_sys_prompt() -> str:
         "[\"first comment\", \"second comment\"].\n"
         "- If you cannot return JSON, return two lines separated by a newline.\n"
     )
-
-def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
-    if not (USE_OPENAI and _openai_client):
-        raise RuntimeError("OpenAI disabled or client not available")
-
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
-    resp = _openai_client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": _llm_sys_prompt()},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=160,
-        temperature=0.9,
-    )
-    raw = (resp.choices[0].message.content or "").strip()
-    candidates = parse_two_comments_flex(raw)
-    candidates = [enforce_word_count_natural(c) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text=tweet_text)
-    if len(candidates) < 2:
-        raise RuntimeError("OpenAI did not produce two valid comments")
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
-        extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
-        if len(merged) >= 2:
-            candidates = merged[:2]
-    return candidates[:2]
 
 def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_GEMINI and _gemini_model):
@@ -1645,8 +1681,8 @@ def _available_providers() -> list[tuple[str, callable]]:
     providers: list[tuple[str, callable]] = []
     if USE_GROQ and _groq_client:
         providers.append(("groq", groq_two_comments))
-    if USE_OPENAI and _openai_client:
-        providers.append(("openai", openai_two_comments))
+    if USE_MISTRAL and _mistral_client:
+        providers.append(("mistral", mistral_two_comments))
     if USE_GEMINI and _gemini_model:
         providers.append(("gemini", gemini_two_comments))
     return providers
@@ -1661,7 +1697,7 @@ def generate_two_comments_with_providers(
     """
     Hybrid provider strategy with randomness:
 
-    - For each request, randomize the order of enabled providers (Groq, OpenAI, Gemini).
+    - For each request, randomize the order of enabled providers (Groq, Mistral, Gemini).
     - Try them in that random order, accumulating comments.
     - As soon as we have 2 solid comments, stop.
     - If all fail or give < 2, fall back to offline generator.
