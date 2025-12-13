@@ -386,7 +386,7 @@ AI_BLOCKLIST = {
     "this resonates","food for thought","hit different",
     "love that","love this","love the","love your","love the concept","love the direction",
     "love where you're taking this",
-    "excited to see","excited for","can't wait to see","can’t wait to see",
+    "excited to see","excited for","can't wait to see","can\u2019t wait to see",
     "looking forward to","look forward to",
     "this is huge","this could be huge","this is massive","this is insane",
     "game changing","game-changing","total game changer","what a game changing approach",
@@ -723,7 +723,7 @@ class OfflineCommentGenerator:
             ]
         if script == "ja":
             return [
-                f"{f} の実務的な部分が要点だよ",
+                f"{f} の実務적な部分が要点だよ",
                 f"{f} に注目すると全体が見えてくる",
                 f"{f} が効いてるから話が進む",
             ]
@@ -1157,31 +1157,6 @@ def _strip_second_clause(text: str) -> str:
     text = re.sub(r"[,\-–]+$", "", text).strip()
     return text
 
-QUESTION_HEADS = ["how","what","why","when","where","who","can","could","do","did","are","is","will","would","should"]
-QUESTION_PHRASES = ["any chance", "curious if", "wondering if", "what's the plan", "what is the plan"]
-
-def _ensure_question_punctuation(text: str) -> str:
-    """
-    If a line clearly *reads* like a question but has no '?', add it.
-    """
-    t = text.strip()
-    low = t.lower()
-    if "?" in t:
-        return t
-    is_question = False
-    for h in QUESTION_HEADS:
-        if low.startswith(h + " "):
-            is_question = True
-            break
-    if not is_question:
-        for ph in QUESTION_PHRASES:
-            if ph in low:
-                is_question = True
-                break
-    if is_question:
-        return t + "?"
-    return t
-
 def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
     """
     Shared final cleaner for ALL comments (offline + Groq + OpenAI + Gemini).
@@ -1407,9 +1382,7 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     result = enforce_unique(result, tweet_text=text)
     return result[:2]
 
-
 # ------------------------------------------------------------------------------
-
 # LLM parsing helper shared by providers
 def parse_two_comments_flex(raw_text: str) -> list[str]:
     out: list[str] = []
@@ -1443,7 +1416,6 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
 
 # ------------------------------------------------------------------------------
 # Groq generator
-# ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
@@ -1474,80 +1446,8 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         try:
             resp = _groq_client.chat.completions.create(
                 model=GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                n=1,
-                max_tokens=160,
-                temperature=0.9,
-            )
-            break
-        except Exception as e:
-            wait_secs = 0
-            try:
-                hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
-                ra = hdrs.get("Retry-After")
-                if ra:
-                    wait_secs = max(1, int(ra))
-            except Exception:
-                pass
-            msg = str(e).lower()
-            if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
-                wait_secs = 2 + attempt
-            if wait_secs:
-                time.sleep(wait_secs); continue
-            raise
+                messages=[...
 
-    if resp is None:
-        raise RuntimeError("Groq call failed after retries")
-
-    raw = (resp.choices[0].message.content or "").strip()
-    candidates = parse_two_comments_flex(raw)
-    candidates = [enforce_word_count_natural(c) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text=tweet_text)
-
-    if len(candidates) < 2:
-        sents = re.split(r"[.!?]\s+", raw)
-        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
-        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-        candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
-
-    tries = 0
-    while len(candidates) < 2 and tries < 2:
-        tries += 1
-        candidates = enforce_unique(
-            candidates + offline_two_comments(tweet_text, author),
-            tweet_text=tweet_text,
-        )
-
-    if len(candidates) < 2:
-        sents = re.split(r"[.!?]\s+", raw)
-        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
-        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-        candidates = enforce_unique(candidates + sents[:2])
-
-    tries = 0
-    while len(candidates) < 2 and tries < 2:
-        tries += 1
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
-
-    if len(candidates) < 2:
-        raise RuntimeError("Could not produce two valid comments")
-
-    # final guard against EN#1 ≈ EN#2
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
-        extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra)
-        if len(merged) >= 2:
-            candidates = merged[:2]
-
-    return candidates[:2]
-
-# ------------------------------------------------------------------------------
-# Mistral provider
-# ------------------------------------------------------------------------------
 def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     """
     Generate exactly two short comments using Mistral client, with same constraints
@@ -1618,8 +1518,7 @@ def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     return candidates[:2]
 
 # ------------------------------------------------------------------------------
-# Gemini generator (same constraints as Groq)
-# ------------------------------------------------------------------------------
+
 def _llm_sys_prompt() -> str:
     return (
         "You write extremely short, human comments for social posts.\n"
@@ -1793,7 +1692,6 @@ def chunked(seq, size):
     for i in range(0, len(seq), size):
         yield seq[i:i+size]
 
-
 def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
     """
     Build a clean x.com URL with handle + status id when we have them.
@@ -1806,14 +1704,12 @@ def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
         return f"https://x.com/{t.handle}/status/{t.tweet_id}"
     return original_url
 
-
 @app.after_request
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
-
 
 @app.route("/", methods=["GET"])
 @app.route("/ping", methods=["GET"])
@@ -1823,7 +1719,6 @@ def ping():
         "groq": bool(USE_GROQ),
         "ts": int(time.time()),
     }), 200
-
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
@@ -1900,7 +1795,6 @@ def comment_endpoint():
 
     return jsonify({"results": results, "failed": failed}), 200
 
-
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
     if request.method == "OPTIONS":
@@ -1950,9 +1844,6 @@ def reroll_endpoint():
             "code": "internal_error",
         }), 500
 
-
-# ------------------------------------------------------------------------------
-# Boot
 # ------------------------------------------------------------------------------
 
 def main() -> None:
@@ -1963,3 +1854,6 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+                          
+                          
