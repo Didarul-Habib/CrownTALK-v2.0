@@ -5,7 +5,7 @@ import re
 import time
 import threading
 from dataclasses import dataclass
-from typing import List, Tuple
+from typing import List, Tuple, Optional, Any
 import os
 import requests
 from urllib.parse import urlparse
@@ -139,11 +139,10 @@ def clean_and_normalize_urls(urls: List[str]) -> List[str]:
 @dataclass
 class TweetData:
     text: str
-    author_name: str
+    author_name: Optional[str]
     handle: str | None       # NEW
     tweet_id: str | None     # NEW
     lang: str | None
-
 
 _VX_FMT = "https://api.vxtwitter.com/{handle}/status/{status_id}"
 _FX_FMT = "https://api.fxtwitter.com/{handle}/status/{status_id}"
@@ -331,3 +330,27 @@ def fetch_tweet_data(x_url: str) -> TweetData:
         "Upstream is rate-limiting or unavailable; try fewer links or wait a minute",
         code="upstream_rate_limited",
     )
+
+# ------------------------------------------------------------------------------
+# Helper: style_fingerprint (used by main.py template dedupe logic)
+# ------------------------------------------------------------------------------
+def style_fingerprint(s: str) -> str:
+    """
+    Produce a compact structural fingerprint for a template line.
+
+    Strategy:
+    - Lowercase, strip punctuation
+    - Replace words/numbers with a placeholder token 'w'
+    - Collapse repeated whitespace
+    - Return a truncated fingerprint suitable for hashing
+    """
+    if not s:
+        return ""
+    # lowercase and strip some punctuation but keep simple separators
+    t = s.lower()
+    # replace non-word characters with spaces
+    t = re.sub(r"[^\w\s']", " ", t)
+    # replace words/numbers with 'w' to capture shape, keep short tokens for context
+    t = re.sub(r"\b\w+\b", "w", t)
+    t = re.sub(r"\s+", " ", t).strip()
+    return t[:160]
