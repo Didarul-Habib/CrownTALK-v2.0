@@ -9,6 +9,8 @@ requests==2.32.5
 groq==0.37.1
 google-generativeai==0.8.5
 mistralai==0.0.12
+transformers==4.36.2
+
 
 # Optional: local .env support (Render env vars work without this too)
 python-dotenv==1.0.1
