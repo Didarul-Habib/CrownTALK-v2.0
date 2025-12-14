@@ -1280,6 +1280,18 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     out = _ensure_question_punctuation(out)
     return out
 
+def detect_sentiment(text: str) -> str:
+    """
+    Placeholder fallback sentiment detector. Returns one of:
+    'positive', 'neutral', 'negative'
+    """
+    text = text.lower()
+    if any(w in text for w in ["love", "good", "great", "happy", "🔥", "win"]):
+        return "positive"
+    elif any(w in text for w in ["bad", "hate", "wtf", "lame", "fail"]):
+        return "negative"
+    return "neutral"
+
 def guess_mode(text: str) -> str:
     """
     Very rough mode guess:
