@@ -1,5 +1,3 @@
-# PART 1/4
-# Based on user's working file (see uploaded): :contentReference[oaicite:0]{index=0}
 from __future__ import annotations
 
 import json, os, re, time, random, hashlib, logging, sqlite3, threading
@@ -9,22 +7,6 @@ from urllib.parse import urlparse
 
 import requests
 from flask import Flask, request, jsonify
-
-# Optional providers (imported lazily / guarded by env)
-try:
-    import cohere
-except Exception:
-    cohere = None
-
-try:
-    from transformers import pipeline
-except Exception:
-    pipeline = None
-
-try:
-    from mistralai import Mistral
-except Exception:
-    Mistral = None
 
 # Helpers from utils.py (already deployed)
 from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
@@ -48,7 +30,7 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "25"))  # ← 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
 # ------------------------------------------------------------------------------
-# Optional Groq (free-tier)
+# Groq (free-tier)
 # ------------------------------------------------------------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 USE_GROQ = bool(GROQ_API_KEY)
@@ -62,22 +44,7 @@ if USE_GROQ:
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # ------------------------------------------------------------------------------
-# OpenAI (optional)
-# ------------------------------------------------------------------------------
-OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
-USE_OPENAI = bool(OPENAI_API_KEY)
-_openai_client = None
-if USE_OPENAI:
-    try:
-        from openai import OpenAI
-        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
-    except Exception:
-        _openai_client = None
-        USE_OPENAI = False
-OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
-
-# ------------------------------------------------------------------------------
-# Gemini (optional)
+# Gemini
 # ------------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 USE_GEMINI = bool(GEMINI_API_KEY)
@@ -93,45 +60,19 @@ if USE_GEMINI:
         USE_GEMINI = False
 
 # ------------------------------------------------------------------------------
-# Mistral (optional)
+# Mistral
 # ------------------------------------------------------------------------------
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-USE_MISTRAL = bool(MISTRAL_API_KEY) and (Mistral is not None)
+USE_MISTRAL = bool(MISTRAL_API_KEY)
 _mistral_client = None
 if USE_MISTRAL:
     try:
+        from mistralai import Mistral
         _mistral_client = Mistral(api_key=MISTRAL_API_KEY)
     except Exception:
         _mistral_client = None
         USE_MISTRAL = False
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
-
-# ------------------------------------------------------------------------------
-# Cohere (optional)
-# ------------------------------------------------------------------------------
-COHERE_API_KEY = os.getenv("COHERE_API_KEY")
-USE_COHERE = bool(COHERE_API_KEY) and cohere is not None
-_cohere_client = None
-if USE_COHERE:
-    try:
-        _cohere_client = cohere.Client(COHERE_API_KEY)
-    except Exception:
-        _cohere_client = None
-        USE_COHERE = False
-COHERE_MODEL = os.getenv("COHERE_MODEL", "command")
-
-# ------------------------------------------------------------------------------
-# HuggingFace (transformers pipeline) optional local model (e.g., gpt2 for free user)
-# ------------------------------------------------------------------------------
-HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL")
-USE_HF = bool(HUGGINGFACE_MODEL) and pipeline is not None
-_hf_pipeline = None
-if USE_HF:
-    try:
-        _hf_pipeline = pipeline("text-generation", model=HUGGINGFACE_MODEL)
-    except Exception:
-        _hf_pipeline = None
-        USE_HF = False
 
 # ------------------------------------------------------------------------------
 # Keepalive
@@ -315,14 +256,6 @@ def remember_ngrams(text: str) -> None:
     except Exception:
         pass
 
-def style_fingerprint(tmpl: str) -> str:
-    # simple but stable fingerprint for templates
-    try:
-        s = re.sub(r"\W+", " ", (tmpl or "").lower()).strip()
-        return re.sub(r"\s+", " ", s)
-    except Exception:
-        return tmpl or ""
-
 def template_burned(tmpl: str) -> bool:
     fp = style_fingerprint(tmpl)
     if not fp:
@@ -375,7 +308,18 @@ def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300)
             return True
     return False
 
-# PART 2/4
+def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
+    """Pairwise similarity (Jaccard over trigrams) to avoid EN#1 ≈ EN#2."""
+    ta = _word_trigrams(a)
+    tb = _word_trigrams(b)
+    if not ta or not tb:
+        return False
+    inter = len(ta & tb)
+    uni = len(ta | tb)
+    if not uni:
+        return False
+    return (inter / uni) >= threshold
+
 # ------------------------------------------------------------------------------
 # CORS + Health
 # ------------------------------------------------------------------------------
@@ -403,21 +347,8 @@ def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"[@#]\S+", "", txt)
     txt = re.sub(r"\s+", " ", txt).strip()
     txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    try:
-        txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
-    except re.error:
-        txt = re.sub(r"[\u2600-\u27BF]+", "", txt)
+    txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
     return txt
-
-def _ensure_question_punctuation(s: str) -> str:
-    s = (s or "").strip()
-    if not s:
-        return s
-    if s.endswith("?"):
-        return s
-    if re.match(r"^(how|what|why|when|where|can|could|would|do|does|did)\b", s.lower()):
-        return s.rstrip(".!") + "?"
-    return s
 
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
@@ -431,24 +362,7 @@ def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
             if len(toks) >= min_w: break
             toks.append(filler)
         if len(toks) < min_w: break
-    out = " ".join(toks).strip()
-
-    # kill ultra-generic openers like "love that", "excited to see"
-    txt_low = out.lower().lstrip()
-    bad_starts = [
-        "love that ","love this ","love the ","love your ",
-        "excited to see","excited for","can't wait to","cant wait to",
-        "glad to see","happy to see","this is huge","this is massive",
-        "this could be huge","this is insane",
-    ]
-    for bs in bad_starts:
-        if txt_low.startswith(bs):
-            txt_low = txt_low[len(bs):].lstrip()
-            out = txt_low
-            break
-
-    out = _ensure_question_punctuation(out)
-    return out
+    return " ".join(toks).strip()
 
 # ------------------------------------------------------------------------------
 # Topic / keywords (to keep comments context-aware, not templated)
@@ -472,7 +386,7 @@ AI_BLOCKLIST = {
     "this resonates","food for thought","hit different",
     "love that","love this","love the","love your","love the concept","love the direction",
     "love where you're taking this",
-    "excited to see","excited for","can't wait to see","can\u2019t wait to see",
+    "excited to see","excited for","can't wait to see","can’t wait to see",
     "looking forward to","look forward to",
     "this is huge","this could be huge","this is massive","this is insane",
     "game changing","game-changing","total game changer","what a game changing approach",
@@ -640,7 +554,6 @@ def detect_topic(text: str) -> str:
         return "one_liner"
     return "generic"
 
-# PART 3/4
 def is_crypto_tweet(text: str) -> bool:
     t = (text or "").lower()
     crypto_keywords = [
@@ -648,6 +561,23 @@ def is_crypto_tweet(text: str) -> bool:
         "dex","cex","onchain","on-chain","gas fees","btc","eth","sol","arb","layer two","mainnet"
     ]
     return any(k in t for k in crypto_keywords) or bool(re.search(r"\$\w{2,8}", text or ""))
+
+def detect_sentiment(text: str) -> str:
+    """Very lightweight bullish / bearish tone detector for CT posts."""
+    t = (text or "").lower()
+    bull = [
+        "bullish","sending","send it","moon","mooning","ath","all time high",
+        "pump","pumping","green candles","ape in","apeing in","printing"
+    ]
+    bear = [
+        "worried","concerned","dump","dumping","rug","rugged","rekt","down only",
+        "exit liquidity","overvalued","scam","red candles","bagholding","bag holder"
+    ]
+    if any(k in t for k in bull):
+        return "bullish"
+    if any(k in t for k in bear):
+        return "bearish"
+    return "neutral"
 
 def extract_keywords(text: str) -> list[str]:
     cleaned = re.sub(r"https?://\S+", "", text or "")
@@ -727,10 +657,9 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     out = re.sub(r"\s([,.;:?!])", r"\1", out)
     out = re.sub(r"[.!?;:…]+$", "", out)
     return out
-
 # ------------------------------------------------------------------------------
 # Offline generator (with OTP guards + 6–13 words enforcement)
-# ------------------------------------------------------------------------------
+#
 class OfflineCommentGenerator:
     def __init__(self) -> None:
         self.random = random.Random()
@@ -1279,18 +1208,6 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
 
     out = _ensure_question_punctuation(out)
     return out
-
-def detect_sentiment(text: str) -> str:
-    """
-    Placeholder fallback sentiment detector. Returns one of:
-    'positive', 'neutral', 'negative'
-    """
-    text = text.lower()
-    if any(w in text for w in ["love", "good", "great", "happy", "🔥", "win"]):
-        return "positive"
-    elif any(w in text for w in ["bad", "hate", "wtf", "lame", "fail"]):
-        return "negative"
-    return "neutral"
 
 def guess_mode(text: str) -> str:
     """
