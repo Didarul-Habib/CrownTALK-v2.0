@@ -1,3 +1,4 @@
+# PART 1/4
 from __future__ import annotations
 
 import json, os, re, time, random, hashlib, logging, sqlite3, threading
@@ -102,8 +103,7 @@ COHERE_MODEL = os.getenv("COHERE_MODEL", "small")
 
 # ------------------------------------------------------------------------------
 # HuggingFace (transformers pipeline)
-# ------------------------------------------------------------------------------
-HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL")
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "gpt2")
 USE_HF = bool(HUGGINGFACE_MODEL) and pipeline is not None
 _hf_pipeline = None
 if USE_HF:
@@ -394,23 +394,8 @@ def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"[@#]\S+", "", txt)
     txt = re.sub(r"\s+", " ", txt).strip()
     txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    try:
-        txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
-    except re.error:
-        # fallback safe range removal
-        txt = re.sub(r"[\u2600-\u27BF]+", "", txt)
+    txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
     return txt
-
-def _ensure_question_punctuation(s: str) -> str:
-    s = (s or "").strip()
-    if not s:
-        return s
-    if s.endswith("?"):
-        return s
-    # naive heuristic: if it starts with question word or contains 'how ' etc
-    if re.match(r"^(how|what|why|when|where|can|could|would|do|does|did)\b", s.lower()):
-        return s.rstrip(".!") + "?"
-    return s
 
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
@@ -434,7 +419,9 @@ EN_STOPWORDS = {
     "into","like","through","after","over","between","out","against","during","without","before","under",
     "around","among","is","are","be","am","was","were","it","its","that","this","so","very","really"
 }
+# (continued next part)
 
+# PART 2/4
 AI_BLOCKLIST = {
     # generic hype / ai slop
     "amazing","awesome","incredible","empowering","game changer","game-changing","transformative",
@@ -1062,7 +1049,7 @@ class OfflineCommentGenerator:
                     native = self._enforce_length_cjk(native)
                 else:
                     native = enforce_word_count_natural(native, 6, 13)
-                self._commit(native, url=url, lang=ctx["script"]) 
+                self._commit(native, url=url, lang=ctx["script"])
                 out.append({"lang": ctx["script"], "text": native})
 
         # fill with English until we have 2
@@ -1102,8 +1089,8 @@ class OfflineCommentGenerator:
                 break
 
         return out[:2]
-
-
+# (continued next part)
+# PART 3/4
 # Utilities used by the generator
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
     text = (raw_text or "").strip()
@@ -1576,7 +1563,8 @@ def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
             candidates = merged[:2]
 
     return candidates[:2]
-
+# (continued next part)
+# PART 4/4
 # ------------------------------------------------------------------------------
 # Cohere generator
 def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
@@ -1701,6 +1689,7 @@ def generate_two_comments_with_providers(
             try:
                 more = fn(tweet_text, author)
                 if more:
+                    # merge + dedupe / anti-pattern logic
                     candidates = enforce_unique(candidates + more)
             except Exception as e:
                 logger.warning("%s provider failed: %s", name, e)
@@ -1738,12 +1727,14 @@ def generate_two_comments_with_providers(
         raw = _rescue_two(tweet_text)
         candidates = enforce_unique(raw) or raw
 
+    # Limit to exactly 2 text comments
     candidates = [c for c in candidates if c][:2]
 
     out: List[Dict[str, Any]] = []
     for c in candidates:
         out.append({"lang": lang or "en", "text": c})
 
+    # If somehow we still ended up with < 2 dicts, ask offline generator directly
     if len(out) < 2:
         try:
             extra_items = generator.generate_two(
@@ -1766,6 +1757,7 @@ def generate_two_comments_with_providers(
         except Exception:
             pass
 
+    # Final hard cap: exactly 2
     return out[:2]
 
 # ------------------------------------------------------------------------------
