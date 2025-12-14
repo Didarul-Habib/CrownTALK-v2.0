@@ -1,3 +1,5 @@
+# PART 1/4
+# Based on user's working file (see uploaded): :contentReference[oaicite:0]{index=0}
 from __future__ import annotations
 
 import json, os, re, time, random, hashlib, logging, sqlite3, threading
@@ -18,6 +20,11 @@ try:
     from transformers import pipeline
 except Exception:
     pipeline = None
+
+try:
+    from mistralai import Mistral
+except Exception:
+    Mistral = None
 
 # Helpers from utils.py (already deployed)
 from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
@@ -41,11 +48,10 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "25"))  # ← 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
 # ------------------------------------------------------------------------------
-# Groq (free-tier)
+# Optional Groq (free-tier)
 # ------------------------------------------------------------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 USE_GROQ = bool(GROQ_API_KEY)
-_groq_client = None
 if USE_GROQ:
     try:
         from groq import Groq
@@ -56,7 +62,22 @@ if USE_GROQ:
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 # ------------------------------------------------------------------------------
-# Gemini
+# OpenAI (optional)
+# ------------------------------------------------------------------------------
+OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
+USE_OPENAI = bool(OPENAI_API_KEY)
+_openai_client = None
+if USE_OPENAI:
+    try:
+        from openai import OpenAI
+        _openai_client = OpenAI(api_key=OPENAI_API_KEY)
+    except Exception:
+        _openai_client = None
+        USE_OPENAI = False
+OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
+
+# ------------------------------------------------------------------------------
+# Gemini (optional)
 # ------------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 USE_GEMINI = bool(GEMINI_API_KEY)
@@ -72,14 +93,13 @@ if USE_GEMINI:
         USE_GEMINI = False
 
 # ------------------------------------------------------------------------------
-# Mistral
+# Mistral (optional)
 # ------------------------------------------------------------------------------
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY")
-USE_MISTRAL = bool(MISTRAL_API_KEY)
+USE_MISTRAL = bool(MISTRAL_API_KEY) and (Mistral is not None)
 _mistral_client = None
 if USE_MISTRAL:
     try:
-        from mistralai import Mistral
         _mistral_client = Mistral(api_key=MISTRAL_API_KEY)
     except Exception:
         _mistral_client = None
@@ -87,7 +107,7 @@ if USE_MISTRAL:
 MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-latest")
 
 # ------------------------------------------------------------------------------
-# Cohere
+# Cohere (optional)
 # ------------------------------------------------------------------------------
 COHERE_API_KEY = os.getenv("COHERE_API_KEY")
 USE_COHERE = bool(COHERE_API_KEY) and cohere is not None
@@ -98,10 +118,10 @@ if USE_COHERE:
     except Exception:
         _cohere_client = None
         USE_COHERE = False
-COHERE_MODEL = os.getenv("COHERE_MODEL", "small")
+COHERE_MODEL = os.getenv("COHERE_MODEL", "command")
 
 # ------------------------------------------------------------------------------
-# HuggingFace (transformers pipeline)
+# HuggingFace (transformers pipeline) optional local model (e.g., gpt2 for free user)
 # ------------------------------------------------------------------------------
 HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL")
 USE_HF = bool(HUGGINGFACE_MODEL) and pipeline is not None
@@ -355,18 +375,7 @@ def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300)
             return True
     return False
 
-def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
-    """Pairwise similarity (Jaccard over trigrams) to avoid EN#1 ≈ EN#2."""
-    ta = _word_trigrams(a)
-    tb = _word_trigrams(b)
-    if not ta or not tb:
-        return False
-    inter = len(ta & tb)
-    uni = len(ta | tb)
-    if not uni:
-        return False
-    return (inter / uni) >= threshold
-
+# PART 2/4
 # ------------------------------------------------------------------------------
 # CORS + Health
 # ------------------------------------------------------------------------------
@@ -397,34 +406,10 @@ def sanitize_comment(raw: str) -> str:
     try:
         txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
     except re.error:
-        # fallback safe range removal
         txt = re.sub(r"[\u2600-\u27BF]+", "", txt)
     return txt
 
 def _ensure_question_punctuation(s: str) -> str:
-    s = (s or "").strip()
-    if not s:
-        return s
-    if s.endswith("?"):
-        return s
-    # naive heuristic: if it starts with question word or contains 'how ' etc
-    if re.match(r"^(how|what|why|when|where|can|could|would|do|does|did)\b", s.lower()):
-        return s.rstrip(".!") + "?"
-    return s
-
-def _ensure_question_punctuation(s: str) -> str:
-    # duplicate-safe (keeps the same logic) - defined to avoid NameError in all variants
-    s = (s or "").strip()
-    if not s:
-        return s
-    if s.endswith("?"):
-        return s
-    if re.match(r"^(how|what|why|when|where|can|could|would|do|does|did)\b", s.lower()):
-        return s.rstrip(".!") + "?"
-    return s
-
-def _ensure_question_punctuation(s: str) -> str:
-    # final assurance; identical function but ensuring it's present exactly once for older variants
     s = (s or "").strip()
     if not s:
         return s
@@ -446,7 +431,24 @@ def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
             if len(toks) >= min_w: break
             toks.append(filler)
         if len(toks) < min_w: break
-    return " ".join(toks).strip()
+    out = " ".join(toks).strip()
+
+    # kill ultra-generic openers like "love that", "excited to see"
+    txt_low = out.lower().lstrip()
+    bad_starts = [
+        "love that ","love this ","love the ","love your ",
+        "excited to see","excited for","can't wait to","cant wait to",
+        "glad to see","happy to see","this is huge","this is massive",
+        "this could be huge","this is insane",
+    ]
+    for bs in bad_starts:
+        if txt_low.startswith(bs):
+            txt_low = txt_low[len(bs):].lstrip()
+            out = txt_low
+            break
+
+    out = _ensure_question_punctuation(out)
+    return out
 
 # ------------------------------------------------------------------------------
 # Topic / keywords (to keep comments context-aware, not templated)
@@ -638,6 +640,7 @@ def detect_topic(text: str) -> str:
         return "one_liner"
     return "generic"
 
+# PART 3/4
 def is_crypto_tweet(text: str) -> bool:
     t = (text or "").lower()
     crypto_keywords = [
@@ -645,23 +648,6 @@ def is_crypto_tweet(text: str) -> bool:
         "dex","cex","onchain","on-chain","gas fees","btc","eth","sol","arb","layer two","mainnet"
     ]
     return any(k in t for k in crypto_keywords) or bool(re.search(r"\$\w{2,8}", text or ""))
-
-def detect_sentiment(text: str) -> str:
-    """Very lightweight bullish / bearish tone detector for CT posts."""
-    t = (text or "").lower()
-    bull = [
-        "bullish","sending","send it","moon","mooning","ath","all time high",
-        "pump","pumping","green candles","ape in","apeing in","printing"
-    ]
-    bear = [
-        "worried","concerned","dump","dumping","rug","rugged","rekt","down only",
-        "exit liquidity","overvalued","scam","red candles","bagholding","bag holder"
-    ]
-    if any(k in t for k in bull):
-        return "bullish"
-    if any(k in t for k in bear):
-        return "bearish"
-    return "neutral"
 
 def extract_keywords(text: str) -> list[str]:
     cleaned = re.sub(r"https?://\S+", "", text or "")
@@ -686,6 +672,7 @@ def pick_focus_token(tokens: List[str]) -> Optional[str]:
 
 # ------------------------------------------------------------------------------
 # Variety buckets + combinator (keeps comments varied)
+# ------------------------------------------------------------------------------
 LEADINS = [
     "short answer:","zooming out,","if you're weighing","plainly,","real talk:","on the math,",
     "from experience,","quick take:","low key,","no fluff:","in practice,","gut check:",
@@ -740,9 +727,10 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     out = re.sub(r"\s([,.;:?!])", r"\1", out)
     out = re.sub(r"[.!?;:…]+$", "", out)
     return out
+
 # ------------------------------------------------------------------------------
 # Offline generator (with OTP guards + 6–13 words enforcement)
-#
+# ------------------------------------------------------------------------------
 class OfflineCommentGenerator:
     def __init__(self) -> None:
         self.random = random.Random()
@@ -1083,7 +1071,7 @@ class OfflineCommentGenerator:
                     native = self._enforce_length_cjk(native)
                 else:
                     native = enforce_word_count_natural(native, 6, 13)
-                self._commit(native, url=url, lang=ctx["script"]) 
+                self._commit(native, url=url, lang=ctx["script"])
                 out.append({"lang": ctx["script"], "text": native})
 
         # fill with English until we have 2
@@ -1124,6 +1112,7 @@ class OfflineCommentGenerator:
 
         return out[:2]
 
+# PART 4/4
 # Utilities used by the generator
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
     text = (raw_text or "").strip()
@@ -1209,8 +1198,6 @@ def _extract_handle_from_url(url: str) -> Optional[str]:
 generator = OfflineCommentGenerator()
 
 # --- Minimal helpers used by Groq path ---
-# NOTE: we already have a words() helper above; do not redefine.
-
 def _sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
     txt = re.sub(r"[@#]\S+", "", txt)
@@ -1446,29 +1433,6 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
 
     return out[:2]
 
-# New relaxed uniqueness used for rerolls (does not consult comment_seen/opener_seen/trigram)
-def enforce_unique_relaxed(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
-    out: list[str] = []
-    seen_local = set()
-    for c in candidates:
-        c = enforce_word_count_natural(c)
-        if not c:
-            continue
-        if contains_generic_phrase(c):
-            continue
-        # local dedupe only
-        cl = c.strip().lower()
-        if cl in seen_local:
-            continue
-        seen_local.add(cl)
-        # do not call remember_comment or opener/trigram checks here; reroll wants alternatives
-        out.append(c)
-        if len(out) >= 2:
-            break
-    if len(out) >= 2:
-        out = pick_two_diverse_text(out)
-    return out[:2]
-
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     items = generator.generate_two(text, author or None, None, None)
     en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
@@ -1519,62 +1483,162 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
     return []
 
 # ------------------------------------------------------------------------------
-# New helper: build prompt (used by many providers)
-def _build_prompt(tweet_text: str, author: Optional[str] = None) -> str:
-    sys = (
-        "You write extremely short, human comments for social posts.\n"
-        "- Output exactly two comments.\n"
-        "- Each comment must be 6-13 words.\n"
-        "- One concise thought per comment (no 'thanks for sharing').\n"
-        "- Natural conversational tone. Avoid emojis/hashtags/links.\n"
-        "- Make the two comments have different vibes (support vs question).\n"
-        "Return as a JSON array or as two lines."
-    )
-    user = f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\nReturn exactly two distinct comments (JSON array or two lines)."
-    return sys + "\n\n" + user
-
-# ------------------------------------------------------------------------------
-# Groq generator (updated to use _build_prompt)
+# Groq generator (exactly 2, 6–13 words, tolerant parsing)
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
-    prompt = _build_prompt(tweet_text, author)
+    sys_prompt = (
+        "You write extremely short, human comments for social posts.\n"
+        "- Output exactly two comments.\n"
+        "- Each comment must be 6-13 words.\n"
+        "- Natural conversational tone, as if you just read the post.\n"
+        "- The two comments must have different vibes (e.g., supportive vs curious).\n"
+        "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
+        "- Avoid repetitive templates; vary syntax and rhythm.\n"
+        "- Prefer returning a pure JSON array of two strings, like: "
+        "[\"first comment\", \"second comment\"].\n"
+        "- If you cannot return JSON, return two lines separated by a newline.\n"
+    )
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+
     resp = None
-    raw = ""
     for attempt in range(3):
         try:
             resp = _groq_client.chat.completions.create(
                 model=GROQ_MODEL,
-                messages=[{"role": "system", "content": prompt}],
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                n=1,
                 max_tokens=160,
+                temperature=0.8,
             )
-            raw = str(resp)
-            logger.debug("groq raw: %s", raw[:1000])
             break
         except Exception as e:
-            raw = str(e)
-            logger.warning("Groq attempt %s failed: %s", attempt, e)
-            time.sleep(0.2)
+            wait_secs = 0
+            try:
+                hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
+                ra = hdrs.get("Retry-After")
+                if ra:
+                    wait_secs = max(1, int(ra))
+            except Exception:
+                pass
+            msg = str(e).lower()
+            if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
+                wait_secs = 2 + attempt
+            if wait_secs:
+                time.sleep(wait_secs); continue
+            raise
+
+    if resp is None:
+        raise RuntimeError("Groq call failed after retries")
+
+    raw = (resp.choices[0].message.content or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [enforce_word_count_natural(c) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates)
+
+    if len(candidates) < 2:
+        sents = re.split(r"[.!?]\s+", raw)
+        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
+        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
+        candidates = enforce_unique(candidates + sents[:2])
+
+    tries = 0
+    while len(candidates) < 2 and tries < 2:
+        tries += 1
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
+
+    if len(candidates) < 2:
+        raise RuntimeError("Could not produce two valid comments")
+
+    return candidates[:2]
+
+# ------------------------------------------------------------------------------
+# OpenAI / Gemini / Mistral / Cohere / HF generators (same constraints as Groq)
+def _llm_sys_prompt() -> str:
+    return (
+        "You write extremely short, human comments for social posts.\n"
+        "- Output exactly two comments.\n"
+        "- Each comment must be 6-13 words.\n"
+        "- Natural conversational tone, as if you just read the post.\n"
+        "- The two comments must have different vibes (e.g., supportive vs curious).\n"
+        "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
+        "- Avoid repetitive templates; vary syntax and rhythm.\n"
+        "- Prefer returning a pure JSON array of two strings, like: "
+        "[\"first comment\", \"second comment\"].\n"
+        "- If you cannot return JSON, return two lines separated by a newline.\n"
+    )
+
+def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+    if not (USE_OPENAI and _openai_client):
+        raise RuntimeError("OpenAI disabled or client not available")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    resp = _openai_client.chat.completions.create(
+        model=OPENAI_MODEL,
+        messages=[
+            {"role": "system", "content": _llm_sys_prompt()},
+            {"role": "user", "content": user_prompt},
+        ],
+        max_tokens=160,
+        temperature=0.8,
+    )
+    raw = (resp.choices[0].message.content or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [enforce_word_count_natural(c) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates)
+    if len(candidates) < 2:
+        raise RuntimeError("OpenAI did not produce two valid comments")
+    return candidates[:2]
+
+def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+    if not (USE_GEMINI and _gemini_model):
+        raise RuntimeError("Gemini disabled or client not available")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    prompt = _llm_sys_prompt() + "\n\n" + user_prompt
+    resp = _gemini_model.generate_content(prompt)
+    raw = ""
+    try:
+        parts = getattr(getattr(resp, "candidates", [None])[0], "content", None)
+        if parts and getattr(parts, "parts", None):
+            raw = "".join(getattr(p, "text", "") for p in parts.parts)
+        elif hasattr(resp, "text"):
+            raw = resp.text
+        else:
+            raw = str(resp)
+    except Exception:
+        raw = str(resp)
     raw = (raw or "").strip()
 
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text=tweet_text)
+    candidates = enforce_unique(candidates)
     if len(candidates) < 2:
-        # fallback
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
-    if len(candidates) < 2:
-        raise RuntimeError("Groq did not produce two valid comments")
+        raise RuntimeError("Gemini did not produce two valid comments")
     return candidates[:2]
 
 def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_MISTRAL and _mistral_client):
         raise RuntimeError("Mistral disabled or client not available")
 
-    prompt = _build_prompt(tweet_text, author)
-
+    prompt = _llm_sys_prompt() + "\n\n" + (f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\nReturn exactly two distinct comments.")
     raw = ""
     try:
         try:
@@ -1589,20 +1653,17 @@ def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
                 raw = getattr(resp, "output", "") or str(resp)
             else:
                 raw = str(resp)
-            logger.debug("mistral raw: %s", raw[:1000])
         except Exception:
             resp = _mistral_client.create(prompt=prompt, model=MISTRAL_MODEL, max_tokens=160, temperature=0.9)
             raw = str(resp)
-            logger.debug("mistral raw (fallback): %s", raw[:1000])
     except Exception as e:
         raise RuntimeError(f"Mistral call failed: {e}")
 
     raw = (raw or "").strip()
-
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text=tweet_text)
+    candidates = enforce_unique(candidates)
     if len(candidates) < 2:
         sents = re.split(r"[.!?]\s+", raw)
         sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
@@ -1625,17 +1686,14 @@ def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
 
     return candidates[:2]
 
-# ------------------------------------------------------------------------------
-
 def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_COHERE and _cohere_client):
         raise RuntimeError("Cohere disabled or client not available")
 
-    prompt = _build_prompt(tweet_text, author)
+    prompt = _llm_sys_prompt() + "\n\n" + (f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\nReturn exactly two distinct comments.")
     try:
-        resp = _cohere_client.generate(model=COHERE_MODEL, prompt=prompt, max_tokens=120, temperature=0.8, k=0, stop_sequences=None)
+        resp = _cohere_client.generate(model=COHERE_MODEL, prompt=prompt, max_tokens=120, temperature=0.8, k=0)
         raw = getattr(resp, 'text', '') or str(resp)
-        logger.debug("cohere raw: %s", raw[:1000])
     except Exception as e:
         raise RuntimeError(f"Cohere call failed: {e}")
 
@@ -1644,27 +1702,23 @@ def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
-
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
-
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
     if len(candidates) < 2:
         raise RuntimeError("Cohere did not produce two valid comments")
-
     return candidates[:2]
 
 def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_HF and _hf_pipeline):
         raise RuntimeError("HuggingFace pipeline not available")
 
-    prompt = _build_prompt(tweet_text, author)
+    prompt = _llm_sys_prompt() + "\n\n" + (f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\nReturn exactly two distinct comments.")
     try:
         outs = _hf_pipeline(prompt, max_new_tokens=120, do_sample=True, temperature=0.8)
         if isinstance(outs, list) and outs:
             raw = outs[0].get('generated_text') or outs[0].get('text') or str(outs[0])
         else:
             raw = str(outs)
-        logger.debug("hf raw: %s", raw[:1000])
     except Exception as e:
         raise RuntimeError(f"HuggingFace model failed: {e}")
 
@@ -1673,60 +1727,23 @@ def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
-
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
-
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
     if len(candidates) < 2:
         raise RuntimeError("HuggingFace did not produce two valid comments")
-
     return candidates[:2]
 
 # ------------------------------------------------------------------------------
-
-def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
-    if not (USE_GEMINI and _gemini_model):
-        raise RuntimeError("Gemini disabled or client not available")
-
-    prompt = _build_prompt(tweet_text, author)
-    resp = _gemini_model.generate_content(prompt)
-    raw = ""
-    try:
-        parts = getattr(getattr(resp, "candidates", [None])[0], "content", None)
-        if parts and getattr(parts, "parts", None):
-            raw = "".join(getattr(p, "text", "") for p in parts.parts)
-        elif hasattr(resp, "text"):
-            raw = resp.text
-        else:
-            raw = str(resp)
-    except Exception:
-        raw = str(resp)
-    raw = (raw or "").strip()
-    logger.debug("gemini raw: %s", raw[:1000])
-
-    candidates = parse_two_comments_flex(raw)
-    candidates = [enforce_word_count_natural(c) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(candidates, tweet_text=tweet_text)
-    if len(candidates) < 2:
-        raise RuntimeError("Gemini did not produce two valid comments")
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
-        extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
-        if len(merged) >= 2:
-            candidates = merged[:2]
-    return candidates[:2]
-
-# ------------------------------------------------------------------------------
-
 def _available_providers() -> list[tuple[str, callable]]:
     providers: list[tuple[str, callable]] = []
     if USE_GROQ and _groq_client:
         providers.append(("groq", groq_two_comments))
-    if USE_MISTRAL and _mistral_client:
-        providers.append(("mistral", mistral_two_comments))
+    if USE_OPENAI and _openai_client:
+        providers.append(("openai", openai_two_comments))
     if USE_GEMINI and _gemini_model:
         providers.append(("gemini", gemini_two_comments))
+    if USE_MISTRAL and _mistral_client:
+        providers.append(("mistral", mistral_two_comments))
     if USE_COHERE and _cohere_client:
         providers.append(("cohere", cohere_two_comments))
     if USE_HF and _hf_pipeline:
@@ -1739,24 +1756,28 @@ def generate_two_comments_with_providers(
     handle: Optional[str],
     lang: Optional[str],
     url: Optional[str] = None,
-    reroll: bool = False,
 ) -> List[Dict[str, Any]]:
+    """
+    Hybrid provider strategy with randomness:
+
+    - For each request, randomize the order of enabled providers (Groq, OpenAI, Gemini, Mistral, Cohere, HF).
+    - Try them in that random order, accumulating comments.
+    - As soon as we have 2 solid comments, stop.
+    - If all fail or give < 2, fall back to offline generator.
+    """
     candidates: list[str] = []
 
     providers = _available_providers()
     if providers:
+        # randomize call order each request
         random.shuffle(providers)
 
         for name, fn in providers:
             try:
                 more = fn(tweet_text, author)
                 if more:
-                    # choose relaxed dedupe on reroll
-                    if reroll:
-                        candidates = enforce_unique_relaxed(candidates + more)
-                    else:
-                        candidates = enforce_unique(candidates + more)
-                logger.debug("provider %s yielded %s", name, more)
+                    # merge + dedupe / anti-pattern logic
+                    candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
             except Exception as e:
                 logger.warning("%s provider failed: %s", name, e)
 
@@ -1768,10 +1789,7 @@ def generate_two_comments_with_providers(
         try:
             offline = offline_two_comments(tweet_text, author)
             if offline:
-                if reroll:
-                    candidates = enforce_unique_relaxed(candidates + offline)
-                else:
-                    candidates = enforce_unique(candidates + offline)
+                candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
         except Exception as e:
             logger.warning("Offline generator failed: %s", e)
 
@@ -1787,21 +1805,16 @@ def generate_two_comments_with_providers(
             )
             extra = [i.get("text", "") for i in extra_items if i.get("text")]
             if extra:
-                if reroll:
-                    candidates = enforce_unique_relaxed(candidates + extra)
-                else:
-                    candidates = enforce_unique(candidates + extra)
+                candidates = enforce_unique(candidates + extra, tweet_text=tweet_text)
         except Exception as e:
             logger.exception("Total failure in provider cascade: %s", e)
 
     # If still nothing, hard fallback to 2 simple offline lines
     if not candidates:
         raw = _rescue_two(tweet_text)
-        if reroll:
-            candidates = enforce_unique_relaxed(raw) or raw
-        else:
-            candidates = enforce_unique(raw) or raw
+        candidates = enforce_unique(raw, tweet_text=tweet_text) or raw
 
+    # Limit to exactly 2 text comments
     candidates = [c for c in candidates if c][:2]
 
     out: List[Dict[str, Any]] = []
@@ -1831,6 +1844,7 @@ def generate_two_comments_with_providers(
         except Exception:
             pass
 
+    # Final hard cap: exactly 2
     return out[:2]
 
 # ------------------------------------------------------------------------------
@@ -1846,15 +1860,6 @@ def _canonical_x_url_from_tweet(original_url: str, t: Any) -> str:
     if getattr(t, 'handle', None) and getattr(t, 'tweet_id', None):
         return f"https://x.com/{t.handle}/status/{t.tweet_id}"
     return original_url
-
-@app.route("/", methods=["GET"])
-@app.route("/ping", methods=["GET"])
-def ping():
-    return jsonify({
-        "status": "ok",
-        "groq": bool(USE_GROQ),
-        "ts": int(time.time()),
-    }), 200
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
@@ -1894,21 +1899,20 @@ def comment_endpoint():
     for batch in chunked(cleaned, BATCH_SIZE):
         for url in batch:
             try:
-                resolved = _fix_tracking_link(url)
-                t = fetch_tweet_data(resolved)
+                t = fetch_tweet_data(url)
 
-                handle = t.handle or _extract_handle_from_url(resolved)
+                # Prefer handle from upstream payload, fall back to URL parsing
+                handle = t.handle or _extract_handle_from_url(url)
 
                 two = generate_two_comments_with_providers(
                     t.text,
                     t.author_name or None,
                     handle,
                     t.lang or None,
-                    url=resolved,
-                    reroll=False,
+                    url=url,
                 )
 
-                display_url = _canonical_x_url_from_tweet(resolved, t)
+                display_url = _canonical_x_url_from_tweet(url, t)
 
                 results.append({
                     "url": display_url,
@@ -1946,20 +1950,18 @@ def reroll_endpoint():
                 "code": "bad_request",
             }), 400
 
-        resolved = _fix_tracking_link(url)
-        t = fetch_tweet_data(resolved)
-        handle = t.handle or _extract_handle_from_url(resolved)
+        t = fetch_tweet_data(url)
+        handle = t.handle or _extract_handle_from_url(url)
 
         two = generate_two_comments_with_providers(
             t.text,
             t.author_name or None,
             handle,
             t.lang or None,
-            url=resolved,
-            reroll=True,  # <- relaxed uniqueness path for rerolls
+            url=url,
         )
 
-        display_url = _canonical_x_url_from_tweet(resolved, t)
+        display_url = _canonical_x_url_from_tweet(url, t)
 
         return jsonify({
             "url": display_url,
@@ -1983,24 +1985,6 @@ def reroll_endpoint():
         }), 500
 
 # ------------------------------------------------------------------------------
-
-def _fix_tracking_link(url: str) -> str:
-    """
-    Resolve shortened/tracking links by following redirects (fast HEAD then GET fallback).
-    If resolution fails, return original.
-    """
-    if not url or ("t.co" not in url and "bit.ly" not in url and "tinyurl.com" not in url and "ctt" not in url):
-        return url
-    try:
-        r = requests.head(url, allow_redirects=True, timeout=5)
-        final = r.url or url
-        # sometimes head doesn't follow all redirects; try get
-        if final == url:
-            r2 = requests.get(url, allow_redirects=True, timeout=5)
-            final = r2.url or final
-        return final
-    except Exception:
-        return url
 
 def main() -> None:
     init_db()
