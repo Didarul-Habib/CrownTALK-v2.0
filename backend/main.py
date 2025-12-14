@@ -397,6 +397,20 @@ def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
     return txt
 
+def _ensure_question_punctuation(text: str) -> str:
+    """
+    If input text is a question but lacks a '?', add it.
+    If it already has '?', leave it unchanged.
+    """
+    stripped = text.strip()
+    if not stripped:
+        return stripped
+    if stripped[-1] in ".!?":
+        return stripped
+    if any(stripped.lower().startswith(q) for q in ["who", "what", "why", "how", "where", "when", "is", "can", "will", "are", "do", "did"]):
+        return stripped + "?"
+    return stripped
+
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
     toks = words(txt)
