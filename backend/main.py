@@ -1,4 +1,3 @@
-# PART 1/4
 from __future__ import annotations
 
 import json, os, re, time, random, hashlib, logging, sqlite3, threading
@@ -103,7 +102,8 @@ COHERE_MODEL = os.getenv("COHERE_MODEL", "small")
 
 # ------------------------------------------------------------------------------
 # HuggingFace (transformers pipeline)
-HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "gpt2")
+# ------------------------------------------------------------------------------
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL")
 USE_HF = bool(HUGGINGFACE_MODEL) and pipeline is not None
 _hf_pipeline = None
 if USE_HF:
@@ -394,22 +394,45 @@ def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"[@#]\S+", "", txt)
     txt = re.sub(r"\s+", " ", txt).strip()
     txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
+    try:
+        txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
+    except re.error:
+        # fallback safe range removal
+        txt = re.sub(r"[\u2600-\u27BF]+", "", txt)
     return txt
 
-def _ensure_question_punctuation(text: str) -> str:
-    """
-    If input text is a question but lacks a '?', add it.
-    If it already has '?', leave it unchanged.
-    """
-    stripped = text.strip()
-    if not stripped:
-        return stripped
-    if stripped[-1] in ".!?":
-        return stripped
-    if any(stripped.lower().startswith(q) for q in ["who", "what", "why", "how", "where", "when", "is", "can", "will", "are", "do", "did"]):
-        return stripped + "?"
-    return stripped
+def _ensure_question_punctuation(s: str) -> str:
+    s = (s or "").strip()
+    if not s:
+        return s
+    if s.endswith("?"):
+        return s
+    # naive heuristic: if it starts with question word or contains 'how ' etc
+    if re.match(r"^(how|what|why|when|where|can|could|would|do|does|did)\b", s.lower()):
+        return s.rstrip(".!") + "?"
+    return s
+
+def _ensure_question_punctuation(s: str) -> str:
+    # duplicate-safe (keeps the same logic) - defined to avoid NameError in all variants
+    s = (s or "").strip()
+    if not s:
+        return s
+    if s.endswith("?"):
+        return s
+    if re.match(r"^(how|what|why|when|where|can|could|would|do|does|did)\b", s.lower()):
+        return s.rstrip(".!") + "?"
+    return s
+
+def _ensure_question_punctuation(s: str) -> str:
+    # final assurance; identical function but ensuring it's present exactly once for older variants
+    s = (s or "").strip()
+    if not s:
+        return s
+    if s.endswith("?"):
+        return s
+    if re.match(r"^(how|what|why|when|where|can|could|would|do|does|did)\b", s.lower()):
+        return s.rstrip(".!") + "?"
+    return s
 
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
@@ -433,9 +456,7 @@ EN_STOPWORDS = {
     "into","like","through","after","over","between","out","against","during","without","before","under",
     "around","among","is","are","be","am","was","were","it","its","that","this","so","very","really"
 }
-# (continued next part)
 
-# PART 2/4
 AI_BLOCKLIST = {
     # generic hype / ai slop
     "amazing","awesome","incredible","empowering","game changer","game-changing","transformative",
@@ -665,7 +686,6 @@ def pick_focus_token(tokens: List[str]) -> Optional[str]:
 
 # ------------------------------------------------------------------------------
 # Variety buckets + combinator (keeps comments varied)
-# ------------------------------------------------------------------------------
 LEADINS = [
     "short answer:","zooming out,","if you're weighing","plainly,","real talk:","on the math,",
     "from experience,","quick take:","low key,","no fluff:","in practice,","gut check:",
@@ -1063,7 +1083,7 @@ class OfflineCommentGenerator:
                     native = self._enforce_length_cjk(native)
                 else:
                     native = enforce_word_count_natural(native, 6, 13)
-                self._commit(native, url=url, lang=ctx["script"])
+                self._commit(native, url=url, lang=ctx["script"]) 
                 out.append({"lang": ctx["script"], "text": native})
 
         # fill with English until we have 2
@@ -1103,8 +1123,7 @@ class OfflineCommentGenerator:
                 break
 
         return out[:2]
-# (continued next part)
-# PART 3/4
+
 # Utilities used by the generator
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
     text = (raw_text or "").strip()
@@ -1427,6 +1446,29 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
 
     return out[:2]
 
+# New relaxed uniqueness used for rerolls (does not consult comment_seen/opener_seen/trigram)
+def enforce_unique_relaxed(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
+    out: list[str] = []
+    seen_local = set()
+    for c in candidates:
+        c = enforce_word_count_natural(c)
+        if not c:
+            continue
+        if contains_generic_phrase(c):
+            continue
+        # local dedupe only
+        cl = c.strip().lower()
+        if cl in seen_local:
+            continue
+        seen_local.add(cl)
+        # do not call remember_comment or opener/trigram checks here; reroll wants alternatives
+        out.append(c)
+        if len(out) >= 2:
+            break
+    if len(out) >= 2:
+        out = pick_two_diverse_text(out)
+    return out[:2]
+
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     items = generator.generate_two(text, author or None, None, None)
     en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
@@ -1499,6 +1541,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 
     prompt = _build_prompt(tweet_text, author)
     resp = None
+    raw = ""
     for attempt in range(3):
         try:
             resp = _groq_client.chat.completions.create(
@@ -1507,9 +1550,11 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
                 max_tokens=160,
             )
             raw = str(resp)
+            logger.debug("groq raw: %s", raw[:1000])
             break
         except Exception as e:
             raw = str(e)
+            logger.warning("Groq attempt %s failed: %s", attempt, e)
             time.sleep(0.2)
     raw = (raw or "").strip()
 
@@ -1544,9 +1589,11 @@ def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
                 raw = getattr(resp, "output", "") or str(resp)
             else:
                 raw = str(resp)
+            logger.debug("mistral raw: %s", raw[:1000])
         except Exception:
             resp = _mistral_client.create(prompt=prompt, model=MISTRAL_MODEL, max_tokens=160, temperature=0.9)
             raw = str(resp)
+            logger.debug("mistral raw (fallback): %s", raw[:1000])
     except Exception as e:
         raise RuntimeError(f"Mistral call failed: {e}")
 
@@ -1577,10 +1624,9 @@ def mistral_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
             candidates = merged[:2]
 
     return candidates[:2]
-# (continued next part)
-# PART 4/4
+
 # ------------------------------------------------------------------------------
-# Cohere generator
+
 def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_COHERE and _cohere_client):
         raise RuntimeError("Cohere disabled or client not available")
@@ -1589,6 +1635,7 @@ def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     try:
         resp = _cohere_client.generate(model=COHERE_MODEL, prompt=prompt, max_tokens=120, temperature=0.8, k=0, stop_sequences=None)
         raw = getattr(resp, 'text', '') or str(resp)
+        logger.debug("cohere raw: %s", raw[:1000])
     except Exception as e:
         raise RuntimeError(f"Cohere call failed: {e}")
 
@@ -1606,8 +1653,6 @@ def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
 
     return candidates[:2]
 
-# ------------------------------------------------------------------------------
-# HuggingFace local generator (transformers pipeline)
 def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_HF and _hf_pipeline):
         raise RuntimeError("HuggingFace pipeline not available")
@@ -1615,11 +1660,11 @@ def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     prompt = _build_prompt(tweet_text, author)
     try:
         outs = _hf_pipeline(prompt, max_new_tokens=120, do_sample=True, temperature=0.8)
-        # pipeline output shape differs by model; try to extract text
         if isinstance(outs, list) and outs:
             raw = outs[0].get('generated_text') or outs[0].get('text') or str(outs[0])
         else:
             raw = str(outs)
+        logger.debug("hf raw: %s", raw[:1000])
     except Exception as e:
         raise RuntimeError(f"HuggingFace model failed: {e}")
 
@@ -1638,7 +1683,7 @@ def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     return candidates[:2]
 
 # ------------------------------------------------------------------------------
-# Existing Gemini function adjusted to use _build_prompt
+
 def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_GEMINI and _gemini_model):
         raise RuntimeError("Gemini disabled or client not available")
@@ -1657,6 +1702,7 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     except Exception:
         raw = str(resp)
     raw = (raw or "").strip()
+    logger.debug("gemini raw: %s", raw[:1000])
 
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
@@ -1672,6 +1718,7 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     return candidates[:2]
 
 # ------------------------------------------------------------------------------
+
 def _available_providers() -> list[tuple[str, callable]]:
     providers: list[tuple[str, callable]] = []
     if USE_GROQ and _groq_client:
@@ -1692,6 +1739,7 @@ def generate_two_comments_with_providers(
     handle: Optional[str],
     lang: Optional[str],
     url: Optional[str] = None,
+    reroll: bool = False,
 ) -> List[Dict[str, Any]]:
     candidates: list[str] = []
 
@@ -1703,8 +1751,12 @@ def generate_two_comments_with_providers(
             try:
                 more = fn(tweet_text, author)
                 if more:
-                    # merge + dedupe / anti-pattern logic
-                    candidates = enforce_unique(candidates + more)
+                    # choose relaxed dedupe on reroll
+                    if reroll:
+                        candidates = enforce_unique_relaxed(candidates + more)
+                    else:
+                        candidates = enforce_unique(candidates + more)
+                logger.debug("provider %s yielded %s", name, more)
             except Exception as e:
                 logger.warning("%s provider failed: %s", name, e)
 
@@ -1716,7 +1768,10 @@ def generate_two_comments_with_providers(
         try:
             offline = offline_two_comments(tweet_text, author)
             if offline:
-                candidates = enforce_unique(candidates + offline)
+                if reroll:
+                    candidates = enforce_unique_relaxed(candidates + offline)
+                else:
+                    candidates = enforce_unique(candidates + offline)
         except Exception as e:
             logger.warning("Offline generator failed: %s", e)
 
@@ -1732,16 +1787,21 @@ def generate_two_comments_with_providers(
             )
             extra = [i.get("text", "") for i in extra_items if i.get("text")]
             if extra:
-                candidates = enforce_unique(candidates + extra)
+                if reroll:
+                    candidates = enforce_unique_relaxed(candidates + extra)
+                else:
+                    candidates = enforce_unique(candidates + extra)
         except Exception as e:
             logger.exception("Total failure in provider cascade: %s", e)
 
     # If still nothing, hard fallback to 2 simple offline lines
     if not candidates:
         raw = _rescue_two(tweet_text)
-        candidates = enforce_unique(raw) or raw
+        if reroll:
+            candidates = enforce_unique_relaxed(raw) or raw
+        else:
+            candidates = enforce_unique(raw) or raw
 
-    # Limit to exactly 2 text comments
     candidates = [c for c in candidates if c][:2]
 
     out: List[Dict[str, Any]] = []
@@ -1771,28 +1831,7 @@ def generate_two_comments_with_providers(
         except Exception:
             pass
 
-    # Final hard cap: exactly 2
     return out[:2]
-
-# ------------------------------------------------------------------------------
-# New helper: resolve tracking/short links by following redirects
-def _fix_tracking_link(url: str) -> str:
-    """
-    Resolve shortened/tracking links by following redirects (fast HEAD then GET fallback).
-    If resolution fails, return original.
-    """
-    if not url or ("t.co" not in url and "bit.ly" not in url and "tinyurl.com" not in url and "ctt" not in url):
-        return url
-    try:
-        r = requests.head(url, allow_redirects=True, timeout=5)
-        final = r.url or url
-        # sometimes head doesn't follow all redirects; try get
-        if final == url:
-            r2 = requests.get(url, allow_redirects=True, timeout=5)
-            final = r2.url or final
-        return final
-    except Exception:
-        return url
 
 # ------------------------------------------------------------------------------
 # API routes (batching + pacing)
@@ -1866,6 +1905,7 @@ def comment_endpoint():
                     handle,
                     t.lang or None,
                     url=resolved,
+                    reroll=False,
                 )
 
                 display_url = _canonical_x_url_from_tweet(resolved, t)
@@ -1916,6 +1956,7 @@ def reroll_endpoint():
             handle,
             t.lang or None,
             url=resolved,
+            reroll=True,  # <- relaxed uniqueness path for rerolls
         )
 
         display_url = _canonical_x_url_from_tweet(resolved, t)
@@ -1942,6 +1983,24 @@ def reroll_endpoint():
         }), 500
 
 # ------------------------------------------------------------------------------
+
+def _fix_tracking_link(url: str) -> str:
+    """
+    Resolve shortened/tracking links by following redirects (fast HEAD then GET fallback).
+    If resolution fails, return original.
+    """
+    if not url or ("t.co" not in url and "bit.ly" not in url and "tinyurl.com" not in url and "ctt" not in url):
+        return url
+    try:
+        r = requests.head(url, allow_redirects=True, timeout=5)
+        final = r.url or url
+        # sometimes head doesn't follow all redirects; try get
+        if final == url:
+            r2 = requests.get(url, allow_redirects=True, timeout=5)
+            final = r2.url or final
+        return final
+    except Exception:
+        return url
 
 def main() -> None:
     init_db()
