@@ -161,7 +161,7 @@ def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
 EN_STOPWORDS = {
     "the","a","an","and","or","but","to","in","on","of","for","with","at","from","by","about","as",
     "into","like","through","after","over","between","out","against","during","without","before","under",
-    "around","among","is","are","be","am","was","were","it","its","that","this","so","very","really"
+    "around","among","is","are","be","am","was","were","it","its","that","this","so","very","really","curious"
 }
 
 AI_BLOCKLIST = {
@@ -174,7 +174,7 @@ AI_BLOCKLIST = {
 GENERIC_PHRASES = {
     # Old generic stuff
     "love that","love this","love the","love your",
-    "this is huge","this is massive","this is insane",
+    "this is huge","this is massive","this is insane","curious","curious to see","wow","wonder","love to see","love","love to watch",
     "nice thread","great thread","nice one","great one",
     "bullish on this","bearish on this","this goes hard",
     "gm fam","gm anon","gn fam","gn anon",
@@ -203,7 +203,7 @@ STARTER_BLOCKLIST = {
     "nice thread","great thread",
     "gm ","gn ",
     "bullish on ","bearish on ",
-    "yeah this","honestly this","kind of","nice to","hard to",
+    "yeah this","honestly this","kind of","nice to","hard to","wow","curious",
     "feels like","this is","short line","funny how",
     "appreciate that","interested to","curious where","nice to see",
     "chill sober","good reminder","yeah that",
@@ -455,23 +455,52 @@ def _word_trigrams(text: str) -> set[str]:
 
 def _llm_sys_prompt() -> str:
     return (
-        "You are writing ultra-short, human Twitter/X comments.\n"
-        "- Act like a real KOL or power user, not an AI.\n"
-        "- Sound like you just saw the tweet and are replying off the cuff.\n"
-        "- Output exactly two comments. Each must be 6–13 words.\n"
-        "- No list formatting, no numbering, no quotes around comments.\n"
-        "- Vary your openings: do NOT reuse the same first 2–3 words.\n"
-        "- Try to weave in 1–2 key tokens from the post: "
-        "project names, ticker symbols like $TOKEN, or product names.\n"
-        "- One clear thought per comment. No add-on clauses like 'thanks for sharing'.\n"
-        "- Mix tones: curious, reflective, supportive, slightly skeptical, builder/strategy-focused.\n"
-        "- Avoid emojis, hashtags, links, or any mention that you are an AI.\n"
-        "- Avoid generic templates like 'love that', 'this is huge', 'nice thread', "
-        "'sounds like a game-changer'.\n"
-        "- Prefer returning a pure JSON array of two strings: "
-        "[\"first comment\", \"second comment\"]. If not, use two plain lines.\n"
+        "You write ultra-short, high-quality reply comments for Twitter/X.\n"
+        "\n"
+        "GOAL\n"
+        "- Sound like an experienced KOL or power user reacting in real time.\n"
+        "- Comments must feel human, not generic, not templated.\n"
+        "\n"
+        "FORMAT\n"
+        "- Output exactly two comments only.\n"
+        "- Each comment must be a single sentence of 6–13 words.\n"
+        "- No numbering, bullets, labels or explanations.\n"
+        "- No quotes around the comments unless they quote the tweet itself.\n"
+        "- Output either:\n"
+        "  1) a JSON array of two strings, or\n"
+        "  2) two plain lines, one comment per line.\n"
+        "\n"
+        "STYLE\n"
+        "- Use natural conversational English with light CT/crypto slang only when it fits.\n"
+        "- Do not start both comments with the same first word.\n"
+        "- Prefer using 1–2 concrete tokens from the tweet "
+        "(project name, token symbol like $ETH or $TOKEN, product or metric).\n"
+        "- Each comment should contain one clear thought, not multiple clauses glued together.\n"
+        "- Mix tones: for example, one more supportive/bullish, one more curious or skeptical.\n"
+        "- If a comment reads like a question, end it with a question mark.\n"
+        "\n"
+        "AVOID\n"
+        "- Do NOT use emojis, hashtags, links or calls to follow.\n"
+        "- Do NOT mention that you are an AI or language model.\n"
+        "- Avoid generic filler like 'love that', 'love to see it', "
+        "'this is huge', 'sounds like a game-changer', 'nice thread'.\n"
+        "- Avoid investment/trading disclaimers like 'not financial advice'.\n"
     )
 
+from typing import Optional  # you already import this at top; just make sure it's there
+
+
+def build_user_prompt(tweet_text: str, author: Optional[str]) -> str:
+    """
+    Common user prompt used by all providers so they follow the same rules.
+    """
+    return (
+        f"Original tweet (author: {author or 'unknown'}):\n"
+        f"{tweet_text}\n\n"
+        "Write two different reply comments that follow the style rules above.\n"
+        "Make them feel like spontaneous reactions from a human KOL who just read the tweet.\n"
+        "Focus on one specific idea or reaction in each comment.\n"
+    )
 # ------------------------------------------------------------------------------
 # Offline generator
 # ------------------------------------------------------------------------------
@@ -891,29 +920,13 @@ def keep_alive() -> None:
             pass
         time.sleep(60)
 
+
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
-    sys_prompt = (
-        "You write extremely short, human comments for social posts.\n"
-        "- Output exactly two comments.\n"
-        "- Each comment must be 6-13 words.\n"
-        "- Natural conversational tone, as if you just read the post.\n"
-        "- One concise thought per comment (no 'thanks for sharing' add-ons).\n"
-        "- Light CT / influencer slang (tbh, rn, ngl) is fine, but use sparingly.\n"
-        "- The two comments must have different vibes (e.g., supportive vs curious).\n"
-        "- If a comment clearly reads like a question, end it with '?'.\n"
-        "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
-        "- Avoid repetitive templates; vary syntax and rhythm.\n"
-        "- Prefer returning a pure JSON array of two strings, like: "
-        '["first comment", "second comment"].\n'
-    )
-
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
+    sys_prompt = _llm_sys_prompt()
+    user_prompt = build_user_prompt(tweet_text, author)
 
     resp = None
     for attempt in range(1, 4):
@@ -968,23 +981,20 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if len(candidates) < 2:
         raise RuntimeError("Could not produce two valid comments")
 
-    # final guard against EN#1 ≈ EN#2
     if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
         extra = offline_two_comments(tweet_text, author)
         merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
-
+    
 
 def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_OPENAI and _openai_client):
         raise RuntimeError("OpenAI disabled or client not available")
 
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
+    user_prompt = build_user_prompt(tweet_text, author)
+
     resp = _openai_client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
@@ -1007,17 +1017,15 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
-
+    
 
 def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_GEMINI and _gemini_model):
         raise RuntimeError("Gemini disabled or client not available")
 
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
+    user_prompt = build_user_prompt(tweet_text, author)
     prompt = _llm_sys_prompt() + "\n\n" + user_prompt
+
     resp = _gemini_model.generate_content(prompt)
     raw = ""
     try:
@@ -1044,8 +1052,8 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
-
-
+    
+           
 def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     """
     Use Hugging Face Inference API to generate two comments.
@@ -1053,10 +1061,7 @@ def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_HF and HF_API_KEY):
         raise RuntimeError("Hugging Face disabled or API key not configured")
 
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
+    user_prompt = build_user_prompt(tweet_text, author)
     prompt = _llm_sys_prompt() + "\n\n" + user_prompt
 
     headers = {
@@ -1111,8 +1116,7 @@ def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
-
-
+    
 def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     """
     Use Cohere generate() to produce two comments.
@@ -1120,11 +1124,7 @@ def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_COHERE and _cohere_client):
         raise RuntimeError("Cohere disabled or client not available")
 
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
-    full_prompt = _llm_sys_prompt() + "\n\n" + user_prompt
+    full_prompt = _llm_sys_prompt() + "\n\n" + build_user_prompt(tweet_text, author)
 
     try:
         resp = _cohere_client.generate(
@@ -1151,7 +1151,6 @@ def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
-
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     items = generator.generate_two(text, author or None, None, None)
