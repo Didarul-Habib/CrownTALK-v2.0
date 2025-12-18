@@ -172,12 +172,25 @@ AI_BLOCKLIST = {
 }
 
 GENERIC_PHRASES = {
+    # Old generic stuff
     "love that","love this","love the","love your",
     "this is huge","this is massive","this is insane",
     "nice thread","great thread","nice one","great one",
     "bullish on this","bearish on this","this goes hard",
     "gm fam","gm anon","gn fam","gn anon",
     "good reminder","needed this","facts only",
+
+    # New repetitive templates we want to kill
+    "love to see it","love to see this","love to see builders",
+    "love seeing this","love seeing builders",
+    "sounds like a game changer","sounds like a game-changer",
+    "that’s a clever play","that's a clever play",
+    "that’s a clever angle","that's a clever angle",
+    "what a time to be alive",
+    "what a move","what a call",
+    "how do you see this","how do you see it",
+    "excited to see where this goes",
+    "this could be huge","this could be big",
 }
 
 def contains_generic_phrase(text: str) -> bool:
@@ -185,13 +198,23 @@ def contains_generic_phrase(text: str) -> bool:
     return any(p in t for p in GENERIC_PHRASES)
 
 STARTER_BLOCKLIST = {
-    "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
-    "appreciate that","interested to","curious where","nice to see","chill sober","good reminder","yeah that",
+    # Hard ban openers – we never want comments starting like this
+    "love that","love this","love to see","love seeing",
+    "nice thread","great thread",
+    "gm ","gn ",
+    "bullish on ","bearish on ",
+    "yeah this","honestly this","kind of","nice to","hard to",
+    "feels like","this is","short line","funny how",
+    "appreciate that","interested to","curious where","nice to see",
+    "chill sober","good reminder","yeah that",
     "good to see the boring",
-    # extra starters we don't want repeated
-    "love that","love the","love your","i'm curious","im curious","curious about","love your take",
 }
 
+STARTER_SOFT_PENALTY = {
+    "that's ", "that’s ",
+    "sounds like ", "looks like ", "seems like ",
+    "what a ", "how do ", "how does ",
+}
 try:
     EMOJI_PATTERN = re.compile(
         r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
@@ -227,6 +250,30 @@ def pick_focus_token(tokens: list[str]) -> str:
     counts = Counter(tokens)
     return sorted(counts.items(), key=lambda x: (-x[1], len(x[0])))[0][0]
 
+def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
+    """
+    Extract a richer set of tokens from the tweet:
+    - cashtags ($TOKEN)
+    - @handles
+    - Capitalized words (project names)
+    - regular keyword tokens
+    """
+    if not tweet_text:
+        return set()
+
+    text = tweet_text or ""
+    cashtags = re.findall(r"\$[A-Za-z0-9]{2,12}", text)
+    handles = re.findall(r"@[A-Za-z0-9_]{2,15}", text)
+    caps = re.findall(r"\b[A-Z][A-Za-z0-9]{2,}\b", text)
+
+    base_keywords = extract_keywords(text)
+    all_tokens = []
+    all_tokens.extend(cashtags)
+    all_tokens.extend(handles)
+    all_tokens.extend(caps)
+    all_tokens.extend(base_keywords)
+
+    return {t.lower() for t in all_tokens if t}
 
 def normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
@@ -414,12 +461,13 @@ def _llm_sys_prompt() -> str:
         "- Output exactly two comments. Each must be 6–13 words.\n"
         "- No list formatting, no numbering, no quotes around comments.\n"
         "- Vary your openings: do NOT reuse the same first 2–3 words.\n"
-        "- Mix tones: curious, reflective, supportive, slightly skeptical, etc.\n"
-        "- Point at something specific from the post when possible (number, claim, detail).\n"
+        "- Try to weave in 1–2 key tokens from the post: "
+        "project names, ticker symbols like $TOKEN, or product names.\n"
         "- One clear thought per comment. No add-on clauses like 'thanks for sharing'.\n"
-        "- Light crypto/CT slang (ngl, tbh, fr, anon) is fine but use sparingly.\n"
+        "- Mix tones: curious, reflective, supportive, slightly skeptical, builder/strategy-focused.\n"
         "- Avoid emojis, hashtags, links, or any mention that you are an AI.\n"
-        "- Avoid generic templates like 'love that', 'this is huge', 'nice thread'.\n"
+        "- Avoid generic templates like 'love that', 'this is huge', 'nice thread', "
+        "'sounds like a game-changer'.\n"
         "- Prefer returning a pure JSON array of two strings: "
         "[\"first comment\", \"second comment\"]. If not, use two plain lines.\n"
     )
@@ -445,15 +493,28 @@ class OfflineCommentGenerator:
         return False
 
     def _topic_buckets_generic(self) -> list[str]:
+        # mix of reflective, builder, skeptical, and curious tones
         return [
-            "Honestly, {focus} here feels underrated tbh.",
-            "Lowkey think {focus} is where the real edge is.",
-            "The way you frame {focus} hits different ngl.",
-            "Kinda wild how fast {focus} is evolving right now.",
-            "If {focus} plays out, a lot of people are sleeping.",
-            "This angle on {focus} is actually super useful.",
-            "Hard to ignore {focus} after seeing this.",
-            "People underestimate how big {focus} can be long term.",
+            # reflective / interpretive
+            "The angle on {focus} here is actually pretty sharp.",
+            "You frame {focus} in a way most people totally miss.",
+            "{focus} is exactly where the next real edge probably sits.",
+            "The nuance around {focus} here hits harder than people think.",
+            # builder / strategy
+            "From a builder lens, {focus} is the part that matters most.",
+            "If you execute {focus} well, the rest almost takes care of itself.",
+            "Quietly stacking {focus} like this is how you win long term.",
+            "This is how serious people should be thinking about {focus}.",
+            # skeptical / grounded
+            "Big promises on {focus}, but execution will expose who’s real.",
+            "Everyone talks {focus}, very few are actually shipping it.",
+            "If {focus} flops, the whole narrative unwinds quick.",
+            "Nice thread, but {focus} still has some open questions.",
+            # curious / conversational
+            "Lowkey curious how {focus} plays out once the hype fades.",
+            "Would love to see more concrete examples around {focus}.",
+            "Interesting take on {focus}, makes me rethink a couple assumptions.",
+            "Hard not to keep watching {focus} after reading this.",
         ]
 
     def _topic_buckets_markets(self) -> list[str]:
@@ -1110,11 +1171,14 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
     if len(candidates) <= 2:
         return candidates[:2]
 
-    # precompute features
     scored = []
     for c in candidates:
         low = c.lower().strip()
-        is_question = low.endswith("?") or low.startswith(("why ","what ","how ","where ","when ","do you","did you","are we","is this","can we","could we"))
+        is_question = low.endswith("?") or low.startswith((
+            "why ","what ","how ","where ","when ",
+            "do you","did you","are we","is this",
+            "can we","could we"
+        ))
         scored.append((c, is_question))
 
     questions = [c for c, q in scored if q]
@@ -1123,22 +1187,20 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
     if questions and statements:
         return [statements[0], questions[0]]
 
-    # fallback: first two
+    # fallback: just first two
     return candidates[:2]
 
 
 def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
     """
     - sanitize + enforce 6–13 words
-    - drop generic phrases
+    - drop generic phrases & hard-banned starters
     - skip past repeats / templates / trigram overlaps
-    - small chance to tweak if previously seen
-    - finally: pick two diverse comments (Hybrid: statement + question if possible)
-
-    NOTE: this function is now *read-only* with respect to DB; actual committing
-    of chosen comments happens in the API layer via remember_comment().
+    - score comments against tweet keywords
+    - pick best scored ones, then pick two diverse ones
     """
-    out: list[str] = []
+    kw_set = tweet_keywords_for_scoring(tweet_text) if tweet_text else set()
+    cleaned: list[tuple[str, float]] = []
     seen_openers_local: set[str] = set()
 
     for c in candidates:
@@ -1147,33 +1209,103 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
             continue
 
         low = c.lower().strip()
+
+        # Hard filters already done in score_comment_for_post,
+        # but keep cheap checks to avoid DB calls.
         if contains_generic_phrase(low):
-            continue
-        if any(low.startswith(b) for b in STARTER_BLOCKLIST):
-            continue
-        if comment_seen(low):
-            continue
-        if trigram_overlap_bad(low, threshold=2) or too_similar_to_recent(low):
             continue
 
         op = _openers(low)
         if op and op in seen_openers_local:
             continue
 
+        if comment_seen(low):
+            continue
+        if trigram_overlap_bad(low, threshold=2) or too_similar_to_recent(low):
+            continue
+
         tmpl_fp = re.sub(r"\b\w+\b", "w", low)[:80]
         if template_burned(tmpl_fp):
             continue
 
-        # local opener memory for this request
+        score = score_comment_for_post(c, kw_set)
+        if score <= -1e8:
+            continue
+
         if op:
             seen_openers_local.add(op)
-        out.append(c)
+        cleaned.append((c, score))
 
-    # final hybrid pairing: maximize vibe diversity
-    if len(out) >= 2:
-        out = pick_two_diverse_text(out)
+    if not cleaned:
+        return []
 
-    return out[:2]
+    # Sort by score descending
+    cleaned.sort(key=lambda x: x[1], reverse=True)
+    texts_ordered = [c for (c, _) in cleaned]
+
+    # Final hybrid pairing: maximize vibe diversity among the best candidates
+    if len(texts_ordered) >= 2:
+        texts_ordered = pick_two_diverse_text(texts_ordered)
+
+    return texts_ordered[:2]
+
+
+def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
+    """
+    Score a comment relative to a tweet:
+    - penalize generic / templated lines
+    - reward overlap with tweet tokens (project names, tickers, etc.)
+    - keep only 6–13 word, one-thought comments
+    """
+    if not comment:
+        return -1e9
+
+    low = comment.lower().strip()
+    wcount = len(words(comment))
+
+    # Hard length constraints
+    if wcount < 6 or wcount > 13:
+        return -1e9
+
+    # Hard block if contains any fully generic phrase
+    if contains_generic_phrase(low):
+        return -1e9
+
+# Hard block if starts with one of the hard banned starters
+    for s in STARTER_BLOCKLIST:
+        if low.startswith(s):
+            return -1e9
+
+    score = 1.0
+
+    # Soft penalty for boring openers like "That's", "Sounds like"
+    for s in STARTER_SOFT_PENALTY:
+        if low.startswith(s):
+            score -= 0.4
+            break
+
+    # If no tweet keywords, we can’t do content-based scoring
+    if kw_set:
+        c_kw = set(extract_keywords(comment.lower()))
+        overlap = len(c_kw & kw_set)
+        if overlap == 0:
+            # Comment ignores all key tokens -> generic
+            score -= 0.5
+        else:
+            # Reward using project / ticker / product name
+            score += 0.15 * min(overlap, 3)
+
+    # Tiny bonus if it looks like a genuine question
+    if low.endswith("?"):
+        score += 0.1
+
+    # Penalize ellipses and multiple clauses
+    if comment.count("...") > 0:
+        score -= 0.3
+    if comment.count(".") > 1:
+        score -= 0.3
+
+    return score
 
 
 def _available_providers() -> list[tuple[str, callable]]:
@@ -1265,19 +1397,6 @@ def generate_two_comments_with_providers(
 
     # Final hard cap: exactly 2
     return out[:2]
-
-
-def _canonical_x_url_from_tweet(original_url: str, t: Any) -> str:
-    """
-    Build a clean x.com URL with handle + status id when we have them.
-
-    - If upstream payload gives us both handle and tweet_id:
-        https://x.com/{handle}/status/{tweet_id}
-    - Otherwise fall back to whatever url we already normalized.
-    """
-    if getattr(t, "handle", None) and getattr(t, "tweet_id", None):
-        return f"https://x.com/{t.handle}/status/{t.tweet_id}"
-    return original_url
 
 
 # ------------------------------------------------------------------------------
@@ -1395,21 +1514,24 @@ def _normalize_comment_items(
 
     return final[:2]
 
-
 def _canonical_x_url_from_tweet(original_url: str, t: Any) -> str:
     """
-    Build a clean x.com URL with handle + status id when we have them.
-
-    - If upstream payload gives us both handle and tweet_id:
-        https://x.com/{handle}/status/{tweet_id}
-    - Otherwise fall back to whatever url we already normalized.
+    Prefer the canonical URL from VX/FX if present.
+    Fallback: build https://x.com/{handle}/status/{id} when we know handle+id.
+    Otherwise, return the original normalized URL.
     """
+    canonical = getattr(t, "canonical_url", None)
+    if canonical and isinstance(canonical, str):
+        # make sure it’s x.com not vx/fx
+        if "x.com" in canonical or "twitter.com" in canonical:
+            return canonical
+
     handle = getattr(t, "handle", None)
     tweet_id = getattr(t, "tweet_id", None)
     if handle and tweet_id:
         return f"https://x.com/{handle}/status/{tweet_id}"
-    return original_url
 
+    return original_url
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
