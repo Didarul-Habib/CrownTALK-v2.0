@@ -1293,13 +1293,123 @@ def chunked(seq, size):
 def add_cors_headers(resp):
     resp.headers["Access-Control-Allow-Origin"] = "*"
     resp.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"
+    resp.headers["Access-Control-Allow-Methods"] = "POST, OPTIONS"]
     return resp
 
 
 @app.route("/", methods=["GET"])
 def health():
     return jsonify({"status": "ok"}), 200
+
+
+def _normalize_comment_items(
+    items: list[Any],
+    tweet_lang: str | None,
+    author: str | None,
+    handle: str | None,
+    tweet_text: str,
+    url: str,
+) -> list[dict]:
+    """
+    Take whatever generate_two_comments_with_providers() gave us and make sure we end up with:
+
+        [ { "lang": "...", "text": "..." }, { ... } ]
+
+    with 2 items max, 6–13 words, and no empties.
+    """
+
+    lang = tweet_lang or "en"
+    normalized: list[dict] = []
+
+    # 1) If provider already returned dicts: normalize them
+    for it in items or []:
+        if isinstance(it, dict):
+            raw = str(it.get("text", "")).strip()
+            if not raw:
+                continue
+            txt = enforce_word_count_natural(raw, 6, 13)
+            if not txt:
+                continue
+            normalized.append({
+                "lang": (it.get("lang") or lang),
+                "text": txt,
+            })
+        elif isinstance(it, str):
+            raw = it.strip()
+            if not raw:
+                continue
+            txt = enforce_word_count_natural(raw, 6, 13)
+            if not txt:
+                continue
+            normalized.append({
+                "lang": lang,
+                "text": txt,
+            })
+
+    # 2) If we still don’t have 2, fall back to offline generator
+    if len(normalized) < 2:
+        try:
+            offline = offline_two_comments(tweet_text, author)
+            for s in offline:
+                if len(normalized) >= 2:
+                    break
+                if not s:
+                    continue
+                txt = enforce_word_count_natural(s, 6, 13)
+                if not txt:
+                    continue
+                normalized.append({
+                    "lang": lang,
+                    "text": txt,
+                })
+        except Exception as e:
+            logger.warning("offline generator failed while normalizing: %s", e)
+
+    # 3) Final uniqueness + pair diversity
+    #    (we only care about 'text' for uniqueness)
+    texts = [n["text"] for n in normalized]
+    texts = enforce_unique(texts, tweet_text=tweet_text)
+    texts = texts[:2]
+
+    final: list[dict] = []
+    for t in texts:
+        t_txt = enforce_word_count_natural(t, 6, 13)
+        if not t_txt:
+            continue
+        final.append({
+            "lang": lang,
+            "text": t_txt,
+        })
+
+    # Last safety net: still < 2 → make a simple manual pair
+    if len(final) < 2:
+        rescue = _rescue_two(tweet_text)
+        for s in rescue:
+            if len(final) >= 2:
+                break
+            if not s:
+                continue
+            t_txt = enforce_word_count_natural(s, 6, 13)
+            if not t_txt:
+                continue
+            final.append({"lang": lang, "text": t_txt})
+
+    return final[:2]
+
+
+def _canonical_x_url_from_tweet(original_url: str, t: Any) -> str:
+    """
+    Build a clean x.com URL with handle + status id when we have them.
+
+    - If upstream payload gives us both handle and tweet_id:
+        https://x.com/{handle}/status/{tweet_id}
+    - Otherwise fall back to whatever url we already normalized.
+    """
+    handle = getattr(t, "handle", None)
+    tweet_id = getattr(t, "tweet_id", None)
+    if handle and tweet_id:
+        return f"https://x.com/{handle}/status/{tweet_id}"
+    return original_url
 
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
@@ -1344,7 +1454,7 @@ def comment_endpoint():
             if not t.text:
                 raise CrownTALKError("Empty tweet text", code="empty_tweet")
 
-            items = generate_two_comments_with_providers(
+            raw_items = generate_two_comments_with_providers(
                 t.text,
                 t.author_name or None,
                 handle,
@@ -1352,24 +1462,24 @@ def comment_endpoint():
                 url=url,
             )
 
-            # Extract plain strings
-            comments: list[str] = []
-            for item in items:
-                if isinstance(item, str):
-                    txt = item
-                else:
-                    txt = str(item.get("text", "")).strip()
-                if txt:
-                    comments.append(txt)
-
-            comments = comments[:2]
+            comment_items = _normalize_comment_items(
+                raw_items,
+                tweet_lang=t.lang,
+                author=t.author_name,
+                handle=handle,
+                tweet_text=t.text,
+                url=url,
+            )
 
             # Persist final comments into memory DB
             lang = t.lang or "en"
-            for c in comments:
+            for item in comment_items:
+                txt = item.get("text") or ""
+                if not txt:
+                    continue
                 try:
-                    remember_comment(c, url=url, lang=lang)
-                    remember_template(c)
+                    remember_comment(txt, url=url, lang=lang)
+                    remember_template(txt)
                 except Exception:
                     # non-fatal
                     pass
@@ -1377,8 +1487,9 @@ def comment_endpoint():
             display_url = _canonical_x_url_from_tweet(url, t)
             results.append({
                 "url": display_url,
-                "comments": comments,
+                "comments": comment_items,
             })
+
         except CrownTALKError as e:
             failed.append({
                 "url": url,
@@ -1392,6 +1503,7 @@ def comment_endpoint():
                 "reason": "internal_error",
                 "code": "internal_error",
             })
+
         time.sleep(PER_URL_SLEEP)
 
     return jsonify({"results": results, "failed": failed}), 200
@@ -1411,8 +1523,8 @@ def reroll_endpoint():
             "code": "invalid_json",
         }), 400
 
-    url = (data.get("url") or "").strip()
-    if not url:
+    url_in = (data.get("url") or "").strip()
+    if not url_in:
         return jsonify({
             "error": "Missing 'url' field",
             "comments": [],
@@ -1420,61 +1532,63 @@ def reroll_endpoint():
         }), 400
 
     try:
-        # Normalize single URL through the same helper used for batch
-        norm_list = clean_and_normalize_urls([url])
+        # Normalize URL the same way as /comment
+        norm_list = clean_and_normalize_urls([url_in])
         if not norm_list:
             raise CrownTALKError("Bad tweet URL", code="bad_tweet_url")
-        norm_url = norm_list[0]
+        url = norm_list[0]
 
-        t = fetch_tweet_data(norm_url)
-        handle = t.handle or _extract_handle_from_url(norm_url)
+        t = fetch_tweet_data(url)
+        handle = t.handle or _extract_handle_from_url(url)
         if not t.text:
             raise CrownTALKError("Empty tweet text", code="empty_tweet")
 
-        items = generate_two_comments_with_providers(
+        raw_items = generate_two_comments_with_providers(
             t.text,
             t.author_name or None,
             handle,
             t.lang or None,
-            url=norm_url,
+            url=url,
         )
 
-        comments: list[str] = []
-        for item in items:
-            if isinstance(item, str):
-                txt = item
-            else:
-                txt = str(item.get("text", "")).strip()
-            if txt:
-                comments.append(txt)
+        comment_items = _normalize_comment_items(
+            raw_items,
+            tweet_lang=t.lang,
+            author=t.author_name,
+            handle=handle,
+            tweet_text=t.text,
+            url=url,
+        )
 
-        comments = comments[:2]
         lang = t.lang or "en"
-        for c in comments:
+        for item in comment_items:
+            txt = item.get("text") or ""
+            if not txt:
+                continue
             try:
-                remember_comment(c, url=norm_url, lang=lang)
-                remember_template(c)
+                remember_comment(txt, url=url, lang=lang)
+                remember_template(txt)
             except Exception:
                 pass
 
-        display_url = _canonical_x_url_from_tweet(norm_url, t)
+        display_url = _canonical_x_url_from_tweet(url, t)
         return jsonify({
             "url": display_url,
-            "comments": comments,
+            "comments": comment_items,
             "code": "ok",
         }), 200
 
     except CrownTALKError as e:
         return jsonify({
-            "url": url,
+            "url": url_in,
             "error": str(e),
             "comments": [],
             "code": getattr(e, "code", "upstream_error"),
         }), 502
     except Exception:
-        logger.exception("Unhandled error during reroll for %s", url)
+        logger.exception("Unhandled error during reroll for %s", url_in)
         return jsonify({
-            "url": url,
+            "url": url_in,
             "error": "internal_error",
             "comments": [],
             "code": "internal_error",
