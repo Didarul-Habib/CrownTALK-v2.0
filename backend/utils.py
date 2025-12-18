@@ -6,7 +6,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from typing import List, Tuple, Optional, Any
+from typing import List, Tuple, Optional
 from urllib.parse import urlparse
 
 import requests
@@ -31,7 +31,7 @@ _last_call_ts = 0.0
 _rl_lock = threading.Lock()
 
 
-def _rate_limit_yield():
+def _rate_limit_yield() -> None:
     """Global process-level pacing for upstream calls."""
     global _last_call_ts
     with _rl_lock:
@@ -53,6 +53,7 @@ class TweetData:
     handle: Optional[str]
     tweet_id: Optional[str]
     lang: Optional[str]
+    canonical_url: Optional[str] = None   # <— NEW: the real tweet URL from VX/FX
 
 
 # VX/FX URL templates
@@ -136,39 +137,61 @@ def _read_json_payload(resp: requests.Response) -> dict:
 
 def _parse_payload(payload: dict) -> TweetData:
     """
-    Extract tweet text, author name, handle, tweet_id and language from
-    the VX/FX-style payload. We accept both top-level and nested 'tweet'
+    Extract tweet text, author name, handle, tweet_id, language and canonical URL
+    from the VX/FX-style payload. We accept both top-level and nested 'tweet'
     structures.
     """
-    lang = payload.get("lang") or payload.get("tweet", {}).get("lang")
+    # Some APIs wrap the tweet in payload["tweet"]
+    base = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+
+    lang = base.get("lang") or payload.get("lang")
 
     text = (
-        payload.get("text")
+        base.get("text")
+        or base.get("full_text")
+        or payload.get("text")
         or payload.get("full_text")
-        or payload.get("tweet", {}).get("text")
-        or payload.get("tweet", {}).get("full_text")
     )
 
     user_name = (
-        payload.get("user", {}).get("name")
-        or payload.get("tweet", {}).get("user", {}).get("name")
+        base.get("user", {}).get("name")
+        or payload.get("user", {}).get("name")
     )
 
+    # Handle is very vendor-specific; try multiple common fields.
     handle = (
-        payload.get("user", {}).get("screen_name")
+        base.get("user", {}).get("screen_name")
+        or base.get("user", {}).get("username")
+        or base.get("user_screen_name")
+        or base.get("userScreenName")
+        or payload.get("user", {}).get("screen_name")
         or payload.get("user", {}).get("username")
-        or payload.get("tweet", {}).get("user", {}).get("screen_name")
-        or payload.get("tweet", {}).get("user", {}).get("username")
+        or payload.get("user_screen_name")
+        or payload.get("userScreenName")
     )
 
     tweet_id = (
-        payload.get("id_str")
+        base.get("id_str")
+        or base.get("id")
+        or base.get("tweetID")
+        or base.get("tweetId")
+        or payload.get("id_str")
         or payload.get("id")
-        or payload.get("tweet", {}).get("id_str")
-        or payload.get("tweet", {}).get("id")
+        or payload.get("tweetID")
+        or payload.get("tweetId")
     )
     if tweet_id is not None:
         tweet_id = str(tweet_id)
+
+    # Canonical URL from upstream (e.g., "tweetURL") – this is the clean form
+    canonical_url = (
+        base.get("tweetURL")
+        or base.get("tweetUrl")
+        or base.get("url")
+        or payload.get("tweetURL")
+        or payload.get("tweetUrl")
+        or payload.get("url")
+    )
 
     if not text:
         raise CrownTALKError(
@@ -182,6 +205,7 @@ def _parse_payload(payload: dict) -> TweetData:
         handle=handle,
         tweet_id=tweet_id,
         lang=lang,
+        canonical_url=canonical_url,
     )
 
 
@@ -243,8 +267,7 @@ def fetch_tweet_data(x_url: str) -> TweetData:
             last_status = r.status_code
             if r.status_code == 200:
                 payload = _read_json_payload(r)
-                inner = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
-                data = _parse_payload(inner)
+                data = _parse_payload(payload)
                 _cache_set(handle, status_id, data)
                 return data
             elif r.status_code in (401, 403, 404):
@@ -281,8 +304,7 @@ def fetch_tweet_data(x_url: str) -> TweetData:
             last_status = r.status_code
             if r.status_code == 200:
                 payload = _read_json_payload(r)
-                inner = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
-                data = _parse_payload(inner)
+                data = _parse_payload(payload)
                 _cache_set(handle, status_id, data)
                 return data
             elif r.status_code in (401, 403, 404):
