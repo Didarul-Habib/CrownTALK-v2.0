@@ -26,6 +26,7 @@ BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onr
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "2"))                 # ← process N at a time
 PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.1"))  # ← sleep after every URL
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "25"))  # ← hard cap per request
+GROQ_MIN_INTERVAL = float(os.environ.get("GROQ_MIN_INTERVAL_SECONDS", "0"))
 
 KEEPALIVE = os.environ.get("KEEPALIVE", "false").lower() == "true"
 
@@ -249,6 +250,15 @@ GENERIC_PHRASES = {
     "next real edge probably sits",
     "flops the whole narrative unwinds quick",
     "blueprint for ai-driven work and ai token economics",
+
+    # Repetitive CT-ish scaffolds we want to avoid
+    "prediction markets plus",
+    "the nuance around",
+    "most intrigued by",
+    "most people glance at",
+    "everyone talks ",
+    "quietly stacking ",
+    "from a builder lens",
 }
 
 def contains_generic_phrase(text: str) -> bool:
@@ -594,6 +604,20 @@ def remember_comment(text: str, url: str = "", lang: Optional[str] = None) -> No
         # secondary memory failures are non-fatal
         return
 
+def recent_comments_for_url(url: str, limit: int = 50) -> list[str]:
+    """Fetch last N comments we already returned for this URL."""
+    if not url:
+        return []
+    try:
+        with get_conn() as c:
+            rows = c.execute(
+                "SELECT text FROM comments WHERE url=? ORDER BY created_at DESC LIMIT ?",
+                (url, limit),
+            ).fetchall()
+        return [r[0] for r in rows if r and r[0]]
+    except Exception:
+        return []
+
 
 def _openers(text: str) -> str:
     w = re.findall(r"[A-Za-z0-9']+", (text or "").lower())
@@ -829,6 +853,9 @@ def _llm_sys_prompt() -> str:
         "or slightly skeptical.\n"
         "- End sentences naturally with a period or question mark.\n"
         "\n"
+        "- Avoid repeating scaffolds like 'prediction markets plus X', "
+        "\"the nuance around X\", \"everyone talks X\".\n"
+        "\n"
         "AVOID (HARD)\n"
         "- No emojis, no hashtags, no links, no 'follow me' or 'check this out'.\n"
         "- Do NOT say you are an AI or language model.\n"
@@ -839,8 +866,9 @@ def _llm_sys_prompt() -> str:
         "'sounds like a game-changer', 'nice thread', 'great thread'.\n"
         "- Do not write trading advice or disclaimers like 'not financial advice'.\n"
         "\n"
-        "GOOD EXAMPLES (STYLE ONLY)\n"
-        "- 'Prediction markets plus TryLimitless suddenly make way more sense fr.'\n"
+        "GOOD EXAMPLES (STYLE ONLY – DO NOT COPY OR PARAPHRASE)\n"
+        "- These are just rough tone sketches, not templates.\n"
+        "- Every reply must use fresh wording and structure.\n"
         "\n"
         "BAD EXAMPLES (DO NOT COPY)\n"
         "- 'AlignerZ is redefining what it means to be a responsible launchpad ecosystem.'\n"
@@ -901,35 +929,32 @@ class OfflineCommentGenerator:
         # mix of reflective, builder, skeptical, and curious tones
         return [
             # reflective / interpretive
-            "The angle on {focus} here is actually pretty sharp.",
-            "You frame {focus} in a way most people totally miss.",
-            "{focus} is exactly where the next real edge probably sits.",
-            "The nuance around {focus} here hits harder than people think.",
+            "Angle on {focus} here is cleaner than most expect.",
+            "You frame {focus} around actual usage, not just hype.",
+            "{focus} feels like where smarter CT quietly leans in.",
+            "Detail on {focus} lands harder once you watch on-chain flows.",
             # builder / strategy
-            "From a builder lens, {focus} is the part that matters most.",
-            "If you execute {focus} well, the rest almost takes care of itself.",
-            "Quietly stacking {focus} like this is how you win long term.",
-            "This is how serious people should be thinking about {focus}.",
+            "From a builder view, {focus} touches real user pain points.",
+            "If you execute {focus} properly, everything else is just follow-through.",
+            "Having skin in {focus} matters more than timeline noise.",
+            "This is closer to how serious people should discuss {focus}.",
             # skeptical / grounded
-            "Big promises on {focus}, but execution will expose who’s real.",
-            "Everyone talks {focus}, very few are actually shipping it.",
-            "If {focus} flops, the whole narrative unwinds quick.",
-            "Nice thread, but {focus} still has some open questions.",
+            "Big promises on {focus}, but shipping cadence will tell the truth.",
+            "Most ignore {focus} until liquidity moves, then pretend they saw it early.",
+            "If {focus} fumbles execution, the whole design space looks weaker.",
+            "Still a couple unknowns around {focus} I’d want clarified first.",
             # curious / conversational
-            "Would love to see more concrete examples around {focus}.",
-            "Interesting take on {focus}, makes me rethink a couple assumptions.",
-            "Hard not to keep watching {focus} after reading this.",
-            "{focus} has way more going on under the hood than most realize",
-            "Quiet builder energy around {focus} here, feels like real work not noise",
-            "Hard to fade {focus} after this kind of breakdown ngl",
-            "If you actually map out {focus}, the thesis gets clearer fast",
-            "Most people glance at {focus}, very few actually dig into the details",
-            "Real devs are going to keep bumping into {focus} whether they like it or not",
-            "This {focus} framing is surprisingly clean for CT",
-            "Positioning into {focus} early is how compounding happens",
-            "Talk is cheap on {focus}; shipping is the real filter",
-            "Good breakdown, but {focus} still has open questions",
-            "{focus} holds up once hype cools off",
+            "Curious how {focus} behaves once incentives cool down a bit.",
+            "Would love to see one concrete example users actually touched for {focus}.",
+            "This angle on {focus} makes me revisit a few earlier assumptions.",
+            "Hard not to keep one eye on {focus} after this thread.",
+            "{focus} clearly has more going on under the hood than headlines show.",
+            "Builder energy around {focus} feels grounded, not just farming engagement.",
+            "Kind of wild how different {focus} looks if you track actual usage.",
+            "Map {focus} against flows and the thesis snaps into focus fast.",
+            "Most people scroll past {focus}, the nerds quietly accumulate conviction here.",
+            "Real devs will keep bumping into {focus} whether they admit it or not",
+             
         ]
 
     def _topic_buckets_markets(self) -> list[str]:
@@ -1240,6 +1265,9 @@ if USE_GROQ:
         USE_GROQ = False
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
+_last_groq_call = 0.0
+
+
 # ------------------------------------------------------------------------------
 # Optional OpenAI
 # ------------------------------------------------------------------------------
@@ -1310,7 +1338,14 @@ def keep_alive() -> None:
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
-
+    
+    # Simple per-process throttle so we don't hammer Groq and hit 429
+    global _last_groq_call
+    if GROQ_MIN_INTERVAL > 0 and _last_groq_call:
+        elapsed = time.time() - _last_groq_call
+        if elapsed < GROQ_MIN_INTERVAL:
+            time.sleep(GROQ_MIN_INTERVAL - elapsed)
+ 
     sys_prompt = _llm_sys_prompt()
     user_prompt = build_user_prompt(tweet_text, author)
 
@@ -1346,6 +1381,8 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 
     if resp is None:
         raise RuntimeError("Groq call failed after retries")
+
+    _last_groq_call = time.time()
 
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
@@ -1583,7 +1620,11 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
     return candidates[:2]
 
 
-def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
+def enforce_unique(
+    candidates: list[str],
+    tweet_text: Optional[str] = None,
+    avoid_texts: Optional[set[str]] = None,
+) -> list[str]:
     """
     - sanitize + enforce 6–13 words (+ punctuation)
     - drop generic phrases & hard-banned starters
@@ -1594,13 +1635,23 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     kw_set = tweet_keywords_for_scoring(tweet_text) if tweet_text else set()
     cleaned: list[tuple[str, float]] = []
     seen_openers_local: set[str] = set()
-
+    avoid_norm: set[str] = set()
+    if avoid_texts:
+        for t in avoid_texts:
+            norm = _normalize_for_memory(t)
+            if norm:
+                avoid_norm.add(norm)
     for c in candidates:
         c = enforce_word_count_natural(c)
         if not c:
             continue
 
         low = c.lower().strip()
+        
+        # avoid exact repeats for this URL (for rerolls)
+        norm_c = _normalize_for_memory(c)
+        if norm_c and norm_c in avoid_norm:
+            continue
 
         # kill obvious generic phrases again (cheap check)
         if contains_generic_phrase(low):
@@ -1766,6 +1817,14 @@ def generate_two_comments_with_providers(
     """
     candidates: list[str] = []
 
+    # Comments we already used for this URL (helps rerolls feel fresh)
+    avoid_texts: set[str] = set()
+    if url:
+        try:
+            avoid_texts = set(recent_comments_for_url(url, limit=50))
+        except Exception:
+            avoid_texts = set()
+
     # 1) Shuffle providers so we don't always hit the same one first
     providers = _available_providers()
     random.shuffle(providers)
@@ -1776,7 +1835,12 @@ def generate_two_comments_with_providers(
         try:
             got = fn(tweet_text, author)
             # enforce_unique handles dedupe, scoring, length, style, etc.
-            candidates = enforce_unique(candidates + got, tweet_text=tweet_text)
+            # enforce_unique handles dedupe, scoring, length, style, etc.
+            candidates = enforce_unique(
+                candidates + got,
+                tweet_text=tweet_text,
+                avoid_texts=avoid_texts,
+            )
         except Exception as e:
             logger.warning("%s provider failed: %s", name, e)
 
@@ -1784,14 +1848,22 @@ def generate_two_comments_with_providers(
     if len(candidates) < 2:
         try:
             offline = offline_two_comments(tweet_text, author)
-            candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
+            candidates = enforce_unique(
+                candidates + offline,
+                tweet_text=tweet_text,
+                avoid_texts=avoid_texts,
+            )
         except Exception as e:
             logger.warning("offline generator failed: %s", e)
 
     # 3) If still nothing, hard fallback to 2 simple offline lines
     if not candidates:
         raw = _rescue_two(tweet_text)
-        candidates = enforce_unique(raw, tweet_text=tweet_text) or raw
+        candidates = enforce_unique(
+            raw,
+            tweet_text=tweet_text,
+            avoid_texts=avoid_texts,
+        ) or raw
 
     # 4) Limit to exactly 2 raw text comments
     candidates = [c for c in candidates if c][:2]
