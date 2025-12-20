@@ -141,7 +141,14 @@ def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
     return txt
 
+
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
+    """
+    - 6–13 tokens
+    - keep inner punctuation
+    - remove final '.', '!' etc
+    - keep '?' only when it really looks like a question
+    """
     txt = sanitize_comment(raw)
     toks = txt.split()
     if not toks:
@@ -204,50 +211,45 @@ AI_BLOCKLIST = {
 }
 
 GENERIC_PHRASES = {
-    # Old generic stuff
-    "love that","love this","love the","love your",
-    "this is huge","this is massive","this is insane","curious","curious to see","wow","wonder","love to see","love","love to watch",
-    "nice thread","great thread","nice one","great one",
-    "bullish on this","bearish on this","this goes hard",
-    "gm fam","gm anon","gn fam","gn anon",
-    "good reminder","needed this","facts only",
+    # Old generic / overused stuff
+    "love that", "love this", "love the", "love your",
+    "love to see", "love seeing",
+    "nice thread", "great thread", "nice one", "great one",
+    "this is huge", "this is massive", "this is insane",
+    "curious to see", "wow", "wonder",
+    "good reminder", "needed this", "facts only",
+    "bullish on this", "bearish on this", "this goes hard",
+    "gm fam", "gm anon", "gn fam", "gn anon",
 
-    # New repetitive templates we want to kill
-    "love to see it","love to see this","love to see builders",
-    "love seeing this","love seeing builders",
-    "sounds like a game changer","sounds like a game-changer",
-    "that’s a clever play","that's a clever play",
-    "that’s a clever angle","that's a clever angle",
+    # Very corporate / ai-ish phrasing
+    "redefining what it means",
+    "will be the real catalyst",
+    "is the real catalyst",
+    "could disrupt", "could truly disrupt",
+    "genuinely transformative",
+    "marks the beginning of the end",
+    "up for grabs might not be the only",
+
+    # Template-y patterns we saw in outputs
+    "sounds like a game changer",
+    "sounds like a game-changer",
     "what a time to be alive",
-    "what a move","what a call",
-    "how do you see this","how do you see it",
+    "what a move", "what a call",
     "excited to see where this goes",
-    "this could be huge","this could be big",
-    # very corporate / ai-y phrases
-    "redefining what it means",
-    "will be the real catalyst",
-    "is the real catalyst",
-    "could disrupt", "could truly disrupt",
-    "genuinely transformative",
-    "marks the beginning of the end",
-    "no joke", "is no joke",
-    "up for grabs might not be the only",
-     # very corporate / ai-y phrases
-    "redefining what it means",
-    "will be the real catalyst",
-    "is the real catalyst",
-    "could disrupt", "could truly disrupt",
-    "genuinely transformative",
-    "marks the beginning of the end",
-    "no joke", "is no joke",
-    "up for grabs might not be the only",
 
-    # NEW: kill this pattern completely
+    # KOL-template spam we want to nuke
     "low-key bullish on",
     "low key bullish on",
     "next real edge probably sits",
     "flops the whole narrative unwinds quick",
     "blueprint for ai-driven work and ai token economics",
+    "quietly stacking ",
+    "everyone talks ",
+    "the angle on ",
+    "big promises on ",
+    "real devs are going to keep bumping into",
+    "floor price becomes a side effect",
+    "quiet confidence is what i look for in tools",
 }
 
 def contains_generic_phrase(text: str) -> bool:
@@ -341,8 +343,6 @@ FOCUS_BAD_TOKENS = {
 }
 
 
-
-
 def pick_focus_token(tokens: List[str]) -> Optional[str]:
     if not tokens:
         return None
@@ -362,31 +362,6 @@ def pick_focus_token(tokens: List[str]) -> Optional[str]:
 
     return random.choice(cands)
 
-
-def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
-    """
-    Extract a richer set of tokens from the tweet:
-    - cashtags ($TOKEN)
-    - @handles
-    - Capitalized words (project names)
-    - regular keyword tokens
-    """
-    if not tweet_text:
-        return set()
-
-    text = tweet_text or ""
-    cashtags = re.findall(r"\$[A-Za-z0-9]{2,12}", text)
-    handles = re.findall(r"@[A-Za-z0-9_]{2,15}", text)
-    caps = re.findall(r"\b[A-Z][A-Za-z0-9]{2,}\b", text)
-
-    base_keywords = extract_keywords(text)
-    all_tokens = []
-    all_tokens.extend(cashtags)
-    all_tokens.extend(handles)
-    all_tokens.extend(caps)
-    all_tokens.extend(base_keywords)
-
-    return {t.lower() for t in all_tokens if t}
 
 def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
     """
@@ -433,16 +408,13 @@ def _tweet_cashtags(tweet_text: Optional[str]) -> dict[str, str]:
 
 def _apply_cashtag_fix(comments: list[str], tweet_text: Optional[str]) -> list[str]:
     """
-    If tweet had $HLS and comment only says HLS, rewrite to $HLS.
+    - If tweet had $HLS, and comment says bare HLS -> replace with $HLS.
+    - Don't touch existing $HLS.
+    - Collapse $$HLS / $$$HLS -> $HLS.
     """
     mapping = _tweet_cashtags(tweet_text)
     if not mapping:
         return comments
-
-    pattern = re.compile(
-        r"\b(" + "|".join(re.escape(k) for k in mapping.keys()) + r")\b",
-        re.IGNORECASE,
-    )
 
     fixed: list[str] = []
     for c in comments:
@@ -450,11 +422,25 @@ def _apply_cashtag_fix(comments: list[str], tweet_text: Optional[str]) -> list[s
             fixed.append(c)
             continue
 
-        def _repl(m: re.Match) -> str:
-            key = m.group(1).upper()
-            return mapping.get(key, m.group(1))
+        # 1) Collapse multiple '$' before a known symbol -> single '$'
+        for sym in mapping.keys():
+            c = re.sub(
+                r"\${2,}(" + re.escape(sym) + r")\b",
+                r"$\1",
+                c,
+                flags=re.IGNORECASE,
+            )
 
-        fixed.append(pattern.sub(_repl, c))
+        # 2) Add '$' only to bare tokens that don't already have one
+        for sym, full in mapping.items():
+            pattern = re.compile(
+                r"(?<!\$)\b" + re.escape(sym) + r"\b",
+                re.IGNORECASE,
+            )
+            c = pattern.sub(full, c)
+
+        fixed.append(c)
+
     return fixed
 
 
@@ -484,6 +470,7 @@ def _apply_percent_fix(comments: list[str], tweet_text: Optional[str]) -> list[s
                 continue
             fixed[i] = num_pat.sub(value + "%", c)
     return fixed
+
 
 def normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
@@ -695,6 +682,7 @@ def _short_display_name(display: Optional[str]) -> Optional[str]:
 
     return token[0].upper() + token[1:]
 
+
 def _detect_greeting_kind(tweet_text: str) -> Optional[str]:
     """
     Detect if the tweet is a GM/GN/GA/GE type greeting.
@@ -763,57 +751,63 @@ def _apply_greeting_to_first_comment(
 # ------------------------------------------------------------------------------
 # LLM system prompt (tuned for KOL-ish, non-templated comments)
 # ------------------------------------------------------------------------------
+
 def _llm_sys_prompt() -> str:
     return (
         "You write ultra-short reply comments for Twitter/X.\n"
         "\n"
         "ROLE\n"
-        "- You are an experienced web3 / crypto KOL.\n"
-        "- You talk like a real CT user, not a corporate account and not an AI.\n"
+        "- You are an experienced web3 / crypto KOL and CT native.\n"
+        "- You sound like a real human degen/builder, not a brand account and not an AI.\n"
         "\n"
         "TASK\n"
         "- Write exactly TWO different reply comments to the tweet.\n"
         "- Each comment must be ONE sentence, 6–13 words long.\n"
-        "- No numbering, no bullets, no labels, no explanations.\n"
+        "- No numbering, no bullets, no labels, no extra text.\n"
         "- Either respond as a JSON array of two strings, or as two plain lines.\n"
         "\n"
         "STYLE\n"
-        "- Use natural, modern CT language. Light slang is OK: words like "
-        "'ngl', 'low-key', 'alpha', 'degen', 'anon', 'fr', "
-        "IF they genuinely fit the tweet.\n"
-        "- Speak in first person or direct address when it makes sense "
-        "(\"ngl I'm watching this\", \"curious how you scale this anon\").\n"
+        "- Use natural, modern CT language. Light slang is OK: 'ngl', 'fr', "
+        "'degen', 'anon', 'ct', 'ape', 'bag', ONLY when it fits the tweet.\n"
+        "- Speak like a participant, not a journalist. React to specifics: "
+        "project names, $tickers, numbers, mechanisms, timelines.\n"
+        "- Comments should feel like quick timeline reactions, not explanations or summaries.\n"
         "- Do NOT start both comments with the same first word.\n"
-        "- Each comment should be a single clear thought, not a paragraph.\n"
-        "- Prefer reacting to one concrete detail: project name, token symbol "
-        "($TOKEN), product, number, mechanism.\n"
-        "- One comment can be more supportive/bullish, the other more curious "
+        "- One comment can lean a bit supportive/bullish, the other more curious "
         "or slightly skeptical.\n"
-        "- End sentences naturally with a period or question mark.\n"
+        "- It's fine to end without a period; question comments should end with '?'.\n"
+        "\n"
+        "PRECISION\n"
+        "- Preserve numbers and symbols exactly: if the tweet says '20%' or '3.4%', "
+        "keep the '%' and decimals the same.\n"
+        "- If the tweet uses a cashtag like '$HLS', keep the '$' in '$HLS'.\n"
+        "- Don't invent tickers, percentages, dates, or chain names that aren't in the tweet.\n"
         "\n"
         "AVOID (HARD)\n"
-        "- No emojis, no hashtags, no links, no 'follow me' or 'check this out'.\n"
+        "- No emojis, no hashtags, no links, no follow/like/retweet requests.\n"
         "- Do NOT say you are an AI or language model.\n"
         "- Avoid generic corporate phrases like: 'redefining what it means', "
         "'game changer', 'game-changer', 'ecosystem', 'catalyst for growth', "
         "'transformative', 'marks the beginning of the end'.\n"
         "- Avoid generic templates like: 'love to see it', 'this is huge', "
-        "'sounds like a game-changer', 'nice thread', 'great thread'.\n"
+        "'sounds like a game-changer', 'nice thread', 'great thread', "
+        "'low-key bullish on X'.\n"
         "- Do not write trading advice or disclaimers like 'not financial advice'.\n"
         "\n"
         "GOOD EXAMPLES (STYLE ONLY)\n"
-        "- 'Low-key bullish on AlignerZ after this, real builder vibes ngl.'\n"
-        "- 'Prediction markets plus TryLimitless suddenly make way more sense fr.'\n"
-        "- 'Curious how Genome actually tracks attention without nuking UX anon.'\n"
+        "- 'This AlignerZ update has real builder energy ngl'\n"
+        "- 'Prediction markets plus TryLimitless suddenly make way more sense fr'\n"
+        "- 'Curious how Genome actually tracks attention without nuking UX anon'\n"
         "\n"
         "BAD EXAMPLES (DO NOT COPY)\n"
         "- 'AlignerZ is redefining what it means to be a responsible launchpad ecosystem.'\n"
         "- 'Decentralized claim verification is a game-changer for institutional trust.'\n"
         "- 'Scalable infrastructure will be the real catalyst for crypto growth next year.'\n"
     )
- 
 
-from typing import Optional  # you already import this at top; just make sure it's there
+
+from typing import Optional  # redundant but harmless; keep for safety
+
 
 
 def build_user_prompt(tweet_text: str, author: Optional[str]) -> str:
@@ -827,7 +821,8 @@ def build_user_prompt(tweet_text: str, author: Optional[str]) -> str:
         # show at most 6 to avoid flooding the prompt
         shown = sorted(list(kws))[:6]
         key_line = (
-            "Key tokens from the tweet (use at least one in EACH comment):\n"
+            "Key tokens from the tweet (use at least one EXACT token in EACH comment; "
+            "keep '$' and '%' if present):\n"
             f"{', '.join(shown)}\n\n"
         )
 
@@ -839,6 +834,7 @@ def build_user_prompt(tweet_text: str, author: Optional[str]) -> str:
         "React like a crypto-native KOL who just read this in their timeline.\n"
         "Focus on what would actually matter to CT degens and builders.\n"
     )
+
 # ------------------------------------------------------------------------------
 # Offline generator
 # ------------------------------------------------------------------------------
@@ -860,66 +856,62 @@ class OfflineCommentGenerator:
         return False
 
     def _topic_buckets_generic(self) -> list[str]:
-        # mix of reflective, builder, skeptical, and curious tones
+        """
+        Generic KOL-ish reactions that don't repeat obvious templates.
+        """
         return [
             # reflective / interpretive
-            "The angle on {focus} here is actually pretty sharp.",
-            "You frame {focus} in a way most people totally miss.",
-            "{focus} is exactly where the next real edge probably sits.",
-            "The nuance around {focus} here hits harder than people think.",
+            "{focus} has way more going on than the timeline admits",
+            "Wild how under-discussed {focus} still is after this drop",
+            "Honestly {focus} looks way less hand-wavy than most plays today",
+            "Feels like {focus} is built for people actually shipping, not tourists",
             # builder / strategy
-            "From a builder lens, {focus} is the part that matters most.",
-            "If you execute {focus} well, the rest almost takes care of itself.",
-            "Quietly stacking {focus} like this is how you win long term.",
-            "This is how serious people should be thinking about {focus}.",
+            "From a builder lens {focus} quietly matters way more than price",
+            "If {focus} keeps evolving like this the thesis gets cleaner",
+            "You can tell {focus} was designed by someone who actually ships",
+            "CT will fade the noise but keep circling back to {focus}",
             # skeptical / grounded
-            "Big promises on {focus}, but execution will expose who’s real.",
-            "Everyone talks {focus}, very few are actually shipping it.",
-            "If {focus} flops, the whole narrative unwinds quick.",
-            "Nice thread, but {focus} still has some open questions.",
+            "Not saying send it but {focus} thesis got clearer ngl",
+            "If {focus} misses execution the whole narrative unwinds fast",
+            "Nice story but {focus} still has some real risk vectors",
+            "Most people will only notice {focus} once it’s already priced in",
             # curious / conversational
-            "Lowkey curious how {focus} plays out once the hype fades.",
-            "Would love to see more concrete examples around {focus}.",
-            "Interesting take on {focus}, makes me rethink a couple assumptions.",
-            "Hard not to keep watching {focus} after reading this.",
-            "{focus} has way more going on under the hood than most realize",
-            "Quiet builder energy around {focus} here, feels like real work not noise",
-            "Hard to fade {focus} after this kind of breakdown ngl",
-            "If you actually map out {focus}, the thesis gets clearer fast",
-            "Most people glance at {focus}, very few actually dig into the details",
-            "Real devs are going to keep bumping into {focus} whether they like it or not",
+            "Low-key this is the kind of {focus} update I bookmark",
+            "Curious how {focus} holds up once the hype cools off",
+            "Interesting angle on {focus} makes me re-think a couple assumptions",
+            "Hard for me to ignore {focus} after this tbh",
         ]
 
-    def _topic_buckets_markets(self) -> list[str]:
+def _topic_buckets_markets(self) -> list[str]:
         # Short market comments: positioning, structure, risk/reward
         return [
-            "Risk reward on {focus} still looks asymmetric for patient people.",
-            "If {focus} holds this level, the whole structure flips quickly.",
-            "Most are staring at candles while {focus} quietly tells the story.",
-            "Once {focus} reclaims this zone, positioning probably shifts fast.",
-            "Market keeps mispricing {focus}; flow data points the other way.",
-            "If you're modeling {focus} right, the risk is very clear.",
+            "Risk reward on {focus} looks asymmetric if you zoom out a bit",
+            "If {focus} keeps defending this zone positioning flips fast",
+            "Most stare at candles while {focus} quietly sets the narrative",
+            "Flows around {focus} say more than the price action rn",
+            "If you’re sizing {focus} right the risk is pretty clear",
+            "Market still feels late to what {focus} is actually doing",
         ]
 
     def _topic_buckets_nft(self) -> list[str]:
         # NFT angle: long term, design, collectors
         return [
-            "Beyond the art, {focus} gives this collection real staying power.",
-            "Long term, {focus} decides whether this project actually survives.",
-            "The way they handle {focus} feels much more deliberate here.",
-            "If they execute on {focus}, floor price becomes a side effect.",
-            "{focus} is what separates this from another hype cycle mint.",
-            "Serious collectors are going to care a lot about {focus}.",
+            "Beyond the cosmetics {focus} gives this collection actual staying power",
+            "Long term it’s {focus} that decides who sticks around here",
+            "The way they handle {focus} feels way more intentional than most mints",
+            "If they execute on {focus} floor ends up following not leading",
+            "{focus} is exactly what separates this from another hype-only mint",
+            "Serious collectors are going to over-index on {focus} over time",
         ]
 
     def _topic_buckets_giveaway(self) -> list[str]:
         # Giveaways / WL: filter quality, retention, incentives
         return [
-            "Structuring the drop around {focus} is actually a smarter filter.",
-            "{focus}-based access tends to attract people who stick around.",
-            "Tying rewards to {focus} makes this feel less like pure farming.",
-            "Curious how {focus} will shape retention after the first wave.",
-            "Giveaways that center {focus} usually convert much better long term.",
+            "Structuring the drop around {focus} is a sneaky quality filter",
+            "{focus}-based access usually pulls in people who actually stick",
+            "Tying rewards to {focus} makes this feel less like pure farming",
+            "Curious how {focus} shapes who stays after the first wave",
+            "Giveaways that lean on {focus} tend to convert better long term",
         ]
 
     def _native_buckets(self, script: str) -> list[str]:
@@ -982,7 +974,8 @@ class OfflineCommentGenerator:
 
         return None
 
-    def _accept(self, line: str) -> bool:
+
+def _accept(self, line: str) -> bool:
         if not line:
             return False
         if self._violates_ai_blocklist(line):
@@ -1018,7 +1011,7 @@ class OfflineCommentGenerator:
             if native and self._accept(native):
                 out.append({"lang": ctx.get("lang") or "unknown", "text": native})
 
-          # Always generate at least one EN comment
+        # Always generate at least one EN comment
         key = extract_keywords(text)
         focus = pick_focus_token(key) or "this"
         buckets = self._topic_buckets_generic()
@@ -1067,6 +1060,7 @@ class OfflineCommentGenerator:
         return out[:2]
 
 
+
 def build_context_profile(text: str, url: str = "", tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
     t = (text or "").strip()
     lang = "en"  # rough default; could be improved
@@ -1091,8 +1085,8 @@ def _rescue_two(text: str) -> list[str]:
     toks = extract_keywords(text)
     focus = pick_focus_token(toks) or "this"
     base = [
-        f"Honestly, {focus} here feels super underpriced.",
-        f"Curious how {focus} plays out over the next few weeks.",
+        f"Honestly {focus} here feels underpriced compared to the noise",
+        f"Curious how {focus} actually plays out over the next few weeks",
     ]
     return [enforce_word_count_natural(x, 6, 13) for x in base]
 
@@ -1250,6 +1244,7 @@ if USE_COHERE:
         _cohere_client = None
         USE_COHERE = False
 
+
 # ------------------------------------------------------------------------------
 # Keepalive (Render free – optional)
 # ------------------------------------------------------------------------------
@@ -1262,6 +1257,7 @@ def keep_alive() -> None:
             requests.get(f"{BACKEND_PUBLIC_URL}/", timeout=5)
         except Exception:
             pass
+    # sleep after request
         time.sleep(60)
 
 
@@ -1396,8 +1392,7 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
-    
-           
+
 def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     """
     Use Hugging Face Inference API to generate two comments.
@@ -1461,6 +1456,7 @@ def hf_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
             candidates = merged[:2]
     return candidates[:2]
     
+
 def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     """
     Use Cohere generate() to produce two comments.
@@ -1496,6 +1492,7 @@ def cohere_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
             candidates = merged[:2]
     return candidates[:2]
 
+
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     items = generator.generate_two(text, author or None, None, None)
     en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
@@ -1509,7 +1506,10 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     elif non:
         result.append(non[0])
 
+    # Enforce uniqueness + fix tickers/percents
     result = enforce_unique(result, tweet_text=text)
+    result = _apply_cashtag_fix(result, text)
+    result = _apply_percent_fix(result, text)
     return result[:2]
 
 
@@ -1617,7 +1617,7 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
 
     - Hard reject: wrong length, generic phrases, bad starters, weird cut-offs.
     - Penalties: AI / corporate jargon, over-generic, boring structure.
-    - Bonuses: uses tweet keywords, first-person voice, question when appropriate.
+    - Bonuses: uses tweet keywords, first-person voice, CT slang, questions.
     """
     if not comment:
         return -1e9
@@ -1638,7 +1638,7 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
         if low.startswith(s):
             return -1e9
 
-    # Obvious cut-off endings like "... up for grabs might not be the only"
+    # Obvious cut-off endings like "... of", "... what"
     last_word_list = re.findall(r"\w+", low)
     last_word = last_word_list[-1] if last_word_list else ""
     if last_word in BAD_END_WORDS:
@@ -1662,7 +1662,8 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
         c_kw = set(extract_keywords(low))
         overlap = len(c_kw & kw_set)
         if overlap == 0:
-            score -= 0.6  # totally generic
+            # If the tweet has clear tokens and the comment uses none, reject as off-topic
+            return -1e9
         else:
             score += 0.2 * min(overlap, 3)
 
@@ -1674,6 +1675,10 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
     # Bonus for first-person or direct involvement
     if re.search(r"\b(i|im|i'm|me|my)\b", low):
         score += 0.25
+
+    # Tiny bonus for light CT slang
+    if any(s in low for s in (" ngl", " fr", "degen", " anon", "ct ", " ape ", "tbh")):
+        score += 0.15
 
     # Tiny bonus if it's a clean question
     if low.endswith("?"):
@@ -1809,6 +1814,7 @@ def generate_two_comments_with_providers(
     # 9) Final hard cap: exactly 2 comments
     return out[:2]
 
+
 # ------------------------------------------------------------------------------
 # API routes (batching + pacing)
 # ------------------------------------------------------------------------------
@@ -1899,6 +1905,10 @@ def _normalize_comment_items(
     texts = enforce_unique(texts, tweet_text=tweet_text)
     texts = texts[:2]
 
+    # 4) Fix cashtags / percents at the very end
+    texts = _apply_cashtag_fix(texts, tweet_text)
+    texts = _apply_percent_fix(texts, tweet_text)
+
     final: list[dict] = []
     for t in texts:
         t_txt = enforce_word_count_natural(t, 6, 13)
@@ -1912,6 +1922,8 @@ def _normalize_comment_items(
     # Last safety net: still < 2 → make a simple manual pair
     if len(final) < 2:
         rescue = _rescue_two(tweet_text)
+        rescue = _apply_cashtag_fix(rescue, tweet_text)
+        rescue = _apply_percent_fix(rescue, tweet_text)
         for s in rescue:
             if len(final) >= 2:
                 break
@@ -1923,6 +1935,7 @@ def _normalize_comment_items(
             final.append({"lang": lang, "text": t_txt})
 
     return final[:2]
+
 
 def _canonical_x_url_from_tweet(original_url: str, t: Any) -> str:
     """
