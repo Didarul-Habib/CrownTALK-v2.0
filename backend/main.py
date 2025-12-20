@@ -215,6 +215,28 @@ STARTER_SOFT_PENALTY = {
     "sounds like ", "looks like ", "seems like ",
     "what a ", "how do ", "how does ",
 }
+
+AI_JARGON_PENALTY = {
+    "redefining what it means",
+    "game changer",
+    "game-changer",
+    "transformative",
+    "ecosystem",
+    "catalyst for crypto growth",
+    "catalyst for growth",
+    "marks the beginning of the end",
+    "responsible launchpad ecosystem",
+}
+
+BAD_END_WORDS = {
+    "of", "the", "to", "for", "in", "on", "at", "by",
+    "with", "than", "then",
+    "this", "that", "these", "those",
+    "and", "or", "but",
+    "if", "when", "while", "where", "who", "which",
+    "maybe", "probably", "just", "only",
+}
+
 try:
     EMOJI_PATTERN = re.compile(
         r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+",
@@ -452,40 +474,55 @@ def _word_trigrams(text: str) -> set[str]:
 # ------------------------------------------------------------------------------
 # LLM system prompt (tuned for KOL-ish, non-templated comments)
 # ------------------------------------------------------------------------------
-
 def _llm_sys_prompt() -> str:
     return (
-        "You write ultra-short, high-quality reply comments for Twitter/X.\n"
+        "You write ultra-short reply comments for Twitter/X.\n"
         "\n"
-        "GOAL\n"
-        "- Sound like an experienced KOL or power user reacting in real time.\n"
-        "- Comments must feel human, not generic, not templated.\n"
+        "ROLE\n"
+        "- You are an experienced web3 / crypto KOL.\n"
+        "- You talk like a real CT user, not a corporate account and not an AI.\n"
         "\n"
-        "FORMAT\n"
-        "- Output exactly two comments only.\n"
-        "- Each comment must be a single sentence of 6–13 words.\n"
-        "- No numbering, bullets, labels or explanations.\n"
-        "- No quotes around the comments unless they quote the tweet itself.\n"
-        "- Output either:\n"
-        "  1) a JSON array of two strings, or\n"
-        "  2) two plain lines, one comment per line.\n"
+        "TASK\n"
+        "- Write exactly TWO different reply comments to the tweet.\n"
+        "- Each comment must be ONE sentence, 6–13 words long.\n"
+        "- No numbering, no bullets, no labels, no explanations.\n"
+        "- Either respond as a JSON array of two strings, or as two plain lines.\n"
         "\n"
         "STYLE\n"
-        "- Use natural conversational English with light CT/crypto slang only when it fits.\n"
-        "- Do not start both comments with the same first word.\n"
-        "- Prefer using 1–2 concrete tokens from the tweet "
-        "(project name, token symbol like $ETH or $TOKEN, product or metric).\n"
-        "- Each comment should contain one clear thought, not multiple clauses glued together.\n"
-        "- Mix tones: for example, one more supportive/bullish, one more curious or skeptical.\n"
-        "- If a comment reads like a question, end it with a question mark.\n"
+        "- Use natural, modern CT language. Light slang is OK: words like "
+        "'ngl', 'low-key', 'alpha', 'degen', 'anon', 'fr', "
+        "IF they genuinely fit the tweet.\n"
+        "- Speak in first person or direct address when it makes sense "
+        "(\"ngl I'm watching this\", \"curious how you scale this anon\").\n"
+        "- Do NOT start both comments with the same first word.\n"
+        "- Each comment should be a single clear thought, not a paragraph.\n"
+        "- Prefer reacting to one concrete detail: project name, token symbol "
+        "($TOKEN), product, number, mechanism.\n"
+        "- One comment can be more supportive/bullish, the other more curious "
+        "or slightly skeptical.\n"
+        "- End sentences naturally with a period or question mark.\n"
         "\n"
-        "AVOID\n"
-        "- Do NOT use emojis, hashtags, links or calls to follow.\n"
-        "- Do NOT mention that you are an AI or language model.\n"
-        "- Avoid generic filler like 'love that', 'love to see it', "
-        "'this is huge', 'sounds like a game-changer', 'nice thread'.\n"
-        "- Avoid investment/trading disclaimers like 'not financial advice'.\n"
+        "AVOID (HARD)\n"
+        "- No emojis, no hashtags, no links, no 'follow me' or 'check this out'.\n"
+        "- Do NOT say you are an AI or language model.\n"
+        "- Avoid generic corporate phrases like: 'redefining what it means', "
+        "'game changer', 'game-changer', 'ecosystem', 'catalyst for growth', "
+        "'transformative', 'marks the beginning of the end'.\n"
+        "- Avoid generic templates like: 'love to see it', 'this is huge', "
+        "'sounds like a game-changer', 'nice thread', 'great thread'.\n"
+        "- Do not write trading advice or disclaimers like 'not financial advice'.\n"
+        "\n"
+        "GOOD EXAMPLES (STYLE ONLY)\n"
+        "- 'Low-key bullish on AlignerZ after this, real builder vibes ngl.'\n"
+        "- 'Prediction markets plus TryLimitless suddenly make way more sense fr.'\n"
+        "- 'Curious how Genome actually tracks attention without nuking UX anon.'\n"
+        "\n"
+        "BAD EXAMPLES (DO NOT COPY)\n"
+        "- 'AlignerZ is redefining what it means to be a responsible launchpad ecosystem.'\n"
+        "- 'Decentralized claim verification is a game-changer for institutional trust.'\n"
+        "- 'Scalable infrastructure will be the real catalyst for crypto growth next year.'\n"
     )
+ 
 
 from typing import Optional  # you already import this at top; just make sure it's there
 
@@ -500,6 +537,9 @@ def build_user_prompt(tweet_text: str, author: Optional[str]) -> str:
         "Write two different reply comments that follow the style rules above.\n"
         "Make them feel like spontaneous reactions from a human KOL who just read the tweet.\n"
         "Focus on one specific idea or reaction in each comment.\n"
+        "Write two different reply comments that follow the style rules above.\n"
+        "React like a crypto-native KOL who just read this in their timeline.\n"
+        "Focus on what would actually matter to CT degens and builders.\n"
     )
 # ------------------------------------------------------------------------------
 # Offline generator
@@ -1216,8 +1256,6 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
 
         low = c.lower().strip()
 
-        # Hard filters already done in score_comment_for_post,
-        # but keep cheap checks to avoid DB calls.
         if contains_generic_phrase(low):
             continue
 
@@ -1245,42 +1283,48 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     if not cleaned:
         return []
 
-    # Sort by score descending
     cleaned.sort(key=lambda x: x[1], reverse=True)
     texts_ordered = [c for (c, _) in cleaned]
 
-    # Final hybrid pairing: maximize vibe diversity among the best candidates
     if len(texts_ordered) >= 2:
         texts_ordered = pick_two_diverse_text(texts_ordered)
 
     return texts_ordered[:2]
+        
 
 
 def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
     """
     Score a comment relative to a tweet:
-    - penalize generic / templated lines
-    - reward overlap with tweet tokens (project names, tickers, etc.)
-    - keep only 6–13 word, one-thought comments
+
+    - Hard reject: wrong length, generic phrases, bad starters, weird cut-offs.
+    - Penalties: AI / corporate jargon, over-generic, boring structure.
+    - Bonuses: uses tweet keywords, first-person voice, question when appropriate.
     """
     if not comment:
         return -1e9
 
-    low = comment.lower().strip()
+    comment = comment.strip()
+    low = comment.lower()
     wcount = len(words(comment))
 
-    # Hard length constraints
+    # Hard length constraint
     if wcount < 6 or wcount > 13:
         return -1e9
 
-    # Hard block if contains any fully generic phrase
+    # Hard generic / starter filters
     if contains_generic_phrase(low):
         return -1e9
 
-# Hard block if starts with one of the hard banned starters
     for s in STARTER_BLOCKLIST:
         if low.startswith(s):
             return -1e9
+
+    # Obvious cut-off endings like "up for grabs might not be the only"
+    last_word = re.findall(r"\w+", low)
+    last_word = last_word[-1] if last_word else ""
+    if last_word in BAD_END_WORDS:
+        return -1e9
 
     score = 1.0
 
@@ -1290,23 +1334,30 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
             score -= 0.4
             break
 
-    # If no tweet keywords, we can’t do content-based scoring
+    # Penalize AI / corporate jargon if present
+    for p in AI_JARGON_PENALTY:
+        if p in low:
+            score -= 0.5
+
+    # Reward using tweet keywords (project names, tickers, etc.)
     if kw_set:
-        c_kw = set(extract_keywords(comment.lower()))
+        c_kw = set(extract_keywords(low))
         overlap = len(c_kw & kw_set)
         if overlap == 0:
-            # Comment ignores all key tokens -> generic
-            score -= 0.5
+            score -= 0.6  # totally generic
         else:
-            # Reward using project / ticker / product name
-            score += 0.15 * min(overlap, 3)
+            score += 0.2 * min(overlap, 3)
 
-    # Tiny bonus if it looks like a genuine question
+    # Bonus for first-person or direct involvement
+    if re.search(r"\b(i|im|i'm|me|my)\b", low):
+        score += 0.25
+
+    # Tiny bonus if it's a clean question
     if low.endswith("?"):
-        score += 0.1
+        score += 0.15
 
-    # Penalize ellipses and multiple clauses
-    if comment.count("...") > 0:
+    # Penalize ellipses and multiple clauses (too rambly)
+    if "..." in low:
         score -= 0.3
     if comment.count(".") > 1:
         score -= 0.3
