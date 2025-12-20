@@ -206,7 +206,8 @@ AI_BLOCKLIST = {
 GENERIC_PHRASES = {
     # Old generic stuff
     "love that","love this","love the","love your",
-    "this is huge","this is massive","this is insane","curious","curious to see","wow","wonder","love to see","love","love to watch",
+    "this is huge","this is massive","this is insane","curious","curious to see","wow","wonder","love to see","love","love to watch","low-key",
+"low key",
     "nice thread","great thread","nice one","great one",
     "bullish on this","bearish on this","this goes hard",
     "gm fam","gm anon","gn fam","gn anon",
@@ -291,7 +292,8 @@ BAD_END_WORDS = {
     "this", "that", "these", "those",
     "and", "or", "but",
     "if", "when", "while", "where", "who", "which",
-    "maybe", "probably", "just", "only",
+    "maybe", "probably", "just", "only","low-key",
+"low key",
 }
 
 try:
@@ -337,7 +339,9 @@ def extract_keywords(text: str) -> list[str]:
 FOCUS_BAD_TOKENS = {
     "you", "this", "that", "one", "it", "they", "we", "i", "he", "she",
     "loving", "love", "conviction", "focus",
-    "while", "when", "what", "why", "how",
+    "while", "when", "what", "why", "how","low-key",
+"low key","there's",
+"theres",
 }
 
 
@@ -433,16 +437,16 @@ def _tweet_cashtags(tweet_text: Optional[str]) -> dict[str, str]:
 
 def _apply_cashtag_fix(comments: list[str], tweet_text: Optional[str]) -> list[str]:
     """
-    If tweet had $HLS and comment only says HLS, rewrite to $HLS.
+    Cashtag safety + normalization:
+
+    - Collapse duplicate dollars: $$FOLKS -> $FOLKS
+    - If tweet had cashtags (e.g. $HLS), enforce exact usage:
+        * bare HLS -> $HLS
+        * $hls / $$HLS -> $HLS (canonical)
+        * strip $ from cashtags that were NOT in the tweet (no invented tickers)
+    - If tweet had NO cashtags, strip any $cashtags from the comment.
     """
     mapping = _tweet_cashtags(tweet_text)
-    if not mapping:
-        return comments
-
-    pattern = re.compile(
-        r"\b(" + "|".join(re.escape(k) for k in mapping.keys()) + r")\b",
-        re.IGNORECASE,
-    )
 
     fixed: list[str] = []
     for c in comments:
@@ -450,11 +454,45 @@ def _apply_cashtag_fix(comments: list[str], tweet_text: Optional[str]) -> list[s
             fixed.append(c)
             continue
 
+        t = c
+
+        # 1) Always collapse any repeated $ sequences
+        t = re.sub(r"\${2,}", "$", t)
+
+        if not mapping:
+            # Tweet had no cashtags -> do not invent tickers
+            t = re.sub(r"\$([A-Za-z0-9]{1,10})\b", r"\1", t)
+            fixed.append(t)
+            continue
+
+        # 2) Normalize cashtags we DO allow to tweet's canonical form
+        for sym, cas in mapping.items():
+            t = re.sub(rf"\$+{re.escape(sym)}\b", cas, t, flags=re.IGNORECASE)
+
+        # 3) If the model used a bare symbol, rewrite it to the tweet's cashtag
+        pattern = re.compile(
+            r"\b(" + "|".join(re.escape(k) for k in mapping.keys()) + r")\b",
+            re.IGNORECASE,
+        )
+
         def _repl(m: re.Match) -> str:
             key = m.group(1).upper()
             return mapping.get(key, m.group(1))
 
-        fixed.append(pattern.sub(_repl, c))
+        t = pattern.sub(_repl, t)
+
+        # 4) Strip cashtags that were NOT present in the tweet
+        def _strip_unknown(m: re.Match) -> str:
+            raw = m.group(0)
+            core = re.sub(r"^\$+", "", raw).upper()
+            if core in mapping:
+                return mapping[core]
+            return core  # drop the dollar
+
+        t = re.sub(r"\$+[A-Za-z0-9]{1,10}\b", _strip_unknown, t)
+
+        fixed.append(t)
+
     return fixed
 
 
@@ -802,14 +840,14 @@ def _llm_sys_prompt() -> str:
         "- Do not write trading advice or disclaimers like 'not financial advice'.\n"
         "\n"
         "GOOD EXAMPLES (STYLE ONLY)\n"
-        "- 'Low-key bullish on AlignerZ after this, real builder vibes ngl.'\n"
         "- 'Prediction markets plus TryLimitless suddenly make way more sense fr.'\n"
-        "- 'Curious how Genome actually tracks attention without nuking UX anon.'\n"
         "\n"
         "BAD EXAMPLES (DO NOT COPY)\n"
         "- 'AlignerZ is redefining what it means to be a responsible launchpad ecosystem.'\n"
         "- 'Decentralized claim verification is a game-changer for institutional trust.'\n"
         "- 'Scalable infrastructure will be the real catalyst for crypto growth next year.'\n"
+        "- 'Low-key bullish on AlignerZ after this, real builder vibes ngl.'\n"
+        "- 'Curious how Genome actually tracks attention without nuking UX anon.'\n"
     )
  
 
@@ -878,7 +916,6 @@ class OfflineCommentGenerator:
             "If {focus} flops, the whole narrative unwinds quick.",
             "Nice thread, but {focus} still has some open questions.",
             # curious / conversational
-            "Lowkey curious how {focus} plays out once the hype fades.",
             "Would love to see more concrete examples around {focus}.",
             "Interesting take on {focus}, makes me rethink a couple assumptions.",
             "Hard not to keep watching {focus} after reading this.",
@@ -888,6 +925,11 @@ class OfflineCommentGenerator:
             "If you actually map out {focus}, the thesis gets clearer fast",
             "Most people glance at {focus}, very few actually dig into the details",
             "Real devs are going to keep bumping into {focus} whether they like it or not",
+            "This {focus} framing is surprisingly clean for CT",
+            "Positioning into {focus} early is how compounding happens",
+            "Talk is cheap on {focus}; shipping is the real filter",
+            "Good breakdown, but {focus} still has open questions",
+            "{focus} holds up once hype cools off",
         ]
 
     def _topic_buckets_markets(self) -> list[str]:
