@@ -232,6 +232,22 @@ GENERIC_PHRASES = {
     "marks the beginning of the end",
     "no joke", "is no joke",
     "up for grabs might not be the only",
+     # very corporate / ai-y phrases
+    "redefining what it means",
+    "will be the real catalyst",
+    "is the real catalyst",
+    "could disrupt", "could truly disrupt",
+    "genuinely transformative",
+    "marks the beginning of the end",
+    "no joke", "is no joke",
+    "up for grabs might not be the only",
+
+    # NEW: kill this pattern completely
+    "low-key bullish on",
+    "low key bullish on",
+    "next real edge probably sits",
+    "flops the whole narrative unwinds quick",
+    "blueprint for ai-driven work and ai token economics",
 }
 
 def contains_generic_phrase(text: str) -> bool:
@@ -318,19 +334,32 @@ def extract_keywords(text: str) -> list[str]:
     return out[:10]
 
 
-FOCUS_BAD_TOKENS = {"you", "this", "that", "one", "it", "they", "we", "i", "he", "she"}
+FOCUS_BAD_TOKENS = {
+    "you", "this", "that", "one", "it", "they", "we", "i", "he", "she",
+    "loving", "love", "conviction", "focus",
+    "while", "when", "what", "why", "how",
+}
+
 
 
 
 def pick_focus_token(tokens: List[str]) -> Optional[str]:
     if not tokens:
         return None
-    # Prefer capitalized tokens that aren't pronouns / generic
-    cands = [t for t in tokens if (t.isupper() or t[0].isupper()) and t.lower() not in FOCUS_BAD_TOKENS]
+
+    # Prefer capitalized or ALLCAPS tokens that look like proper nouns or tickers
+    cands = [
+        t for t in tokens
+        if (t.isupper() or t[0].isupper()) and t.lower() not in FOCUS_BAD_TOKENS
+    ]
+
+    # Fallback: any non-bad token
     if not cands:
         cands = [t for t in tokens if t.lower() not in FOCUS_BAD_TOKENS]
+
     if not cands:
         cands = tokens
+
     return random.choice(cands)
 
 
@@ -853,6 +882,12 @@ class OfflineCommentGenerator:
             "Would love to see more concrete examples around {focus}.",
             "Interesting take on {focus}, makes me rethink a couple assumptions.",
             "Hard not to keep watching {focus} after reading this.",
+            "{focus} has way more going on under the hood than most realize",
+            "Quiet builder energy around {focus} here, feels like real work not noise",
+            "Hard to fade {focus} after this kind of breakdown ngl",
+            "If you actually map out {focus}, the thesis gets clearer fast",
+            "Most people glance at {focus}, very few actually dig into the details",
+            "Real devs are going to keep bumping into {focus} whether they like it or not",
         ]
 
     def _topic_buckets_markets(self) -> list[str]:
