@@ -138,21 +138,40 @@ def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     if not toks:
         return ""
 
-    # Hard cap first
+    # Clamp to max length
     if len(toks) > max_w:
         toks = toks[:max_w]
 
-    # Softly pad short lines with casual fillers
+    # Very light filler if model undershoots
     while len(toks) < min_w:
-        for filler in ["honestly", "tbh", "still", "though", "right"]:
+        for filler in ["tbh", "still", "though", "fr"]:
             if len(toks) >= min_w:
                 break
             toks.append(filler)
         if len(toks) < min_w:
             break
 
-    return " ".join(toks).strip()
+    text = " ".join(toks).strip()
+    if not text:
+        return ""
 
+    # If already ends with punctuation, keep as is
+    if text[-1] in ".!?":
+        return text
+
+    low = text.lower()
+
+    # Heuristic: if it looks like a question, end with '?'
+    question_words = (
+        "what ", "why ", "how ", "where ", "when ",
+        "do ", "does ", "did ", "can ", "could ",
+        "should ", "would ", "is ", "are ", "will ",
+    )
+    if any(low.startswith(q) for q in question_words) or "?" in raw:
+        return text + "?"
+
+    # Otherwise, make it a clean statement
+    return text + "."
 
 # ------------------------------------------------------------------------------
 # Topic / keywords (to keep comments context-aware, not templated)
@@ -191,6 +210,15 @@ GENERIC_PHRASES = {
     "how do you see this","how do you see it",
     "excited to see where this goes",
     "this could be huge","this could be big",
+    # very corporate / ai-y phrases
+    "redefining what it means",
+    "will be the real catalyst",
+    "is the real catalyst",
+    "could disrupt", "could truly disrupt",
+    "genuinely transformative",
+    "marks the beginning of the end",
+    "no joke", "is no joke",
+    "up for grabs might not be the only",
 }
 
 def contains_generic_phrase(text: str) -> bool:
@@ -296,6 +324,32 @@ def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
     all_tokens.extend(base_keywords)
 
     return {t.lower() for t in all_tokens if t}
+
+def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
+    """
+    Extract a richer set of tokens from the tweet:
+    - cashtags ($TOKEN)
+    - @handles
+    - Capitalized words (project names)
+    - regular keyword tokens
+    """
+    if not tweet_text:
+        return set()
+
+    text = tweet_text or ""
+    cashtags = re.findall(r"\$[A-Za-z0-9]{2,12}", text)
+    handles = re.findall(r"@[A-Za-z0-9_]{2,15}", text)
+    caps = re.findall(r"\b[A-Z][A-Za-z0-9]{2,}\b", text)
+
+    base_keywords = extract_keywords(text)
+    all_tokens: list[str] = []
+    all_tokens.extend(cashtags)
+    all_tokens.extend(handles)
+    all_tokens.extend(caps)
+    all_tokens.extend(base_keywords)
+
+    return {t.lower() for t in all_tokens if t}
+
 
 def normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
@@ -530,13 +584,22 @@ from typing import Optional  # you already import this at top; just make sure it
 def build_user_prompt(tweet_text: str, author: Optional[str]) -> str:
     """
     Common user prompt used by all providers so they follow the same rules.
+    Includes key tokens from the tweet so the model can anchor on them.
     """
+    kws = tweet_keywords_for_scoring(tweet_text)
+    key_line = ""
+    if kws:
+        # show at most 6 to avoid flooding the prompt
+        shown = sorted(list(kws))[:6]
+        key_line = (
+            "Key tokens from the tweet (use at least one in EACH comment):\n"
+            f"{', '.join(shown)}\n\n"
+        )
+
     return (
         f"Original tweet (author: {author or 'unknown'}):\n"
         f"{tweet_text}\n\n"
-        "Write two different reply comments that follow the style rules above.\n"
-        "Make them feel like spontaneous reactions from a human KOL who just read the tweet.\n"
-        "Focus on one specific idea or reaction in each comment.\n"
+        f"{key_line}"
         "Write two different reply comments that follow the style rules above.\n"
         "React like a crypto-native KOL who just read this in their timeline.\n"
         "Focus on what would actually matter to CT degens and builders.\n"
@@ -1239,7 +1302,7 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
 
 def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
     """
-    - sanitize + enforce 6–13 words
+    - sanitize + enforce 6–13 words (+ punctuation)
     - drop generic phrases & hard-banned starters
     - skip past repeats / templates / trigram overlaps
     - score comments against tweet keywords
@@ -1256,6 +1319,7 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
 
         low = c.lower().strip()
 
+        # kill obvious generic phrases again (cheap check)
         if contains_generic_phrase(low):
             continue
 
@@ -1263,11 +1327,11 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
         if op and op in seen_openers_local:
             continue
 
-        if comment_seen(low):
-            continue
-        if trigram_overlap_bad(low, threshold=2) or too_similar_to_recent(low):
+        # structural repetition guards (global memory)
+        if comment_seen(low) or trigram_overlap_bad(low, threshold=2) or too_similar_to_recent(low):
             continue
 
+        # template memory guard
         tmpl_fp = re.sub(r"\b\w+\b", "w", low)[:80]
         if template_burned(tmpl_fp):
             continue
@@ -1283,15 +1347,28 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     if not cleaned:
         return []
 
+    # Sort by score descending
     cleaned.sort(key=lambda x: x[1], reverse=True)
     texts_ordered = [c for (c, _) in cleaned]
 
+    # Final pairing: try to mix statement + question if possible
     if len(texts_ordered) >= 2:
         texts_ordered = pick_two_diverse_text(texts_ordered)
 
-    return texts_ordered[:2]
-        
+    final = texts_ordered[:2]
 
+    # Remember final picks in DB
+    for text in final:
+        try:
+            remember_comment(text)
+            remember_opener(_openers(text))
+            remember_ngrams(text)
+            remember_template(text)
+        except Exception:
+            pass
+
+    return final
+                
 
 def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
     """
@@ -1320,9 +1397,9 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
         if low.startswith(s):
             return -1e9
 
-    # Obvious cut-off endings like "up for grabs might not be the only"
-    last_word = re.findall(r"\w+", low)
-    last_word = last_word[-1] if last_word else ""
+    # Obvious cut-off endings like "... up for grabs might not be the only"
+    last_word_list = re.findall(r"\w+", low)
+    last_word = last_word_list[-1] if last_word_list else ""
     if last_word in BAD_END_WORDS:
         return -1e9
 
@@ -1347,6 +1424,11 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
             score -= 0.6  # totally generic
         else:
             score += 0.2 * min(overlap, 3)
+
+        # If we say "bullish on" or "interested in" but use no keyword, reject
+        stance_triggers = ["bullish on", "bearish on", "interested in", "watching"]
+        if any(trig in low for trig in stance_triggers) and overlap == 0:
+            return -1e9
 
     # Bonus for first-person or direct involvement
     if re.search(r"\b(i|im|i'm|me|my)\b", low):
