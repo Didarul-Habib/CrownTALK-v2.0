@@ -288,17 +288,38 @@ def detect_topic(text: str) -> str:
 
 
 def extract_keywords(text: str) -> list[str]:
-    t = (text or "").lower()
-    tokens = re.findall(r"[a-z0-9]+", t)
-    toks = [x for x in tokens if x not in EN_STOPWORDS and len(x) > 2]
-    return toks[:12]
-
-
-def pick_focus_token(tokens: list[str]) -> str:
+    cleaned = re.sub(r"https?://\S+", "", text or "")
+    cleaned = re.sub(r"[@#]\S+", "", cleaned)
+    tokens = re.findall(r"\b[A-Za-z][A-Za-z0-9_\-]{2,}\b", cleaned)
     if not tokens:
-        return ""
-    counts = Counter(tokens)
-    return sorted(counts.items(), key=lambda x: (-x[1], len(x[0])))[0][0]
+        return []
+    filtered = [t for t in tokens if t.lower() not in EN_STOPWORDS and len(t) > 2] or tokens
+    counts = Counter([t.lower() for t in filtered])
+    seen: set[str] = set()
+    out: list[str] = []
+    for w in sorted(filtered, key=lambda w: (-counts[w.lower()], -len(w))):
+        lw = w.lower()
+        if lw not in seen:
+            seen.add(lw)
+            out.append(w)
+    return out[:10]
+
+
+FOCUS_BAD_TOKENS = {"you", "this", "that", "one", "it", "they", "we", "i", "he", "she"}
+
+
+
+def pick_focus_token(tokens: List[str]) -> Optional[str]:
+    if not tokens:
+        return None
+    # Prefer capitalized tokens that aren't pronouns / generic
+    cands = [t for t in tokens if (t.isupper() or t[0].isupper()) and t.lower() not in FOCUS_BAD_TOKENS]
+    if not cands:
+        cands = [t for t in tokens if t.lower() not in FOCUS_BAD_TOKENS]
+    if not cands:
+        cands = tokens
+    return random.choice(cands)
+
 
 def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
     """
@@ -349,6 +370,7 @@ def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
     all_tokens.extend(base_keywords)
 
     return {t.lower() for t in all_tokens if t}
+
 
 
 def normalize_ws(s: str) -> str:
@@ -524,6 +546,107 @@ def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300)
 def _word_trigrams(text: str) -> set[str]:
     toks = re.findall(r"[A-Za-z0-9']+", (text or "").lower())
     return {" ".join(toks[i:i+3]) for i in range(len(toks) - 2)}
+
+
+def _short_display_name(display: Optional[str]) -> Optional[str]:
+    """
+    Turn a display name into something we can call out:
+    - 'john.base.eth'   -> 'John'
+    - 'HASITHA 🦆'      -> 'Hasitha'
+    - '0xDeFiWizard'    -> 'DeFiWizard' (best effort)
+    """
+    if not display:
+        return None
+
+    # Remove emojis and weird symbols, keep word chars, dots, spaces
+    cleaned = re.sub(r"[^\w\.\s]", " ", display)
+    parts = cleaned.split()
+    if not parts:
+        return None
+
+    token = parts[0]
+
+    # If token has . or _, keep the first segment
+    token = re.split(r"[._]", token)[0] or token
+
+    # If that segment has no letters (e.g. '0x1234'), try next parts
+    if not re.search(r"[A-Za-z]", token):
+        for p in parts[1:]:
+            seg = re.split(r"[._]", p)[0]
+            if re.search(r"[A-Za-z]", seg):
+                token = seg
+                break
+
+    token = token.strip()
+    if not token:
+        return None
+
+    return token[0].upper() + token[1:]
+
+def _detect_greeting_kind(tweet_text: str) -> Optional[str]:
+    """
+    Detect if the tweet is a GM/GN/GA/GE type greeting.
+    Returns one of: 'morning', 'afternoon', 'evening', 'night', or None.
+    """
+    if not tweet_text:
+        return None
+    low = tweet_text.strip().lower()
+
+    # Only care if greeting is at the start or very early
+    head = low[:80]
+
+    if re.match(r"^(gm|gm\.|gm!)\b", head) or "good morning" in head:
+        return "morning"
+    if "good afternoon" in head:
+        return "afternoon"
+    if "good evening" in head:
+        return "evening"
+    if re.match(r"^(gn|gn\.|gn!)\b", head) or "good night" in head:
+        return "night"
+    return None
+
+
+def _apply_greeting_to_first_comment(
+    comments: list[str],
+    tweet_text: str,
+    author_name: Optional[str],
+) -> list[str]:
+    """
+    If the tweet is a greeting (GM/GN/GA/GE), force the first comment to
+    start with 'Good {time} {Name}, ...'
+    """
+    if not comments or not tweet_text or not author_name:
+        return comments
+
+    kind = _detect_greeting_kind(tweet_text)
+    if not kind:
+        return comments
+
+    name = _short_display_name(author_name) or "anon"
+
+    base = {
+        "morning": "Good morning",
+        "afternoon": "Good afternoon",
+        "evening": "Good evening",
+        "night": "Good night",
+    }.get(kind, "Good morning")
+
+    prefix = f"{base} {name},"
+
+    body = comments[0] or ""
+
+    # Strip any existing GM/GA/GE from the start of the comment body
+    body = re.sub(
+        r"^(gm|good morning|good afternoon|good evening|good night)[^,]*,?\s*",
+        "",
+        body,
+        flags=re.I,
+    ).strip()
+
+    # Rebuild and re-enforce word count + punctuation
+    new_first = enforce_word_count_natural(f"{prefix} {body}")
+    comments[0] = new_first
+    return comments
 
 # ------------------------------------------------------------------------------
 # LLM system prompt (tuned for KOL-ish, non-templated comments)
@@ -1510,6 +1633,11 @@ def generate_two_comments_with_providers(
 
     # Limit to exactly 2 text comments
     candidates = [c for c in candidates if c][:2]
+
+    # If tweet is a GM/GA/GE/GN style greeting,
+    # force first comment to greet the author by display name.
+    if candidates:
+        candidates = _apply_greeting_to_first_comment(candidates, tweet_text, author)
 
     out: List[Dict[str, Any]] = []
     for c in candidates:
