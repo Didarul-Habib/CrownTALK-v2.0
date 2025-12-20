@@ -882,37 +882,39 @@ class OfflineCommentGenerator:
             "Hard for me to ignore {focus} after this tbh",
         ]
 
-def _topic_buckets_markets(self) -> list[str]:
+
+    def _topic_buckets_markets(self) -> list[str]:
         # Short market comments: positioning, structure, risk/reward
         return [
-            "Risk reward on {focus} looks asymmetric if you zoom out a bit",
-            "If {focus} keeps defending this zone positioning flips fast",
-            "Most stare at candles while {focus} quietly sets the narrative",
-            "Flows around {focus} say more than the price action rn",
-            "If you’re sizing {focus} right the risk is pretty clear",
-            "Market still feels late to what {focus} is actually doing",
+            "Risk reward on {focus} still looks asymmetric for patient people",
+            "If {focus} holds this level, the whole structure flips quickly",
+            "Most are staring at candles while {focus} quietly tells the story",
+            "Once {focus} reclaims this zone, positioning probably shifts fast",
+            "Market keeps mispricing {focus}; flow data points the other way",
+            "If you're modeling {focus} right, the risk is very clear",
         ]
 
     def _topic_buckets_nft(self) -> list[str]:
         # NFT angle: long term, design, collectors
         return [
-            "Beyond the cosmetics {focus} gives this collection actual staying power",
-            "Long term it’s {focus} that decides who sticks around here",
-            "The way they handle {focus} feels way more intentional than most mints",
-            "If they execute on {focus} floor ends up following not leading",
-            "{focus} is exactly what separates this from another hype-only mint",
-            "Serious collectors are going to over-index on {focus} over time",
+            "Beyond the art, {focus} gives this collection real staying power",
+            "Long term, {focus} decides whether this project actually survives",
+            "The way they handle {focus} feels much more deliberate here",
+            "If they execute on {focus}, floor price becomes a side effect",
+            "{focus} is what separates this from another hype cycle mint",
+            "Serious collectors are going to care a lot about {focus}",
         ]
 
     def _topic_buckets_giveaway(self) -> list[str]:
         # Giveaways / WL: filter quality, retention, incentives
         return [
-            "Structuring the drop around {focus} is a sneaky quality filter",
-            "{focus}-based access usually pulls in people who actually stick",
+            "Structuring the drop around {focus} is actually a smarter filter",
+            "{focus}-based access tends to attract people who stick around",
             "Tying rewards to {focus} makes this feel less like pure farming",
-            "Curious how {focus} shapes who stays after the first wave",
-            "Giveaways that lean on {focus} tend to convert better long term",
+            "Curious how {focus} will shape retention after the first wave",
+            "Giveaways that center {focus} usually convert much better long term",
         ]
+
 
     def _native_buckets(self, script: str) -> list[str]:
         # Very lightweight; front-end cares more about vibe than perfect grammar
