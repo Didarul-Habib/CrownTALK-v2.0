@@ -124,27 +124,36 @@ def words(t: str) -> list[str]:
 
 
 def sanitize_comment(raw: str) -> str:
+    """
+    Soft clean:
+    - remove URLs
+    - remove @handles and #hashtags
+    - collapse whitespace
+    - remove emojis
+    BUT keep internal punctuation like 3.4% and $HLS.
+    """
     txt = re.sub(r"https?://\S+", "", raw or "")
+    # drop @handles and #hashtags, keep $tickers
     txt = re.sub(r"[@#]\S+", "", txt)
+    # collapse whitespace
     txt = re.sub(r"\s+", " ", txt).strip()
-    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
+    # remove emojis / pictographs
     txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
     return txt
 
-
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
-    toks = words(txt)
+    toks = txt.split()
     if not toks:
         return ""
 
-    # Clamp to max length
+    # clamp max
     if len(toks) > max_w:
         toks = toks[:max_w]
 
-    # Very light filler if model undershoots
+    # pad if too short
     while len(toks) < min_w:
-        for filler in ["tbh", "still", "though", "fr"]:
+        for filler in ["honestly", "tbh", "still", "though", "right"]:
             if len(toks) >= min_w:
                 break
             toks.append(filler)
@@ -155,23 +164,27 @@ def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     if not text:
         return ""
 
-    # If already ends with punctuation, keep as is
-    if text[-1] in ".!?":
-        return text
-
+    # punctuation rules
     low = text.lower()
-
-    # Heuristic: if it looks like a question, end with '?'
-    question_words = (
+    question_starts = (
         "what ", "why ", "how ", "where ", "when ",
         "do ", "does ", "did ", "can ", "could ",
         "should ", "would ", "is ", "are ", "will ",
     )
-    if any(low.startswith(q) for q in question_words) or "?" in raw:
-        return text + "?"
 
-    # Otherwise, make it a clean statement
-    return text + "."
+    # Decide if it's a question based on start or original raw
+    is_question = any(low.startswith(q) for q in question_starts) or "?" in (raw or "")
+
+    if is_question:
+        # strip trailing sentence punctuation then add '?'
+        text = re.sub(r"[.!;:…]+$", "", text)
+        if not text.endswith("?"):
+            text = text + "?"
+    else:
+        # NO '.', just strip any trailing sentence punctuation if model added it
+        text = re.sub(r"[.!;:…]+$", "", text)
+
+    return text
 
 # ------------------------------------------------------------------------------
 # Topic / keywords (to keep comments context-aware, not templated)
@@ -372,6 +385,76 @@ def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
     return {t.lower() for t in all_tokens if t}
 
 
+def _tweet_cashtags(tweet_text: Optional[str]) -> dict[str, str]:
+    """
+    Map ticker symbol -> original cashtag, e.g.
+    '$HLS' -> {'HLS': '$HLS'}
+    """
+    if not tweet_text:
+        return {}
+    tags = re.findall(r"\$[A-Za-z0-9]{1,10}", tweet_text)
+    mapping: dict[str, str] = {}
+    for t in tags:
+        symbol = t.lstrip("$")
+        if not symbol:
+            continue
+        mapping[symbol.upper()] = t  # preserve original '$' + case
+    return mapping
+
+
+def _apply_cashtag_fix(comments: list[str], tweet_text: Optional[str]) -> list[str]:
+    """
+    If tweet had $HLS and comment only says HLS, rewrite to $HLS.
+    """
+    mapping = _tweet_cashtags(tweet_text)
+    if not mapping:
+        return comments
+
+    pattern = re.compile(
+        r"\b(" + "|".join(re.escape(k) for k in mapping.keys()) + r")\b",
+        re.IGNORECASE,
+    )
+
+    fixed: list[str] = []
+    for c in comments:
+        if not c:
+            fixed.append(c)
+            continue
+
+        def _repl(m: re.Match) -> str:
+            key = m.group(1).upper()
+            return mapping.get(key, m.group(1))
+
+        fixed.append(pattern.sub(_repl, c))
+    return fixed
+
+
+def _apply_percent_fix(comments: list[str], tweet_text: Optional[str]) -> list[str]:
+    """
+    If tweet had 20% but comment only says 20, upgrade it back to 20%.
+    Same for 3.4% → 3.4.
+    """
+    if not tweet_text:
+        return comments
+
+    # capture numbers that appear with % in the tweet
+    percents = re.findall(r"\b(\d+(?:\.\d+)?)%", tweet_text)
+    if not percents:
+        return comments
+
+    fixed = list(comments)
+    for value in percents:
+        num_pat = re.compile(r"\b" + re.escape(value) + r"\b")
+        full_pat = re.compile(r"\b" + re.escape(value) + r"\s*%")
+
+        for i, c in enumerate(fixed):
+            if not c:
+                continue
+            # if this value already has %, skip
+            if full_pat.search(c):
+                continue
+            fixed[i] = num_pat.sub(value + "%", c)
+    return fixed
 
 def normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", s or "").strip()
@@ -1588,7 +1671,7 @@ def _available_providers() -> list[tuple[str, callable]]:
         providers.append(("cohere", cohere_two_comments))
     return providers
 
-
+    
 def generate_two_comments_with_providers(
     tweet_text: str,
     author: Optional[str],
@@ -1606,6 +1689,7 @@ def generate_two_comments_with_providers(
     """
     candidates: list[str] = []
 
+    # 1) Shuffle providers so we don't always hit the same one first
     providers = _available_providers()
     random.shuffle(providers)
 
@@ -1614,11 +1698,12 @@ def generate_two_comments_with_providers(
             break
         try:
             got = fn(tweet_text, author)
+            # enforce_unique handles dedupe, scoring, length, style, etc.
             candidates = enforce_unique(candidates + got, tweet_text=tweet_text)
         except Exception as e:
             logger.warning("%s provider failed: %s", name, e)
 
-    # If providers didn't give enough, extend with offline
+    # 2) If providers didn't give enough, extend with offline
     if len(candidates) < 2:
         try:
             offline = offline_two_comments(tweet_text, author)
@@ -1626,24 +1711,43 @@ def generate_two_comments_with_providers(
         except Exception as e:
             logger.warning("offline generator failed: %s", e)
 
-    # If still nothing, hard fallback to 2 simple offline lines
+    # 3) If still nothing, hard fallback to 2 simple offline lines
     if not candidates:
         raw = _rescue_two(tweet_text)
         candidates = enforce_unique(raw, tweet_text=tweet_text) or raw
 
-    # Limit to exactly 2 text comments
+    # 4) Limit to exactly 2 raw text comments
     candidates = [c for c in candidates if c][:2]
 
-    # If tweet is a GM/GA/GE/GN style greeting,
-    # force first comment to greet the author by display name.
+    # 5) If tweet is a GM/GA/GE/GN style greeting,
+    #    force first comment to greet the author by display name.
     if candidates:
-        candidates = _apply_greeting_to_first_comment(candidates, tweet_text, author)
+        try:
+            candidates = _apply_greeting_to_first_comment(candidates, tweet_text, author)
+        except NameError:
+            # helper not defined, skip gracefully
+            pass
 
+    # 6) Always fix cashtags ($HLS) and percentages (20%)
+    try:
+        candidates = _apply_cashtag_fix(candidates, tweet_text)
+    except NameError:
+        pass
+
+    try:
+        candidates = _apply_percent_fix(candidates, tweet_text)
+    except NameError:
+        pass
+
+    # 7) Build output objects
     out: List[Dict[str, Any]] = []
     for c in candidates:
+        if not c:
+            continue
         out.append({"lang": lang or "en", "text": c})
 
-    # If somehow we still ended up with < 2 dicts, ask offline generator directly
+    # 8) If somehow we still ended up with < 2 dicts,
+    #    ask offline generator directly for more.
     if len(out) < 2:
         try:
             extra_items = generator.generate_two(
@@ -1658,13 +1762,17 @@ def generate_two_comments_with_providers(
                     break
                 txt = (item.get("text") or "").strip()
                 if txt:
-                    out.append({"lang": item.get("lang") or lang or "en", "text": txt})
+                    out.append(
+                        {
+                            "lang": item.get("lang") or lang or "en",
+                            "text": txt,
+                        }
+                    )
         except Exception as e:
             logger.exception("Total failure in provider cascade: %s", e)
 
-    # Final hard cap: exactly 2
+    # 9) Final hard cap: exactly 2 comments
     return out[:2]
-
 
 # ------------------------------------------------------------------------------
 # API routes (batching + pacing)
