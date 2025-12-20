@@ -1,413 +1,361 @@
-from __future__ import annotations
-
+import json
 import logging
 import os
 import re
-import threading
 import time
 from dataclasses import dataclass
-from typing import List, Tuple, Optional
-from urllib.parse import urlparse
+from typing import Any, Dict, List, Optional
 
 import requests
 
-logger = logging.getLogger("utils")
-if not logger.handlers:
-    logging.basicConfig(level=logging.INFO)
+logger = logging.getLogger("crowntalk")
 
 
 class CrownTALKError(Exception):
-    def __init__(self, message: str, code: str = "error"):
-        super().__init__(message)
-        self.code = code
+    pass
 
 
-# ------------------------------------------------------------------------------
-# Global upstream pacing (VX/FX Twitter scrapers)
-# ------------------------------------------------------------------------------
+VX_TOKEN = os.environ.get("VX_TOKEN", "")
+FX_TOKEN = os.environ.get("FX_TOKEN", "")
 
-_MIN_GAP_SECONDS = float(os.environ.get("UPSTREAM_MIN_GAP_SECONDS", "0.5"))
-_last_call_ts = 0.0
-_rl_lock = threading.Lock()
-
-
-def _rate_limit_yield() -> None:
-    """Global process-level pacing for upstream calls."""
-    global _last_call_ts
-    with _rl_lock:
-        now = time.time()
-        delta = now - _last_call_ts
-        if delta < _MIN_GAP_SECONDS:
-            time.sleep(_MIN_GAP_SECONDS - delta)
-        _last_call_ts = time.time()
-
-
-# ------------------------------------------------------------------------------
-# Tweet data model
-# ------------------------------------------------------------------------------
 
 @dataclass
 class TweetData:
+    url: str
+    canonical_url: Optional[str]
     text: str
     author_name: Optional[str]
-    handle: Optional[str]
-    tweet_id: Optional[str]
+    author_handle: Optional[str]
     lang: Optional[str]
-    canonical_url: Optional[str] = None   # <— NEW: the real tweet URL from VX/FX
 
 
-# VX/FX URL templates
-_VX_FMT = "https://api.vxtwitter.com/{handle}/status/{status_id}"
-_FX_FMT = "https://api.fxtwitter.com/{handle}/status/{status_id}"
+# --------------------------------------------------------------------------
+# URL helpers
+# --------------------------------------------------------------------------
 
-
-def _extract_handle_and_id(url: str) -> Tuple[str, str]:
+def _normalize_single_url(raw: str) -> Optional[str]:
     """
-    Extract handle and status_id from a Twitter/X URL.
+    Normalize common X/Twitter URL formats into a canonical https://x.com/.../status/ID URL.
 
-    Supports:
-      - https://x.com/handle/status/1234567890
-      - https://twitter.com/handle/status/1234567890
-      - https://mobile.twitter.com/handle/status/123...
-      - https://x.com/i/status/1234567890
-      - With or without query params (?s=20 etc.)
-      - Bare "x.com/handle/status/..." without scheme (http/https auto-added)
-
-    If the path is /i/status/123..., handle will be "i" and status_id is "123".
+    - Accept x.com and twitter.com.
+    - Accept /i/status and rewrite to /status.
+    - Strip query params and fragments.
     """
-    try:
-        u = url.strip()
-        if not u:
-            raise ValueError("empty url")
-        if not u.startswith(("http://", "https://")):
-            u = "https://" + u
+    if not raw:
+        return None
 
-        parsed = urlparse(u)
-        host = (parsed.netloc or "").lower()
-        if host.startswith("www."):
-            host = host[4:]
+    s = raw.strip()
 
-        if host not in {
-            "x.com",
-            "twitter.com",
-            "mobile.twitter.com",
-            "m.twitter.com",
-        }:
-            raise ValueError(f"unsupported host {host}")
+    # If user pasted something like `<https://x.com/...>` strip wrappers
+    s = s.strip("<>")
 
-        parts = [p for p in parsed.path.split("/") if p]
-        # expected patterns:
-        #   /handle/status/id
-        #   /i/status/id
-        if len(parts) >= 3 and parts[-2] == "status":
-            handle = parts[-3]
-            status_id = parts[-1]
-        elif len(parts) >= 4 and parts[-2] == "status":
-            handle = parts[-4]
-            status_id = parts[-1]
-        else:
-            raise ValueError("couldn't parse status path")
+    # Extract the first URL-ish substring
+    m = re.search(r"https?://[^\s]+", s)
+    if not m:
+        return None
+    s = m.group(0)
 
-        status_id = re.sub(r"[^\d]", "", status_id)
-        if not handle or not status_id:
-            raise ValueError("missing handle or id")
+    # Normalize domains and /i/status
+    s = s.replace("https://twitter.com", "https://x.com")
+    s = s.replace("http://twitter.com", "https://x.com")
+    s = s.replace("http://x.com", "https://x.com")
 
-        return handle, status_id
-    except Exception as e:
-        raise CrownTALKError(f"Bad tweet URL: {url}", code="bad_tweet_url") from e
+    # Rewrite /i/status/... -> /status/...
+    s = s.replace("/i/status/", "/status/")
+
+    # Strip query and fragment
+    s = re.sub(r"[?#].*$", "", s)
+
+    # Basic tweet URL pattern check
+    if not re.search(r"https://x\.com/[^/]+/status/\d+", s):
+        return None
+
+    return s
 
 
-def _do_get_json(url: str) -> requests.Response:
-    _rate_limit_yield()
-    try:
-        return requests.get(url, timeout=10)
-    except Exception as e:
-        raise CrownTALKError(f"Upstream error: {e}", code="upstream_error") from e
-
-
-def _read_json_payload(resp: requests.Response) -> dict:
-    try:
-        return resp.json()
-    except Exception as e:
-        raise CrownTALKError(
-            "Invalid JSON from upstream",
-            code="upstream_invalid_json",
-        ) from e
-
-
-def _parse_payload(payload: dict) -> TweetData:
+def clean_and_normalize_urls(raw_text: str) -> List[str]:
     """
-    Extract tweet text, author name, handle, tweet_id, language and canonical URL
-    from the VX/FX-style payload. We accept both top-level and nested 'tweet'
-    structures.
+    Take arbitrary pasted text and return a list of clean, unique tweet URLs.
+
+    - Handles multiple lines / spaces
+    - Ignores non-URL junk
+    - Normalizes twitter.com -> x.com and /i/status -> /status
     """
-    # Some APIs wrap the tweet in payload["tweet"]
-    base = payload.get("tweet") if isinstance(payload.get("tweet"), dict) else payload
+    if not raw_text:
+        return []
 
-    lang = base.get("lang") or payload.get("lang")
+    urls: List[str] = []
 
-    text = (
-        base.get("text")
-        or base.get("full_text")
-        or payload.get("text")
-        or payload.get("full_text")
-    )
-
-    user_name = (
-        base.get("user", {}).get("name")
-        or payload.get("user", {}).get("name")
-    )
-
-    # Handle is very vendor-specific; try multiple common fields.
-    handle = (
-        base.get("user", {}).get("screen_name")
-        or base.get("user", {}).get("username")
-        or base.get("user_screen_name")
-        or base.get("userScreenName")
-        or payload.get("user", {}).get("screen_name")
-        or payload.get("user", {}).get("username")
-        or payload.get("user_screen_name")
-        or payload.get("userScreenName")
-    )
-
-    tweet_id = (
-        base.get("id_str")
-        or base.get("id")
-        or base.get("tweetID")
-        or base.get("tweetId")
-        or payload.get("id_str")
-        or payload.get("id")
-        or payload.get("tweetID")
-        or payload.get("tweetId")
-    )
-    if tweet_id is not None:
-        tweet_id = str(tweet_id)
-
-    # Canonical URL from upstream (e.g., "tweetURL") – this is the clean form
-    canonical_url = (
-        base.get("tweetURL")
-        or base.get("tweetUrl")
-        or base.get("url")
-        or payload.get("tweetURL")
-        or payload.get("tweetUrl")
-        or payload.get("url")
-    )
-
-    if not text:
-        raise CrownTALKError(
-            "Upstream payload missing text",
-            code="upstream_missing_text",
-        )
-
-    return TweetData(
-        text=text,
-        author_name=user_name,
-        handle=handle,
-        tweet_id=tweet_id,
-        lang=lang,
-        canonical_url=canonical_url,
-    )
-
-
-# ------------------------------------------------------------------------------
-# Small in-process cache
-# ------------------------------------------------------------------------------
-
-_TWEET_CACHE_TTL = float(os.environ.get("TWEET_CACHE_TTL_SECONDS", "120"))
-_TWEET_CACHE: dict[tuple[str, str], tuple[float, TweetData]] = {}
-_TWEET_CACHE_LOCK = threading.Lock()
-
-
-def _cache_get(handle: str, status_id: str) -> Optional[TweetData]:
-    key = (handle, status_id)
-    now = time.time()
-    with _TWEET_CACHE_LOCK:
-        if key in _TWEET_CACHE:
-            ts, val = _TWEET_CACHE[key]
-            if now - ts <= _TWEET_CACHE_TTL:
-                return val
-            _TWEET_CACHE.pop(key, None)
-    return None
-
-
-def _cache_set(handle: str, status_id: str, data: TweetData) -> None:
-    key = (handle, status_id)
-    now = time.time()
-    with _TWEET_CACHE_LOCK:
-        _TWEET_CACHE[key] = (now, data)
-
-
-# ------------------------------------------------------------------------------
-# Fetch tweet data via VX/FX
-# ------------------------------------------------------------------------------
-
-def fetch_tweet_data(x_url: str) -> TweetData:
-    """
-    Fetch TweetData for a given X/Twitter URL.
-
-    - Normalizes / parses the URL to {handle, status_id}.
-    - First tries VXTwitter, then FXTwitter as fallback.
-    - Uses basic exponential backoff on transient errors (429/5xx).
-    - Raises CrownTALKError with a structured .code for the caller.
-    """
-    handle, status_id = _extract_handle_and_id(x_url)
-
-    cached = _cache_get(handle, status_id)
-    if cached is not None:
-        return cached
-
-    last_status = None
-
-    # Try VXTwitter
-    vx_url = _VX_FMT.format(handle=handle, status_id=status_id)
-    for attempt in range(1, 4):
-        try:
-            logger.info("Fetching VXTwitter data for %s -> %s", x_url, vx_url)
-            r = _do_get_json(vx_url)
-            last_status = r.status_code
-            if r.status_code == 200:
-                payload = _read_json_payload(r)
-                data = _parse_payload(payload)
-                _cache_set(handle, status_id, data)
-                return data
-            elif r.status_code in (401, 403, 404):
-                raise CrownTALKError(
-                    "Tweet not accessible via VXTwitter",
-                    code="tweet_not_accessible",
-                )
-            elif r.status_code in (429, 500, 502, 503):
-                time.sleep(1 + attempt)
-                continue
-            else:
-                raise CrownTALKError(
-                    f"VXTwitter unexpected status {r.status_code}",
-                    code="upstream_error",
-                )
-        except CrownTALKError:
-            # Controlled, no retry here
-            raise
-        except Exception as e:
-            logger.warning(
-                "VXTwitter error on attempt %s for %s: %s",
-                attempt,
-                x_url,
-                e,
-            )
-            time.sleep(1 + attempt)
-
-    # Fallback: FXTwitter
-    fx_url = _FX_FMT.format(handle=handle, status_id=status_id)
-    for attempt in range(1, 4):
-        try:
-            logger.info("Fetching FXTwitter data for %s -> %s", x_url, fx_url)
-            r = _do_get_json(fx_url)
-            last_status = r.status_code
-            if r.status_code == 200:
-                payload = _read_json_payload(r)
-                data = _parse_payload(payload)
-                _cache_set(handle, status_id, data)
-                return data
-            elif r.status_code in (401, 403, 404):
-                raise CrownTALKError(
-                    "Tweet not accessible via FXTwitter",
-                    code="tweet_not_accessible",
-                )
-            elif r.status_code in (429, 500, 502, 503):
-                time.sleep(1 + attempt)
-                continue
-            else:
-                raise CrownTALKError(
-                    f"FXTwitter unexpected status {r.status_code}",
-                    code="upstream_error",
-                )
-        except CrownTALKError:
-            raise
-        except Exception as e:
-            logger.warning(
-                "FXTwitter error on attempt %s for %s: %s",
-                attempt,
-                x_url,
-                e,
-            )
-            time.sleep(1 + attempt)
-
-    raise CrownTALKError(
-        f"Tweet could not be fetched (last status={last_status})",
-        code="tweet_fetch_failed",
-    )
-
-
-# ------------------------------------------------------------------------------
-# URL cleaning / normalization (messy input safe)
-# ------------------------------------------------------------------------------
-
-def clean_and_normalize_urls(urls: List[str]) -> List[str]:
-    """
-    Take a mixed list of strings (possibly multi-line, messy, without scheme),
-    extract valid X/Twitter status URLs, normalize them, and dedupe.
-
-    This helper is intentionally tolerant:
-
-    - Accepts bare domains like "x.com/handle/status/123..."
-    - Ignores any extra commentary text before/after the URL
-      (e.g., "x.com/... *pls follow*").
-    - Supports both classic "/{handle}/status/{id}" and "i/status/{id}" forms.
-    - Always normalizes to https://x.com/… urls.
-    """
-    out: List[str] = []
-    seen: set[str] = set()
-
-    if not isinstance(urls, list):
-        return out
-
-    pattern = re.compile(
-        r"(?P<scheme>https?://)?"
-        r"(?P<domain>(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com))"
-        r"/"
-        r"(?:(?P<handle>[A-Za-z0-9_]{1,15})|i)"
-        r"/status/"
-        r"(?P<id>\d+)",
-        flags=re.IGNORECASE,
-    )
-
-    for item in urls:
-        if not item:
+    for line in str(raw_text).splitlines():
+        line = line.strip()
+        if not line:
             continue
-        text = str(item)
 
-        # Scan the whole text for embedded status URLs
-        for m in pattern.finditer(text):
-            tweet_id = m.group("id")
-            handle = m.group("handle")
-            if handle:
-                norm = f"https://x.com/{handle}/status/{tweet_id}"
-            else:
-                # /i/status/{id} – we keep 'i' here; later, once we fetch the tweet,
-                # we will rewrite to https://x.com/{real_handle}/status/{id}
-                norm = f"https://x.com/i/status/{tweet_id}"
-            if norm not in seen:
-                seen.add(norm)
-                out.append(norm)
+        # Some people paste numbered lists "1. https://..."
+        line = re.sub(r"^\s*\d+[\).\-\:]\s*", "", line)
 
+        maybe = _normalize_single_url(line)
+        if maybe:
+            urls.append(maybe)
+
+    # Dedupe while preserving order
+    seen = set()
+    out: List[str] = []
+    for u in urls:
+        if u not in seen:
+            seen.add(u)
+            out.append(u)
     return out
 
 
-# ------------------------------------------------------------------------------
-# Style fingerprint (for template memory)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+# Tweet fetching via VX / FX
+# --------------------------------------------------------------------------
 
-def style_fingerprint(text: str) -> str:
-    """
-    Reduce a comment to a coarse 'style fingerprint' so we can remember
-    templates without storing exact content.
+def _vx_headers() -> Dict[str, str]:
+    if not VX_TOKEN:
+        raise CrownTALKError("VX_TOKEN not configured")
+    return {"Authorization": f"Bearer {VX_TOKEN}"}
 
-    Example:
-        "Love seeing real builders ship quietly, this is how it should be"
-        -> "w w w w w w w w w"
+
+def _fx_headers() -> Dict[str, str]:
+    if not FX_TOKEN:
+        raise CrownTALKError("FX_TOKEN not configured")
+    return {"Authorization": f"Bearer {FX_TOKEN}"}
+
+
+def _vx_fetch(url: str) -> Dict[str, Any]:
     """
-    t = (text or "").lower()
-    t = re.sub(r"https?://\S+", "", t)
-    t = re.sub(r"[^\w\s]", "", t)
-    tokens = re.findall(r"\w+", t)
-    tokens = tokens[:16]
-    return " ".join("w" for _ in tokens)
+    Hit vx endpoint for tweet data.
+    """
+    api_url = "https://api.vx.dev/v1/tweet"
+    try:
+        resp = requests.get(api_url, headers=_vx_headers(), params={"url": url}, timeout=15)
+    except Exception as exc:
+        logger.warning("VX request error: %s", exc)
+        raise CrownTALKError("vx_fetch_failed")
+
+    if resp.status_code != 200:
+        logger.warning("VX non-200: %s %s", resp.status_code, resp.text[:200])
+        raise CrownTALKError("vx_fetch_non_200")
+
+    try:
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("VX invalid json: %s", exc)
+        raise CrownTALKError("vx_invalid_json")
+
+    return data
+
+
+def _fx_fetch(url: str) -> Dict[str, Any]:
+    """
+    Hit fx endpoint for tweet data, with similar response.
+    """
+    api_url = "https://api.fx.dev/v1/tweet"
+    try:
+        resp = requests.get(api_url, headers=_fx_headers(), params={"url": url}, timeout=15)
+    except Exception as exc:
+        logger.warning("FX request error: %s", exc)
+        raise CrownTALKError("fx_fetch_failed")
+
+    if resp.status_code != 200:
+        logger.warning("FX non-200: %s %s", resp.status_code, resp.text[:200])
+        raise CrownTALKError("fx_fetch_non_200")
+
+    try:
+        data = resp.json()
+    except Exception as exc:
+        logger.warning("FX invalid json: %s", exc)
+        raise CrownTALKError("fx_invalid_json")
+
+    return data
+
+
+def fetch_tweet_data(url: str) -> TweetData:
+    """
+    Fetch tweet info using VX first, then FX fallback.
+
+    We also try to read a canonical URL from the response so the
+    frontend shows the “real” URL instead of /i/status, etc.
+    """
+    normalized = _normalize_single_url(url)
+    if not normalized:
+        raise CrownTALKError("invalid_tweet_url")
+
+    errors: List[str] = []
+    last_data: Optional[Dict[str, Any]] = None
+
+    for source in ("vx", "fx"):
+        try:
+            if source == "vx":
+                data = _vx_fetch(normalized)
+            else:
+                data = _fx_fetch(normalized)
+            last_data = data
+            break
+        except CrownTALKError as exc:
+            errors.append(f"{source}:{exc}")
+        except Exception as exc:  # pragma: no cover
+            errors.append(f"{source}:unknown:{exc}")
+
+    if last_data is None:
+        logger.warning("Both VX and FX failed: %s", errors)
+        raise CrownTALKError("tweet_fetch_failed")
+
+    tweet = last_data.get("tweet") or last_data
+
+    text = tweet.get("text") or ""
+    author_name = tweet.get("author_name") or tweet.get("user_name")
+    author_handle = tweet.get("author_handle") or tweet.get("user_screen_name")
+    lang = tweet.get("lang")
+
+    canonical_url = tweet.get("url") or tweet.get("canonical_url") or normalized
+
+    return TweetData(
+        url=normalized,
+        canonical_url=canonical_url,
+        text=text,
+        author_name=author_name,
+        author_handle=author_handle,
+        lang=lang,
+    )
+
+
+# --------------------------------------------------------------------------
+# Style fingerprint (for offline generator)
+# --------------------------------------------------------------------------
+
+STYLE_PATTERNS = {
+    "markets": re.compile(
+        r"\b(apy|apr|yield|volume|market|cap|liquidity|supply|fdv|mc)\b",
+        re.IGNORECASE,
+    ),
+    "nft": re.compile(
+        r"\b(nft|mint|collection|pfp|floor|opensea|blur)\b",
+        re.IGNORECASE,
+    ),
+    "airdrop": re.compile(
+        r"\b(airdrop|claim|snapshot|retrodrop|farm|farming)\b",
+        re.IGNORECASE,
+    ),
+    "infra": re.compile(
+        r"\b(l2|rollup|zk|evm|bridge|rpc|indexer|sequencer)\b",
+        re.IGNORECASE,
+    ),
+}
+
+
+def style_fingerprint(tweet_text: str) -> str:
+    """
+    Very lightweight "intent" fingerprint for the tweet.
+
+    We don't try to be clever here – just detect broad buckets for
+    offline comment flavor (markets/NFT/airdrop/infra/etc).
+    """
+    if not tweet_text:
+        return "unknown"
+
+    txt = tweet_text.lower()
+
+    hits: List[str] = []
+    for key, pat in STYLE_PATTERNS.items():
+        if pat.search(txt):
+            hits.append(key)
+
+    if not hits:
+        if len(txt) < 40:
+            return "short"
+        if len(txt) > 240:
+            return "long"
+        return "generic"
+
+    return "+".join(sorted(set(hits)))
+
+
+# --------------------------------------------------------------------------
+# Extra helpers used by older code paths / compatibility
+# --------------------------------------------------------------------------
+
+def maybe_sleep_backoff(attempt: int) -> None:
+    """Tiny helper if you ever reintroduce retry loops."""
+    delay = min(5.0, 0.2 * (2 ** attempt))
+    time.sleep(delay)
+
+
+# --------------------------------------------------------------------------
+# Token / percent helpers for newer main versions (safe to keep even if unused)
+# --------------------------------------------------------------------------
+
+def extract_ticker_and_percent_summary(text: str) -> Dict[str, List[str]]:
+    """Extract $tickers and percentage expressions from the original tweet text.
+
+    This is used so later steps can preserve things like:
+    - $HLS instead of HLS
+    - 20% instead of 20
+    - 3.4% instead of 3 4 or 3%
+
+    Returns:
+        { "tickers": [...], "percents": [...] }
+    """
+    if not text:
+        return {"tickers": [], "percents": []}
+
+    cleaned = " ".join(str(text).split())
+
+    ticker_pattern = re.compile(r"\$[A-Za-z][A-Za-z0-9]{1,9}")
+    tickers = list(dict.fromkeys(ticker_pattern.findall(cleaned)))
+
+    percent_pattern = re.compile(r"\b\d+(?:\.\d+)?\s*%")
+    percents = list(dict.fromkeys(percent_pattern.findall(cleaned)))
+
+    return {"tickers": tickers, "percents": percents}
+
+
+def apply_token_style_fixes(comment: str, summary: Dict[str, List[str]]) -> str:
+    """Post-process a generated comment.
+
+    - Ensure tickers keep a single leading `$` if they appeared that way in the tweet.
+    - Restore missing `%` in obvious APY/APR/yield contexts.
+    - Strip a trailing period / exclamation point; keep `?` if present.
+    """
+    if not comment:
+        return comment
+
+    text = comment
+
+    # --- Fix ticker style ($HLS vs HLS, and collapse $$HLS) ---
+    tickers = (summary or {}).get("tickers") or []
+    for ticker in tickers:
+        core = ticker.lstrip("$")
+        canonical = f"${core}"
+
+        # Collapse '$$HLS' / '$$$HLS' -> '$HLS'
+        text = re.sub(rf"\$+{re.escape(core)}\b", canonical, text)
+
+        # Bare 'HLS' but not when already '$HLS'
+        bare_pattern = re.compile(rf"(?<!\$)\b{re.escape(core)}\b")
+        text = bare_pattern.sub(canonical, text)
+
+    # --- Fix missing '%' where tweet had an exact percent ---
+    percents = (summary or {}).get("percents") or []
+    for pct in percents:
+        number = pct.replace("%", "").strip()
+        if not number:
+            continue
+
+        # If comment wrote '20 HLS APY' but tweet had '20% ... APY',
+        # upgrade '20' to '20%' when it appears within a couple tokens of APY/APR/yield.
+        pattern = re.compile(
+            rf"\b{re.escape(number)}\b(?=(?:\s+\S+){{0,2}}\s+(apy|apr|yield)\b)",
+            flags=re.IGNORECASE,
+        )
+        text = pattern.sub(pct, text)
+
+    # --- Trim trailing punctuation (keep '?') ---
+    text = text.rstrip()
+    if text.endswith("?"):
+        return text
+
+    text = re.sub(r"[.!…]+$", "", text).rstrip()
+    return text
