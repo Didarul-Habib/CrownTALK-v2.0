@@ -1335,54 +1335,27 @@ def keep_alive() -> None:
         time.sleep(60)
 
 
+
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
-    
-    # Simple per-process throttle so we don't hammer Groq and hit 429
-    global _last_groq_call
-    if GROQ_MIN_INTERVAL > 0 and _last_groq_call:
-        elapsed = time.time() - _last_groq_call
-        if elapsed < GROQ_MIN_INTERVAL:
-            time.sleep(GROQ_MIN_INTERVAL - elapsed)
- 
+
     sys_prompt = _llm_sys_prompt()
     user_prompt = build_user_prompt(tweet_text, author)
 
-    resp = None
-    for attempt in range(1, 4):
-        try:
-            resp = _groq_client.chat.completions.create(
-                model=GROQ_MODEL,
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                max_tokens=160,
-                temperature=0.9,
-            )
-            break
-        except Exception as e:
-            wait_secs = 0
-            try:
-                hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
-                ra = hdrs.get("Retry-After")
-                if ra:
-                    wait_secs = max(1, int(ra))
-            except Exception:
-                pass
-            msg = str(e).lower()
-            if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
-                wait_secs = 2 + attempt
-            if wait_secs:
-                time.sleep(wait_secs)
-                continue
-            raise
-
-    if resp is None:
-        raise RuntimeError("Groq call failed after retries")
-
-    _last_groq_call = time.time()
+    try:
+        resp = _groq_client.chat.completions.create(
+            model=GROQ_MODEL,
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=160,
+            temperature=0.9,
+        )
+    except Exception as e:
+        # Let the caller treat Groq as "failed" (rate limit, network, etc.)
+        raise RuntimeError(f"Groq request failed: {e}") from e
 
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
@@ -1391,25 +1364,12 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
 
     if len(candidates) < 2:
-        sents = re.split(r"[.!?]\s+", raw)
-        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
-        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-        candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
-
-    tries = 0
-    while len(candidates) < 2 and tries < 2:
-        tries += 1
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
-
-    if len(candidates) < 2:
-        raise RuntimeError("Could not produce two valid comments")
-
+        raise RuntimeError("Groq did not produce two valid comments")
     if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
-        extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
-        if len(merged) >= 2:
-            candidates = merged[:2]
-    return candidates[:2]
+        raise RuntimeError("Groq comments too similar to each other")
+
+    return candidates[:2]            
+    
     
 
 def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
@@ -1752,18 +1712,34 @@ def score_comment_for_post(comment: str, kw_set: set[str]) -> float:
 
     # Reward using tweet keywords (project names, tickers, etc.)
     if kw_set:
+        # Keywords found in the comment itself: normal tokens + cashtags/handles/caps.
         c_kw = set(extract_keywords(low))
+
+        # Also consider $TOKEN, @handles and Capitalized words in the comment
+        cashtags = re.findall(r"\$[A-Za-z0-9]{2,12}\b", comment)
+        handles = re.findall(r"@[A-Za-z0-9_]{2,15}\b", comment)
+        caps = re.findall(r"\b[A-Z][A-Za-z0-9]{2,}\b", comment)
+        for tok in cashtags + handles + caps:
+            c_kw.add(tok.lower())
+
         overlap = len(c_kw & kw_set)
         if overlap == 0:
-            score -= 0.6  # totally generic
+            # Generic relative to tweet context
+            score -= 0.6
         else:
             score += 0.2 * min(overlap, 3)
+
+        # Extra penalty when tweet had strong symbols (tickers / numbers)
+        has_strong_kw = any(
+            t.startswith("$") or re.search(r"\d", t) for t in kw_set
+        )
+        if overlap == 0 and has_strong_kw:
+            score -= 0.4
 
         # If we say "bullish on" or "interested in" but use no keyword, reject
         stance_triggers = ["bullish on", "bearish on", "interested in", "watching"]
         if any(trig in low for trig in stance_triggers) and overlap == 0:
             return -1e9
-
     # Bonus for first-person or direct involvement
     if re.search(r"\b(i|im|i'm|me|my)\b", low):
         score += 0.25
