@@ -259,6 +259,16 @@ GENERIC_PHRASES = {
     "everyone talks ",
     "quietly stacking ",
     "from a builder lens",
+    # Extra scaffolds that made replies feel AI-sloppy
+    "approaching this from a new angle",
+    "niche but impactful changes",
+    "most people glance at",
+    "very few actually dig into the details",
+    "still a couple unknowns around",
+    "real devs will keep bumping into",
+    "detail on ",
+    "risk reward on ",
+    "everyone talks ",
 }
 
 def contains_generic_phrase(text: str) -> bool:
@@ -1266,7 +1276,7 @@ if USE_GROQ:
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
 _last_groq_call = 0.0
-
+_groq_lock = threading.Lock()
 
 # ------------------------------------------------------------------------------
 # Optional OpenAI
@@ -1339,6 +1349,17 @@ def keep_alive() -> None:
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
+    global _last_groq_call
+
+    # Simple in-process rate limit so we don't hammer Groq.
+    # This is per-process and protects large /comment batches.
+    if GROQ_MIN_INTERVAL > 0:
+        with _groq_lock:
+            now = time.time()
+            wait = GROQ_MIN_INTERVAL - (now - _last_groq_call)
+            if wait > 0:
+                time.sleep(wait)
+            _last_groq_call = time.time()
 
     sys_prompt = _llm_sys_prompt()
     user_prompt = build_user_prompt(tweet_text, author)
