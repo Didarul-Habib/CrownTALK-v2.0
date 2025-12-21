@@ -24,9 +24,9 @@ BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onr
 
 # Batch & pacing (env-tunable)
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "2"))                 # ← process N at a time
-PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.1"))  # ← sleep after every URL
+PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.5"))  # ← sleep after every URL
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "25"))  # ← hard cap per request
-GROQ_MIN_INTERVAL = float(os.environ.get("GROQ_MIN_INTERVAL_SECONDS", "0"))
+GROQ_MIN_INTERVAL = float(os.environ.get("GROQ_MIN_INTERVAL_SECONDS", "1"))
 
 KEEPALIVE = os.environ.get("KEEPALIVE", "false").lower() == "true"
 
