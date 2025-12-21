@@ -23,12 +23,12 @@ DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
 BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onrender.com")
 
 # Batch & pacing (env-tunable)
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "2"))                 # ← process N at a time
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))                 # ← process N at a time
 PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "1.0"))  # ← sleep after every URL
-MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "25"))  # ← hard cap per request
+MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← hard cap per request
 
 KEEPALIVE = os.environ.get("KEEPALIVE", "false").lower() == "true"
-
+KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 # ------------------------------------------------------------------------------
 # DB helpers
 # ------------------------------------------------------------------------------
@@ -123,25 +123,19 @@ def words(t: str) -> list[str]:
     return WORD_RE.findall(t or "")
 
 
-def sanitize_comment(raw: str) -> str:
-    txt = re.sub(r"https?://\S+", "", raw or "")
-    txt = re.sub(r"[@#]\S+", "", txt)
-
-    # Normalize spaces first
-    txt = re.sub(r"\s+", " ", txt).strip()
-
-    # Drop "low-key / low key" which reads very AI-ish
-    txt = re.sub(r"\blow[\s-]?key\b", "", txt, flags=re.IGNORECASE)
-
-    # Clean up any extra spaces after removals
-    txt = re.sub(r"\s+", " ", txt).strip()
-
-    # Remove trailing punctuation like "." or "..." but keep "?"
-    txt = re.sub(r"[.!;:…]+$", "", txt).strip()
-
-    # Strip trailing emoji noise
-    txt = re.sub(r"[\U0001F300-\U0001F6FF\U0001F900-\U0001F9FF]+", "", txt)
-
+def sanitize_comment(text: str) -> str:
+    """
+    Lightweight cleaning for final comments.
+    - collapse spaces
+    - strip emoji
+    - drop trailing '.', '!', ';', ':' and '…'
+    - KEEP '?' so questions still read naturally
+    """
+    txt = (text or "").strip()
+    txt = re.sub(r"\s+", " ", txt)
+    txt = EMOJI_PATTERN.sub("", txt)
+    # remove trailing ., !, ;, : and ellipses, but keep '?'
+    txt = re.sub(r"[.!;:…!]+$", "", txt).strip()
     return txt
 
 def normalize_numbers_and_tickers(tweet_text: str, comment: str) -> str:
@@ -344,6 +338,99 @@ def pick_focus_token(tokens: list[str]) -> str:
         return ""
     counts = Counter(tokens)
     return sorted(counts.items(), key=lambda x: (-x[1], len(x[0])))[0][0]
+
+# ------------------------------------------------------------------------------
+# Variety buckets + combinator (keeps comments varied)
+# ------------------------------------------------------------------------------
+LEADINS = [
+    "short answer:","zooming out,","if you're weighing","plainly,","real talk:","on the math,",
+    "from experience,","quick take:","low key,","no fluff:","in practice,","gut check:",
+    "signal over noise:","nuts and bolts:","from the builder side,","first principles:", "short answer:",
+    "zooming out,",
+    "if you're weighing",
+    "plainly,",
+    "real talk:",
+    "on the math,",
+    "from experience,",
+    "quick take:",
+    "no fluff:",
+    "in practice,",
+    "gut check:",
+    "signal over noise:",
+    "nuts and bolts:",
+    "from the builder side,",
+    "first principles:",
+    "ct reality check:",
+    "from the trenches,",
+    "anon to anon,",
+]
+CLAIMS = [
+    "{focus} is doing more work than the headline","{focus} is where the thesis tightens",
+    "{focus} is the part that moves things","{focus} is the practical hinge",
+    "{focus} is the constraint to solve","{focus} tells you the next step",
+    "it lives or dies on {focus}","risk mostly hides in {focus}",
+    "execution shows up as {focus}","watch how {focus} trends, not the hype",
+    "{focus} is the boring piece that decides outcomes","{focus} sets the real ceiling",
+    "{focus} is the bit with actual leverage","most errors start before {focus} is clear",
+"this is actually a decent take",
+    "this is way more grounded than most of the timeline rn",
+    "this ages better than the usual engagement bait",
+    "this is the kind of context people pretend they read",
+    "this hits way closer to how things really work",
+    "this is the side of the story nobody clips",
+    "this is the type of post that saves people from bad entries",
+    "this reads like someone who actually touched the product",
+]
+NUANCE = [
+    "separate it from optics","strip the hype and check it","ignore the noise and test it",
+    "details beat slogans here","context > theatrics","measure it in weeks, not likes",
+    "model it once and the picture clears","ship first, argue later","constraints explain the behavior",
+    "once {focus} holds, the plan is simple","touch grass and look at {focus}"
+    "without screaming moon or doom",
+    "without farming cheap outrage",
+    "without pretending there’s zero risk",
+    "and still leaves room for people to think",
+    "and keeps the focus on execution not hopium",
+    "without trying to sound smarter than the market",
+]
+CLOSERS = [
+    "then the plan makes sense","and the whole picture clicks","and entries/exits get cleaner",
+    "and you avoid dumb errors","and the convo gets useful","and incentives line up",
+    "and the path forward writes itself","and the take stops being vibes-only"
+    " more of this energy pls",
+    " CT needs more posts like this",
+    " people sleep on this kind of breakdown",
+    " bookmarking this for later",
+]
+
+def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
+    focus = pick_focus_token(key_tokens) or "this"
+    handle = ctx.get("handle")
+    author = ctx.get("author_name")
+    prefix = ""
+    r = random.random()
+    if handle and r < 0.25:
+        prefix = f"@{handle} "
+    elif author and r < 0.40:
+        prefix = f"{author.split()[0]}, "
+
+    mode = random.choice(["lead+claim", "claim+nuance", "claim+closer", "two"])
+    if mode == "lead+claim":
+        s = f"{random.choice(LEADINS)} {random.choice(CLAIMS).format(focus=focus)}"
+    elif mode == "claim+nuance":
+        s = f"{random.choice(CLAIMS).format(focus=focus)} — {random.choice(NUANCE).replace('{focus}', focus)}"
+    elif mode == "claim+closer":
+        s = f"{random.choice(CLAIMS).format(focus=focus)}, {random.choice(CLOSERS)}"
+    else:
+        a = random.choice(CLAIMS).format(focus=focus)
+        b = random.choice(NUANCE + CLOSERS)  # varied joiner
+        join = " — " if random.random() < 0.5 else ", "
+        s = a + join + b.replace("{focus}", focus)
+
+    out = normalize_ws(prefix + s)
+    out = re.sub(r"\s([,.;:?!])", r"\1", out)
+    out = re.sub(r"[.!?;:…]+$", "", out)
+    return out
 
 def tweet_keywords_for_scoring(tweet_text: str | None) -> set[str]:
     """
@@ -664,12 +751,50 @@ class OfflineCommentGenerator:
             "Giveaways that center {focus} usually convert much better long term.",
         ]
 
-    def _native_buckets(self, script: str) -> list[str]:
-        # Very lightweight; front-end cares more about vibe than perfect grammar
-        if script == "latn":
-            return self._topic_buckets_generic()
-        # Could be extended: separate templates per script
-        return self._topic_buckets_generic()
+    def _native_buckets(self, script: str) -> List[str]:
+        f = "{focus}"
+        if script == "bn":
+            return [
+                f"{f} নিয়ে সরাসরি কথা, বাড়তি হাইপ না",
+                f"{f} ঠিক থাকলে বাকিটা মিলেই যায়",
+                f"{f} ই ঠিক গেম বদলায়",
+            ]
+        if script == "hi":
+            return [
+                f"{f} यहाँ असली काम दिखता है, शोर नहीं",
+                f"{f} सही हो तो बाकी अपने आप सेट",
+                f"{f} पर टिके रहो, बातें साफ़",
+            ]
+        if script == "ar":
+            return [
+                f"{f} هو الجزء العملي بعيداً عن الضجيج",
+                f"لو ركّزنا على {f} الصورة توضّح",
+                f"{f} هنا يغيّر النتيجة فعلاً",
+            ]
+        if script == "ja":
+            return [
+                f"{f} の実務的な部分が要点だよ",
+                f"{f} に注目すると全体が見えてくる",
+                f"{f} が効いてるから話が進む",
+            ]
+        if script == "ko":
+            return [
+                f"{f} 가 핵심이고 나머진 따라와요",
+                f"{f} 보고 있으면 그림이 깔끔해져요",
+                f"{f} 얘기가 제일 현실적이에요",
+            ]
+        if script == "zh":
+            return [
+                f"{f} 才是重點，別被噪音帶偏",
+                f"抓住 {f}，其他自然順起來",
+                f"{f} 才是實打實的關鍵",
+            ]
+        # generic non-EN fallback
+        return [
+            f"{f} is the practical bit here",
+            f"keep eyes on {f}, rest follows",
+            f"{f} is where it turns real",
+        ]
 
     def _diversity_ok(self, line: str) -> bool:
         if not line:
@@ -723,6 +848,212 @@ class OfflineCommentGenerator:
             return enforce_word_count_natural(last, 6, 13)
 
         return None
+
+    def _fixed_buckets(self, ctx, topic, is_crypto, sentiment) -> Dict[str, List[str]]:
+        script = ctx.get("script", "plain")
+        focus_slot = "{focus}"
+        name_pref = ""
+
+        # Sometimes call the author or handle directly for a more human touch
+        if self.random.random() < 0.30:
+            handle = ctx.get("handle")
+            if handle:
+                name_pref = f"@{handle} "
+            elif ctx.get("author_name"):
+                first = ctx["author_name"].split()[0]
+                name_pref = f"{first}, "
+
+        def P(s: str) -> str:
+            # For script-style replies we keep it clean, otherwise we prepend the name when present
+            return f"{name_pref}{s}" if name_pref else s
+
+        buckets: Dict[str, List[str]] = {}
+
+        # Generic style buckets: CT / KOL inner-monologue flavored
+        buckets["react"] = [
+            P(f"{focus_slot} is the kind of detail most people skip over"),
+            P(f"{focus_slot} is where conviction quietly separates from marketing"),
+            P(f"Can instantly tell you actually stared at {focus_slot} for a while"),
+            P(f"{focus_slot} is exactly where most decks stay hand wavy"),
+            P(f"{focus_slot} is where risk really lives, not in the slogan"),
+            P(f"Once {focus_slot} clicks, the whole setup reads very differently"),
+            P(f"{focus_slot} is the bit people pretend they understood all along"),
+            P(f"Nice to see {focus_slot} spelled out instead of just hinted at"),
+            P(f"{focus_slot} is what serious capital checks before sizing anything"),
+            P(f"Wild how much alpha hides inside boring lines like {focus_slot}"),
+            P(f"{focus_slot} is where timelines quietly change their mind later"),
+            P(f"Threads like this make {focus_slot} feel way less like roulette"),
+        ]
+
+        buckets["convo"] = [
+            P(f"Most people only learn {focus_slot} the hard way, this hits different"),
+            P(f"{focus_slot} is the part of the conversation that rarely leaves group chats"),
+            P(f"Seen so many calls derailed because nobody understood {focus_slot} properly"),
+            P(f"When it is your own bag, {focus_slot} suddenly matters a lot more"),
+            P(f"Nice to see someone talk through {focus_slot} without farming outrage"),
+            P(f"This is the kind of {focus_slot} talk builders actually forward around"),
+            P(f"More posts like this and {focus_slot} stops being a mystery to new folks"),
+            P(f"{focus_slot} is exactly what risk teams obsess over in the background"),
+            P(f"The best debates on CT lately have quietly been about {focus_slot}"),
+            P(f"This is the sort of {focus_slot} breakdown that ages well in bear markets"),
+        ]
+
+        buckets["calm"] = [
+            P(f"Clean framing on {focus_slot}, no hype just structure"),
+            P(f"Super helpful mental model around {focus_slot} tucked in here"),
+            P(f"This is the kind of {focus_slot} clarity people save for later"),
+            P(f"Bookmarking this for the next round of {focus_slot} drama"),
+            P(f"Neatly maps how {focus_slot} touches users, devs and liquidity"),
+            P(f"Good reminder that {focus_slot} decisions compound over multiple cycles"),
+        ]
+
+        buckets["vibe"] = [
+            P(f"{focus_slot} gives quiet serious people are watching this energy"),
+            P(f"There is a calm confidence behind how you frame {focus_slot}"),
+            P(f"{focus_slot} talk like this usually only happens off timeline"),
+            P(f"Rare mix of narrative and numbers around {focus_slot} in one post"),
+            P(f"{focus_slot} is exactly where the real ones tend to dig first"),
+        ]
+
+        buckets["nuanced"] = [
+            P(f"You balanced upside and downside of {focus_slot} better than most"),
+            P(f"Nice how you kept {focus_slot} grounded in actual user behavior"),
+            P(f"{focus_slot} explained like this is how we onboard serious operators"),
+            P(f"The nuance around {focus_slot} is the part CT usually skips"),
+            P(f"{focus_slot} sits right at the edge of narrative and fundamentals here"),
+        ]
+
+        buckets["quick"] = [
+            P(f"{focus_slot} is the whole ballgame here"),
+            P(f"{focus_slot} quietly decides most of the outcome"),
+            P(f"{focus_slot} is the bit smart money watches"),
+            P(f"{focus_slot} is the line that matters most"),
+            P(f"{focus_slot} is where this either works or does not"),
+        ]
+
+        # Heavier KOL / influencer tone
+        buckets["kol"] = [
+            P(f"Reads like someone who actually puts size behind {focus_slot}"),
+            P(f"Your framing around {focus_slot} comes off like you have scars already"),
+            P(f"Taking time to map {focus_slot} out like this is rare energy"),
+            P(f"{focus_slot} is exactly where serious operators quietly make their edge"),
+            P(f"The way you break down {focus_slot} cuts through the usual noise"),
+            P(f"{focus_slot} is the thing people ignore then later call obvious"),
+            P(f"This is how you talk {focus_slot} without sounding like a press release"),
+            P(f"Real ones know {focus_slot} is where actual PnL shows up"),
+            P(f"This is the kind of {focus_slot} thread people save then never credit"),
+            P(f"Reads more like someone building around {focus_slot} than chasing engagement"),
+            P(f"Most KOLs wave their hands at {focus_slot}, you actually map the tradeoffs"),
+            P(f"{focus_slot} breakdown like this usually lives inside private research decks"),
+            P(f"You sound like someone who has sat through too many {focus_slot} calls to sugarcoat it"),
+            P(f"{focus_slot} touched from both builder and trader angle is rare on the timeline"),
+            P(f"This is the kind of {focus_slot} framing founders send to their own teams"),
+        ]
+
+        # Topic-specific tweaks (GM, charts, memes, etc.)
+        topic = topic or "generic"
+
+        if topic == "greeting":
+            buckets["greeting"] = [
+                P(f"Morning crew, {focus_slot} is not a bad thing to wake up to"),
+                P(f"Good vibes to anyone quietly stacking while reading about {focus_slot}"),
+                P(f"Solid way to start the day, quick download on {focus_slot}"),
+            ]
+        elif topic == "giveaway":
+            buckets["giveaway"] = [
+                P(f"Nice to see {focus_slot} tied to actual users not pure vanity"),
+                P(f"{focus_slot} based drops age better than random engagement farming"),
+                P(f"If the {focus_slot} criteria stay this clean, winners feel deserved"),
+            ]
+        elif topic == "chart":
+            buckets["chart"] = [
+                P(f"Everyone stares at price, few map out {focus_slot} like this"),
+                P(f"{focus_slot} is the part of the chart that really matters"),
+                P(f"This is how you narrate a move without forcing hopium on {focus_slot}"),
+            ]
+        elif topic == "meme":
+            buckets["meme"] = [
+                P(f"{focus_slot} memes always land harder when the mechanics are real"),
+                P(f"Underneath the meme, {focus_slot} is actually a sharp observation"),
+                P(f"Bit too accurate how {focus_slot} captures the current mood"),
+            ]
+        elif topic == "complaint":
+            buckets["complaint"] = [
+                P(f"Fair take, {focus_slot} has been draining for a lot of folks"),
+                P(f"Glad someone is willing to say {focus_slot} out loud"),
+                P(f"{focus_slot} deserves this kind of honest pushback more often"),
+            ]
+        elif topic in ("announcement", "update"):
+            buckets["announcement"] = [
+                P(f"Ship first talk later around {focus_slot} is always refreshing"),
+                P(f"{focus_slot} roadmap looks concrete enough to hold you accountable"),
+                P(f"Clean update on {focus_slot}, no mystery bullet points"),
+            ]
+        elif topic == "thread":
+            buckets["thread"] = [
+                P(f"Bookmark thread for {focus_slot}, this will age well next cycle"),
+                P(f"This is the sort of {focus_slot} explainer people quietly send to teams"),
+                P(f"{focus_slot} broken down like this saves newcomers months of confusion"),
+            ]
+        elif topic == "one_liner":
+            buckets["one_liner"] = [
+                P(f"Blunt but fair on {focus_slot}"),
+                P(f"Straightforward way to frame {focus_slot} without fluff"),
+            ]
+
+        # Crypto-only seasoning (covers DeFi, infra, points, restaking, etc. in a generic way)
+        if is_crypto:
+            buckets["crypto"] = [
+                P(f"{focus_slot} is where degens and risk desks suddenly agree"),
+                P(f"Plenty of tokens, very few with {focus_slot} dialed in"),
+                P(f"{focus_slot} is what separates cute narratives from actual systems"),
+                P(f"Hard to fake {focus_slot}, even in peak bull timelines"),
+                P(f"When the music slows down, {focus_slot} is what still matters"),
+                # generic CT / market meta
+            P(f"Onchain side of {focus_slot} finally getting discussed honestly"),
+            P(f"Nice blend of risk and conviction for {focus_slot} here"),
+            P(f"Better than the usual moon talk around {focus_slot}"),
+            P(f"{focus_slot} looks like the rotation people pretend they caught early"),
+            P(f"{focus_slot} has more real users than most of CT wants to admit"),
+            P(f"{focus_slot} is where degen energy and actual product finally overlap"),
+
+            # NFT / art / culture
+            P(f"{focus_slot} gives more 'builder + art' than quick flip meta"),
+            P(f"Floor talk is loud but the real story is the team behind {focus_slot}"),
+            P(f"{focus_slot} moves more like a game economy than a random ticker"),
+
+            # airdrop / farming / giveaway meta
+            P(f"Everyone farming {focus_slot}, only a few actually reading what it does"),
+            P(f"{focus_slot} airdrop noise is high, long term still comes down to execution"),
+            P(f"{focus_slot} looks like the farm people deny when they dump on you later"),
+
+            # gaming / degen niche
+            P(f"{focus_slot} feels closer to a real game loop than a casino button"),
+            P(f"{focus_slot} is built for people who actually play, not just watch charts"),
+            ]
+
+        # Sentiment flavour
+        if sentiment == "bullish":
+            buckets["bullish"] = [
+                P(f"If {focus_slot} keeps trending this way, upside stays very real"),
+                P(f"{focus_slot} dialed in like this usually front runs bigger flows"),
+            ]
+        elif sentiment in ("skeptic", "bearish"):
+            buckets["skeptic"] = [
+                P(f"{focus_slot} looks stretched, risk management has to stay sharp"),
+                P(f"Appreciate you naming the {focus_slot} downside without drama"),
+            ]
+
+        # Small nod to the author if we have a name
+        if self.random.random() < 0.5 and ctx.get("author_name"):
+            first = ctx["author_name"].split()[0]
+            buckets["author"] = [
+                P(f"{first} keeps a plain language angle on {focus_slot}"),
+                P(f"Trust {first} more on {focus_slot} after posts like this"),
+            ]
+
+        return buckets
+
 
     def _accept(self, line: str) -> bool:
         if not line:
@@ -859,24 +1190,32 @@ def _extract_handle_from_url(url: str) -> Optional[str]:
 
 generator = OfflineCommentGenerator()
 
-def sanitize_comment(raw: str) -> str:
+LLM_BANNED_PHRASES = [
+    "low-key",
+    "low key",
+    "lowkey",
+    "love that",
+    "feels like",
+    "i'm curious",
+    "curious to see",
+    "curious how",
+    "i wonder",
+    "wonder how",
+]
+
+def _sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
     txt = re.sub(r"[@#]\S+", "", txt)
-
-    # Normalize spaces first
     txt = re.sub(r"\s+", " ", txt).strip()
+    txt = EMOJI_PATTERN.sub("", txt)
+    # Drop trailing ., !, ;, : and ellipses, but keep '?'
+    txt = re.sub(r"[.!;:…!]+$", "", txt).strip()
 
-    # Drop "low-key / low key" which reads very AI-ish
-    txt = re.sub(r"\blow[\s-]?key\b", "", txt, flags=re.IGNORECASE)
-
-    # Clean up any extra spaces after removals
-    txt = re.sub(r"\s+", " ", txt).strip()
-
-    # Remove trailing punctuation like "." or "..." but keep "?"
-    txt = re.sub(r"[.!;:…]+$", "", txt).strip()
-
-    # Strip trailing emoji noise
-    txt = re.sub(r"[\U0001F300-\U0001F6FF\U0001F900-\U0001F9FF]+", "", txt)
+    low = txt.lower()
+    for phrase in LLM_BANNED_PHRASES:
+        if phrase in low:
+            # treat as unusable so we can fall back to other providers / offline
+            return ""
 
     return txt
 
