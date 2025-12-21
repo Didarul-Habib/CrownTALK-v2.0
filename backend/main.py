@@ -235,7 +235,7 @@ AI_BLOCKLIST = {
     "feels like",
     "love that",
     "lowkey bullish",
-    'low-key bullish",
+     "low-key bullish",
 }
 
 GENERIC_PHRASES = {
