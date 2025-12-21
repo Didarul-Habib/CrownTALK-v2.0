@@ -126,11 +126,74 @@ def words(t: str) -> list[str]:
 def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
     txt = re.sub(r"[@#]\S+", "", txt)
+
+    # Normalize spaces first
     txt = re.sub(r"\s+", " ", txt).strip()
-    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
+
+    # Drop "low-key / low key" which reads very AI-ish
+    txt = re.sub(r"\blow[\s-]?key\b", "", txt, flags=re.IGNORECASE)
+
+    # Clean up any extra spaces after removals
+    txt = re.sub(r"\s+", " ", txt).strip()
+
+    # Remove trailing punctuation like "." or "..." but keep "?"
+    txt = re.sub(r"[.!;:…]+$", "", txt).strip()
+
+    # Strip trailing emoji noise
+    txt = re.sub(r"[\U0001F300-\U0001F6FF\U0001F900-\U0001F9FF]+", "", txt)
+
     return txt
 
+def normalize_numbers_and_tickers(tweet_text: str, comment: str) -> str:
+    """
+    Post-process a generated comment so numbers / % / tickers look human.
+
+    - Keep decimals like 3.4 instead of "3 4"
+    - Re-attach % if the tweet had 20% but the comment only says 20
+    - Preserve $tickers from the original tweet, without ever creating "$$"
+    """
+    if not comment:
+        return comment or ""
+
+    txt = comment
+
+    # 1) Collapse things like "$$RLS" -> "$RLS"
+    txt = re.sub(r"\$+(\w+)", r"$\1", txt)
+
+    tweet = tweet_text or ""
+
+    # 2) Fix decimals like 1.2 that turned into "1 2"
+    decimals = set(re.findall(r"\b\d+\.\d+\b", tweet))
+    for dec in decimals:
+        spaced = dec.replace(".", " ")
+        if spaced in txt and dec not in txt:
+            txt = txt.replace(spaced, dec)
+
+    # 3) Ensure numbers that were percentages in the tweet still carry '%'
+    percent_matches = re.findall(r"\b(\d+(?:\.\d+)?)\s*%", tweet)
+    for num in set(percent_matches):
+        # already has percent in comment?
+        if re.search(rf"\b{re.escape(num)}\s*%", txt):
+            continue
+        # attach % to the first bare occurrence of that number
+        txt, n_sub = re.subn(rf"\b{re.escape(num)}\b", num + "%", txt, count=1)
+        if n_sub:
+            continue
+
+    # 4) Preserve $tickers from the tweet
+    tickers = set(re.findall(r"\$[A-Za-z][A-Za-z0-9]{0,7}", tweet))
+    for ticker in tickers:
+        base = ticker[1:]
+        # If the comment already has the $ticker, don't touch it.
+        if ticker in txt:
+            continue
+        # Replace standalone BASE with $BASE
+        pattern = rf"\b{re.escape(base)}\b"
+        txt, _ = re.subn(pattern, ticker, txt)
+
+    # Final safety: never leave double dollars around
+    txt = re.sub(r"\$\$+", "$", txt)
+    return txt
 
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
@@ -168,7 +231,17 @@ AI_BLOCKLIST = {
     "as an ai","as a language model","as an assistant",
     "i am an ai","i am just an ai","i am just a bot",
     "cannot provide","cannot answer","not financial advice",
-    "lorem ipsum","placeholder text",
+    "lorem ipsum","placeholder text","low key",
+    "low-key",
+    "lowkey",
+    "curious",
+    "i'm curious",
+    "wondering",
+    "i wonder",
+    "feels like",
+    "love that",
+    "lowkey bullish",
+    'low-key bullish",
 }
 
 GENERIC_PHRASES = {
@@ -476,51 +549,24 @@ def _word_trigrams(text: str) -> set[str]:
 # ------------------------------------------------------------------------------
 def _llm_sys_prompt() -> str:
     return (
-        "You write ultra-short reply comments for Twitter/X.\n"
-        "\n"
-        "ROLE\n"
-        "- You are an experienced web3 / crypto KOL.\n"
-        "- You talk like a real CT user, not a corporate account and not an AI.\n"
-        "\n"
-        "TASK\n"
-        "- Write exactly TWO different reply comments to the tweet.\n"
-        "- Each comment must be ONE sentence, 6–13 words long.\n"
-        "- No numbering, no bullets, no labels, no explanations.\n"
-        "- Either respond as a JSON array of two strings, or as two plain lines.\n"
-        "\n"
-        "STYLE\n"
-        "- Use natural, modern CT language. Light slang is OK: words like "
-        "'ngl', 'low-key', 'alpha', 'degen', 'anon', 'fr', "
-        "IF they genuinely fit the tweet.\n"
-        "- Speak in first person or direct address when it makes sense "
-        "(\"ngl I'm watching this\", \"curious how you scale this anon\").\n"
-        "- Do NOT start both comments with the same first word.\n"
-        "- Each comment should be a single clear thought, not a paragraph.\n"
-        "- Prefer reacting to one concrete detail: project name, token symbol "
-        "($TOKEN), product, number, mechanism.\n"
-        "- One comment can be more supportive/bullish, the other more curious "
-        "or slightly skeptical.\n"
-        "- End sentences naturally with a period or question mark.\n"
-        "\n"
-        "AVOID (HARD)\n"
-        "- No emojis, no hashtags, no links, no 'follow me' or 'check this out'.\n"
-        "- Do NOT say you are an AI or language model.\n"
-        "- Avoid generic corporate phrases like: 'redefining what it means', "
-        "'game changer', 'game-changer', 'ecosystem', 'catalyst for growth', "
-        "'transformative', 'marks the beginning of the end'.\n"
-        "- Avoid generic templates like: 'love to see it', 'this is huge', "
-        "'sounds like a game-changer', 'nice thread', 'great thread'.\n"
-        "- Do not write trading advice or disclaimers like 'not financial advice'.\n"
-        "\n"
-        "GOOD EXAMPLES (STYLE ONLY)\n"
-        "- 'Low-key bullish on AlignerZ after this, real builder vibes ngl.'\n"
-        "- 'Prediction markets plus TryLimitless suddenly make way more sense fr.'\n"
-        "- 'Curious how Genome actually tracks attention without nuking UX anon.'\n"
-        "\n"
-        "BAD EXAMPLES (DO NOT COPY)\n"
-        "- 'AlignerZ is redefining what it means to be a responsible launchpad ecosystem.'\n"
-        "- 'Decentralized claim verification is a game-changer for institutional trust.'\n"
-        "- 'Scalable infrastructure will be the real catalyst for crypto growth next year.'\n"
+        "You write extremely short, human comments for crypto / trading / web3 posts.\n"
+        "- Output exactly two comments.\n"
+        "- Each comment must be 6-13 words.\n"
+        "- Tone: real KOL / degen on X, not corporate, not an AI assistant.\n"
+        "- Light CT slang (degen, anon, ngl, tbh, alpha) is fine, but not every sentence.\n"
+        "- The two comments must have clearly different vibes (for example hype vs cautious).\n"
+        "- One clear thought per comment, no greetings, no 'thanks for sharing' fluff.\n"
+        "- Do NOT use phrases like 'low-key', 'low key', 'curious', 'I'm curious', 'wonder', "
+        "'love that', 'feels like', 'what's the play here', or similar generic AI-sounding lines.\n"
+        "- Keep numbers and tickers exactly as in the post: do not drop '$' from tickers like $ETH, "
+        "and do not split decimals like 3.4 into '3 4'.\n"
+        "- If your reply is genuinely a question, you may end it with '?'. "
+        "Otherwise, no final '.', '!' or '?'.\n"
+        "- No emojis, no hashtags, no links.\n"
+        "- Vary syntax and rhythm across comments; avoid templates.\n"
+        "- Prefer returning a pure JSON array of two strings, like: "
+        "['first comment', 'second comment'].\\n"
+        "- If you cannot return JSON, return two lines separated by a newline.\n"
     )
  
 
@@ -813,12 +859,25 @@ def _extract_handle_from_url(url: str) -> Optional[str]:
 
 generator = OfflineCommentGenerator()
 
-def _sanitize_comment(raw: str) -> str:
+def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
     txt = re.sub(r"[@#]\S+", "", txt)
+
+    # Normalize spaces first
     txt = re.sub(r"\s+", " ", txt).strip()
-    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    txt = EMOJI_PATTERN.sub("", txt)
+
+    # Drop "low-key / low key" which reads very AI-ish
+    txt = re.sub(r"\blow[\s-]?key\b", "", txt, flags=re.IGNORECASE)
+
+    # Clean up any extra spaces after removals
+    txt = re.sub(r"\s+", " ", txt).strip()
+
+    # Remove trailing punctuation like "." or "..." but keep "?"
+    txt = re.sub(r"[.!;:…]+$", "", txt).strip()
+
+    # Strip trailing emoji noise
+    txt = re.sub(r"[\U0001F300-\U0001F6FF\U0001F900-\U0001F9FF]+", "", txt)
+
     return txt
 
 
@@ -1430,9 +1489,16 @@ def generate_two_comments_with_providers(
     candidates = [c for c in candidates if c][:2]
 
     out: List[Dict[str, Any]] = []
-    for c in candidates:
-        out.append({"lang": lang or "en", "text": c})
-
+    for item in candidates:
+        txt = item.get("text")
+        if not txt:
+            continue
+        # Fix decimals / % / $tickers so they match the original tweet
+        fixed = normalize_numbers_and_tickers(tweet_text, txt)
+        out.append({
+            "lang": item.get("lang") or lang or "en",
+            "text": fixed,
+        })
     # If somehow we still ended up with < 2 dicts, ask offline generator directly
     if len(out) < 2:
         try:
