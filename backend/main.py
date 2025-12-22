@@ -1848,12 +1848,22 @@ def generate_two_comments_with_providers(
                 lang,
                 url=url,
             )
-            for item in extra_items:
+            for item in (extra_items or []):
                 if len(out) >= 2:
                     break
-                txt = (item.get("text") or "").strip()
-                if txt:
-                    out.append({"lang": item.get("lang") or lang or "en", "text": txt})
+
+                # allow both dict and plain string, just in case
+                if isinstance(item, dict):
+                    txt = str(item.get("text") or "").strip()
+                    lang_i = item.get("lang") or lang or "en"
+                else:
+                    txt = str(item).strip()
+                    lang_i = lang or "en"
+
+                if not txt:
+                    continue
+
+                out.append({"lang": lang_i, "text": txt})
         except Exception as e:
             logger.exception("Total failure in provider cascade: %s", e)
 
