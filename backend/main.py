@@ -893,7 +893,6 @@ class OfflineCommentGenerator:
             P(f"{focus_slot} is what desks actually model risk around"),
             P(f"{focus_slot} feels like the lever, not the headline"),
             P(f"Respecting {focus_slot} flow, not just timeline noise"),
-more KOL / tape-reader flavor
     P(f"{focus_slot} is the kind of edge you only see early"),
     P(f"{focus_slot} is tradable if liquidity stays decent"),
     P(f"{focus_slot} looks like positioning, not retail hype"),
