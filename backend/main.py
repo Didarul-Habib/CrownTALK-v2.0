@@ -1062,16 +1062,15 @@ class OfflineCommentGenerator:
         return out or None
 
     def _accept(self, line: str) -> bool:
-    if self._violates_ai_blocklist(line):
-        return False
-    if not self._diversity_ok(line):
-        return False
-    if comment_seen(line):
-        return False
-    # NEW: enforce professional KOL tone
-    if not pro_kol_ok(line):
-        return False
-    return True
+        if self._violates_ai_blocklist(line):
+            return False
+        if not self._diversity_ok(line):
+            return False
+        if comment_seen(line):
+            return False
+        if not pro_kol_ok(line):
+            return False
+        return True
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
         remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
