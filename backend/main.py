@@ -656,6 +656,53 @@ CLOSERS = [
     "and the market tells you if you’re wrong",
 ]
 
+PRO_KOL_BAD = {
+    "wow", "exciting", "so excited", "can't wait", "cant wait", "love this", "love that",
+    "amazing", "awesome", "incredible", "huge", "insane", "legendary",
+}
+
+PRO_KOL_GOOD = {
+    "signal", "thesis", "execution", "risk", "liquidity", "flow", "incentives",
+    "positioning", "distribution", "supply", "demand", "timeline", "context",
+    "constraint", "tradeoff", "edge", "verify", "confirm", "pricing", "variance",
+    "sizing", "asymmetric", "timeframe"
+}
+
+def pro_kol_score(text: str) -> int:
+    t = (text or "").strip()
+    low = t.lower()
+
+    score = 0
+
+    # penalize hype/fanboy
+    if any(p in low for p in PRO_KOL_BAD):
+        score -= 3
+
+    # reward grounded "operator" words
+    score += sum(1 for w in PRO_KOL_GOOD if w in low)
+
+    # reward "claim + constraint" structure
+    if any(x in low for x in ("if ", "once ", "as long as ", "depends on ", "until ", "unless ")):
+        score += 1
+
+    # reward questions that are specific (not vague “sounds interesting”)
+    if low.endswith("?") and any(x in low for x in ("how", "what", "where", "which", "when")):
+        score += 1
+
+    # penalize exclamation / hype punctuation
+    if "!" in t:
+        score -= 1
+
+    # penalize super generic
+    if contains_generic_phrase(t):
+        score -= 2
+
+    return score
+
+def pro_kol_ok(text: str, min_score: int = 1) -> bool:
+    return pro_kol_score(text) >= min_score
+
+
 def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     focus = pick_focus_token(key_tokens) or "this"
     handle = ctx.get("handle")
@@ -1015,13 +1062,16 @@ class OfflineCommentGenerator:
         return out or None
 
     def _accept(self, line: str) -> bool:
-        if self._violates_ai_blocklist(line):
-            return False
-        if not self._diversity_ok(line):
-            return False
-        if comment_seen(line):
-            return False
-        return True
+    if self._violates_ai_blocklist(line):
+        return False
+    if not self._diversity_ok(line):
+        return False
+    if comment_seen(line):
+        return False
+    # NEW: enforce professional KOL tone
+    if not pro_kol_ok(line):
+        return False
+    return True
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
         remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
@@ -1242,6 +1292,7 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     - adds '?' to clear questions
     """
     txt = _sanitize_comment(raw)
+    txt = kol_polish(txt)
 
     # kill ultra-generic openers like "love that", "excited to see"
     txt_low = txt.lower().lstrip()
@@ -1264,7 +1315,7 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     if len(toks) > max_w:
         toks = toks[:max_w]
 
-    fillers = ["honestly", "still", "though", "right"]
+    fillers = ["notably", "overall", "net", "frankly", "basically"]
     i = 0
     while len(toks) < min_w and i < len(fillers):
         toks.append(fillers[i])
@@ -1286,6 +1337,25 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
 
     out = _ensure_question_punctuation(out)
     return out
+
+def kol_polish(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+
+    # remove common hype openers
+    t = re.sub(r"^(wow|omg|yo|bro)\b[,\s]*", "", t, flags=re.I)
+
+    # remove exclamation
+    t = t.replace("!", "")
+
+    # remove "sounds interesting" vagueness
+    t = re.sub(r"\bsounds interesting\b", "worth watching", t, flags=re.I)
+
+    # collapse whitespace
+    t = re.sub(r"\s+", " ", t).strip()
+
+    return t
 
 def guess_mode(text: str) -> str:
     """
@@ -1499,20 +1569,28 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         raise RuntimeError("Groq disabled or client not available")
 
     sys_prompt = (
-        "You write extremely short, human comments for social posts.\n"
-        "- Output exactly two comments.\n"
-        "- Each comment must be 6-13 words.\n"
-        "- Natural conversational tone, as if you just read the post.\n"
-        "- One concise thought per comment (no 'thanks for sharing' add-ons).\n"
-        "- Light CT / influencer slang (tbh, rn, ngl) is fine, but use sparingly.\n"
-        "- The two comments must have different vibes (e.g., supportive vs curious).\n"
-        "- If a comment clearly reads like a question, end it with '?'.\n"
-        "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
-        "- Avoid repetitive templates; vary syntax and rhythm.\n"
-        "- Prefer returning a pure JSON array of two strings, like: "
-        "[\"first comment\", \"second comment\"].\n"
-        "- If you cannot return JSON, return two lines separated by a newline.\n"
-    )
+    "You are a professional Crypto Twitter KOL (operator/trader tone).\n"
+    "Write extremely short replies to social posts.\n"
+    "\n"
+    "Hard constraints:\n"
+    "- Output exactly two comments.\n"
+    "- Each comment must be 6–13 tokens.\n"
+    "- One thought only per comment (no second clause like 'thanks for sharing').\n"
+    "- No emojis, no hashtags, no links.\n"
+    "- Keep numbers and tickers exactly as written (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
+    "\n"
+    "Style:\n"
+    "- Sound grounded, specific, and calm—like an experienced KOL.\n"
+    "- Prefer: risk, liquidity, incentives, execution, timeline, positioning, thesis, constraints.\n"
+    "- Avoid hype/fanboy language and vague praise.\n"
+    "- Avoid these words/phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
+    "- If you ask a question, make it specific and end with '?'.\n"
+    "- The two comments must have different intent (e.g., one assertion + one sharp question).\n"
+    "\n"
+    "Return format:\n"
+    "- Prefer a pure JSON array of two strings like: [\"...\", \"...\"].\n"
+    "- If not JSON, return two lines separated by a newline.\n"
+)
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
@@ -1600,19 +1678,27 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 # ------------------------------------------------------------------------------
 def _llm_sys_prompt() -> str:
     return (
-        "You write extremely short, human comments for social posts.\n"
+        "You are a professional Crypto Twitter KOL (operator/trader tone).\n"
+        "Write extremely short replies to social posts.\n"
+        "\n"
+        "Hard constraints:\n"
         "- Output exactly two comments.\n"
-        "- Each comment must be 6-13 words.\n"
-        "- Natural conversational tone, as if you just read the post.\n"
-        "- One concise thought per comment (no 'thanks for sharing' add-ons).\n"
-        "- Light CT / influencer slang (tbh, rn, ngl) is fine, but use sparingly.\n"
-        "- The two comments must have different vibes (e.g., supportive vs curious).\n"
-        "- If a comment clearly reads like a question, end it with '?'.\n"
-        "- Avoid emojis, hashtags, links, or AI-ish phrases.\n"
-        "- Avoid repetitive templates; vary syntax and rhythm.\n"
-        "- Prefer returning a pure JSON array of two strings, like: "
-        "[\"first comment\", \"second comment\"].\n"
-        "- If you cannot return JSON, return two lines separated by a newline.\n"
+        "- Each comment must be 6–13 tokens.\n"
+        "- One thought only per comment (no second clause like 'thanks for sharing').\n"
+        "- No emojis, no hashtags, no links.\n"
+        "- Keep numbers and tickers exactly as written (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
+        "\n"
+        "Style:\n"
+        "- Sound grounded, specific, and calm—like an experienced KOL.\n"
+        "- Prefer: risk, liquidity, incentives, execution, timeline, positioning, thesis, constraints.\n"
+        "- Avoid hype/fanboy language and vague praise.\n"
+        "- Avoid these words/phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
+        "- If you ask a question, make it specific and end with '?'.\n"
+        "- The two comments must have different intent (e.g., one assertion + one sharp question).\n"
+        "\n"
+        "Return format:\n"
+        "- Prefer a pure JSON array of two strings like: [\"...\", \"...\"].\n"
+        "- If not JSON, return two lines separated by a newline.\n"
     )
 
 def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
