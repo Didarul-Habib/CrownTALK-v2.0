@@ -1848,25 +1848,32 @@ def generate_two_comments_with_providers(
                 lang,
                 url=url,
             )
+
             for item in extra_items:
                 if len(out) >= 2:
                     break
 
-                # extra_items should normally be a list of dicts,
-                # but be defensive: if we ever get plain strings, wrap them.
+                # item can be either a dict OR a raw string
                 if isinstance(item, str):
                     txt = item.strip()
-                    item_lang = lang or "en"
-                else:
+                    if not txt:
+                        continue
+                    out.append({
+                        "lang": lang or "en",
+                        "text": txt,
+                    })
+                elif isinstance(item, dict):
                     txt = (item.get("text") or "").strip()
-                    item_lang = item.get("lang") or lang or "en"
+                    if not txt:
+                        continue
+                    out.append({
+                        "lang": item.get("lang") or lang or "en",
+                        "text": txt,
+                    })
 
-                if not txt:
-                    continue
-
-                out.append({"lang": item_lang, "text": txt})
-        except Exception as e:
-            logger.exception("Total failure in provider cascade: %s", e)
+        except Exception:
+            # Last-resort fallback already handled earlier, so just swallow any error here
+            pass
     # Final hard cap: exactly 2
     return out[:2]
 
