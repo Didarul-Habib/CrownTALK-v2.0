@@ -556,6 +556,37 @@ def detect_topic(text: str) -> str:
         return "one_liner"
     return "generic"
 
+def llm_mode_hint(tweet_text: str) -> str:
+    """
+    Small, dynamic steering line for the LLM.
+    Keeps style consistent across trading/NFT/DeFi/meme/dev threads without buckets.
+    """
+    t = (tweet_text or "").lower()
+
+    # dev / research / technical threads
+    if "tokenization" in t or "embedding" in t or "prompt" in t or "llm" in t or "model" in t:
+        return "Mode: builder. Be precise and practical. Ask one sharp technical question."
+
+    # trading / charts
+    if any(k in t for k in ("chart", "support", "resistance", "breakout", "break down", "liquidity", "liq", "volume", "open interest", "oi", "funding", "entry", "entries", "tp", "sl", "stop", "r:r", "rr", "ath", "range")):
+        return "Mode: trader. Focus on positioning, liquidity/flow, risk, timeframe. No cheerleading."
+
+    # NFT / mint / whitelist
+    if any(k in t for k in ("mint", "minting", "wl", "whitelist", "allowlist", "og", "floor", "sweep", "reveal", "collection", "trait", "art", "pfp")):
+        return "Mode: NFT. Focus on demand, distribution, team execution, and timing. Avoid fluff."
+
+    # DeFi / protocol / product mechanics
+    if any(k in t for k in ("defi", "protocol", "amm", "perps", "lending", "borrow", "staking", "restaking", "yield", "apy", "apr", "vault", "fees", "liquidation", "bridge", "rollup", "mainnet", "testnet", "audit", "exploit")):
+        return "Mode: DeFi operator. Focus on incentives, mechanisms, risk surface, UX. Be grounded."
+
+    # meme / shitpost
+    if any(k in t for k in ("lol", "lmao", "ngmi", "wagmi", "cope", "rekt", "ratio", "meme", "shitpost")):
+        return "Mode: meme. Keep it witty and minimal, still coherent. No cringe hype."
+
+    # default CT pro
+    return "Mode: CT pro. Grounded, specific, calm. One observation + one sharp question."
+
+
 def is_crypto_tweet(text: str) -> bool:
     t = (text or "").lower()
     crypto_keywords = [
@@ -1567,29 +1598,8 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
-    sys_prompt = (
-    "You are a professional Crypto Twitter KOL (operator/trader tone).\n"
-    "Write extremely short replies to social posts.\n"
-    "\n"
-    "Hard constraints:\n"
-    "- Output exactly two comments.\n"
-    "- Each comment must be 6–13 tokens.\n"
-    "- One thought only per comment (no second clause like 'thanks for sharing').\n"
-    "- No emojis, no hashtags, no links.\n"
-    "- Keep numbers and tickers exactly as written (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
-    "\n"
-    "Style:\n"
-    "- Sound grounded, specific, and calm—like an experienced KOL.\n"
-    "- Prefer: risk, liquidity, incentives, execution, timeline, positioning, thesis, constraints.\n"
-    "- Avoid hype/fanboy language and vague praise.\n"
-    "- Avoid these words/phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
-    "- If you ask a question, make it specific and end with '?'.\n"
-    "- The two comments must have different intent (e.g., one assertion + one sharp question).\n"
-    "\n"
-    "Return format:\n"
-    "- Prefer a pure JSON array of two strings like: [\"...\", \"...\"].\n"
-    "- If not JSON, return two lines separated by a newline.\n"
-)
+    mode_line = llm_mode_hint(tweet_text)
+    sys_prompt = _llm_sys_prompt(mode_line)
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
@@ -1675,30 +1685,38 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 # ------------------------------------------------------------------------------
 # OpenAI / Gemini generators (same constraints as Groq)
 # ------------------------------------------------------------------------------
-def _llm_sys_prompt() -> str:
-    return (
-        "You are a professional Crypto Twitter KOL (operator/trader tone).\n"
-        "Write extremely short replies to social posts.\n"
+def _llm_sys_prompt(mode_line: str = "") -> str:
+    base = (
+        "You generate two short replies to a tweet.\n"
         "\n"
-        "Hard constraints:\n"
-        "- Output exactly two comments.\n"
+        "Hard rules:\n"
+        "- Output exactly 2 comments.\n"
         "- Each comment must be 6–13 tokens.\n"
-        "- One thought only per comment (no second clause like 'thanks for sharing').\n"
-        "- No emojis, no hashtags, no links.\n"
-        "- Keep numbers and tickers exactly as written (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
+        "- One thought per comment (no second clause like 'thanks for sharing').\n"
+        "- No emojis, hashtags, or links.\n"
+        "- Do NOT invent details not present in the tweet.\n"
+        "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
         "\n"
-        "Style:\n"
-        "- Sound grounded, specific, and calm—like an experienced KOL.\n"
-        "- Prefer: risk, liquidity, incentives, execution, timeline, positioning, thesis, constraints.\n"
+        "Human style:\n"
+        "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
         "- Avoid hype/fanboy language and vague praise.\n"
-        "- Avoid these words/phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
-        "- If you ask a question, make it specific and end with '?'.\n"
-        "- The two comments must have different intent (e.g., one assertion + one sharp question).\n"
+        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
+        "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
         "\n"
-        "Return format:\n"
-        "- Prefer a pure JSON array of two strings like: [\"...\", \"...\"].\n"
+        "Diversity:\n"
+        "- Comment #1: a clear observation or claim.\n"
+        "- Comment #2: a specific question OR a cautious risk note.\n"
+        "- Make the two comments meaningfully different.\n"
+        "\n"
+        "Output format:\n"
+        "- Return a JSON array of two strings: [\"...\", \"...\"].\n"
         "- If not JSON, return two lines separated by a newline.\n"
     )
+
+    mode_line = (mode_line or "").strip()
+    if mode_line:
+        base += "\n" + mode_line + "\n"
+    return base
 
 def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_OPENAI and _openai_client):
@@ -1708,14 +1726,15 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
         "Return exactly two distinct comments (JSON array or two lines)."
     )
+    mode_line = llm_mode_hint(tweet_text)
     resp = _openai_client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
-            {"role": "system", "content": _llm_sys_prompt()},
+            {"role": "system", "content": _llm_sys_prompt(mode_line)},
             {"role": "user", "content": user_prompt},
         ],
         max_tokens=160,
-        temperature=0.9,
+        temperature=0.7,
     )
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
@@ -1739,7 +1758,8 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
         "Return exactly two distinct comments (JSON array or two lines)."
     )
-    prompt = _llm_sys_prompt() + "\n\n" + user_prompt
+    mode_line = llm_mode_hint(tweet_text)
+    prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
     resp = _gemini_model.generate_content(prompt)
     raw = ""
     try:
