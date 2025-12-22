@@ -335,12 +335,14 @@ def health():
     return jsonify({"status": "ok", "groq": bool(USE_GROQ)}), 200
 
 # ------------------------------------------------------------------------------
-# Rules: word count + sanitization
+# Rules: word count + sanitization + Tokenization
 # ------------------------------------------------------------------------------
-WORD_RE = re.compile(r"[A-Za-z0-9’']+(-[A-Za-z0-9’']+)?")
+TOKEN_RE = re.compile(
+    r"(?:\$\w{2,15}|\d+(?:\.\d+)?|[A-Za-z0-9’']+(?:-[A-Za-z0-9’']+)*)"
+)
 
 def words(t: str) -> list[str]:
-    return WORD_RE.findall(t or "")
+    return TOKEN_RE.findall(t or "")
 
 def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
@@ -606,7 +608,10 @@ def pick_focus_token(tokens: List[str]) -> Optional[str]:
 LEADINS = [
     "short answer:","zooming out,","if you're weighing","plainly,","real talk:","on the math,",
     "from experience,","quick take:","low key,","no fluff:","in practice,","gut check:",
-    "signal over noise:","nuts and bolts:","from the builder side,","first principles:"
+    "signal over noise:","nuts and bolts:","from the builder side,","first principles:",
+"ct lens:","flow check:","risk check:","tape says:","liq check:","timeframe matters:",
+    "hot take:","cold take:","conviction check:","positioning wise:","alpha is:",
+    "narratives aside,","strip it down:","here’s the edge:","what matters most:"
 ]
 CLAIMS = [
     "{focus} is doing more work than the headline","{focus} is where the thesis tightens",
@@ -615,18 +620,40 @@ CLAIMS = [
     "it lives or dies on {focus}","risk mostly hides in {focus}",
     "execution shows up as {focus}","watch how {focus} trends, not the hype",
     "{focus} is the boring piece that decides outcomes","{focus} sets the real ceiling",
-    "{focus} is the bit with actual leverage","most errors start before {focus} is clear"
+    "{focus} is the bit with actual leverage","most errors start before {focus} is clear",
+"{focus} is the real driver, everything else is noise",
+    "{focus} decides whether this trends or fades",
+    "{focus} is where smart money will express the view",
+    "{focus} is the difference between thesis and cope",
+    "{focus} is the lever, not the vibe",
+    "{focus} is what makes this tradeable",
+    "if {focus} flips, sentiment flips fast",
+    "the market will reward {focus}, not the narrative",
+    "you can’t hand-wave {focus} and expect it to work",
 ]
 NUANCE = [
     "separate it from optics","strip the hype and check it","ignore the noise and test it",
     "details beat slogans here","context > theatrics","measure it in weeks, not likes",
     "model it once and the picture clears","ship first, argue later","constraints explain the behavior",
-    "once {focus} holds, the plan is simple","touch grass and look at {focus}"
+    "once {focus} holds, the plan is simple","touch grass and look at {focus}",
+"watch liquidity, then talk",
+    "size it like uncertainty is real",
+    "timeframe decides who’s right",
+    "tape > timelines",
+    "let price confirm the story",
+    "if it’s obvious, it’s probably crowded",
+    "avoid marrying the narrative",
+    "respect downside before upside",
 ]
 CLOSERS = [
     "then the plan makes sense","and the whole picture clicks","and entries/exits get cleaner",
     "and you avoid dumb errors","and the convo gets useful","and incentives line up",
-    "and the path forward writes itself","and the take stops being vibes-only"
+    "and the path forward writes itself","and the take stops being vibes-only",
+"and the trade becomes cleaner",
+    "and you stop chasing vibes",
+    "and you can actually size it",
+    "and the thesis stays honest",
+    "and the market tells you if you’re wrong",
 ]
 
 def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
@@ -866,8 +893,25 @@ class OfflineCommentGenerator:
             P(f"{focus_slot} is what desks actually model risk around"),
             P(f"{focus_slot} feels like the lever, not the headline"),
             P(f"Respecting {focus_slot} flow, not just timeline noise"),
+more KOL / tape-reader flavor
+    P(f"{focus_slot} is the kind of edge you only see early"),
+    P(f"{focus_slot} is tradable if liquidity stays decent"),
+    P(f"{focus_slot} looks like positioning, not retail hype"),
+    P(f"{focus_slot} is where the real risk sits rn"),
+    P(f"{focus_slot} needs confirmation from price, not quotes"),
+    P(f"{focus_slot} is the part market makers will punish"),
+    P(f"{focus_slot} is the pivot before sentiment catches up"),
+    P(f"{focus_slot} is the only part worth tracking daily"),
+    P(f"{focus_slot} feels like accumulation if you zoom out"),
+    P(f"{focus_slot} feels crowded if everyone agrees instantly"),
         ]
 
+        kol_q = [
+    P(f"Where does {focus_slot} liquidity actually come from?"),
+    P(f"What's the catalyst for {focus_slot} besides narrative?"),
+    P(f"Is {focus_slot} real demand or just rotation?"),
+    P(f"Does {focus_slot} hold when volatility spikes?"),
+]
         buckets: Dict[str, List[str]] = {
             "react": react,
             "conversation": convo,
@@ -876,6 +920,7 @@ class OfflineCommentGenerator:
             "nuanced": nuance,
             "quick": quick,
             "kol": kol,
+            "kol_q": kol_q,
         }
 
         if topic == "chart":
@@ -1134,7 +1179,7 @@ generator = OfflineCommentGenerator()
 
 # --- Minimal helpers used by Groq path ---
 def words(text: str) -> list[str]:
-    return re.findall(r"[A-Za-z0-9']+", text or "")
+    return TOKEN_RE.findall(text or "")
 
 def _sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
