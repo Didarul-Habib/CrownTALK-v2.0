@@ -1470,9 +1470,10 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
         out = out.strip()
 
     out = _ensure_question_punctuation(out)
-      if PRO_KOL_POLISH:
-        out = pro_kol_polish(out, topic=detect_topic(raw))
-      return out
+
+    if PRO_KOL_POLISH:
+        out = pro_kol_polish(out, topic=detect_topic(raw or ""))
+    return out
 
 def kol_polish(text: str) -> str:
     t = (text or "").strip()
