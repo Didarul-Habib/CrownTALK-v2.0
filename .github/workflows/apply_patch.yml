@@ -1,0 +1,40 @@
+name: Apply backend/main.patch
+
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - backend/main.patch
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  apply:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+
+      - name: Apply patch
+        run: |
+          cd backend
+          git apply --verbose main.patch
+
+      - name: Sanity check (compile)
+        run: |
+          cd backend
+          python -m py_compile main.py
+
+      - name: Create Pull Request
+        uses: peter-evans/create-pull-request@v6
+        with:
+          commit-message: "Apply research-grade patch (backend/main.patch)"
+          title: "Apply research-grade patch"
+          body: |
+            Applies backend/main.patch to backend/main.py and verifies compilation.
+          branch: bot/apply-backend-patch
+          delete-branch: true
