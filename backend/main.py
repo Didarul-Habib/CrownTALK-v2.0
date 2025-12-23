@@ -771,7 +771,7 @@ PRO_KOL_GOOD = {
     "signal", "thesis", "execution", "risk", "liquidity", "flow", "incentives",
     "positioning", "distribution", "supply", "demand", "timeline", "context",
     "constraint", "tradeoff", "edge", "verify", "confirm", "pricing", "variance",
-    "sizing", "asymmetric", "timeframe"
+    "sizing", "asymmetric", "timeframe",
 }
 
 def pro_kol_score(text: str) -> int:
