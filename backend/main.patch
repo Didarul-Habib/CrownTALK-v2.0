@@ -1,4 +1,7 @@
---- main.py+++ main.py@@ -1,7 +1,7 @@ from __future__ import annotations
+--- a/main.py
++++ b/main.py
+@@ -1,7 +1,7 @@
+ from __future__ import annotations
  
 -import json, os, re, time, random, hashlib, logging, sqlite3, threading
 -from collections import Counter
@@ -7,104 +10,62 @@
  from typing import List, Optional, Dict, Any
  from urllib.parse import urlparse
  
-@@ -38,6 +38,27 @@ PRO_KOL_POLISH = PRO_KOL_MODE
- PRO_KOL_STRICT = PRO_KOL_MODE
- PRO_KOL_REWRITE = PRO_KOL_MODE
+@@ -46,6 +46,480 @@
  
+ # If meme tweet, allow 1 witty line (still no emojis/hashtags)
+ PRO_KOL_ALLOW_WIT = os.getenv("PRO_KOL_ALLOW_WIT", "1").strip() != "0"
++
++
 +# ------------------------------------------------------------------------------
-+# Research-grade add-ons (all best-effort, never block generation)
++# Research-grade add-ons (best-effort; never blocks the generator)
 +# ------------------------------------------------------------------------------
 +ENABLE_THREAD_CONTEXT = os.getenv("ENABLE_THREAD_CONTEXT", "1").strip() == "1"
 +ENABLE_RESEARCH = os.getenv("ENABLE_RESEARCH", "0").strip() == "1"
 +ENABLE_COINGECKO = os.getenv("ENABLE_COINGECKO", "0").strip() == "1"
 +COINGECKO_DEMO_KEY = os.getenv("COINGECKO_DEMO_KEY") or os.getenv("COINGECKO_API_KEY")
-+RESEARCH_CACHE_TTL_SEC = int(os.getenv("RESEARCH_CACHE_TTL_SEC", "900") or "900")  # default 15m
++RESEARCH_CACHE_TTL_SEC = int(os.getenv("RESEARCH_CACHE_TTL_SEC", "900") or "900")
 +
-+# Request-scoped context (ContextVars)
-+REQUEST_THREAD_CTX: contextvars.ContextVar[dict] = contextvars.ContextVar("REQUEST_THREAD_CTX", default={})
-+REQUEST_RESEARCH_CTX: contextvars.ContextVar[dict] = contextvars.ContextVar("REQUEST_RESEARCH_CTX", default={})
-+REQUEST_VOICE: contextvars.ContextVar[dict | None] = contextvars.ContextVar("REQUEST_VOICE", default=None)
++# Request-scoped context storage (ContextVars)
++REQUEST_THREAD_CTX: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar("REQUEST_THREAD_CTX", default={})
++REQUEST_RESEARCH_CTX: contextvars.ContextVar[Dict[str, Any]] = contextvars.ContextVar("REQUEST_RESEARCH_CTX", default={})
++REQUEST_VOICE: contextvars.ContextVar[Dict[str, Any] | None] = contextvars.ContextVar("REQUEST_VOICE", default=None)
 +
-+# In-memory caches (aggressive, short TTL; safe to lose on restart)
-+_RESEARCH_CACHE: dict[str, tuple[float, object]] = {}
++# In-process caches (TTL enforced in helpers)
++_RESEARCH_CACHE: Dict[str, tuple[float, Any]] = {}
 +_RESEARCH_CACHE_LOCK = threading.Lock()
 +
-+# CoinGecko circuit breaker (avoid blocking on 429)
++# CoinGecko circuit breaker on 429 (disable for ~15m)
 +_COINGECKO_DISABLED_UNTIL_TS = 0.0
 +
- # Optional Groq
- GROQ_API_KEY = os.getenv("GROQ_API_KEY", "").strip()
- GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-70b-versatile").strip()
-@@ -132,35 +153,43 @@ def _do_init() -> None:
-         conn.execute("PRAGMA busy_timeout=5000;")
-         try:
-             conn.execute("PRAGMA journal_mode=WAL;")
-         except sqlite3.OperationalError:
-             pass
-         conn.executescript(
-             """
-             CREATE TABLE IF NOT EXISTS comments (
-                 id INTEGER PRIMARY KEY,
-                 url TEXT NOT NULL,
-                 lang TEXT,
-                 text TEXT NOT NULL,
-                 created_at DATETIME DEFAULT CURRENT_TIMESTAMP
-             );
-             CREATE INDEX IF NOT EXISTS idx_comments_url ON comments(url);
- 
-             CREATE TABLE IF NOT EXISTS comments_seen(
-                 hash TEXT PRIMARY KEY,
-                 created_at INTEGER
-             );
- 
-             -- OTP pattern guards
-             CREATE TABLE IF NOT EXISTS comments_openers_seen(
-                 opener TEXT PRIMARY KEY,
-                 created_at INTEGER
-             );
-             CREATE TABLE IF NOT EXISTS comments_ngrams_seen(
-                 ngram TEXT PRIMARY KEY,
-                 created_at INTEGER
-             );
-             CREATE TABLE IF NOT EXISTS comments_templates_seen(
-                 thash TEXT PRIMARY KEY,
-                 created_at INTEGER
-             );
-+            CREATE TABLE IF NOT EXISTS entity_map(
-+                kind TEXT NOT NULL,
-+                k TEXT NOT NULL,
-+                slug TEXT NOT NULL,
-+                updated_at INTEGER NOT NULL,
-+                PRIMARY KEY (kind, k)
-+            );
-             """
-         )
- 
- def init_db() -> None:
-     def _safe():
-@@ -356,6 +385,299 @@ def remember_template(text: str) -> None:
-     except Exception:
-         pass
- 
-+# ------------------------------------------------------------------------------
-+# Request-scoped context: thread/quote + research + voice roulette
-+# ------------------------------------------------------------------------------
++# Keep a short memory of recent voice cards to reduce repetition
++_RECENT_VOICES = deque(maxlen=4)
 +
++# VXTwitter helpers (best-effort quote/thread context)
 +_VX_ID_RE = re.compile(r"/status/(\d+)")
++
++# DefiLlama endpoints (no API key required)
++DEFILLAMA_BASE = "https://api.llama.fi"
++COINGECKO_BASE = "https://api.coingecko.com/api/v3"
++
 +_CASHTAG_RE = re.compile(r"\$[A-Za-z0-9_]{2,15}")
++_NUM_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?")
++
++VOICE_CARDS: list[Dict[str, str]] = [
++    {"id": "trader", "brief": "CT trader energy: flow-aware, risk/reward, positioning. No hype.", "rules": "Talk incentives/positioning; ask sharp questions; no shilling."},
++    {"id": "builder", "brief": "Product builder: how it works, integrations, tradeoffs, execution.", "rules": "Concrete implementation notes; what could break; next steps."},
++    {"id": "researcher", "brief": "Researcher: precise, caveated, compares to baselines.", "rules": "Prefer 'seems/looks' unless in tweet/research; ask for metrics/links."},
++    {"id": "skeptic", "brief": "Skeptic: respectful but probing. Tests assumptions.", "rules": "Call out risks/incentives; ask 'what happens if…'."},
++    {"id": "curious_friend", "brief": "Curious friend: smart, warm, genuinely trying to understand.", "rules": "Short + specific curiosity; no fluff; grounded."},
++    {"id": "deadpan_meme", "brief": "Deadpan meme: dry one-liner that still fits the topic (no emojis).", "rules": "One clean punch; no cringe; stay relevant."},
++]
 +
 +def _extract_tweet_id(url: str) -> Optional[str]:
-+    try:
-+        m = _VX_ID_RE.search(url or "")
-+        return m.group(1) if m else None
-+    except Exception:
-+        return None
++    m = _VX_ID_RE.search(url or "")
++    return m.group(1) if m else None
 +
 +def _compact(s: str, limit: int = 520) -> str:
 +    s = normalize_ws(s or "")
-+    if len(s) <= limit:
-+        return s
-+    return s[: limit - 1].rstrip() + "…"
++    return s if len(s) <= limit else (s[:limit-1].rstrip() + "…")
 +
 +def _cache_get(key: str, ttl_sec: int = RESEARCH_CACHE_TTL_SEC):
 +    now = time.time()
@@ -118,49 +79,9 @@
 +            return None
 +        return val
 +
-+def _cache_set(key: str, val: object):
++def _cache_set(key: str, val: Any) -> None:
 +    with _RESEARCH_CACHE_LOCK:
 +        _RESEARCH_CACHE[key] = (time.time(), val)
-+
-+# --- Entity map (sqlite) -------------------------------------------------------
-+
-+def _norm_entity_key(kind: str, k: str) -> str:
-+    k = (k or "").strip()
-+    if kind == "ticker":
-+        k = k.lstrip("$").upper()
-+    else:
-+        k = k.lower()
-+    return k
-+
-+def entity_map_get(kind: str, k: str) -> Optional[str]:
-+    try:
-+        nk = _norm_entity_key(kind, k)
-+        if not nk:
-+            return None
-+        with get_conn() as c:
-+            row = c.execute(
-+                "SELECT slug FROM entity_map WHERE kind=? AND k=?",
-+                (kind, nk),
-+            ).fetchone()
-+        return row[0] if row else None
-+    except Exception:
-+        return None
-+
-+def entity_map_put(kind: str, k: str, slug: str) -> None:
-+    try:
-+        nk = _norm_entity_key(kind, k)
-+        slug = (slug or "").strip()
-+        if not (nk and slug):
-+            return
-+        with get_conn() as c:
-+            c.execute(
-+                "INSERT OR REPLACE INTO entity_map(kind, k, slug, updated_at) VALUES (?,?,?,?)",
-+                (kind, nk, slug, now_ts()),
-+            )
-+    except Exception:
-+        pass
-+
-+# --- VXTwitter thread/quote context (best-effort) ------------------------------
 +
 +def _vx_get_json(tweet_id: str, timeout_sec: float = 1.2) -> Optional[dict]:
 +    if not tweet_id:
@@ -190,7 +111,6 @@
 +            txt = _first_text(v)
 +            if txt:
 +                return txt
-+        if isinstance(v, dict):
 +            for kk in ("tweet", "status", "data"):
 +                if isinstance(v.get(kk), dict):
 +                    txt = _first_text(v.get(kk))
@@ -198,86 +118,31 @@
 +                        return txt
 +    return ""
 +
-+def fetch_thread_context(tweet_url: str) -> dict:
-+    """Best-effort: quoted tweet + parent/reply-to tweet text (if available)."""
-+    ctx: dict[str, str] = {}
++def fetch_thread_context(tweet_url: str) -> Dict[str, Any]:
++    """Best-effort thread / quote ingestion via VXTwitter JSON."""
++    ctx: Dict[str, Any] = {}
 +    if not (ENABLE_THREAD_CONTEXT and tweet_url):
 +        return ctx
-+
 +    tid = _extract_tweet_id(tweet_url)
 +    j = _vx_get_json(tid) if tid else None
 +    if not isinstance(j, dict):
 +        return ctx
 +
-+    quoted = _pull_nested_text(
-+        j,
-+        keys=[
-+            "quoted_tweet", "quotedTweet", "quoted_status", "quotedStatus",
-+            "quote", "qrt", "quoted",
-+        ],
-+    )
++    quoted = _pull_nested_text(j, ["quoted_tweet", "quotedTweet", "quoted_status", "quotedStatus", "quote", "qrt", "quoted"])
 +    if quoted:
 +        ctx["quoted_text"] = _compact(quoted, 520)
 +
-+    parent = _pull_nested_text(
-+        j,
-+        keys=[
-+            "replying_to_tweet", "replyingToTweet", "replying_to", "replyingTo",
-+            "in_reply_to", "inReplyTo", "parent_tweet", "parentTweet",
-+        ],
-+    )
++    parent = _pull_nested_text(j, ["replying_to_tweet", "replyingToTweet", "replying_to", "replyingTo", "in_reply_to", "inReplyTo", "parent_tweet", "parentTweet"])
 +    if parent:
 +        ctx["parent_text"] = _compact(parent, 520)
 +
 +    return ctx
 +
-+# --- Voice roulette ------------------------------------------------------------
-+
-+VOICE_CARDS: list[dict[str, str]] = [
-+    {
-+        "id": "trader",
-+        "brief": "CT trader energy: flow-aware, risk/reward, positioning, avoid hype.",
-+        "rules": "Use market structure / incentives angles; ask sharp questions; no shilling.",
-+    },
-+    {
-+        "id": "builder",
-+        "brief": "Product builder: execution details, UX, integrations, tradeoffs.",
-+        "rules": "Focus on how it works + what could break; concrete implementation notes.",
-+    },
-+    {
-+        "id": "researcher",
-+        "brief": "Researcher: precise, caveated, compares to known baselines.",
-+        "rules": "Prefer 'seems/looks' unless in tweet/research; ask for metrics/links.",
-+    },
-+    {
-+        "id": "skeptic",
-+        "brief": "Skeptic: respectful but probing, looks for hidden assumptions.",
-+        "rules": "Call out risk, incentives, trust assumptions; ask 'what happens if…'.",
-+    },
-+    {
-+        "id": "curious_friend",
-+        "brief": "Curious friend: smart, warm, genuinely asking to understand.",
-+        "rules": "Short + specific curiosity; no fluff; keep it grounded.",
-+    },
-+    {
-+        "id": "deadpan_meme",
-+        "brief": "Deadpan meme: dry one-liner that still fits the topic (no emojis).",
-+        "rules": "One clean punch; no cringe; keep it relevant and short.",
-+    },
-+]
-+
-+_RECENT_VOICES = deque(maxlen=4)
-+
-+def pick_voice(tweet_text: str) -> dict:
++def pick_voice(tweet_text: str) -> Dict[str, str]:
++    """Select 1 voice card per request (topic-weighted + anti-repeat)."""
 +    topic = detect_topic(tweet_text or "")
-+    weights = {
-+        "trader": 1.0,
-+        "builder": 0.9,
-+        "researcher": 0.9,
-+        "skeptic": 0.9,
-+        "curious_friend": 0.8,
-+        "deadpan_meme": 0.35,
-+    }
++    weights: Dict[str, float] = {c["id"]: 1.0 for c in VOICE_CARDS}
++    weights["deadpan_meme"] = 0.35
 +    if topic in ("defi", "trading", "memecoin", "markets"):
 +        weights["trader"] += 0.7
 +        weights["skeptic"] += 0.2
@@ -288,27 +153,30 @@
 +        weights["researcher"] += 0.6
 +        weights["skeptic"] += 0.3
 +
-+    for vid in _RECENT_VOICES:
++    for vid in list(_RECENT_VOICES):
 +        if vid in weights:
 +            weights[vid] = max(0.05, weights[vid] * 0.35)
 +
 +    ids = [c["id"] for c in VOICE_CARDS]
 +    w = [max(0.0, weights.get(i, 0.1)) for i in ids]
-+    if sum(w) <= 0.0:
-+        w = [1.0 for _ in ids]
-+    chosen_id = random.choices(ids, weights=w, k=1)[0]
-+    _RECENT_VOICES.append(chosen_id)
++    if sum(w) <= 0:
++        w = [1.0] * len(ids)
++    chosen = random.choices(ids, weights=w, k=1)[0]
++    _RECENT_VOICES.append(chosen)
 +    for c in VOICE_CARDS:
-+        if c["id"] == chosen_id:
++        if c["id"] == chosen:
 +            return c
 +    return VOICE_CARDS[0]
 +
-+# --- Research plugin (DefiLlama + optional CoinGecko) --------------------------
++def _extract_cashtags(text: str) -> list[str]:
++    return _CASHTAG_RE.findall(text or "")
 +
-+def _defillama_get_json(path: str, timeout_sec: float = 1.4) -> Optional[object]:
-+    url = f"https://api.llama.fi{path}"
++def _extract_numbers(text: str) -> list[str]:
++    return _NUM_TOKEN_RE.findall(text or "")
++
++def _http_get_json(url: str, timeout_sec: float = 1.2, headers: Optional[dict] = None) -> Optional[Any]:
 +    try:
-+        r = requests.get(url, timeout=timeout_sec, headers={"accept": "application/json"})
++        r = requests.get(url, timeout=timeout_sec, headers=headers or {"accept": "application/json"})
 +        if r.status_code != 200:
 +            return None
 +        return r.json()
@@ -319,181 +187,241 @@
 +    cached = _cache_get("defillama:protocols", ttl_sec=RESEARCH_CACHE_TTL_SEC)
 +    if isinstance(cached, list):
 +        return cached
-+    j = _defillama_get_json("/protocols", timeout_sec=1.5)
-+    if isinstance(j, list):
-+        _cache_set("defillama:protocols", j)
-+        return j
++    data = _http_get_json(f"{DEFILLAMA_BASE}/protocols", timeout_sec=1.5)
++    if isinstance(data, list):
++        _cache_set("defillama:protocols", data)
++        return data
 +    return []
 +
-+def defillama_protocol_details(slug: str) -> Optional[dict]:
-+    slug = (slug or "").strip()
++def defillama_protocol(slug: str) -> Optional[dict]:
 +    if not slug:
 +        return None
 +    key = f"defillama:protocol:{slug}"
 +    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
 +    if isinstance(cached, dict):
 +        return cached
-+    j = _defillama_get_json(f"/protocol/{slug}", timeout_sec=1.6)
-+    if isinstance(j, dict):
-+        _cache_set(key, j)
-+        return j
++    data = _http_get_json(f"{DEFILLAMA_BASE}/protocol/{slug}", timeout_sec=1.5)
++    if isinstance(data, dict):
++        _cache_set(key, data)
++        return data
 +    return None
 +
-+def _coingecko_headers() -> dict:
-+    if not COINGECKO_DEMO_KEY:
-+        return {"accept": "application/json"}
-+    return {"accept": "application/json", "x-cg-demo-api-key": COINGECKO_DEMO_KEY}
-+
-+def _coingecko_disabled() -> bool:
-+    return time.time() < float(_COINGECKO_DISABLED_UNTIL_TS or 0.0)
-+
-+def _coingecko_trip_breaker() -> None:
-+    global _COINGECKO_DISABLED_UNTIL_TS
-+    _COINGECKO_DISABLED_UNTIL_TS = time.time() + float(RESEARCH_CACHE_TTL_SEC or 900)
-+
-+def _coingecko_get_json(path: str, params: Optional[dict] = None, timeout_sec: float = 1.2) -> Optional[object]:
-+    if not (ENABLE_COINGECKO and not _coingecko_disabled()):
++def defillama_tvl(slug: str) -> Optional[Any]:
++    if not slug:
 +        return None
++    key = f"defillama:tvl:{slug}"
++    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
++    if cached is not None:
++        return cached
++    data = _http_get_json(f"{DEFILLAMA_BASE}/tvl/{slug}", timeout_sec=1.5)
++    if data is not None:
++        _cache_set(key, data)
++        return data
++    return None
++
++def _coin_gecko_disabled() -> bool:
++    return time.time() < _COINGECKO_DISABLED_UNTIL_TS
++
++def coingecko_search(query: str) -> Optional[dict]:
++    global _COINGECKO_DISABLED_UNTIL_TS
++    if not (ENABLE_COINGECKO and query) or _coin_gecko_disabled():
++        return None
++    key = f"cg:search:{query.lower().strip()}"
++    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
++    if isinstance(cached, dict):
++        return cached
++    headers = {"accept": "application/json"}
++    if COINGECKO_DEMO_KEY:
++        headers["x-cg-demo-api-key"] = COINGECKO_DEMO_KEY
 +    try:
-+        url = f"https://api.coingecko.com/api/v3{path}"
-+        r = requests.get(url, params=params or {}, timeout=timeout_sec, headers=_coingecko_headers())
++        r = requests.get(f"{COINGECKO_BASE}/search", params={"query": query}, timeout=1.5, headers=headers)
 +        if r.status_code == 429:
-+            _coingecko_trip_breaker()
++            _COINGECKO_DISABLED_UNTIL_TS = time.time() + 900
 +            return None
 +        if r.status_code != 200:
 +            return None
-+        return r.json()
++        data = r.json()
++        if isinstance(data, dict):
++            _cache_set(key, data)
++            return data
++    except Exception:
++        return None
++    return None
++
++def coingecko_price(ids: str, vs: str = "usd") -> Optional[dict]:
++    global _COINGECKO_DISABLED_UNTIL_TS
++    if not (ENABLE_COINGECKO and ids) or _coin_gecko_disabled():
++        return None
++    key = f"cg:price:{ids}:{vs}"
++    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
++    if isinstance(cached, dict):
++        return cached
++    headers = {"accept": "application/json"}
++    if COINGECKO_DEMO_KEY:
++        headers["x-cg-demo-api-key"] = COINGECKO_DEMO_KEY
++    try:
++        r = requests.get(f"{COINGECKO_BASE}/simple/price", params={"ids": ids, "vs_currencies": vs}, timeout=1.5, headers=headers)
++        if r.status_code == 429:
++            _COINGECKO_DISABLED_UNTIL_TS = time.time() + 900
++            return None
++        if r.status_code != 200:
++            return None
++        data = r.json()
++        if isinstance(data, dict):
++            _cache_set(key, data)
++            return data
++    except Exception:
++        return None
++    return None
++
++def _norm_entity_key(kind: str, k: str) -> str:
++    k = (k or "").strip()
++    if kind == "ticker":
++        k = k.lstrip("$").upper()
++    else:
++        k = k.lower()
++    return k
++
++def entity_map_get(kind: str, k: str) -> Optional[str]:
++    try:
++        nk = _norm_entity_key(kind, k)
++        if not nk:
++            return None
++        with get_conn() as c:
++            row = c.execute("SELECT slug FROM entity_map WHERE kind=? AND k=?", (kind, nk)).fetchone()
++        return row[0] if row else None
 +    except Exception:
 +        return None
 +
-+def _coingecko_search(query: str) -> Optional[dict]:
-+    q = (query or "").strip()
-+    if not q:
-+        return None
-+    key = f"cg:search:{q.lower()}"
-+    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
-+    if isinstance(cached, dict):
-+        return cached
-+    j = _coingecko_get_json("/search", params={"query": q}, timeout_sec=1.2)
-+    if isinstance(j, dict):
-+        _cache_set(key, j)
-+        return j
-+    return None
-+
-+def _coingecko_simple_price(coin_id: str, vs: str = "usd") -> Optional[dict]:
-+    cid = (coin_id or "").strip()
-+    if not cid:
-+        return None
-+    key = f"cg:price:{cid}:{vs}"
-+    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
-+    if isinstance(cached, dict):
-+        return cached
-+    j = _coingecko_get_json("/simple/price", params={"ids": cid, "vs_currencies": vs}, timeout_sec=1.2)
-+    if isinstance(j, dict):
-+        _cache_set(key, j)
-+        return j
-+    return None
-+
-+def _extract_cashtags(text: str) -> list[str]:
-+    return _CASHTAG_RE.findall(text or "")
-+
-+def _resolve_slug_from_protocols(kind: str, key: str, protocols: list[dict]) -> Optional[str]:
-+    nk = _norm_entity_key(kind, key)
-+    if not nk:
-+        return None
-+    if kind == "ticker":
-+        candidates = [p for p in protocols if (p.get("symbol") or "").upper() == nk]
-+        if candidates:
-+            candidates.sort(key=lambda x: float(x.get("tvl") or 0.0), reverse=True)
-+            return candidates[0].get("slug") or None
-+    if kind == "name":
-+        candidates = [p for p in protocols if (p.get("name") or "").strip().lower() == nk]
-+        if candidates:
-+            candidates.sort(key=lambda x: float(x.get("tvl") or 0.0), reverse=True)
-+            return candidates[0].get("slug") or None
-+        candidates = [p for p in protocols if nk in (p.get("name") or "").lower()]
-+        if candidates:
-+            candidates.sort(key=lambda x: float(x.get("tvl") or 0.0), reverse=True)
-+            return candidates[0].get("slug") or None
-+    return None
-+
-+def research_context_for_tweet(tweet_text: str) -> dict:
-+    """Best-effort. Never raises. Returns a small dict safe to inject into prompts."""
-+    ctx: dict[str, Any] = {}
-+    if not ENABLE_RESEARCH:
-+        return ctx
-+
-+    h = sha256((tweet_text or "")[:8000])
-+    key = f"research:tweet:{h}"
-+    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
-+    if isinstance(cached, dict):
-+        return cached
-+
++def entity_map_put(kind: str, k: str, slug: str) -> None:
 +    try:
-+        cashtags = _extract_cashtags(tweet_text)
-+        protocols = defillama_protocols()
-+        resolved: list[dict[str, Any]] = []
++        nk = _norm_entity_key(kind, k)
++        slug = (slug or "").strip()
++        if not (nk and slug):
++            return
++        with get_conn() as c:
++            c.execute(
++                "INSERT OR REPLACE INTO entity_map(kind, k, slug, updated_at) VALUES (?,?,?,?)",
++                (kind, nk, slug, now_ts()),
++            )
++    except Exception:
++        pass
 +
-+        for ct in cashtags[:3]:
-+            slug = entity_map_get("ticker", ct)
-+            if not slug:
-+                slug = _resolve_slug_from_protocols("ticker", ct, protocols)
-+            if slug:
-+                entity_map_put("ticker", ct, slug)
-+                details = defillama_protocol_details(slug) or {}
-+                resolved.append({
-+                    "slug": slug,
-+                    "name": details.get("name") or details.get("gecko_id") or slug,
-+                    "symbol": details.get("symbol") or ct.lstrip("$"),
-+                    "category": details.get("category"),
-+                    "tvl": details.get("tvl"),
-+                })
++def resolve_defillama_slug(tweet_text: str) -> Optional[str]:
++    """Resolve a DefiLlama protocol slug from tweet using entity memory + protocol list."""
++    text = tweet_text or ""
++    tickers = _extract_cashtags(text)
++    # 1) entity memory by ticker
++    for t in tickers:
++        slug = entity_map_get("ticker", t)
++        if slug:
++            return slug
++    # 2) entity memory by name (entities/keywords)
++    for nm in extract_entities(text)[:6]:
++        slug = entity_map_get("name", nm)
++        if slug:
++            return slug
 +
-+        cg: dict[str, Any] = {}
-+        if ENABLE_COINGECKO and not _coingecko_disabled():
-+            sym = (cashtags[0].lstrip("$") if cashtags else "").strip()
-+            if sym:
-+                sr = _coingecko_search(sym) or {}
-+                coins = sr.get("coins") if isinstance(sr, dict) else None
-+                if isinstance(coins, list) and coins:
-+                    cid = coins[0].get("id")
-+                    if cid:
-+                        px = _coingecko_simple_price(cid, vs="usd") or {}
-+                        if isinstance(px, dict) and cid in px:
-+                            cg = {"id": cid, "usd": px[cid].get("usd")}
++    protos = defillama_protocols()
++    if not protos:
++        return None
 +
-+        if resolved:
-+            ctx["protocols"] = resolved[:2]
-+        if cg:
-+            ctx["coingecko"] = cg
-+        ctx["cashtags"] = cashtags[:5]
++    # Try symbol match first (strip $)
++    for t in tickers:
++        sym = t.lstrip("$").upper()
++        for p in protos:
++            ps = (p.get("symbol") or "").upper()
++            if ps and ps == sym:
++                return p.get("slug") or p.get("id") or p.get("name")
++
++    # Fallback: name match (case-insensitive contains)
++    low = text.lower()
++    for p in protos:
++        name = (p.get("name") or "")
++        slug = (p.get("slug") or p.get("id") or "")
++        if name and name.lower() in low and slug:
++            return slug
++    return None
++
++def research_context_for_tweet(tweet_text: str) -> Dict[str, Any]:
++    """Fetch research once per request. Best-effort + cached; never blocks generation."""
++    if not ENABLE_RESEARCH:
++        return {}
++    key = "research:" + sha256(_normalize_for_memory(tweet_text))[:24]
++    cached = _cache_get(key, ttl_sec=RESEARCH_CACHE_TTL_SEC)
++    if isinstance(cached, dict):
++        return cached
++
++    ctx: Dict[str, Any] = {}
++    try:
++        slug = resolve_defillama_slug(tweet_text)
++        if slug:
++            proto = defillama_protocol(slug) or {}
++            tvl = proto.get("tvl") if isinstance(proto, dict) else None
++            chains = proto.get("chains") if isinstance(proto, dict) else None
++            cat = proto.get("category") if isinstance(proto, dict) else None
++            name = proto.get("name") if isinstance(proto, dict) else None
++            sym = proto.get("symbol") if isinstance(proto, dict) else None
++            url = proto.get("url") if isinstance(proto, dict) else None
++
++            ctx["defillama"] = {
++                "slug": slug,
++                "name": name,
++                "symbol": sym,
++                "category": cat,
++                "tvl": tvl,
++                "chains": chains,
++                "url": url,
++            }
++
++            # store entity mapping for faster next-time resolution
++            for t in _extract_cashtags(tweet_text):
++                entity_map_put("ticker", t, slug)
++            if name:
++                entity_map_put("name", name, slug)
++
++            # tvl series (optional; may 404 depending on DefiLlama changes)
++            series = defillama_tvl(slug)
++            if series is not None:
++                ctx["defillama_tvl_series"] = series
++
++            # optional CoinGecko enrichment (best-effort; circuit breaker)
++            if ENABLE_COINGECKO:
++                q = (sym or name or "").strip()
++                if q:
++                    sr = coingecko_search(q)
++                    if isinstance(sr, dict):
++                        coins = sr.get("coins") or []
++                        if coins:
++                            top = coins[0]
++                            cg_id = top.get("id")
++                            if cg_id:
++                                price = coingecko_price(cg_id, "usd")
++                                if isinstance(price, dict) and cg_id in price:
++                                    ctx["coingecko"] = {"id": cg_id, "price_usd": price[cg_id].get("usd")}
 +    except Exception:
 +        ctx = {}
 +
 +    _cache_set(key, ctx)
 +    return ctx
 +
-+# --- Anti-hallucination validator ---------------------------------------------
-+
-+_NUM_TOKEN_RE = re.compile(r"\d+(?:\.\d+)?")
-+
-+def _extract_numbers(text: str) -> list[str]:
-+    return _NUM_TOKEN_RE.findall(text or "")
-+
 +def realism_ok(comment: str, tweet_text: str) -> bool:
-+    """Reject new tickers and big numbers not present in the tweet (best-effort)."""
-+    if not (ENABLE_RESEARCH and comment and tweet_text):
++    """Anti-hallucination gate: no new tickers; no big numbers not in tweet."""
++    if not comment:
++        return False
++    if not tweet_text:
 +        return True
 +    try:
-+        tweet_cashtags = set(_extract_cashtags(tweet_text))
-+        comment_cashtags = set(_extract_cashtags(comment))
-+        if not comment_cashtags.issubset(tweet_cashtags):
++        tset = set(_extract_cashtags(tweet_text))
++        cset = set(_extract_cashtags(comment))
++        if not cset.issubset(tset):
 +            return False
 +
-+        tweet_nums = set(_extract_numbers(tweet_text))
++        tnums = set(_extract_numbers(tweet_text))
 +        for n in _extract_numbers(comment):
-+            if n in tweet_nums:
++            if n in tnums:
 +                continue
++            # allow small integers 1–10
 +            if "." not in n:
 +                try:
 +                    v = int(n)
@@ -506,44 +434,35 @@
 +    except Exception:
 +        return True
 +
-+# --- Prompt context injection -------------------------------------------------
-+
 +def _request_context_block() -> str:
 +    parts: list[str] = []
-+
 +    voice = REQUEST_VOICE.get()
 +    if isinstance(voice, dict) and voice.get("id"):
 +        parts.append(
-+            "Voice card:\n"
-+            f"- id: {voice.get('id')}\n"
-+            f"- brief: {voice.get('brief')}\n"
-+            f"- rules: {voice.get('rules')}\n"
++            "Voice card:\n- id: %s\n- brief: %s\n- rules: %s\n"
++            % (voice.get("id"), voice.get("brief"), voice.get("rules"))
 +        )
-+
-+    thread_ctx = REQUEST_THREAD_CTX.get()
-+    if isinstance(thread_ctx, dict) and thread_ctx:
-+        qt = thread_ctx.get("quoted_text") or ""
-+        pt = thread_ctx.get("parent_text") or ""
++    tctx = REQUEST_THREAD_CTX.get()
++    if isinstance(tctx, dict) and tctx:
++        qt = tctx.get("quoted_text") or ""
++        pt = tctx.get("parent_text") or ""
 +        if qt or pt:
 +            parts.append("Thread/quote context (best-effort):")
 +            if qt:
-+                parts.append(f"- quoted_tweet: {_compact(qt, 520)}")
++                parts.append("- quoted_tweet: " + _compact(qt, 520))
 +            if pt:
-+                parts.append(f"- parent_tweet: {_compact(pt, 520)}")
++                parts.append("- parent_tweet: " + _compact(pt, 520))
 +            parts.append("")
-+
-+    research_ctx = REQUEST_RESEARCH_CTX.get()
-+    if isinstance(research_ctx, dict) and research_ctx:
++    rctx = REQUEST_RESEARCH_CTX.get()
++    if isinstance(rctx, dict) and rctx:
++        parts.append("Project research context (best-effort, may be partial):")
 +        try:
-+            parts.append("Project research context (best-effort, may be partial):")
-+            parts.append(json.dumps(research_ctx, ensure_ascii=False))
-+            parts.append("")
++            parts.append(json.dumps(rctx, ensure_ascii=False))
 +        except Exception:
-+            pass
-+
++            parts.append(str(rctx))
++        parts.append("")
 +    if ENABLE_RESEARCH and not (REQUEST_RESEARCH_CTX.get() or {}):
-+        parts.append("If project context is unclear, ask a concrete question instead of making factual claims.\n")
-+
++        parts.append("If project context is unclear, ask a concrete question instead of making factual claims.")
 +    return "\n".join([p for p in parts if p is not None]).strip()
 +
 +def llm_user_prompt(tweet_text: str, author: Optional[str]) -> str:
@@ -559,283 +478,215 @@
 +        "Return exactly two distinct comments (JSON array or two lines)."
 +    )
 +
-+def set_request_context_for_tweet(tweet_text: str, url: Optional[str] = None) -> None:
-+    """Set ContextVars once per tweet generation. Best-effort, never raises."""
++def set_request_context_for_tweet(tweet_text: str, tweet_url: Optional[str] = None) -> None:
++    """Set per-request ContextVars once per tweet."""
 +    try:
-+        v = REQUEST_VOICE.get()
-+        if not v:
-+            REQUEST_VOICE.set(pick_voice(tweet_text))
-+
-+        tctx = fetch_thread_context(url) if (ENABLE_THREAD_CONTEXT and url) else {}
-+        REQUEST_THREAD_CTX.set(tctx or {})
-+
-+        rctx = research_context_for_tweet(tweet_text) if ENABLE_RESEARCH else {}
-+        REQUEST_RESEARCH_CTX.set(rctx or {})
++        REQUEST_VOICE.set(pick_voice(tweet_text))
++        REQUEST_THREAD_CTX.set(fetch_thread_context(tweet_url) if tweet_url else {})
++        REQUEST_RESEARCH_CTX.set(research_context_for_tweet(tweet_text) if ENABLE_RESEARCH else {})
 +    except Exception:
 +        REQUEST_THREAD_CTX.set({})
 +        REQUEST_RESEARCH_CTX.set({})
-+
- def _word_trigrams(s: str) -> set:
-     w = TOKEN_RE.findall((s or "").lower())
-     return set(" ".join(w[i:i+3]) for i in range(max(0, len(w) - 2)))
++        REQUEST_VOICE.set(None)
 
-     @@ -1399,10 +1721,10 @@ def enforce_word_count_natural(s: str) -> str:
-     out = _ensure_question_punctuation(out)
--      if PRO_KOL_POLISH:
--        out = pro_kol_polish(out, topic=detect_topic(raw))
--      return out
-+    if PRO_KOL_POLISH:
-+        out = pro_kol_polish(out, topic=detect_topic(raw))
-+    return out
+@@ -191,9 +665,10 @@
+ def normalize_ws(s: str) -> str:
+     return re.sub(r"\s+", " ", (s or "")).strip()
  
-@@ -1605,6 +1927,10 @@ def enforce_unique(candidates: list[str], url: Optional[str] = None, tweet_text: Optional[str] = None) -> list[str]:
+-TOKEN_RE = re.compile(
++WORD_RE = re.compile(
+     r"(?:\$\w{2,15}|\d+(?:\.\d+)?|[A-Za-z0-9’']+(?:-[A-Za-z0-9’']+)*)"
+ )
++TOKEN_RE = WORD_RE
+ 
+ def _normalize_for_memory(text: str) -> str:
+     t = normalize_ws(text).lower()
+@@ -246,6 +721,14 @@
+ def _do_init(conn: sqlite3.Connection):
+     conn.executescript(
+         """
++            CREATE TABLE IF NOT EXISTS entity_map(
++                kind TEXT NOT NULL,
++                k TEXT NOT NULL,
++                slug TEXT NOT NULL,
++                updated_at INTEGER NOT NULL,
++                PRIMARY KEY (kind, k)
++            );
++
+             CREATE TABLE IF NOT EXISTS comments_seen(
+                 norm TEXT PRIMARY KEY,
+                 created_at INTEGER NOT NULL
+@@ -412,11 +895,9 @@
+ # ------------------------------------------------------------------------------
+ # Rules: word count + sanitization + Tokenization
+ # ------------------------------------------------------------------------------
+-TOKEN_RE = re.compile(
+-    r"(?:\$\w{2,15}|\d+(?:\.\d+)?|[A-Za-z0-9’']+(?:-[A-Za-z0-9’']+)*)"
+-)
++# Reuse WORD_RE so decimals (17.99) and cashtags ($SOL) stay single tokens.
++TOKEN_RE = WORD_RE
+ 
+ def words(text: str) -> list[str]:
+-    return TOKEN_RE.findall(text or "")
++    return WORD_RE.findall(text or "")
+ 
+ def sanitize_comment(raw: str) -> str:
+     txt = re.sub(r"https?://\S+", "", raw or "")
+@@ -1480,8 +1961,8 @@
+     out = " ".join(w)
+     out = out.strip()
+-      if PRO_KOL_POLISH:
++    if PRO_KOL_POLISH:
+         out = pro_kol_polish(out, topic=detect_topic(raw))
+-      return out
++    return out
+@@ -1644,6 +2125,10 @@
          # Block repeated sentence skeletons (structure-level repetition)
          if template_burned(c):
              continue
 +
-+        # Anti-hallucination: don't introduce new tickers / big numbers
-+        if tweet_text and (not realism_ok(c, tweet_text)):
++        # Anti-hallucination: no new tickers; no big numbers not in tweet
++        if tweet_text and ENABLE_RESEARCH and (not realism_ok(c, tweet_text)):
 +            continue
  
-         if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
-             continue
-@@ -1628,6 +1954,8 @@ def enforce_unique(candidates: list[str], url: Optional[str] = None, tweet_text: Optional[str] = None) -> list[str]:
-                 # If the accepted comment is too short, pad it slightly (natural)
-                 toks = words(c)
-                 if len(toks) < 13:
-                     alt = enforce_word_count_natural(c + " today")
-+                    if alt and tweet_text and (not realism_ok(alt, tweet_text)):
-+                        alt = ""
-                     if alt and not comment_seen(alt) and not contains_generic_phrase(alt):
-                         out.append(alt)
-                         remember_comment(alt, url=url)
-@@ -1779,13 +2107,7 @@ def groq_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
-     client = Groq(api_key=GROQ_API_KEY)
+         seen_local.add(norm)
+         out.append(c)
+@@ -1807,13 +2292,7 @@
+     mode_line = llm_mode_hint(tweet_text)
+     sys_prompt = _llm_sys_prompt(mode_line)
  
-     sys_prompt = _llm_sys_prompt(tweet_text)
 -    user_prompt = (
 -        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
 -        "Return exactly two distinct comments (JSON array or two lines)."
 -    )
 +    user_prompt = llm_user_prompt(tweet_text, author)
  
-     out = client.chat.completions.create(
-         model=GROQ_MODEL,
-@@ -1847,7 +2169,7 @@ def groq_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+     resp = None
+     for attempt in range(3):
+@@ -1851,7 +2330,7 @@
+             # fallback parse: split by newline/punct
+             sents = re.split(r"\n+|[•\-]\s*", text)
+             sents = [sanitize_comment(x) for x in sents if sanitize_comment(x)]
+-            candidates = enforce_unique(candidates + sents[:2])
++            candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
  
-     if _pair_too_similar(candidates):
-         extra = offline_two_comments(tweet_text, author)
--        candidates = enforce_unique(candidates + extra)
-+        candidates = enforce_unique(candidates + extra, tweet_text=tweet_text)
+     return candidates[:2] if len(candidates) >= 2 else []
+@@ -1905,13 +2384,7 @@
+     mode_line = llm_mode_hint(tweet_text)
+     sys_prompt = _llm_sys_prompt(mode_line)
  
-     return candidates
- 
-@@ -1874,13 +2196,7 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
-     client = OpenAI(api_key=OPENAI_API_KEY)
- 
-     sys_prompt = _llm_sys_prompt(tweet_text)
 -    user_prompt = (
 -        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
 -        "Return exactly two distinct comments (JSON array or two lines)."
 -    )
 +    user_prompt = llm_user_prompt(tweet_text, author)
  
-     resp = client.chat.completions.create(
-         model=OPENAI_MODEL,
-@@ -1934,13 +2249,7 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+     resp = None
+     for attempt in range(3):
+@@ -1951,7 +2424,7 @@
+         if len(candidates) >= 2:
+             break
  
-     sys_prompt = _llm_sys_prompt(tweet_text)
+-    candidates = enforce_unique(candidates, tweet_text=tweet_text)
++    candidates = enforce_unique(candidates, tweet_text=tweet_text)
+     return candidates[:2] if len(candidates) >= 2 else []
+@@ -1988,13 +2461,7 @@
+     mode_line = llm_mode_hint(tweet_text)
+     sys_prompt = _llm_sys_prompt(mode_line)
+ 
 -    user_prompt = (
 -        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
 -        "Return exactly two distinct comments (JSON array or two lines)."
 -    )
 +    user_prompt = llm_user_prompt(tweet_text, author)
  
-     model = genai.GenerativeModel(
-         model_name=GEMINI_MODEL,
-@@ -2055,6 +2364,10 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], handle: Optional[str], lang: Optional[str], url: Optional[str], candidates: list[str]) -> list[str]:
+     resp = None
+     for attempt in range(3):
+@@ -2036,7 +2503,7 @@
+             if sents:
+                 candidates.extend(sents)
+ 
+-    candidates = enforce_unique(candidates, tweet_text=tweet_text)
++    candidates = enforce_unique(candidates, tweet_text=tweet_text)
+     return candidates[:2] if len(candidates) >= 2 else []
+@@ -2076,6 +2543,10 @@
+     user_prompt = (
+         "Rewrite/regenerate two better comments based on this JSON\n"
          "Use the tweet context. If a project is unclear, ask a good question.\n"
          "JSON:\n" + json.dumps(user_payload, ensure_ascii=False)
      )
-+    extra_ctx = _request_context_block()
-+    if extra_ctx:
-+        user_prompt = user_prompt + "\n\n" + extra_ctx
- 
-     try:
-         # Try OpenAI first (better rewriting)
-         if OPENAI_API_KEY:
-@@ -2168,7 +2481,7 @@ def generate_two_comments_with_providers(
-         for name, fn in providers:
-             try:
-                 more = fn(tweet_text, author)
-                 if more:
-                     # merge + dedupe / anti-pattern logic
--                    candidates = enforce_unique(candidates + more)
-+                    candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
-             except Exception as e:
-                 logger.warning("%s provider failed: %s", name, e)
- 
-@@ -2180,7 +2493,7 @@ def generate_two_comments_with_providers(
-     if len(candidates) < 2:
-         try:
-             offline = offline_two_comments(tweet_text, author)
-             if offline:
--                candidates = enforce_unique(candidates + offline)
-+                candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
-         except Exception:
-             pass
-@@ -2207,7 +2520,7 @@ def generate_two_comments_with_providers(
-                 if more:
-                     candidates.extend(more)
- 
-             if candidates:
--                candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
-+                candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
- 
-             # as a last resort, just take the first 2
-             if len(candidates) < 2:
-                 raw = offline_two_comments(tweet_text, author)
--                candidates = enforce_unique(raw) or raw
-+                candidates = enforce_unique(raw, tweet_text=tweet_text) or raw
- 
-         except Exception:
-             pass
++
++    ctx_block = _request_context_block()
++    if ctx_block:
++        user_prompt = user_prompt + "\n\n" + ctx_block
 
-@@ -2310,41 +2623,73 @@ def comment_endpoint():
-         cleaned = cleaned[:MAX_URLS_PER_REQUEST]
+@@ -2112,7 +2583,7 @@
+     try:
+         raw = _call_openai_chat(
+             sys_prompt=sys_prompt,
+             user_prompt=user_prompt,
+             temperature=0.7,
+         )
+     except Exception:
+         return []
  
--    results: list[dict] = []
--    failed: list[dict] = []
--
--    for batch in chunked(cleaned, BATCH_SIZE):
--        for url in batch:
--            try:
--                t = fetch_tweet_data(url)
--                # Prefer handle from upstream payload, else parse
--                handle = t.handle or _extract_handle_from_url(url)
--
--                two = generate_two_comments_with_providers(
--                    t.text,
--                    t.author_name or None,
--                    handle,
--                    t.lang or None,
--                    url=url,
--                )
--
--                display_url = _canonical_x_url_from_tweet(url, t)
--
--                results.append({
--                    "url": display_url,
--                    "comments": two,
--                })
--
--            except CrownTALKError as e:
--                failed.append({
--                    "url": url,
--                    "error": str(e),
--                    "code": e.code,
--                })
--
--    return jsonify({"results": results, "failed": failed}), 200
-+    # Request-scoped context (voice/thread/research) — best-effort, never blocks
-+    _voice_tok = REQUEST_VOICE.set(None)
-+    _thread_tok = REQUEST_THREAD_CTX.set({})
-+    _research_tok = REQUEST_RESEARCH_CTX.set({})
-+    try:
-+        results: list[dict] = []
-+        failed: list[dict] = []
-+
-+        for batch in chunked(cleaned, BATCH_SIZE):
-+            for url in batch:
-+                try:
-+                    t = fetch_tweet_data(url)
-+                    # Prefer handle from upstream payload, else parse
-+                    handle = t.handle or _extract_handle_from_url(url)
-+                    set_request_context_for_tweet(t.text, url=url)
-+
-+                    two = generate_two_comments_with_providers(
-+                        t.text,
-+                        t.author_name or None,
-+                        handle,
-+                        t.lang or None,
-+                        url=url,
-+                    )
-+
-+                    display_url = _canonical_x_url_from_tweet(url, t)
-+
-+                    results.append({
-+                        "url": display_url,
-+                        "comments": two,
-+                    })
-+
-+                except CrownTALKError as e:
-+                    failed.append({
-+                        "url": url,
-+                        "error": str(e),
-+                        "code": e.code,
-+                    })
-+
-+        return jsonify({"results": results, "failed": failed}), 200
-+    finally:
-+        try:
-+            REQUEST_VOICE.reset(_voice_tok)
-+            REQUEST_THREAD_CTX.reset(_thread_tok)
-+            REQUEST_RESEARCH_CTX.reset(_research_tok)
-+        except Exception:
-+            pass
+     # Parse into exactly 2
+-    candidates = parse_two_comments(raw) if raw else []
++    candidates = parse_two_comments(raw) if raw else []
  
-@@ -2391,17 +2736,33 @@ def reroll_endpoint():
-         if not url:
-             return jsonify({
-                 "error": "Missing 'url' field",
-                 "comments": [],
-                 "code": "bad_request",
-             }), 400
+     # Strict filtering (pro mode)
+     if PRO_KOL_MODE:
+@@ -2201,7 +2672,7 @@
+         # If output is weak/repetitive, rewrite/regenerate once (best-effort, never blocks)
+         if PRO_KOL_REWRITE and (not pro_kol_ok(candidates, tweet_text)):
+             try:
+                 rewritten = pro_kol_rewrite_pair(tweet_text, author, candidates)
+                 if rewritten:
+-                    merged = enforce_unique(rewritten + candidates)
++                    merged = enforce_unique(rewritten + candidates, tweet_text=tweet_text)
+                     candidates = merged[:2] if len(merged) >= 2 else candidates
+             except Exception:
+                 pass
  
--        t = fetch_tweet_data(url)
--        handle = t.handle or _extract_handle_from_url(url)
--
--        two = generate_two_comments_with_providers(
--            t.text,
--            t.author_name or None,
--            handle,
--            t.lang or None,
--            url=url,
--        )
--
--        display_url = _canonical_x_url_from_tweet(url, t)
--
--        return jsonify({
--            "url": display_url,
--            "comments": two,
--        }), 200
-+        # Request-scoped context (voice/thread/research) — best-effort, never blocks
-+        _voice_tok = REQUEST_VOICE.set(None)
-+        _thread_tok = REQUEST_THREAD_CTX.set({})
-+        _research_tok = REQUEST_RESEARCH_CTX.set({})
-+        try:
-+            t = fetch_tweet_data(url)
-+            handle = t.handle or _extract_handle_from_url(url)
-+            set_request_context_for_tweet(t.text, url=url)
+@@ -2248,7 +2719,7 @@
+         # Always ensure uniqueness + template memory at end
+         candidates = enforce_unique(candidates, tweet_text=tweet_text)
+ 
+     # Offline fallback if still missing
+     if len(candidates) < 2:
+         offline = offline_two_comments(tweet_text, author)
+-        candidates = enforce_unique(candidates + offline)
++        candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
+ 
+     return candidates[:2] if len(candidates) >= 2 else (candidates + [""] * (2 - len(candidates)))
+@@ -2365,6 +2836,8 @@
+         for url in urls:
+             try:
+                 t = fetch_tweet_data(url, handle=handle)
+                 if not t or not t.text:
+                     out.append({"url": url, "error": "Could not fetch tweet"})
+                     continue
+ 
++                set_request_context_for_tweet(t.text, tweet_url=url)
 +
-+            two = generate_two_comments_with_providers(
-+                t.text,
-+                t.author_name or None,
-+                handle,
-+                t.lang or None,
-+                url=url,
-+            )
+                 two = generate_two_comments_with_providers(
+                     t.text,
+                     t.author_name or None,
+                     handle,
+                     t.lang or None,
+                     url=url,
+                 )
+@@ -2444,6 +2917,8 @@
+         t = fetch_tweet_data(url, handle=handle)
+         if not t or not t.text:
+             return jsonify({"error": "Could not fetch tweet"}), 400
+ 
++        set_request_context_for_tweet(t.text, tweet_url=url)
 +
-+            display_url = _canonical_x_url_from_tweet(url, t)
-+
-+            return jsonify({
-+                "url": display_url,
-+                "comments": two,
-+            }), 200
-+        finally:
-+            try:
-+                REQUEST_VOICE.reset(_voice_tok)
-+                REQUEST_THREAD_CTX.reset(_thread_tok)
-+                REQUEST_RESEARCH_CTX.reset(_research_tok)
-+            except Exception:
-+                pass             
+         two = generate_two_comments_with_providers(
+             t.text,
+             t.author_name or None,
+             handle,
+             t.lang or None,
+             url=url,
+         )
