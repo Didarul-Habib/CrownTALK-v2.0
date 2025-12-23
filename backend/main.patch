@@ -1,792 +1,767 @@
---- backend/main.py
-+++ backend/main.py
-@@ -1,7 +1,8 @@
+--- main.py
++++ main.py
+@@ -1,8 +1,9 @@
  from __future__ import annotations
  
  import json, os, re, time, random, hashlib, logging, sqlite3, threading
 -from collections import Counter
 +from collections import Counter, deque
 +from contextvars import ContextVar
- from typing import List, Optional, Dict, Any
+ from typing import Any, Dict, Iterable, Iterator, List, NamedTuple, Optional, Tuple
  from urllib.parse import urlparse
  
-@@ -46,6 +47,39 @@
+@@ -31,19 +32,51 @@
+ # ------------------------------------------------------------------------------
+ # Pro KOL upgrade switches (all three add-ons)
+ # ------------------------------------------------------------------------------
+ PRO_KOL_MODE = os.getenv("PRO_KOL_MODE", "0").strip() == "1"
+ 
+ PRO_KOL_POLISH = PRO_KOL_MODE
+ PRO_KOL_STRICT = PRO_KOL_MODE
+ PRO_KOL_REWRITE = PRO_KOL_MODE
+ 
+ # Rewrite tuning (extra LLM calls; can hit quota)
+ PRO_KOL_REWRITE_MAX_TRIES = int(os.getenv("PRO_KOL_REWRITE_MAX_TRIES", "2"))
+ PRO_KOL_REWRITE_TEMPERATURE = float(os.getenv("PRO_KOL_REWRITE_TEMPERATURE", "0.7"))
+ PRO_KOL_REWRITE_MAX_TOKENS = int(os.getenv("PRO_KOL_REWRITE_MAX_TOKENS", "180"))
  
  # If meme tweet, allow 1 witty line (still no emojis/hashtags)
  PRO_KOL_ALLOW_WIT = os.getenv("PRO_KOL_ALLOW_WIT", "1").strip() != "0"
 +
-+# ------------------------------------------------------------------------------
-+# Request-scoped context (thread, research, voice)
-+# ------------------------------------------------------------------------------
-+CONTEXT_THREAD_DEFAULT: Dict[str, Any] = {}
-+CONTEXT_RESEARCH_DEFAULT: Dict[str, Any] = {}
-+CONTEXT_VOICE_DEFAULT: Dict[str, Any] = {}
-+
-+REQUEST_THREAD_CTX: ContextVar[Dict[str, Any]] = ContextVar(
-+    "REQUEST_THREAD_CTX", default=CONTEXT_THREAD_DEFAULT
-+)
-+REQUEST_RESEARCH_CTX: ContextVar[Dict[str, Any]] = ContextVar(
-+    "REQUEST_RESEARCH_CTX", default=CONTEXT_RESEARCH_DEFAULT
-+)
-+REQUEST_VOICE: ContextVar[Dict[str, Any]] = ContextVar(
-+    "REQUEST_VOICE", default=CONTEXT_VOICE_DEFAULT
-+)
-+
-+ENABLE_THREAD_CONTEXT = os.getenv("ENABLE_THREAD_CONTEXT", "0").strip() == "1"
-+ENABLE_RESEARCH = os.getenv("ENABLE_RESEARCH", "0").strip() == "1"
-+ENABLE_COINGECKO = os.getenv("ENABLE_COINGECKO", "0").strip() == "1"
-+COINGECKO_DEMO_KEY = os.getenv("COINGECKO_DEMO_KEY", "")
++# Thread + research feature switches
++ENABLE_THREAD_CONTEXT = os.getenv("ENABLE_THREAD_CONTEXT", "1").strip() == "1"
++ENABLE_RESEARCH = os.getenv("ENABLE_RESEARCH", "1").strip() == "1"
++ENABLE_COINGECKO = os.getenv("ENABLE_COINGECKO", "1").strip() == "1"
++COINGECKO_DEMO_KEY = os.getenv("COINGECKO_DEMO_KEY", "").strip()
 +RESEARCH_CACHE_TTL_SEC = int(os.getenv("RESEARCH_CACHE_TTL_SEC", "900"))
 +
-+VXTWITTER_API_BASE = os.getenv("VXTWITTER_API_BASE", "https://api.vxtwitter.com")
-+DEFILLAMA_API_BASE = os.getenv("DEFILLAMA_API_BASE", "https://api.llama.fi")
-+COINGECKO_API_BASE = os.getenv("COINGECKO_API_BASE", "https://api.coingecko.com/api/v3")
++# Request-scoped context storage (per incoming HTTP request)
++REQUEST_THREAD_CTX: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
++    "REQUEST_THREAD_CTX", default=None
++)
++REQUEST_RESEARCH_CTX: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
++    "REQUEST_RESEARCH_CTX", default=None
++)
++REQUEST_VOICE: ContextVar[Optional[Dict[str, Any]]] = ContextVar(
++    "REQUEST_VOICE", default=None
++)
 +
-+# In-memory research caches (per process)
++# In-memory research cache (slug -> data, expires RESEARCH_CACHE_TTL_SEC)
 +_RESEARCH_CACHE: Dict[str, tuple[float, Dict[str, Any]]] = {}
-+_DEFILLAMA_PROTOCOLS_CACHE: Optional[List[Dict[str, Any]]] = None
-+_DEFILLAMA_PROTOCOLS_FETCHED_AT: float = 0.0
-+_COINGECKO_DISABLED_UNTIL: float = 0.0
++_RESEARCH_CACHE_LOCK = threading.Lock()
++_COINGECKO_DISABLED_UNTIL = 0.0
++
++# Recent voices (roulette anti-repeat)
++RECENT_VOICES = deque(maxlen=5)
++
++# Cached DefiLlama protocol list
++_DEFILLAMA_PROTOCOLS: list[Dict[str, Any]] = []
++_DEFILLAMA_PROTOCOLS_LOADED_AT = 0.0
++
++
++def reset_request_context() -> None:
++    """Clear per-tweet context variables."""
++    REQUEST_THREAD_CTX.set(None)
++    REQUEST_RESEARCH_CTX.set(None)
++    REQUEST_VOICE.set(None)
+ 
  
  # ------------------------------------------------------------------------------
- # Optional Groq (free-tier). If not set, we run fully offline.
-@@ -164,6 +198,13 @@
+@@ -106,7 +139,13 @@
              CREATE TABLE IF NOT EXISTS comments_templates_seen(
                  thash TEXT PRIMARY KEY,
                  created_at INTEGER
+-            );
 +            );
 +            CREATE TABLE IF NOT EXISTS entity_map(
 +                kind TEXT NOT NULL,
 +                k TEXT NOT NULL,
 +                slug TEXT NOT NULL,
-+                updated_at INTEGER NOT NULL,
++                updated_at INTEGER,
 +                PRIMARY KEY(kind, k)
-             );
-         """)
++            );
+             """
+         )
          conn.commit()
-@@ -400,6 +441,68 @@
-     return [w for w in TOKEN_RE.findall(text or "") if w.strip()]
+@@ -356,6 +395,46 @@
+         with get_conn() as c:
+             c.execute(
+                 "INSERT OR IGNORE INTO comments_templates_seen(thash, created_at) VALUES (?,?)",
+                 (thash, now_ts()),
+@@ -363,6 +442,46 @@
+     except Exception:
+         pass
  
- 
-+def _normalize_snippet_for_prompt(s: str, max_len: int = 220) -> str:
-+    s = re.sub(r"\s+", " ", (s or "")).strip()
-+    if len(s) > max_len:
-+        s = s[:max_len].rstrip() + "..."
-+    return s
 +
-+
-+def build_prompt_context_block() -> str:
-+    """
-+    Combine thread context, research snapshot, and selected voice into
-+    a compact block that we append to provider system prompts.
-+    """
-+    parts: list[str] = []
-+
-+    thread_ctx = REQUEST_THREAD_CTX.get({})
-+    if isinstance(thread_ctx, dict):
-+        lines: list[str] = []
-+        q = _normalize_snippet_for_prompt(thread_ctx.get("quoted_text", ""))
-+        p = _normalize_snippet_for_prompt(thread_ctx.get("parent_text", ""))
-+        extras = thread_ctx.get("extra_texts") or []
-+        if q:
-+            lines.append(f"- Quoted tweet: {q}")
-+        if p:
-+            lines.append(f"- Parent tweet: {p}")
-+        for i, ex in enumerate(extras[:2]):
-+            exn = _normalize_snippet_for_prompt(ex)
-+            if exn:
-+                lines.append(f"- Extra context {i+1}: {exn}")
-+        if lines:
-+            parts.append("Thread context (if present):\n" + "\n".join(lines))
-+
-+    research_ctx = REQUEST_RESEARCH_CTX.get({})
-+    if isinstance(research_ctx, dict) and research_ctx.get("ok"):
-+        plines = research_ctx.get("prompt_lines") or []
-+        if plines:
-+            parts.append(
-+                "Research snapshot (may be slightly stale; do NOT invent beyond this):\n"
-+                + "\n".join(f"- {ln}" for ln in plines)
-+            )
-+
-+    voice = REQUEST_VOICE.get({})
-+    if isinstance(voice, dict) and voice.get("id"):
-+        title = voice.get("name") or voice["id"]
-+        desc = voice.get("description") or voice.get("prompt")
-+        if desc:
-+            parts.append(f"Voice profile for this reply: {title}.\nStyle: {desc}")
-+
-+    return "\n\n".join(parts).strip()
-+
-+
- def style_fingerprint(text: str) -> str:
-     """
-     Collapse a text into a coarse "style template" so we can remember/burn it.
-@@ -516,6 +619,51 @@
-     LAZY_WORDS,
- ]
- 
-+# ------------------------------------------------------------------------------
-+# Entity slug memory ($ticker / name -> DefiLlama slug)
-+# ------------------------------------------------------------------------------
-+
-+def remember_entity_slug(kind: str, key: str, slug: str) -> None:
-+    """Best-effort mapping from symbols/names to DefiLlama slugs."""
-+    if not (kind and key and slug):
-+        return
-+    ts = now_ts()
++def remember_entity(kind: str, key: str, slug: str) -> None:
++    """Persist mapping like ($TICKER|name) -> defillama slug."""
 +    try:
++        k_norm = (key or "").strip().lower()
++        if not k_norm or not slug:
++            return
 +        with get_conn() as c:
 +            c.execute(
-+                """
-+                INSERT INTO entity_map(kind, k, slug, updated_at)
-+                VALUES(?,?,?,?)
-+                ON CONFLICT(kind, k) DO UPDATE SET
-+                    slug=excluded.slug,
-+                    updated_at=excluded.updated_at
-+                """
-+                ,
-+                (kind, key, slug, ts),
++                "INSERT OR REPLACE INTO entity_map(kind, k, slug, updated_at) VALUES (?,?,?,?)",
++                (kind, k_norm, slug, now_ts()),
 +            )
 +    except Exception:
-+        # purely best-effort; never break main flow
-+        return
++        pass
 +
-+def lookup_entity_slug(kind: str, key: str, max_age_sec: Optional[int] = None) -> Optional[str]:
-+    """Return stored slug if present and not too old."""
-+    if not (kind and key):
-+        return None
++
++def resolve_entity(kind: str, key: str) -> Optional[str]:
++    """Best-effort lookup for previously seen entities."""
 +    try:
++        k_norm = (key or "").strip().lower()
++        if not k_norm:
++            return None
 +        with get_conn() as c:
 +            row = c.execute(
-+                "SELECT slug, updated_at FROM entity_map WHERE kind=? AND k=? LIMIT 1",
-+                (kind, key),
++                "SELECT slug FROM entity_map WHERE kind=? AND k=? LIMIT 1",
++                (kind, k_norm),
 +            ).fetchone()
-+        if not row:
-+            return None
-+        slug, updated_at = row
-+        if max_age_sec is not None:
-+            try:
-+                if (now_ts() - int(updated_at)) > max_age_sec:
-+                    return None
-+            except Exception:
-+                pass
-+        return str(slug)
++        if row:
++            return row[0]
 +    except Exception:
 +        return None
++    return None
 +
- 
- def _word_trigrams(words_list):
-     return [" ".join(words_list[i:i+3]) for i in range(len(words_list)-2)]
-@@ -595,6 +743,79 @@
-     if any(w in t for w in ["meme", "memes", "shitcoin", "shitcoins", "shit coin", "memecoin"]):
-         return "meme"
-     return "statement"
-@@ -615,41 +836,110 @@
-     return "risk"
- 
- 
--def detect_sentiment(text: str) -> str:
--    t = (text or "").lower()
--    pos = ["love this", "love that", "bullish", "up only", "sending", "send it", "cook", "cooking"]
--    neg = ["hate", "scam", "rug", "rugged", "worried", "concerned", "bearish", "down bad"]
--    if any(p in t for p in pos):
--        return "bullish"
--    if any(p in t for p in neg):
--        return "bearish"
--    return "neutral"
-+def detect_sentiment(text: str) -> str:
-+    """Very lightweight bullish / bearish tone detector for CT posts."""
-+    t = (text or "").lower()
-+    bull = [
-+        "bullish","sending","send it","moon","mooning","ath","all time high",
-+        "pump","pumping","green candles","ape in","apeing in","printing"
-+    ]
-+    bear = [
-+        "worried","concerned","dump","dumping","rug","rugged","rekt","down only",
-+        "exit liquidity","overvalued","scam","red candles","bagholding","bag holder"
-+    ]
-+    if any(k in t for k in bull):
-+        return "bullish"
-+    if any(k in t for k in bear):
-+        return "bearish"
-+    return "neutral"
 +
+ def _word_trigrams(txt: str) -> set[tuple[str, str, str]]:
+     tokens = [t.lower().strip(".,!?") for t in txt.split()]
+     return set(zip(tokens, tokens[1:], tokens[2:]))
+@@ -772,6 +891,71 @@
+     if not tokens:
+         return []
+     return max(tokens, key=len)
+ 
 +
 +# ------------------------------------------------------------------------------
 +# Voice roulette (per-request style variation)
 +# ------------------------------------------------------------------------------
-+
-+VOICE_CARDS: List[Dict[str, Any]] = [
++VOICE_CARDS: list[Dict[str, Any]] = [
 +    {
 +        "id": "trader",
-+        "name": "Trader",
-+        "description": "Focus on positioning, risk/reward, liquidity, entries/exits, and timeframes. No hype.",
++        "label": "Trader",
++        "style": "short, risk/reward framing, entries/exits, sizing, no hype.",
 +    },
 +    {
 +        "id": "builder",
-+        "name": "Builder",
-+        "description": "Protocol or product builder tone. Talk about roadmap, UX, shipping, tradeoffs, and execution.",
++        "label": "Builder",
++        "style": "talks about shipping, constraints, infra, and real implementation details.",
 +    },
 +    {
 +        "id": "researcher",
-+        "name": "Researcher",
-+        "description": "Sober research tone. Emphasize mechanisms, data, and unanswered questions.",
++        "label": "Researcher",
++        "style": "dissects mechanisms, token design, incentives, and long-term risks.",
 +    },
 +    {
 +        "id": "skeptic",
-+        "name": "Skeptic",
-+        "description": "Skeptical but fair. Probe hidden risks, incentives, and missing pieces without being toxic.",
++        "label": "Skeptic",
++        "style": "pushes back on hype, asks where the downside is, assumes nothing is free.",
 +    },
 +    {
 +        "id": "curious_friend",
-+        "name": "Curious friend",
-+        "description": "Friendly CT mutual. Ask grounded questions and point out what you'd watch next.",
++        "label": "Curious friend",
++        "style": "genuinely trying to understand, asks simple grounded questions.",
 +    },
 +    {
 +        "id": "deadpan_meme",
-+        "name": "Deadpan meme",
-+        "description": "Dry, understated, meme-aware. Short, wry lines only when the tweet itself is playful.",
++        "label": "Deadpan meme",
++        "style": "dry, minimal, slightly absurd but still grounded in the tweet content.",
 +    },
 +]
 +
-+_RECENT_VOICES = deque(maxlen=16)
 +
-+def pick_voice_for_tweet(tweet_text: str) -> Dict[str, Any]:
-+    """Choose one voice profile per request based on topic + light randomness."""
-+    topic = detect_topic(tweet_text or "")
-+    is_crypto = is_crypto_tweet(tweet_text or "")
-+    sentiment = detect_sentiment(tweet_text or "")
++def pick_voice_card(tweet_text: str, ents: Optional[dict] = None, research: Optional[dict] = None) -> Dict[str, Any]:
++    t = (tweet_text or "").lower()
++    ents = ents or {}
++    research = research or {}
 +
-+    base_weights = {v["id"]: 1.0 for v in VOICE_CARDS}
++    candidates = VOICE_CARDS
++    weights: list[float] = []
++    for card in candidates:
++        w = 1.0
++        cid = card["id"]
++        if cid == "trader":
++            if (ents.get("cashtags") or "%" in t or "entry" in t or "setup" in t):
++                w += 1.0
++        elif cid == "builder":
++            if any(k in t for k in ("deploy","shipping","testnet","mainnet","contract","dev")):
++                w += 1.0
++        elif cid == "researcher":
++            if any(k in t for k in ("whitepaper","docs","design","mechanism","tokenomics","model")) or research:
++                w += 1.0
++        elif cid == "skeptic":
++            if any(k in t for k in ("rug","scam","ponzi","concern","risk","downside")):
++                w += 1.0
++        elif cid == "curious_friend":
++            if "?" in t or "explain" in t:
++                w += 0.8
++        elif cid == "deadpan_meme":
++            if detect_topic(tweet_text) == "meme":
++                w += 1.0
++        weights.append(w)
 +
-+    if is_crypto:
-+        base_weights["trader"] += 1.0
-+        base_weights["skeptic"] += 0.3
++    # discourage repeating the exact same voice
++    last = RECENT_VOICES[-1] if RECENT_VOICES else None
++    for i, card in enumerate(candidates):
++        if card["id"] == last and len(candidates) > 1:
++            weights[i] *= 0.3
 +
-+    if topic in ("thread", "giveaway", "announcement"):
-+        base_weights["builder"] += 0.6
-+        base_weights["researcher"] += 0.6
-+
-+    if topic == "meme":
-+        base_weights["deadpan_meme"] += 1.0
-+        base_weights["curious_friend"] += 0.5
-+
-+    if sentiment == "bullish":
-+        base_weights["skeptic"] += 0.3
-+    elif sentiment == "bearish":
-+        base_weights["curious_friend"] += 0.3
-+
-+    # avoid repeating the same voice too often
-+    if _RECENT_VOICES:
-+        last = _RECENT_VOICES[-1]
-+        base_weights[last] *= 0.3
-+
-+    population = [v["id"] for v in VOICE_CARDS]
-+    weights = [max(0.0, base_weights.get(v_id, 1.0)) for v_id in population]
-+    total = sum(weights) or float(len(population))
-+
++    total = float(sum(weights) or len(candidates))
 +    r = random.random() * total
-+    acc = 0.0
-+    chosen_id = population[0]
-+    for v_id, w in zip(population, weights):
-+        acc += w or 0.0
-+        if r <= acc:
-+            chosen_id = v_id
++    upto = 0.0
++    chosen = candidates[-1]
++    for card, w in zip(candidates, weights):
++        upto += w
++        if r <= upto:
++            chosen = card
 +            break
 +
-+    voice = next((v for v in VOICE_CARDS if v["id"] == chosen_id), VOICE_CARDS[0])
-+    _RECENT_VOICES.append(voice["id"])
-+    return voice
++    RECENT_VOICES.append(chosen["id"])
++    return chosen
++
++
+ # ------------------------------------------------------------------------------
+ # Basic "variety buckets" for two replies (offline path)
+ # ------------------------------------------------------------------------------
+@@ -1649,11 +1833,15 @@
+     """
+     out: list[str] = []
  
+     for c in candidates:
+         c = enforce_word_count_natural(c)
+         if not c:
+             continue
  
- def extract_keywords(text: str) -> List[str]:
-@@ -846,6 +1126,229 @@
-     return bool(m)
- 
- 
-+# ------------------------------------------------------------------------------
-+# Lightweight project research (DefiLlama + optional CoinGecko)
-+# ------------------------------------------------------------------------------
+         # Pro strict gate (context-aware)
+         if PRO_KOL_STRICT and (not pro_kol_ok(c, tweet_text=tweet_text or "")):
+             continue
 +
-+def _research_cache_key(tweet_text: str) -> str:
-+    norm = normalize_ws(tweet_text).lower()
-+    return hashlib.sha1(norm.encode("utf-8")).hexdigest()
-+
-+
-+def _defillama_get(path: str, timeout: float = 1.5):
-+    if not ENABLE_RESEARCH:
-+        return None
-+    url = DEFILLAMA_API_BASE.rstrip("/") + path
-+    try:
-+        resp = requests.get(url, timeout=timeout)
-+        if not resp.ok:
-+            return None
-+        return resp.json()
-+    except Exception:
-+        logger.debug("DefiLlama GET failed for %s", url, exc_info=True)
-+        return None
-+
-+
-+def _coingecko_get(path: str, params: Optional[Dict[str, Any]] = None, timeout: float = 1.5):
-+    global _COINGECKO_DISABLED_UNTIL
-+    if not ENABLE_COINGECKO:
-+        return None
-+    now = time.time()
-+    if now < _COINGECKO_DISABLED_UNTIL:
-+        return None
-+    url = COINGECKO_API_BASE.rstrip("/") + path
-+    headers: Dict[str, str] = {}
-+    if COINGECKO_DEMO_KEY:
-+        headers["x-cg-demo-api-key"] = COINGECKO_DEMO_KEY
-+    try:
-+        resp = requests.get(url, params=params or {}, headers=headers, timeout=timeout)
-+    except Exception:
-+        logger.debug("CoinGecko GET failed for %s", url, exc_info=True)
-+        return None
-+    if resp.status_code == 429:
-+        _COINGECKO_DISABLED_UNTIL = now + RESEARCH_CACHE_TTL_SEC
-+        logger.warning("CoinGecko rate limited; disabling for %ds", RESEARCH_CACHE_TTL_SEC)
-+        return None
-+    if not resp.ok:
-+        return None
-+    try:
-+        return resp.json()
-+    except Exception:
-+        return None
-+
-+
-+def _load_defillama_protocols() -> list:
-+    """Cached /protocols list."""
-+    global _DEFILLAMA_PROTOCOLS_CACHE, _DEFILLAMA_PROTOCOLS_FETCHED_AT
-+    now = time.time()
-+    if (
-+        _DEFILLAMA_PROTOCOLS_CACHE is not None
-+        and (now - _DEFILLAMA_PROTOCOLS_FETCHED_AT) < RESEARCH_CACHE_TTL_SEC
-+    ):
-+        return _DEFILLAMA_PROTOCOLS_CACHE
-+
-+    data = _defillama_get("/protocols")
-+    if isinstance(data, list):
-+        _DEFILLAMA_PROTOCOLS_CACHE = data
-+        _DEFILLAMA_PROTOCOLS_FETCHED_AT = now
-+    elif _DEFILLAMA_PROTOCOLS_CACHE is None:
-+        _DEFILLAMA_PROTOCOLS_CACHE = []
-+    return _DEFILLAMA_PROTOCOLS_CACHE or []
-+
-+
-+def _protocol_slug(item: Dict[str, Any]) -> Optional[str]:
-+    if not isinstance(item, dict):
-+        return None
-+    slug = item.get("slug") or item.get("id")
-+    if isinstance(slug, (int, float)):
-+        slug = str(slug)
-+    if isinstance(slug, str) and slug:
-+        return slug
-+    name = item.get("name")
-+    if isinstance(name, str) and name:
-+        return re.sub(r"[^a-z0-9]+", "-", name.lower()).strip("-") or None
-+    return None
-+
-+
-+def _match_defillama_protocol(
-+    kind: str,
-+    key: str,
-+    symbol_hint: Optional[str],
-+    name_hints: List[str],
-+) -> tuple[Optional[str], Optional[Dict[str, Any]]]:
-+    """Very small fuzzy match over /protocols."""
-+    protocols = _load_defillama_protocols()
-+    if not protocols:
-+        return None, None
-+
-+    key_low = (key or "").lower()
-+    sym_low = (symbol_hint or "").lower()
-+    name_set = {n.lower() for n in name_hints[:5]}
-+
-+    best = None
-+    best_score = 0.0
-+    for p in protocols:
-+        if not isinstance(p, dict):
++        # Anti-hallucination check: no new tickers / big numbers
++        if tweet_text and (not anti_hallucination_ok(c, tweet_text)):
 +            continue
-+        name = (p.get("name") or "").lower()
-+        symbol = (p.get("symbol") or "").lower()
-+        score = 0.0
-+
-+        if sym_low and sym_low == symbol:
-+            score += 5.0
-+        if sym_low and sym_low in name:
-+            score += 2.5
-+        if key_low and key_low == symbol:
-+            score += 3.0
-+        if key_low and key_low == name:
-+            score += 2.0
-+        if key_low and key_low in name:
-+            score += 1.0
-+        if name_set and any(n in name for n in name_set):
-+            score += 1.0
-+
-+        if score > best_score:
-+            best_score = score
-+            best = p
-+
-+    if best is None or best_score < 3.0:
-+        return None, None
-+    return _protocol_slug(best), best
-+
-+
-+def _fetch_defillama_detail(slug: str) -> Optional[Dict[str, Any]]:
-+    if not slug:
-+        return None
-+    data = _defillama_get(f"/protocol/{slug}")
-+    if isinstance(data, dict):
-+        return data
-+    return None
-+
-+
-+def _fetch_defillama_tvl(slug: str) -> Optional[float]:
-+    if not slug:
-+        return None
-+    data = _defillama_get(f"/tvl/{slug}")
-+    if isinstance(data, (int, float)):
-+        return float(data)
-+    try:
-+        # some deployments may return {"tvl": number}
-+        if isinstance(data, dict) and isinstance(data.get("tvl"), (int, float)):
-+            return float(data["tvl"])
-+    except Exception:
-+        pass
-+    return None
-+
-+
-+def _coingecko_for_symbol(symbol: str, name_hints: List[str]) -> Optional[Dict[str, Any]]:
-+    """Best-effort CoinGecko search + simple price."""
-+    if not symbol:
-+        return None
-+    data = _coingecko_get("/search", {"query": symbol})
-+    if not isinstance(data, dict):
-+        return None
-+    matches = data.get("coins") or []
-+    if not isinstance(matches, list):
-+        return None
-+
-+    sym_low = symbol.lower()
-+    name_set = {n.lower() for n in name_hints[:5]}
-+    best = None
-+    best_score = 0.0
-+    for c in matches:
-+        if not isinstance(c, dict):
-+            continue
-+        m_sym = (c.get("symbol") or "").lower()
-+        m_name = (c.get("name") or "").lower()
-+        score = 0.0
-+        if m_sym == sym_low:
-+            score += 4.0
-+        if sym_low in m_name:
-+            score += 2.0
-+        if name_set and any(n in m_name for n in name_set):
-+            score += 1.0
-+        if score > best_score:
-+            best_score = score
-+            best = c
-+
-+    if not best or not best.get("id"):
-+        return None
-+
-+    price = _coingecko_get(
-+        "/simple/price",
-+        {"ids": best["id"], "vs_currencies": "usd"},
-+    )
-+    price_usd = None
-+    try:
-+        if isinstance(price, dict):
-+            p_entry = price.get(best["id"]) or {}
-+            if isinstance(p_entry, dict) and isinstance(p_entry.get("usd"), (int, float)):
-+                price_usd = float(p_entry["usd"])
-+    except Exception:
-+        price_usd = None
-+
-+    out: Dict[str, Any] = {"id": best.get("id"), "symbol": best.get("symbol"), "name": best.get("name")}
-+    if price_usd is not None:
-+        out["usd"] = price_usd
-+    return out
-+
-+
-+def _build_research_for_tweet(tweet_text: str) -> Dict[str, Any]:
-+    """
-+    Best-effort project snapshot for crypto tweets.
-+    Never raises; returns a small dict suitable for prompts.
-+    """
-+    base: Dict[str, Any] = {
-+        "ok": False,
-+        "reason": "",
-+        "is_crypto": is_crypto_tweet(tweet_text or ""),
+ 
+         # Block repeated sentence skeletons (structure-level repetition)
+         if template_burned(c):
+@@ -1681,16 +1869,60 @@
+             out.append(c)
+ 
+     return out
+ 
+ 
+-def extract_entities(tweet_text: str) -> dict:
+-    t = tweet_text or ""
+-    cashtags = re.findall(r"\$\w{2,15}", t)
+-    handles = re.findall(r"@\w{2,30}", t)
+-    decimals = re.findall(r"\d+\.\d+", t)
+-    integers = re.findall(r"\b\d+\b", t)
+-    return {
+-        "cashtags": list(dict.fromkeys(cashtags)),
+-        "handles": list(dict.fromkeys(handles)),
+-        "numbers": list(dict.fromkeys(decimals + integers)),
+-    }
++def extract_entities(tweet_text: str) -> dict:
++    t = tweet_text or ""
++    cashtags = re.findall(r"\$\w{2,15}", t)
++    handles = re.findall(r"@\w{2,30}", t)
++    decimals = re.findall(r"\d+\.\d+", t)
++    integers = re.findall(r"\b\d+\b", t)
++    return {
++        "cashtags": list(dict.fromkeys(cashtags)),
++        "handles": list(dict.fromkeys(handles)),
++        "numbers": list(dict.fromkeys(decimals + integers)),
 +    }
-+    if not base["is_crypto"]:
-+        base["reason"] = "not_crypto"
-+        return base
-+
-+    ents = extract_entities(tweet_text or "")
-+    cashtags = ents.get("cashtags", [])
-+    keys = extract_keywords(tweet_text or "")
-+
-+    primary_symbol = ""
-+    primary_kind = ""
-+    primary_key = ""
-+
-+    if cashtags:
-+        primary_symbol = cashtags[0].lstrip("$").upper()
-+        primary_kind = "cashtag"
-+        primary_key = cashtags[0].upper()
-+    elif keys:
-+        primary_kind = "name"
-+        primary_key = keys[0]
-+    else:
-+        base["reason"] = "no_candidate"
-+        return base
-+
-+    # Try entity memory first
-+    slug = lookup_entity_slug(primary_kind, primary_key, max_age_sec=7 * 24 * 3600)
-+    proto: Optional[Dict[str, Any]] = None
-+    tvl_value: Optional[float] = None
-+    cg_data: Optional[Dict[str, Any]] = None
-+
-+    if slug:
-+        proto = _fetch_defillama_detail(slug) or {}
-+        tvl_value = _fetch_defillama_tvl(slug)
-+    else:
-+        slug, proto = _match_defillama_protocol(primary_kind, primary_key, primary_symbol, keys)
-+        if slug:
-+            remember_entity_slug(primary_kind, primary_key, slug)
-+            if primary_symbol:
-+                remember_entity_slug("symbol", primary_symbol, slug)
-+            proto = proto or {}
-+            tvl_value = _fetch_defillama_tvl(slug)
-+
-+    if not slug or not proto:
-+        base["reason"] = "no_match"
-+        return base
-+
-+    # optional CoinGecko
-+    if ENABLE_COINGECKO and primary_symbol:
-+        cg_data = _coingecko_for_symbol(primary_symbol, keys)
-+
-+    base.update(
-+        {
-+            "ok": True,
-+            "protocol_slug": slug,
-+            "protocol_name": proto.get("name") or "",
-+            "symbol": proto.get("symbol") or primary_symbol,
-+            "category": proto.get("category") or "",
-+            "chains": proto.get("chains") or [],
-+        }
-+    )
-+
-+    if isinstance(tvl_value, (int, float)):
-+        base["tvl_usd"] = float(tvl_value)
-+    elif isinstance(proto.get("tvl"), (int, float)):
-+        base["tvl_usd"] = float(proto["tvl"])
-+
-+    if cg_data:
-+        base["coingecko"] = cg_data
-+
-+    # Build concise prompt lines
-+    lines: list[str] = []
-+    name = base.get("protocol_name")
-+    symbol = base.get("symbol")
-+    if name:
-+        if symbol:
-+            lines.append(f"Project: {name} ({symbol})")
-+        else:
-+            lines.append(f"Project: {name}")
-+    elif symbol:
-+        lines.append(f"Token: {symbol}")
-+
-+    cat = base.get("category")
-+    chains = base.get("chains") or []
-+    if cat:
-+        lines.append(f"Category: {cat}")
-+    if chains:
-+        lines.append("Chains: " + ", ".join(sorted(chains)[:4]))
-+
-+    tvl = base.get("tvl_usd")
-+    if isinstance(tvl, (int, float)):
-+        if tvl >= 1e9:
-+            tvl_str = f"{tvl/1e9:.1f}B"
-+        elif tvl >= 1e6:
-+            tvl_str = f"{tvl/1e6:.1f}M"
-+        else:
-+            tvl_str = f"{tvl:,.0f}"
-+        lines.append(f"Approx TVL: {tvl_str} USD (DefiLlama, rough).")
-+
-+    if cg_data and isinstance(cg_data.get("usd"), (int, float)):
-+        lines.append(f"Approx token price: {cg_data['usd']} USD (CoinGecko, may be stale).")
-+
-+    base["prompt_lines"] = lines
-+    return base
 +
 +
-+def get_or_build_research(tweet_text: str) -> Dict[str, Any]:
-+    """
-+    Cached wrapper for _build_research_for_tweet.
-+    """
-+    if not ENABLE_RESEARCH:
-+        return {}
-+    key = _research_cache_key(tweet_text)
-+    now = time.time()
-+    cached = _RESEARCH_CACHE.get(key)
-+    if cached and (now - cached[0]) < RESEARCH_CACHE_TTL_SEC:
-+        return cached[1]
-+    ctx = _build_research_for_tweet(tweet_text)
-+    _RESEARCH_CACHE[key] = (now, ctx)
-+    return ctx
++def anti_hallucination_ok(comment: str, tweet_text: str) -> bool:
++    """Guardrail: no new tickers or big numbers not present in the tweet."""
++    if not tweet_text:
++        return True
 +
++    base = extract_entities(tweet_text)
++    cand = extract_entities(comment)
 +
- def extract_entities(text: str) -> Dict[str, List[str]]:
-     t = text or ""
-     cashtags = re.findall(r"\$[A-Za-z]{2,15}", t)
-@@ -923,49 +1426,60 @@
-     return score
- 
- 
--def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
--    """
--    Rejects generic/hypey/off-topic outputs in PRO_KOL_STRICT mode.
--    """
--    if not comment:
--        return False
--    low = comment.lower()
--
--    if any(p in low for p in PRO_KOL_BAD):
--        topic = detect_topic(tweet_text or "")
--        # allow some wit for meme tweets
--        if topic != "meme" or not PRO_KOL_ALLOW_WIT:
--            return False
--
--    if contains_generic_phrase(low):
--        return False
--
--    ents = extract_entities(tweet_text or "")
--    keys = extract_keywords(tweet_text or "")
--
--    # some evidence of focus: project name, ticker, handle, or number
--    focus_pool = set([k.lower() for k in keys] + [x.lower() for x ...or x in ents["handles"]] + [x.lower() for x in ents["numbers"]])
--    has_focus = any(f in low for f in focus_pool if f)
--
--    # at least one operator word like "risk", "liquidity", etc
--    has_operator = any(w in low for w in PRO_OPERATOR_WORDS)
--
--    topic = detect_topic(tweet_text or "")
--    if topic == "meme" and PRO_KOL_ALLOW_WIT:
--        # memes can be lighter as long as they aren't just hype
--        if "?" in comment or len(comment.split()) >= 6:
--            return True
--
--    return has_focus or has_operator
-+def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
-+    """
-+    Strict filter used in PRO_KOL_STRICT mode.
-+
-+    - Blocks generic/hypey/off-topic outputs.
-+    - Enforces basic anti-hallucination rules (no new tickers, no invented big numbers).
-+    - Pushes towards questions when we lack research for a crypto tweet.
-+    """
-+    c = (comment or "").strip()
-+    if not c:
-+        return False
-+    low = c.lower()
-+
-+    topic = detect_topic(tweet_text or "")
-+
-+    # hard rejects (unless meme and PRO_KOL_ALLOW_WIT)
-+    if any(p in low for p in PRO_BAD_PHRASES):
-+        if not (topic == "meme" and PRO_KOL_ALLOW_WIT):
-+            return False
-+
-+    # generic/vague praise
-+    if contains_generic_phrase(low):
-+        return False
-+
-+    # super short or super long = usually weak
-+    wc = len(words(c))
-+    if wc < 4 or wc > 15:
-+        return False
-+
-+    # --- Anti-hallucination: no new tickers or big invented numbers ---
-+    ents_tweet = extract_entities(tweet_text or "")
-+    ents_comment = extract_entities(c)
-+
-+    tweet_cashtags = {x.upper() for x in ents_tweet.get("cashtags", [])}
-+    comment_cashtags = {x.upper() for x in ents_comment.get("cashtags", [])}
-+    new_cashtags = comment_cashtags - tweet_cashtags
++    base_cashtags = set(base.get("cashtags") or [])
++    cand_cashtags = set(cand.get("cashtags") or [])
++    new_cashtags = [c for c in cand_cashtags if c not in base_cashtags]
 +    if new_cashtags:
 +        return False
 +
-+    tweet_numbers = set(ents_tweet.get("numbers", []))
-+    for num_str in ents_comment.get("numbers", []):
++    base_numbers = set(base.get("numbers") or [])
++    cand_numbers = cand.get("numbers") or []
++
++    for num in cand_numbers:
++        # ignore small integers 1–10
 +        try:
-+            v = float(num_str)
++            val = float(num)
++        except ValueError:
++            continue
++        if val <= 10:
++            continue
++        if num not in base_numbers:
++            return False
++
++    return True
+@@ -1869,7 +2101,7 @@
+     except Exception:
+         return tweet_text
+ 
+ 
+ def groq_two_comments(tweet_text: str, author: Optional[str], handle: Optional[str], lang: Optional[str], url: str = "") -> list[str]:
+@@ -2037,15 +2269,15 @@
+     except Exception:
+         pass
+ 
+     # Fuse them and re-run uniqueness filter
+-    try:
+-        sents = split_into_short_sentences(text or "")
+-        candidates = enforce_unique(candidates + sents[:2])
+-    except Exception:
+-        pass
++    try:
++        sents = split_into_short_sentences(text or "")
++        candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
++    except Exception:
++        pass
+ 
+     # If that still failed, use two offline lines as last resort
+-    try:
+-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
+-    except Exception:
+-        pass
++    try:
++        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
++    except Exception:
++        pass
+ 
+     return candidates[:2] or offline_two_comments(tweet_text, author)
+@@ -2059,7 +2291,7 @@
+         best = [candidates[0], _rescue_one(tweet_text)]
+         extra = offline_two_comments(tweet_text, author)
+         if extra:
+-            merged = enforce_unique(candidates + extra)
++            merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
+             if merged:
+                 best = merged[:2]
+         return best
+@@ -2105,6 +2337,208 @@
+         if msg:
+             logging.getLogger(__name__).warning("Groq error: %s", msg)
+ 
+ 
+ # ------------------------------------------------------------------------------
+@@ -2128,6 +2462,242 @@
+             logging.getLogger(__name__).warning("OpenAI rewrite error: %s", msg)
+         return a, b
+ 
++
++# ------------------------------------------------------------------------------
++# Research plugin (DefiLlama + optional CoinGecko) and prompt context builder
++# ------------------------------------------------------------------------------
++
++def _research_cache_get(key: str) -> Optional[Dict[str, Any]]:
++    now = time.time()
++    try:
++        with _RESEARCH_CACHE_LOCK:
++            item = _RESEARCH_CACHE.get(key)
++            if not item:
++                return None
++            expires_at, data = item
++            if expires_at < now:
++                _RESEARCH_CACHE.pop(key, None)
++                return None
++            return data
++    except Exception:
++        return None
++
++
++def _research_cache_set(key: str, data: Dict[str, Any]) -> None:
++    try:
++        with _RESEARCH_CACHE_LOCK:
++            _RESEARCH_CACHE[key] = (time.time() + RESEARCH_CACHE_TTL_SEC, data)
++            # soft cap
++            if len(_RESEARCH_CACHE) > 128:
++                first = next(iter(_RESEARCH_CACHE))
++                _RESEARCH_CACHE.pop(first, None)
++    except Exception:
++        pass
++
++
++def _coingecko_get(path: str, params: Optional[Dict[str, Any]] = None, timeout: float = 2.0) -> Optional[Dict[str, Any]]:
++    """Best-effort CoinGecko wrapper with 429 circuit breaker."""
++    global _COINGECKO_DISABLED_UNTIL
++    if not ENABLE_COINGECKO:
++        return None
++    if time.time() < _COINGECKO_DISABLED_UNTIL:
++        return None
++
++    base = "https://api.coingecko.com/api/v3"
++    headers: Dict[str, str] = {}
++    if COINGECKO_DEMO_KEY:
++        headers["x-cg-demo-api-key"] = COINGECKO_DEMO_KEY
++
++    try:
++        resp = requests.get(base + path, params=params or {}, headers=headers, timeout=timeout)
++        if resp.status_code == 429:
++            _COINGECKO_DISABLED_UNTIL = time.time() + RESEARCH_CACHE_TTL_SEC
++            return None
++        if not resp.ok:
++            return None
++        data = resp.json()
++        return data if isinstance(data, dict) else None
++    except Exception:
++        return None
++
++
++def _get_defillama_protocols() -> list[Dict[str, Any]]:
++    """Cached DefiLlama protocol list (symbol/name -> slug)."""
++    global _DEFILLAMA_PROTOCOLS, _DEFILLAMA_PROTOCOLS_LOADED_AT
++    now = time.time()
++    if _DEFILLAMA_PROTOCOLS and (now - _DEFILLAMA_PROTOCOLS_LOADED_AT) < RESEARCH_CACHE_TTL_SEC:
++        return _DEFILLAMA_PROTOCOLS
++
++    try:
++        resp = requests.get("https://api.llama.fi/protocols", timeout=2.0)
++        if resp.ok:
++            data = resp.json()
++            if isinstance(data, list):
++                _DEFILLAMA_PROTOCOLS = data
++                _DEFILLAMA_PROTOCOLS_LOADED_AT = now
++                return _DEFILLAMA_PROTOCOLS
++    except Exception:
++        pass
++
++    return _DEFILLAMA_PROTOCOLS or []
++
++
++def _match_protocol_from_keys(keys: list[str]) -> Optional[Dict[str, Any]]:
++    """Rudimentary symbol/name matcher over DefiLlama protocols."""
++    protos = _get_defillama_protocols()
++    if not protos:
++        return None
++
++    norm_keys = [k.strip().lstrip("$").lower() for k in keys if k]
++    best: Optional[Dict[str, Any]] = None
++
++    for proto in protos:
++        try:
++            name = str(proto.get("name") or "").lower()
++            symbol = str(proto.get("symbol") or "").lower()
++            slug = str(proto.get("slug") or "").lower()
 +        except Exception:
 +            continue
-+        # allow 1–10 freely; block larger numbers that weren't in the tweet
-+        if v > 10 and num_str not in tweet_numbers:
-+            return False
 +
-+    # --- On-topic focus: reference at least one entity/keyword or operator word ---
-+    ents = ents_tweet
-+    keys = extract_keywords(tweet_text or "")
++        for k in norm_keys:
++            if not k:
++                continue
++            if k == symbol or k == slug or k in name:
++                best = proto
++                break
++        if best:
++            break
 +
-+    focus_pool: List[str] = []
-+    focus_pool.extend([k.lower() for k in keys])
-+    focus_pool.extend([x.lower() for x in ents.get("cashtags", [])])
-+    focus_pool.extend([x.lower() for x in ents.get("handles", [])])
-+    focus_pool.extend([x.lower() for x in ents.get("numbers", [])])
++    return best
 +
-+    has_focus = any(fp and fp in low for fp in focus_pool[:12])
-+    has_operator = any(w in low for w in PRO_OPERATOR_WORDS)
 +
-+    # Meme tweets can pass with wit even if no operator words
-+    if topic == "meme" and PRO_KOL_ALLOW_WIT:
-+        return True if ("?" in low or len(c.split()) >= 6) else False
++def fetch_research_context(tweet_text: str, ents: Dict[str, Any]) -> Dict[str, Any]:
++    """Resolve project in tweet + fetch DefiLlama snapshot (and optional price)."""
++    if not ENABLE_RESEARCH:
++        return {}
 +
-+    # If crypto tweet but research is missing/uncertain, require a question
-+    research_ctx = REQUEST_RESEARCH_CTX.get({})
-+    if isinstance(research_ctx, dict) and research_ctx.get("is_crypto") and not research_ctx.get("ok"):
-+        if "?" not in c:
-+            return False
++    text = tweet_text or ""
++    ents = ents or {}
++    cashtags: list[str] = ents.get("cashtags") or []
++    tickers = [c.lstrip("$") for c in cashtags]
++    keywords = extract_keywords(text)
 +
-+    return has_focus or has_operator
-@@ -1468,10 +1982,10 @@
-             t for t in out.split()
-             if t.lower() not in {"honestly", "tbh", "still", "though"}
-         ) or out
-         out = out.strip()
++    # 1) instant lookup from entity_map
++    slug: Optional[str] = None
++    key_used: Optional[str] = None
++
++    for tkr in tickers:
++        slug = resolve_entity("ticker", tkr)
++        if slug:
++            key_used = f"${tkr}"
++            break
++
++    if not slug:
++        for name in keywords:
++            slug = resolve_entity("name", name)
++            if slug:
++                key_used = name
++                break
++
++    # 2) fallback: DefiLlama protocol list search
++    if not slug:
++        proto = _match_protocol_from_keys(cashtags + keywords)
++        if proto:
++            slug = str(proto.get("slug") or "") or None
++            key_used = proto.get("symbol") or proto.get("name") or key_used
++            if slug:
++                # remember mappings for next time
++                if proto.get("symbol"):
++                    remember_entity("ticker", proto.get("symbol"), slug)
++                if proto.get("name"):
++                    remember_entity("name", proto.get("name"), slug)
++
++    if not slug:
++        return {}
++
++    cache_key = f"defillama:{slug}"
++    cached = _research_cache_get(cache_key)
++    if cached is not None:
++        return cached
++
++    protocol_data: Optional[Dict[str, Any]] = None
++    tvl_data: Any = None
++
++    try:
++        resp = requests.get(f"https://api.llama.fi/protocol/{slug}", timeout=2.0)
++        if resp.ok:
++            maybe = resp.json()
++            if isinstance(maybe, dict):
++                protocol_data = maybe
++    except Exception:
++        protocol_data = None
++
++    try:
++        resp = requests.get(f"https://api.llama.fi/tvl/{slug}", timeout=2.0)
++        if resp.ok:
++            tvl_data = resp.json()
++    except Exception:
++        tvl_data = None
++
++    project_summary: Dict[str, Any] = {}
++    if isinstance(protocol_data, dict):
++        project_summary["name"] = protocol_data.get("name")
++        project_summary["symbol"] = protocol_data.get("symbol")
++        project_summary["category"] = protocol_data.get("category") or protocol_data.get("categorySlug")
++        chains = protocol_data.get("chains") or protocol_data.get("chain")
++        if isinstance(chains, list):
++            project_summary["chains"] = chains
++        elif isinstance(chains, str):
++            project_summary["chains"] = [chains]
++
++    if isinstance(tvl_data, list) and tvl_data:
++        last = tvl_data[-1]
++        try:
++            tvl_val = last.get("totalLiquidityUSD") or last.get("tvl") or last.get("totalLiquidity")
++        except Exception:
++            tvl_val = None
++        project_summary["tvl_usd"] = tvl_val
++        project_summary["tvl_timestamp"] = last.get("date") or last.get("timestamp")
++
++    result: Dict[str, Any] = {
++        "slug": slug,
++        "identified_by": key_used,
++        "project": project_summary,
++        "defillama_raw": {"protocol": protocol_data},
++    }
++
++    # Optional CoinGecko price (best effort, may often be empty)
++    if tickers:
++        cg = _coingecko_get(
++            "/simple/price",
++            params={"ids": tickers[0].lower(), "vs_currencies": "usd"},
++        )
++        if isinstance(cg, dict):
++            result["coingecko_price"] = cg
++
++    _research_cache_set(cache_key, result)
++    return result
++
++
++def fetch_thread_context_vxtwitter(url: str) -> Dict[str, Any]:
++    """Best-effort quote/parent ingestion from a tweet URL via VXTwitter.
++
++    This is intentionally tolerant of schema changes — it just looks for any
++    nested objects that seem like "quoted" or "parent/reply" tweets.
++    """
++    if not ENABLE_THREAD_CONTEXT:
++        return {}
++
++    try:
++        parsed = urlparse(url)
++        parts = [p for p in parsed.path.split("/") if p]
++        tweet_id = next((p for p in reversed(parts) if p.isdigit()), None)
++        if not tweet_id:
++            return {}
++
++        api_url = f"https://api.vxtwitter.com/Twitter/status/{tweet_id}"
++        resp = requests.get(api_url, timeout=2.0)
++        if not resp.ok:
++            return {}
++        data = resp.json() or {}
++    except Exception:
++        return {}
++
++    ctx: Dict[str, Any] = {}
++
++    def _extract_text(obj: Any) -> Optional[str]:
++        if isinstance(obj, dict):
++            for k in ("text", "full_text", "body"):
++                v = obj.get(k)
++                if isinstance(v, str) and v.strip():
++                    return v
++        return None
++
++    # Common fields used by VXTwitter/FxTwitter-style APIs
++    if isinstance(data.get("quoted_tweet"), dict):
++        qtxt = _extract_text(data.get("quoted_tweet"))
++        if qtxt:
++            ctx["quoted"] = qtxt
++    if isinstance(data.get("parent"), dict):
++        ptxt = _extract_text(data.get("parent"))
++        if ptxt:
++            ctx["parent"] = ptxt
++
++    # Generic fallback: scan for likely quote/parent objects
++    if "quoted" not in ctx:
++        for k, v in data.items():
++            if "quote" in k.lower() and isinstance(v, dict):
++                qtxt = _extract_text(v)
++                if qtxt:
++                    ctx["quoted"] = qtxt
++                    break
++
++    if "parent" not in ctx:
++        for k, v in data.items():
++            low = k.lower()
++            if any(token in low for token in ("reply", "parent")) and isinstance(v, dict):
++                ptxt = _extract_text(v)
++                if ptxt:
++                    ctx["parent"] = ptxt
++                    break
++
++    return ctx
++
++
++def build_prompt_context_block() -> str:
++    """Compose a short, safe context block for LLM prompts."""
++    parts: list[str] = []
++
++    thread_ctx = REQUEST_THREAD_CTX.get()
++    if thread_ctx:
++        qt = thread_ctx.get("quoted") or thread_ctx.get("quoted_text")
++        pt = thread_ctx.get("parent") or thread_ctx.get("parent_text")
++        if qt:
++            parts.append(f"Quoted tweet: {qt}")
++        if pt:
++            parts.append(f"Parent tweet: {pt}")
++
++    research_ctx = REQUEST_RESEARCH_CTX.get()
++    if research_ctx:
++        proj = research_ctx.get("project") or {}
++        slug = research_ctx.get("slug") or ""
++        name = (proj.get("name") or "").strip()
++        symbol = (proj.get("symbol") or "").strip()
++        bits: list[str] = []
++        if name:
++            bits.append(name)
++        if symbol:
++            bits.append(f"({symbol})")
++        if slug and slug not in {name, symbol}:
++            bits.append(f"slug: {slug}")
++        tvl = proj.get("tvl_usd")
++        if tvl is not None:
++            try:
++                tvl_val = float(tvl)
++                if tvl_val >= 1e9:
++                    tvl_str = f"{tvl_val/1e9:.1f}B"
++                elif tvl_val >= 1e6:
++                    tvl_str = f"{tvl_val/1e6:.1f}M"
++                else:
++                    tvl_str = f"{tvl_val:,.0f}"
++            except Exception:
++                tvl_str = str(tvl)
++            bits.append(f"TVL ≈ {tvl_str} USD (rough)")
++        category = proj.get("category")
++        if category:
++            bits.append(f"category: {category}")
++        chains = proj.get("chains") or []
++        if isinstance(chains, list) and chains:
++            bits.append("chains: " + ", ".join(chains[:4]))
++        if bits:
++            parts.append("Research snapshot: " + ", ".join(bits))
++
++    voice = REQUEST_VOICE.get()
++    if voice:
++        label = voice.get("label") or voice.get("id")
++        style = voice.get("style") or ""
++        parts.append(f"Voice profile: {label} — {style}")
++
++    if not parts:
++        return ""
++
++    return (
++        "\n\nAdditional context (may be incomplete; never invent facts beyond this):\n"
++        + "\n".join(f"- {p}" for p in parts)
++        + "\n"
++    )
+@@ -2240,7 +2810,9 @@
+         "- No emojis, no hashtags, no links.\n"
+         "- Never reference 'as an AI' or similar.\n"
+         "- Avoid generic 'great project' praise; be specific.\n"
+         "- Do not make price predictions or promises.\n"
+         "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
++        "- If context is unclear or missing, prefer sharp questions over confident claims.\n"
+         "\n"
+         "Human style:\n"
+         "- Sound like a real person on Crypto Twitter.\n"
+@@ -2270,8 +2842,15 @@
+         "Return JSON:\n"
+         "{\n"
+         '  "comment_1": "....",\n'
+         '  "comment_2": "...."\n'
+         "}\n"
+-    )
+-    mode_line = (mode_line or "").strip()
+-    if mode_line:
+-        base += "\n" + mode_line + "\n"
+-    return base
++    )
++    mode_line = (mode_line or "").strip()
++    if mode_line:
++        base += "\n" + mode_line + "\n"
++
++    # Inject request-scoped context (thread + research + voice) if available
++    ctx_block = build_prompt_context_block()
++    if ctx_block:
++        base += ctx_block
++
++    return base
+@@ -2488,40 +3067,43 @@
+         return a, b
  
-     out = _ensure_question_punctuation(out)
--      if PRO_KOL_POLISH:
--        out = pro_kol_polish(out, topic=detect_topic(raw))
--      return out
-+    if PRO_KOL_POLISH:
-+        out = pro_kol_polish(out, topic=detect_topic(raw))
-+    return out
  
-@@ -1827,51 +2341,144 @@
-     random.shuffle(order)
-     return order
- 
-@@ -1831,41 +2438,84 @@
  def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
 -    witty = (topic == "meme" and PRO_KOL_ALLOW_WIT)
 -    return (
--        "You rewrite or regenerate two tweet replies.\n\n"
--        "Rules:\n"
+-        "You rewrite or regenerate two tweet replies.\n"
+-        "\n"
+-        "Hard rules:\n"
 -        "- Output exactly 2 comments.\n"
 -        "- Each comment must be 6–13 tokens.\n"
--        "- No emojis or hashtags.\n"
--        "- Avoid hype phrases and vague praise.\n"
--        "- Preserve numbers and tickers exactly (17.99, $SOL).\n"
--        "- Make the two comments meaningfully different.\n"
--        "- Keep a grounded, realistic tone.\n"
--        f"- Topic: {topic}. Sentiment: {sentiment}. Witty allowed: {witty}.\n"
+-        "- One thought per comment (no second clause like 'thanks for sharing').\n"
+-        "- No emojis, no hashtags, no links.\n"
+-        "- Do NOT invent facts not present in the tweet.\n"
+-        "- Preserve numbers and tickers exactly (17.99 stays 17.99, $SOL stays $SOL).\n"
+-        "\n"
+-        "Human quality:\n"
+-        "- Sound like a real person on CT: grounded, specific, slightly opinionated.\n"
+-        "- Avoid hype/fanboy language and generic praise.\n"
+-        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
+-        "- If the tweet is funny, allow ONE witty/deadpan line.\n"
+-        "\n"
+-        "Variety rules:\n"
+-        "- Comment #1: observation/claim.\n"
+-        "- Comment #2: sharp question OR risk/constraint note.\n"
+-        "- Do not reuse the same sentence skeleton (avoid template feel).\n"
+-        "- Do not start both comments with the same first word.\n"
+-        "\n"
+-        f"Context: topic={topic}, sentiment={sentiment}, witty_allowed={str(witty).lower()}.\n"
+-        "\n"
 -        "Return a JSON array of two strings: [\"...\", \"...\"].\n"
 -    )
 +    witty = (topic == "meme" and PRO_KOL_ALLOW_WIT)
@@ -814,228 +789,173 @@
 +        "- Do not start both comments with the same first word.\n"
 +        "\n"
 +        f"Context: topic={topic}, sentiment={sentiment}, witty_allowed={str(witty).lower()}.\n"
++        "\n"
++        "Return a JSON array of two strings: [\"...\", \"...\"].\n"
 +    )
 +
 +    ctx_block = build_prompt_context_block()
 +    if ctx_block:
-+        base += (
-+            "\nExtra context you MUST respect (don't fabricate metrics):\n"
-+            + ctx_block
-+        )
-+
-+    research_ctx = REQUEST_RESEARCH_CTX.get({})
-+    if isinstance(research_ctx, dict) and research_ctx.get("is_crypto") and not research_ctx.get("ok"):
-+        base += (
-+            "\nResearch guardrail:\n"
-+            "- You do NOT have reliable on-chain/project data.\n"
-+            "- Don't add new tickers, tokenomics, supply, or TVL figures.\n"
-+            "- Safer to ask questions or highlight what is unclear."
-+        )
-+
-+    base += "\nReturn a JSON array of two strings: [\"...\", \"...\"]\n"
-+    return base
-@@ -1968,6 +2578,82 @@
-     random.shuffle(order)
-     return order
- 
-@@ -1968,6 +2578,82 @@
- def _llm_sys_prompt(mode_line: str = "") -> str:
--    return (
--        "You generate two short replies to a tweet.\n\n"
--        "Rules:\n"
--        "- Output exactly 2 comments.\n"
--        "- Each comment must be 6–13 tokens.\n"
--        "- No emojis or hashtags.\n"
--        "- Avoid hype phrases and vague praise.\n"
--        "- Preserve numbers and tickers exactly (17.99, $SOL).\n"
--        "- Make the two comments meaningfully different.\n"
--        "- Keep a grounded, realistic tone.\n"
--        f"{mode_line}\n"
--        "Return a JSON array of two strings: [\"...\", \"...\"].\n"
--    )
-+    base = (
-+        "You generate two short replies to a tweet.\n"
-+        "\n"
-+        "Hard rules:\n"
-+        "- Output exactly 2 comments.\n"
-+        "- Each comment must be 6–13 tokens.\n"
-+        "- One thought per comment (no second clause like 'thanks for sharing').\n"
-+        "- No emojis, hashtags, or links.\n"
-+        "- Do NOT invent details not present in the tweet.\n"
-+        "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
-+        "\n"
-+        "Human style:\n"
-+        "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
-+        "- Avoid hype/fanboy language and vague praise.\n"
-+        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
-+        "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
-+        "\n"
-+        "Diversity:\n"
-+        "- Comment #1: a clear observation or claim.\n"
-+        "- Comment #2: a specific question OR a cautious risk note.\n"
-+        "- Make the two comments meaningfully different.\n"
-+        "\n"
-+        "Output format:\n"
-+        "- Return a JSON array of two strings: [\"...\", \"...\"].\n"
-+        "- If not JSON, return two lines separated by a newline.\n"
-+    )
-+
-+    mode_line = (mode_line or "").strip()
-+    if mode_line:
-+        base += "\n" + mode_line + "\n"
-+
-+    # Thread + research + voice context, if available.
-+    ctx_block = build_prompt_context_block()
-+    if ctx_block:
-+        base += (
-+            "\n\nContext you MUST respect (do not fabricate extra facts):\n"
-+            + ctx_block
-+        )
-+
-+    # If this looks like a crypto/project tweet but we have no trusted research,
-+    # bias towards questions instead of strong assertions.
-+    research_ctx = REQUEST_RESEARCH_CTX.get({})
-+    if isinstance(research_ctx, dict) and research_ctx.get("is_crypto") and not research_ctx.get("ok"):
-+        base += (
-+            "\n\nResearch guardrail:\n"
-+            "- You do NOT have reliable project metrics here.\n"
-+            "- Do not invent TVL, APY, market caps, supply numbers, or dates.\n"
-+            "- Prefer sharp questions or 'what to watch' angles over factual claims."
-+        )
++        base += ctx_block
 +
 +    return base
-@@ -2047,6 +2733,53 @@
-     random.shuffle(order)
-     return order
+@@ -2724,21 +3306,21 @@
+         ):
+             candidates.extend(gemini_two_comments(tweet_text, author, handle, lang, url=url))
  
-@@ -2047,6 +2733,53 @@
- # ------------------------------------------------------------------------------
- # Per-request context wiring (thread context + research + voice)
- # ------------------------------------------------------------------------------
-+
-+_TWEET_ID_RE = re.compile(r"/status/(\d+)")
-+
-+
-+def _extract_tweet_id_from_url(url: str) -> Optional[str]:
-+    m = _TWEET_ID_RE.search(url or "")
-+    return m.group(1) if m else None
-+
-+
-+def fetch_thread_context_from_vx(url: str) -> Dict[str, Any]:
-+    """
-+    Best-effort VXTwitter ingestion.
-+
-+    We only care about getting a couple of extra text snippets (quoted / parent).
-+    If anything fails, this quietly returns {}.
-+    """
-+    if not ENABLE_THREAD_CONTEXT:
-+        return {}
-+    tid = _extract_tweet_id_from_url(url or "")
-+    if not tid:
-+        return {}
-+    api_url = VXTWITTER_API_BASE.rstrip("/") + f"/Twitter/status/{tid}"
-+    try:
-+        resp = requests.get(api_url, timeout=1.5)
-+        if not resp.ok:
-+            return {}
-+        data = resp.json()
-+    except Exception:
-+        logger.debug("VXTwitter fetch failed for %s", api_url, exc_info=True)
-+        return {}
-+
-+    main_text = None
-+    if isinstance(data, dict):
-+        main_text = data.get("text") or data.get("tweet", {}).get("text")
-+
-+    primary = (main_text or "").strip()
-+    extra_texts: List[str] = []
-+
-+    def _walk(obj):
-+        if isinstance(obj, dict):
-+            for k, v in obj.items():
-+                if k == "text" and isinstance(v, str):
-+                    txt = v.strip()
-+                    if txt and txt != primary and txt not in extra_texts:
-+                        extra_texts.append(txt)
-+                else:
-+                    _walk(v)
-+        elif isinstance(obj, list):
-+            for item in obj:
-+                _walk(item)
-+
-+    _walk(data)
-+
-+    ctx: Dict[str, Any] = {}
-+    if extra_texts:
-+        ctx["quoted_text"] = extra_texts[0]
-+    if len(extra_texts) > 1:
-+        ctx["parent_text"] = extra_texts[1]
-+    if len(extra_texts) > 2:
-+        ctx["extra_texts"] = extra_texts[2:6]
-+    return ctx
-+
-+
-+def prepare_request_context(tweet_obj: Any, url: str) -> None:
-+    """
-+    Populate ContextVars for a single tweet request.
-+
-+    - REQUEST_THREAD_CTX: quoted / parent snippets from VXTwitter
-+    - REQUEST_RESEARCH_CTX: DefiLlama (+optional CoinGecko) snapshot
-+    - REQUEST_VOICE: selected voice card
-+    """
-+    text = getattr(tweet_obj, "text", "") or ""
-+
-+    # Thread context
-+    try:
-+        thread_ctx = fetch_thread_context_from_vx(url)
-+    except Exception:
-+        thread_ctx = {}
-+    REQUEST_THREAD_CTX.set(thread_ctx or {})
-+
-+    # Research snapshot (crypto tweets only)
-+    try:
-+        research_ctx = get_or_build_research(text)
-+    except Exception:
-+        research_ctx = {}
-+    REQUEST_RESEARCH_CTX.set(research_ctx or {})
-+
-+    # Voice roulette
-+    try:
-+        voice = pick_voice_for_tweet(text)
-+    except Exception:
-+        voice = {}
-+    REQUEST_VOICE.set(voice or {})
-@@ -2191,6 +2924,11 @@
-         )
+         # Extra offline generation to mix in more templates
+         if tweet_text and len(candidates) < 4:
+             more = offline_two_comments(tweet_text, author)
+             if more:
+-                candidates = enforce_unique(candidates + more)
++                candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
+ 
+         # If we still only have one candidate, try re-running OpenAI once
+         if tweet_text and len(candidates) == 1 and provider_config.get("openai", True):
+             try:
+                 extra = openai_two_comments(tweet_text, author, handle, lang, url=url)
+             except Exception:
+                 extra = []
+             if extra and len(extra) == 2:
+-                candidates = enforce_unique(candidates + extra)
++                candidates = enforce_unique(candidates + extra, tweet_text=tweet_text)
+ 
+     # If everything failed or is disabled, hard fallback to offline
+     if len(candidates) < 2:
+@@ -2747,11 +3329,11 @@
+             try:
+                 offline = offline_two_comments(tweet_text, author)
+             except Exception:
+                 offline = []
+             if offline:
+-                candidates = enforce_unique(candidates + offline)
++                candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
  
      # If still nothing, hard fallback to 2 simple offline lines
      if not candidates:
          raw = _rescue_two(tweet_text)
-         candidates = enforce_unique(raw) or raw
+-        candidates = enforce_unique(raw) or raw
++        candidates = enforce_unique(raw, tweet_text=tweet_text) or raw
+ 
+@@ -2759,7 +3341,12 @@
+     if not candidates:
+         candidates = offline_two_comments(tweet_text, author)
+ 
+-    # Limit to exactly 2 text comments
+-    candidates = [c for c in candidates if c][:2]
++    # Limit to exactly 2 text comments
++    candidates = [c for c in candidates if c][:2]
 +
-+    # Always fix any tokenization artefacts around decimals/tickers
++    # Restore decimals and tickers ($TICKER) exactly as in the tweet
 +    candidates = [restore_decimals_and_tickers(c, tweet_text) for c in candidates]
+@@ -2805,6 +3392,7 @@
+     text = sanitize_comment(comment)
+     if not text:
+         return ""
  
-     # Limit to exactly 2 text comments
-     candidates = [c for c in candidates if c][:2]
-@@ -2284,6 +3022,9 @@
-         for url in batch:
-             try:
-                 t = fetch_tweet_data(url)
+     txt = text
+@@ -2821,19 +3409,28 @@
+             and word not in {"?", "??", "???"}
+         ]
+     )
+ 
+     low = out.lower()
+     if any(b in low for b in AI_BLOCKLIST) or contains_generic_phrase(low):
+         out = " ".join(
+             t for t in out.split()
+             if t.lower() not in {"honestly", "tbh", "still", "though"}
+         ) or out
+         out = out.strip()
+ 
+-    out = _ensure_question_punctuation(out)
+-
+-    if PRO_KOL_POLISH:
+-        out = pro_kol_polish(out, topic=detect_topic(raw))
+-
+-    return out
++    out = _ensure_question_punctuation(out)
 +
-+                # Populate request-scoped context (thread, research, voice)
-+                prepare_request_context(t, url)
++    if PRO_KOL_POLISH:
++        out = pro_kol_polish(out, topic=detect_topic(raw))
++
++    return out
+@@ -2878,7 +3475,7 @@
+             app.logger.error("Error generating comments: %s", exc, exc_info=True)
+             return jsonify({
+                 "error": "Internal error",
+                 "comments": [],
+                 "code": "internal_error",
+@@ -2906,20 +3503,39 @@
+             cleaned.append(url)
  
+         results: list[dict] = []
+         per_url_metadata: dict[str, dict] = {}
+ 
+         for url in cleaned:
+             try:
+-                t = fetch_tweet_data(url)
+-
++                # Reset per-tweet context vars
++                reset_request_context()
++
++                t = fetch_tweet_data(url)
++
++                # Thread context (quote / parent tweets)
++                thread_ctx: Dict[str, Any] = fetch_thread_context_vxtwitter(url) if ENABLE_THREAD_CONTEXT else {}
++                if thread_ctx:
++                    REQUEST_THREAD_CTX.set(thread_ctx)
++
++                # Lightweight research snapshot (DefiLlama + optional CoinGecko)
++                ents = extract_entities(t.text or "")
++                research_ctx: Dict[str, Any] = fetch_research_context(t.text or "", ents) if ENABLE_RESEARCH else {}
++                if research_ctx:
++                    REQUEST_RESEARCH_CTX.set(research_ctx)
++
++                # Voice roulette for this tweet
++                voice = pick_voice_card(t.text or "", ents, research_ctx)
++                REQUEST_VOICE.set(voice)
++
                  # Prefer handle from upstream payload, fall back to URL parsing
                  handle = t.handle or _extract_handle_from_url(url)
-@@ -2336,6 +3077,10 @@
+ 
+                 two = generate_two_comments_with_providers(
+                     t.text,
+                     t.author_name or None,
+                     handle,
+                     t.lang or None,
+                     url=url,
+@@ -2979,19 +3595,38 @@
+             return jsonify({
+                 "error": "Missing 'url' field",
+                 "comments": [],
+                 "code": "bad_request",
              }), 400
  
-         t = fetch_tweet_data(url)
+-        t = fetch_tweet_data(url)
+-        handle = t.handle or _extract_handle_from_url(url)
++        # Reset per-tweet context vars
++        reset_request_context()
 +
-+        # Populate request-scoped context (thread, research, voice)
-+        prepare_request_context(t, url)
++        t = fetch_tweet_data(url)
 +
-         handle = t.handle or _extract_handle_from_url(url)
++        # Thread context (quote / parent tweets)
++        thread_ctx: Dict[str, Any] = fetch_thread_context_vxtwitter(url) if ENABLE_THREAD_CONTEXT else {}
++        if thread_ctx:
++            REQUEST_THREAD_CTX.set(thread_ctx)
++
++        ents = extract_entities(t.text or "")
++        research_ctx: Dict[str, Any] = fetch_research_context(t.text or "", ents) if ENABLE_RESEARCH else {}
++        if research_ctx:
++            REQUEST_RESEARCH_CTX.set(research_ctx)
++
++        voice = pick_voice_card(t.text or "", ents, research_ctx)
++        REQUEST_VOICE.set(voice)
++
++        handle = t.handle or _extract_handle_from_url(url)
  
          two = generate_two_comments_with_providers(
+             t.text,
+             t.author_name or None,
+             handle,
+             t.lang or None,
+             url=url,
+         )
