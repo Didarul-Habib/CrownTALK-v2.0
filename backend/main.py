@@ -2029,13 +2029,8 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     - finally: pick two diverse comments (Hybrid: statement + question if possible)
     """
     out: list[str] = []
-
-    for c in candidates:
-        if tweet_text:
-            c = restore_decimals_and_tickers(c, tweet_text)
-        c = enforce_word_count_natural(c)
-        if not c:
-            continue
+    seen_fps: set[str] = set()   # per-request style fingerprints
+    thesis_seen = False          # soft cap on “thesis” spam
 
         # Pro strict gate (context-aware)
         if PRO_KOL_STRICT and (not pro_kol_ok(c, tweet_text=tweet_text or "")):
@@ -3002,10 +2997,11 @@ def reroll_endpoint():
                 "code": "bad_request",
             }), 400
 
+        # Fetch tweet info
         t = fetch_tweet_data(url)
         handle = t.handle or _extract_handle_from_url(url)
 
-        # Per-request context for reroll
+        # Per-request context (same as /comment)
         try:
             thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
         except Exception:
@@ -3020,6 +3016,14 @@ def reroll_endpoint():
 
         set_request_voice(t.text or "")
 
+        two = generate_two_comments_with_providers(
+            t.text,
+            t.author_name or None,
+            handle,
+            t.lang or None,
+            url=url,
+        )
+
         display_url = _canonical_x_url_from_tweet(url, t)
 
         return jsonify({
@@ -3028,22 +3032,22 @@ def reroll_endpoint():
         }), 200
 
     except CrownTALKError as e:
+        app.logger.error("CrownTALK error during reroll for %s", url, exc_info=True)
         return jsonify({
             "url": url,
             "error": str(e),
             "comments": [],
-            "code": e.code,
-        }), 502
+            "code": getattr(e, "code", "crown_error"),
+        }), 500
+
     except Exception:
-        logger.exception("Unhandled error during reroll for %s", url)
+        app.logger.error("Unhandled error during reroll for %s", url, exc_info=True)
         return jsonify({
             "url": url,
             "error": "internal_error",
             "comments": [],
             "code": "internal_error",
         }), 500
-
-
 # ------------------------------------------------------------------------------
 # Boot
 # ------------------------------------------------------------------------------
