@@ -705,7 +705,9 @@ AI_BLOCKLIST = {
     "thanks for sharing","thank you for sharing","thanks for this","appreciate you",
     "appreciate it","appreciate this","proud of you","so proud of this",
     "the vibe around","vibe around","the vibe here is pretty real",
-    "this is what we need","exactly what we need",
+    "this is what we need","exactly what we need","difference between thesis and cope",
+    "thesis and cope",
+    "thesis stays",
 }
 
 GENERIC_PHRASES = {
@@ -1002,7 +1004,7 @@ PRO_KOL_BAD = {
 }
 
 PRO_KOL_GOOD = {
-    "signal", "thesis", "execution", "risk", "liquidity", "flow", "incentives",
+    "signal", "execution", "risk", "liquidity", "flow", "incentives",
     "positioning", "distribution", "supply", "demand", "timeline", "context",
     "constraint", "tradeoff", "edge", "verify", "confirm", "pricing", "variance",
     "sizing", "asymmetric", "timeframe",
@@ -2029,6 +2031,8 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     out: list[str] = []
 
     for c in candidates:
+        if tweet_text:
+            c = restore_decimals_and_tickers(c, tweet_text)
         c = enforce_word_count_natural(c)
         if not c:
             continue
@@ -2080,12 +2084,14 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
 PRO_BAD_PHRASES = {
     "wow", "exciting", "huge", "insane", "amazing", "awesome",
     "love this", "love that", "can't wait", "cant wait", "sounds interesting",
-    "thanks for sharing", "appreciate you",
+    "thanks for sharing", "appreciate you","difference between thesis and cope",
+    "thesis and cope",
+    "thesis stays",
 }
 
 PRO_OPERATOR_WORDS = {
     "risk","liquidity","flow","incentives","execution","timeline",
-    "positioning","thesis","constraints","tradeoffs","demand","supply",
+    "positioning","constraints","tradeoffs","demand","supply",
     "mechanics","pricing","distribution","sizing","volatility","edge",
 }
 
@@ -2789,15 +2795,16 @@ def generate_two_comments_with_providers(
     # If still nothing, hard fallback to 2 simple offline lines
     if not candidates:
         raw = _rescue_two(tweet_text)
-        candidates = enforce_unique(raw) or raw
+        # Don't over-filter the rescue pair; we just need *something*.
+        candidates = raw
 
     # Limit to exactly 2 text comments
     candidates = [c for c in candidates if c][:2]
 
-# ------------------------------------------------------------------------------
+    # ------------------------------------------------------------------------------
     # Pro KOL rewrite/regenerate pass (Add-on #3)
     # ------------------------------------------------------------------------------
-    if PRO_KOL_REWRITE:
+    if PRO_KOL_REWRITE and candidates:
         needs = (
             len(candidates) < 2
             or (PRO_KOL_STRICT and any(not pro_kol_ok(c, tweet_text) for c in candidates))
