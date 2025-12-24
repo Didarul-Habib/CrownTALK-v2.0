@@ -358,6 +358,11 @@ def _do_init() -> None:
                 thash TEXT PRIMARY KEY,
                 created_at INTEGER
             );
+
+            CREATE TABLE IF NOT EXISTS comments_frames_seen(
+                fhash TEXT PRIMARY KEY,
+                created_at INTEGER
+            );
             """
         )
 
@@ -589,6 +594,58 @@ def remember_template(tmpl: str) -> None:
             c.execute(
                 "INSERT OR IGNORE INTO comments_templates_seen(thash, created_at) VALUES (?,?)",
                 (thash, now_ts()),
+            )
+    except Exception:
+        pass
+
+
+def frame_fingerprint(comment: str, tweet_text: str = "") -> str:
+    """
+    OTP-style 'frame' signature:
+    - voice id (trader/builder/researcher/etc)
+    - mode (support/question/skeptical/playful from guess_mode)
+    - question vs statement
+    - structural style fingerprint (W/W/$T pattern)
+    """
+    base_fp = style_fingerprint(comment)
+    if not base_fp:
+        return ""
+
+    voice = current_voice_card() or {}
+    voice_id = voice.get("id") or "generic"
+
+    mode = guess_mode(tweet_text or "")
+    qflag = "Q" if "?" in (comment or "") else "S"
+
+    return f"{voice_id}|{mode}|{qflag}|{base_fp}"
+
+
+def frame_seen(comment: str, tweet_text: str = "") -> bool:
+    fp = frame_fingerprint(comment, tweet_text)
+    if not fp:
+        return False
+    fh = sha256(fp)
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT 1 FROM comments_frames_seen WHERE fhash=? LIMIT 1",
+                (fh,),
+            ).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
+def remember_frame(comment: str, tweet_text: str = "") -> None:
+    fp = frame_fingerprint(comment, tweet_text)
+    if not fp:
+        return
+    fh = sha256(fp)
+    try:
+        with get_conn() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO comments_frames_seen(fhash, created_at) VALUES (?,?)",
+                (fh, now_ts()),
             )
     except Exception:
         pass
@@ -956,7 +1013,7 @@ LEADINS = [
     "narratives aside,","strip it down:","here’s the edge:","what matters most:"
 ]
 CLAIMS = [
-    "{focus} is doing more work than the headline","{focus} is where the thesis tightens",
+    "{focus} is doing more work than the headline",
     "{focus} is the part that moves things","{focus} is the practical hinge",
     "{focus} is the constraint to solve","{focus} tells you the next step",
     "it lives or dies on {focus}","risk mostly hides in {focus}",
@@ -964,12 +1021,9 @@ CLAIMS = [
     "{focus} is the boring piece that decides outcomes","{focus} sets the real ceiling",
     "{focus} is the bit with actual leverage","most errors start before {focus} is clear",
 "{focus} is the real driver, everything else is noise",
-    "{focus} decides whether this trends or fades",
     "{focus} is where smart money will express the view",
-    "{focus} is the difference between thesis and cope",
     "{focus} is the lever, not the vibe",
     "{focus} is what makes this tradeable",
-    "if {focus} flips, sentiment flips fast",
     "the market will reward {focus}, not the narrative",
     "you can’t hand-wave {focus} and expect it to work",
 ]
@@ -994,7 +1048,6 @@ CLOSERS = [
 "and the trade becomes cleaner",
     "and you stop chasing vibes",
     "and you can actually size it",
-    "and the thesis stays honest",
     "and the market tells you if you’re wrong",
 ]
 
@@ -1287,7 +1340,7 @@ class OfflineCommentGenerator:
 
         vibe = [
             P(f"{focus_slot} feels very timeline core right now"),
-            P(f"The vibe around {focus_slot} here is pretty real"),
+            P(f"The read around {focus_slot} here feels real"),
             P(f"This hits the everyday side of {focus_slot} nicely"),
             P(f"Quietly one of the better posts on {focus_slot}"),
         ]
@@ -2487,30 +2540,12 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 # ------------------------------------------------------------------------------
 def _llm_sys_prompt(mode_line: str = "") -> str:
     base = (
-        "You generate two short replies to a tweet.\n"
-        "\n"
-        "Hard rules:\n"
-        "- Output exactly 2 comments.\n"
-        "- Each comment must be 6–13 tokens.\n"
-        "- One thought per comment (no second clause like 'thanks for sharing').\n"
-        "- No emojis, hashtags, or links.\n"
-        "- Do NOT invent details not present in the tweet.\n"
-        "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
-        "\n"
         "Human style:\n"
         "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
+        "- Write each line as an inner reaction, not a public compliment (like a thought you’d type into a chat with a friend).\n"
         "- Avoid hype/fanboy language and vague praise.\n"
         "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
         "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
-        "\n"
-        "Diversity:\n"
-        "- Comment #1: a clear observation or claim.\n"
-        "- Comment #2: a specific question OR a cautious risk note.\n"
-        "- Make the two comments meaningfully different.\n"
-        "\n"
-        "Output format:\n"
-        "- Return a JSON array of two strings: [\"...\", \"...\"].\n"
-        "- If not JSON, return two lines separated by a newline.\n"
     )
 
     # Voice roulette (per-request persona)
