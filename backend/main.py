@@ -2104,31 +2104,31 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     seen_fps: set[str] = set()
     thesis_seen = False
 
-        for raw in (candidates or []):
-            c = _prep(raw)
-            if not c:
+    for raw in (candidates or []):
+        c = _prep(raw)
+        if not c:
+            continue
+        low = c.lower()
+
+        # Soft cap on "thesis" spam (keeps vibe varied)
+        if "thesis" in low:
+            if thesis_seen:
                 continue
-            low = c.lower()
+            thesis_seen = True
 
-            # Soft cap on "thesis" spam (keeps vibe varied)
-            if "thesis" in low:
-                if thesis_seen:
-                    continue
-                thesis_seen = True
+        if contains_generic_phrase(c):
+            continue
 
-            if contains_generic_phrase(c):
-                continue
+        # Drop ultra-templatey CT phrases ("risk/reward around X", etc.)
+        if contains_pattern_phrase(c):
+            continue
 
-            # Drop ultra-templatey CT phrases ("risk/reward around X", etc.)
-            if contains_pattern_phrase(c):
-                continue
-
-            if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
-                continue
-
+        if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
+            continue
 
         if tweet_text and not hallucination_safe(c, tweet_text):
             continue
+
         # Per-request structural dedupe
         fp = style_fingerprint(c)
         if fp and fp in seen_fps:
@@ -2215,6 +2215,7 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
             pass
 
     return picked[:2]
+
 
 PRO_BAD_PHRASES = {
     "wow", "exciting", "huge", "insane", "amazing", "awesome",
@@ -2456,6 +2457,7 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
     has_operator = any(w in low for w in PRO_OPERATOR_WORDS)
 
     # Meme tweets can pass with wit even if no operator words
+    topic = detect_topic(tweet_text or "")
     if topic == "meme" and PRO_KOL_ALLOW_WIT:
         return True if ("?" in low or len(c.split()) >= 6) else False
 
