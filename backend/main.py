@@ -533,6 +533,70 @@ def remember_ngrams(text: str) -> None:
     except Exception:
         pass
 
+_BAD_ENDINGS = {
+    "for","to","and","but","or","so","because","with","like","of","on","in","at","as",
+    "how","what","why","when","where","who","which","that","this","these","those",
+    "do","does","did","is","are","was","were","be","been","being",
+    "the","a","an"
+}
+
+def _clean_spaces(s: str) -> str:
+    s = re.sub(r"\s+", " ", (s or "").strip())
+    s = re.sub(r"\s+([?.!,;:])", r"\1", s)
+    return s
+
+def _ends_badly(s: str) -> bool:
+    if not s:
+        return True
+    last = re.findall(r"[A-Za-z']+", s.lower())
+    if not last:
+        return False
+    return last[-1] in _BAD_ENDINGS
+
+def smart_trim_words(text: str, min_words: int = 6, max_words: int = 13, soft_max: int = 16) -> str:
+    """
+    Tries to keep 6–13 words, but:
+      - never cuts mid-clause,
+      - allows up to soft_max to avoid broken endings,
+      - prefers ending on punctuation.
+    """
+    t = _clean_spaces(text)
+    if not t:
+        return ""
+
+    ws = t.split()
+    n = len(ws)
+    if n < min_words:
+        return t
+
+    # If already <= max and ends okay, keep as-is
+    if n <= max_words and not _ends_badly(t):
+        return t
+
+    # Candidate cut positions: prefer punctuation ends
+    end_idxs = []
+    for i in range(min(n, soft_max), min_words - 1, -1):
+        chunk = " ".join(ws[:i]).strip()
+        if chunk.endswith((".", "!", "?", "…")) and not _ends_badly(chunk):
+            end_idxs.append((i, 0))  # best
+        elif not _ends_badly(chunk):
+            end_idxs.append((i, 1))  # okay
+
+    # Prefer within max_words, else allow up to soft_max
+    preferred = [x for x in end_idxs if x[0] <= max_words]
+    if preferred:
+        i, _ = sorted(preferred, key=lambda x: x[1])[0]
+        return _clean_spaces(" ".join(ws[:i]))
+
+    # If nothing good within max, pick best within soft_max
+    if end_idxs:
+        i, _ = sorted(end_idxs, key=lambda x: x[1])[0]
+        return _clean_spaces(" ".join(ws[:i]))
+
+    # last resort: hard cut at max_words, then clean
+    return _clean_spaces(" ".join(ws[:max_words]))
+
+
 # ------------------------------------------------------------------------------
 # Structure fingerprint (kills repeated "same skeleton, new topic" comments)
 # ------------------------------------------------------------------------------
@@ -695,6 +759,18 @@ def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
             toks.append(filler)
         if len(toks) < min_w: break
     return " ".join(toks).strip()
+
+
+def postprocess_comment(text: str, source: str) -> str:
+    text = _clean_spaces(text)  # from Fix 1, or your own cleaner
+
+    # LLM output: allow longer (prevents broken sentences)
+    if source == "llm":
+        return smart_trim_words(text, 6, 16, soft_max=20)
+
+    # Offline/template: shorter is fine
+    return smart_trim_words(text, 6, 13, soft_max=16)
+
 
 # ------------------------------------------------------------------------------
 # Topic / keywords (to keep comments context-aware, not templated)
