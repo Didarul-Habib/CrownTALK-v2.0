@@ -54,6 +54,19 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← 
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
+# Request-scoped nonce (to force reroll variety even with same tweet)
+REQUEST_NONCE: ContextVar[Optional[str]] = ContextVar("REQUEST_NONCE", default=None)
+
+def set_request_nonce(value: Optional[str] = None) -> None:
+    if value:
+        REQUEST_NONCE.set(str(value))
+    else:
+        REQUEST_NONCE.set(os.urandom(8).hex())
+
+def current_nonce() -> str:
+    return REQUEST_NONCE.get(None) or ""
+
+
 # --------------------------------------------------------------------------
 # Pro KOL upgrade switches (all three add-ons)
 # --------------------------------------------------------------------------
@@ -414,6 +427,19 @@ def init_db() -> None:
                 raise
     _locked_init(_safe) if _HAS_FCNTL else _safe()
 
+def get_recent_comments_for_url(url: str, limit: int = 8) -> list[str]:
+    url = (url or "").strip()
+    if not url:
+        return []
+    try:
+        with get_conn() as c:
+            rows = c.execute(
+                "SELECT text FROM comments WHERE url=? ORDER BY id DESC LIMIT ?",
+                (url, int(limit)),
+            ).fetchall()
+        return [r[0] for r in rows if r and r[0]]
+    except Exception:
+        return []
 
 # --------------------------------------------------------------------------
 # Light memory / OTP guards (anti-pattern, anti-repeat)
@@ -1593,16 +1619,48 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
             "script": script}
 
 
-def _rescue_two(tweet_text: str) -> List[str]:
+def _rescue_two(tweet_text: str, nonce: Optional[str] = None) -> List[str]:
     base = re.sub(r"https?://\S+|[@#]\S+", "", tweet_text or "").strip()
-    kw = (re.findall(r"[A-Za-z]{3,}", base) or ["this"])[0].lower()
-    # CT-ish but still single thought, kept short
-    a = enforce_word_count_natural(f"Fair angle on {kw}, makes sense rn", 6, 13)
-    b = enforce_word_count_natural(f"Watching how {kw} actually plays out rn", 6, 13)
-    if not a: a = "Makes sense rn tbh still though right"
-    if not b: b = "Watching where this goes rn tbh still"
-    return [a, b]
+    keys = extract_keywords(base) or ["this"]
+    ents = extract_entities(tweet_text or "")
+    tags = ents.get("cashtags") or []
+    nums = ents.get("numbers") or []
 
+    seed = sha256((tweet_text or "") + "|" + (nonce or current_nonce() or "") + "|" + str(time.time_ns()))[:16]
+    rr = random.Random(int(seed, 16))
+
+    focus = rr.choice(tags or keys or ["this"])
+    n = rr.choice(nums) if nums else ""
+
+    obs_templates = [
+        f"{focus} feels like the real constraint here",
+        f"{focus} is the part people keep hand-waving",
+        f"{focus} only works if execution stays tight",
+        f"{focus} is where the risk actually lives",
+        f"{focus} sounds clean, but edge cases matter",
+    ]
+    q_templates = [
+        f"What breaks first if {focus} scales fast?",
+        f"Where does demand for {focus} come from?",
+        f"How are you measuring {focus} in production?",
+        f"Does {focus} hold up under volatility spikes?",
+        f"Any plan if {focus} gets crowded quickly?",
+    ]
+
+    if n:
+        obs_templates.append(f"{focus} plus {n} is the only detail I care about")
+        q_templates.append(f"Is {n} the trigger for {focus}, or noise?")
+
+    a = enforce_word_count_natural(rr.choice(obs_templates), 6, 13) or ""
+    b = enforce_word_count_natural(rr.choice(q_templates), 6, 13) or ""
+
+    # last-resort safety
+    if not a:
+        a = enforce_word_count_natural(f"Clean framing on {focus}, fewer vibes more specifics", 6, 13)
+    if not b:
+        b = enforce_word_count_natural(f"What would make {focus} fail in practice?", 6, 13)
+
+    return [a, b]
 
 VX_API_BASE = "https://api.vxtwitter.com"
 
@@ -1697,6 +1755,45 @@ def _build_context_json_snippet() -> str:
         "you may quote from it but MUST NOT invent beyond it):\n"
         + blob[:2000]
     )
+
+    def _tweet_anchor_bank(tweet_text: str, max_kw: int = 8) -> list[str]:
+    t = tweet_text or ""
+    ents = extract_entities(t)
+    kws = extract_keywords(t)[:max_kw]
+    anchors: list[str] = []
+    anchors += (ents.get("cashtags") or [])[:6]
+    anchors += (ents.get("numbers") or [])[:6]
+    anchors += kws
+    # unique, preserve order
+    seen = set()
+    out = []
+    for a in anchors:
+        a = (a or "").strip()
+        if not a:
+            continue
+        low = a.lower()
+        if low in seen:
+            continue
+        seen.add(low)
+        out.append(a)
+    return out[:18]
+
+
+def _build_llm_variety_snippet(url: str, tweet_text: str) -> str:
+    # prior outputs for this URL
+    prev = get_recent_comments_for_url(url, limit=6) if url else []
+    anchors = _tweet_anchor_bank(tweet_text)
+
+    parts = []
+    if anchors:
+        parts.append("Anchor bank (each comment MUST include >=1 item): " + ", ".join(anchors))
+    if prev:
+        # keep it short to avoid prompt bloat
+        parts.append("Avoid reusing these earlier replies (new angle + new wording): " + " | ".join(prev[:6]))
+    nonce = current_nonce()
+    if nonce:
+        parts.append(f"Reroll nonce: {nonce} (use it to vary angle/wording)")
+    return "\n".join(parts).strip()
 
 
 def _extract_handle_from_url(url: str) -> Optional[str]:
@@ -1793,30 +1890,38 @@ TAIL_END_STOPWORDS = {
     "as","their","for","to","of","that","this","but","and","or","on","in","with"
 }
 
-def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
+# =======================================
+# D) enforce_word_count_natural upgrade
+# =======================================
+def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 18) -> str:
     """
-    Shared final cleaner for ALL comments (offline + Groq + OpenAI + Gemini).
+    Final cleaner for ALL comments (offline + Groq + OpenAI + Gemini).
+
     - strips links/handles/emojis
-    - enforces 6–13 tokens
-    - cuts second polite clause ("thanks for sharing" etc)
-    - removes some AI-ish fillers
-    - adds '?' to clear questions
-    - drops obviously cut-off endings like "... as / ... their / ... for"
+    - enforces 6–18 tokens (soft cap; tries to cut at sentence boundary)
+    - removes obviously dangling tails like '... as / ... their / ... for / ... the'
+    - patches a few common half-sentence endings
+    - runs KOL polish + pro polish
+
+    ✅ Upgrade:
+    - final "broken tail" cleanup to prevent unfinished endings after truncation
     """
+    if not raw:
+        return ""
+
     txt = _sanitize_comment(raw)
     txt = kol_polish(txt)
 
-    # kill ultra-generic openers like "love that", "excited to see"
     txt_low = txt.lower().lstrip()
+
     bad_starts = [
-        "love that ","love this ","love the ","love your ",
-        "excited to see","excited for","can't wait to","cant wait to",
-        "glad to see","happy to see","this is huge","this is massive",
-        "this could be huge","this is insane",
+        "love that ", "love this ", "love the ", "love your ",
+        "excited to see", "excited for", "can't wait to", "cant wait to",
+        "glad to see", "happy to see",
+        "this is huge", "this is massive", "this could be huge", "this is insane",
     ]
     for bs in bad_starts:
         if txt_low.startswith(bs):
-            # drop the opener chunk
             txt_low = txt_low[len(bs):].lstrip()
             txt = txt_low
             break
@@ -1824,17 +1929,38 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     toks = words(txt)
     if not toks:
         return ""
-    if len(toks) > max_w:
-        toks = toks[:max_w]
 
-    # 🚫 drop dangling tail words ("as / their / for / to / of / that / this / but / and / or / on / in / with")
-    while toks and toks[-1].lower() in TAIL_END_STOPWORDS:
+    # If too long, try to cut near a sentence boundary around max_w
+    if len(toks) > max_w:
+        cut = None
+        # look from max_w backwards a bit for '.', '!' or '?'
+        for i in range(max_w, max(0, max_w - 5), -1):
+            if toks[i - 1].endswith((".", "!", "?")):
+                cut = i
+                break
+        if cut is None:
+            # or a bit after max_w
+            upper = min(len(toks), max_w + 5)
+            for i in range(max_w + 1, upper + 1):
+                if toks[i - 1].endswith((".", "!", "?")):
+                    cut = i
+                    break
+        if cut is None:
+            cut = max_w
+        toks = toks[:cut]
+
+    # Tail stopwords that often indicate truncation
+    tail_stop = {
+        "as", "their", "for", "to", "of", "that", "this", "but",
+        "and", "or", "on", "in", "with", "the",
+    }
+    while toks and toks[-1].lower() in tail_stop:
         toks.pop()
 
     if len(toks) < min_w:
         return ""
 
-    fillers = ["notably", "overall", "net", "frankly", "basically"]
+    fillers = ["basically", "overall", "notably", "frankly", "honestly"]
     i = 0
     while len(toks) < min_w and i < len(fillers):
         toks.append(fillers[i])
@@ -1842,23 +1968,61 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
 
     out = " ".join(toks).strip()
 
-    # Enforce single thought: strip second clause like "thanks for sharing"
+    # Enforce single thought
     out = _strip_second_clause(out)
 
-    # Remove our own filler if now pointless
+    # Simple AI-ish filler cleanup
     low = out.lower()
     if any(b in low for b in AI_BLOCKLIST) or contains_generic_phrase(low):
         out = " ".join(
             t for t in out.split()
             if t.lower() not in {"honestly", "tbh", "still", "though"}
-        ) or out
-        out = out.strip()
+        ).strip() or out
 
+    # ---- patch obvious half-sentences ----
+    base = out
+    low = base.lower().rstrip()
+
+    fixes = [
+        (" payment problem but what's the",
+         " payment problem but what's the real UX like in practice?"),
+        (" but what's the",
+         " but what's the real impact for users?"),
+        (" what's the",
+         " what's the real impact for users?"),
+        ("what's the",
+         "what's the real impact for users?"),
+        ("what kind of user",
+         "what kind of user actually sticks around long term?"),
+        ("is a high",
+         "is a high bar to clear."),
+    ]
+    for pat, repl in fixes:
+        if low.endswith(pat):
+            out = base[: len(base) - len(pat)] + repl
+            break
+
+    # ensure ? on genuine questions/statements
     out = _ensure_question_punctuation(out)
 
     if PRO_KOL_POLISH:
         out = pro_kol_polish(out, topic=detect_topic(raw or ""))
-    return out
+
+    # ✅ NEW: final tail cleanup for truncated / broken endings
+    tail_bad = {
+        "and", "or", "but", "so", "to", "of", "for", "with",
+        "on", "in", "the", "a", "an", "as", "this", "that"
+    }
+    toks2 = out.split()
+    while toks2 and toks2[-1].lower().strip(".,;:—-") in tail_bad:
+        toks2.pop()
+    out = " ".join(toks2).strip()
+    out = re.sub(r"[,\-–—]+$", "", out).strip()
+
+    # re-add question mark if we accidentally trimmed to a question form
+    out = _ensure_question_punctuation(out)
+
+    return out.strip()
 
 def guess_mode(text: str) -> str:
     """
@@ -2058,18 +2222,26 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
     return [a, b]
 
 
-def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
+# =========================
+# C) enforce_unique upgrade
+# =========================
+def enforce_unique(
+    candidates: list[str],
+    tweet_text: Optional[str] = None,
+    url: str = "",
+    lang: str = "en",
+) -> list[str]:
     """
     Enforce uniqueness + non-generic quality for a set of candidate comments.
 
-    What it does:
-    - sanitize + enforce 6–13 tokens
-    - drop generic phrases
-    - skip past repeats / templates / n-gram overlap / near-duplicates
-    - prefer two comments with different "modes" (statement + question when possible)
-    - commits ONLY the final selected comments to the DB (so we don't burn patterns)
+    Upgrades:
+    - Blocks repeating the same "frame" (voice|mode|Q/S|skeleton) via frame_seen(...)
+    - Commits ONLY the final selected comments to the DB WITH url/lang
+    - Remembers frames via remember_frame(...) to improve reroll variety
     """
     tweet_text = (tweet_text or "").strip()
+    url = (url or "").strip()
+    lang = (lang or "en").strip() or "en"
 
     def _prep(x: str) -> str:
         # enforce_word_count_natural already sanitizes links/handles/emojis + cuts 2nd clause
@@ -2107,6 +2279,10 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
         if tweet_text and not hallucination_safe(c, tweet_text):
             continue
 
+        # ✅ NEW: Block repeating the same voice+mode+skeleton "frame"
+        if tweet_text and frame_seen(c, tweet_text):
+            continue
+
         # Per-request structural dedupe
         fp = style_fingerprint(c)
         if fp and fp in seen_fps:
@@ -2132,7 +2308,6 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
 
     # ----------------------------
     # Pass 2: relaxed filtering if we still need output
-    # (avoid hard-failing into the same rescue lines)
     # ----------------------------
     if len(picked) < 2:
         relaxed: list[str] = []
@@ -2162,6 +2337,10 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
             if tweet_text and not hallucination_safe(c, tweet_text):
                 continue
 
+            # ✅ Keep frame blocking in relaxed mode too (helps rerolls)
+            if tweet_text and frame_seen(c, tweet_text):
+                continue
+
             fp = style_fingerprint(c)
             if fp and fp in seen_fps2:
                 continue
@@ -2185,18 +2364,21 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
         elif relaxed:
             picked = pick_two_diverse_text(picked + relaxed)[:2]
 
-    # Commit ONLY what we return (prevents burning good patterns prematurely)
+    # ----------------------------
+    # ✅ Commit ONLY what we return (and include url/lang + frame memory)
+    # ----------------------------
     for c in picked:
         try:
-            remember_comment(c)
+            remember_comment(c, url=url, lang=lang)
             remember_template(c)
             remember_opener(_openers(c))
             remember_ngrams(c)
+            if tweet_text:
+                remember_frame(c, tweet_text)
         except Exception:
             pass
 
     return picked[:2]
-
 
 PRO_BAD_PHRASES = {
     "wow", "exciting", "huge", "insane", "amazing", "awesome",
@@ -2706,8 +2888,16 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
+        "Return exactly two distinct comments (JSON array or two lines).\n"
+        "Hard rules:\n"
+        "- 6–13 tokens each.\n"
+        "- One thought only.\n"
+        "- No emojis/hashtags/links.\n"
+        "- Do NOT invent facts.\n"
+        "- Do NOT introduce new tickers or big numbers.\n"
+        "- Each comment must include >=1 anchor from the anchor bank.\n"
     )
+    user_prompt += "\n" + _build_llm_variety_snippet(url, tweet_text) + "\n"
     user_prompt += _build_context_json_snippet()
 
     resp = None
@@ -2797,8 +2987,16 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
+        "Return exactly two distinct comments (JSON array or two lines).\n"
+        "Hard rules:\n"
+        "- 6–13 tokens each.\n"
+        "- One thought only.\n"
+        "- No emojis/hashtags/links.\n"
+        "- Do NOT invent facts.\n"
+        "- Do NOT introduce new tickers or big numbers.\n"
+        "- Each comment must include >=1 anchor from the anchor bank.\n"
     )
+    user_prompt += "\n" + _build_llm_variety_snippet(url, tweet_text) + "\n"
     user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
 
@@ -2840,8 +3038,16 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
+        "Return exactly two distinct comments (JSON array or two lines).\n"
+        "Hard rules:\n"
+        "- 6–13 tokens each.\n"
+        "- One thought only.\n"
+        "- No emojis/hashtags/links.\n"
+        "- Do NOT invent facts.\n"
+        "- Do NOT introduce new tickers or big numbers.\n"
+        "- Each comment must include >=1 anchor from the anchor bank.\n"
     )
+    user_prompt += "\n" + _build_llm_variety_snippet(url, tweet_text) + "\n"
     user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
     prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
@@ -3048,97 +3254,102 @@ def generate_two_comments_with_providers(
     url: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Hybrid provider strategy:
+    Strategy:
 
-    - Try all enabled LLM providers (Groq/OpenAI/Gemini) in random order.
-    - Use ONLY their outputs first.
-    - If after all providers we still don't have 2 good comments,
-      THEN and only then fall back to the offline generator.
+    1. Try all enabled LLM providers (Groq / OpenAI / Gemini) in random order.
+    2. If we still have < 2 comments, try the lightweight offline_two_comments.
+    3. If we still have < 2, THEN use the heavier offline generator.generate_two.
+    4. If we STILL have < 2, use _rescue_two.
+
+    So the big offline generator is only used if all provider paths failed
+    to give 2 acceptable comments.
     """
-    candidates: list[str] = []
+    candidates: List[str] = []
 
     providers = _available_providers()
     have_providers = bool(providers)
 
-    # ----------------------------
-    # 1) Try LLM providers
-    # ----------------------------
+    # 1) Online providers (Groq/OpenAI/Gemini)
     if have_providers:
         random.shuffle(providers)
         for name, fn in providers:
             try:
-                more = fn(tweet_text, author)
-                if more:
-                    candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
+                more = fn(tweet_text, author, url=url or "") or []
             except Exception as e:
                 logger.warning("%s provider failed: %s", name, e)
+                more = []
+
+            if more:
+                candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
 
             if len(candidates) >= 2:
                 break
 
-    # ----------------------------
-    # 2) Offline fallback ONLY if providers didn't yield 2 comments
-    # ----------------------------
+    # 2) Lightweight offline (rule-based) comments
     if len(candidates) < 2:
         try:
-            offline = offline_two_comments(tweet_text, author)
-            if offline:
-                candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
+            more = offline_two_comments(tweet_text, author) or []
         except Exception as e:
-            logger.warning("Offline fallback (offline_two_comments) failed: %s", e)
+            logger.warning("offline_two_comments failed: %s", e)
+            more = []
 
-    # 3) If we still somehow have <2 AND no providers are configured at all,
-    # use the full bucket-based generator as a last resort (pure offline mode).
-    if not have_providers and len(candidates) < 2:
+        if more:
+            candidates = enforce_unique(candidates + more, tweet_text=tweet_text)
+
+    # 3) Heavy offline generator – ONLY if everything above failed to give 2
+    if len(candidates) < 2:
         try:
-            extra_items = generator.generate_two(
+            raw_items = generator.generate_two(
                 tweet_text,
                 author or None,
                 handle,
                 lang,
                 url=url,
-            )
-            extra: list[str] = []
-            for i in (extra_items or []):
-                if isinstance(i, dict):
-                    txt = i.get("text")
+            ) or []
+            extra: List[str] = []
+            for item in raw_items:
+                if isinstance(item, dict):
+                    txt = item.get("text", "")
                 else:
-                    txt = i
-                txt = (str(txt).strip() if txt is not None else "")
+                    txt = str(item)
+                txt = enforce_word_count_natural(txt)
                 if txt:
                     extra.append(txt)
             if extra:
                 candidates = enforce_unique(candidates + extra, tweet_text=tweet_text)
         except Exception as e:
-            logger.warning("Total offline generator failure: %s", e)
+            logger.warning("generator.generate_two failed: %s", e)
 
-    # Absolute last-chance if *nothing* worked and there are no providers
-    if not have_providers and not candidates:
-        candidates = _rescue_two(tweet_text)
+    # 4) Tiny hardcoded rescue if we somehow still don't have 2
+    if len(candidates) < 2:
+        try:
+            rescue = _rescue_two(tweet_text) or []
+        except Exception:
+            rescue = []
+        if rescue:
+            candidates = enforce_unique(candidates + rescue, tweet_text=tweet_text)
 
+    # Final trim & safety
     candidates = [c for c in candidates if c][:2]
 
-    # ------------------------------------------------------------------
-    # Pro KOL rewrite/regenerate pass (still LLM-based; keeps rule system)
-    # ------------------------------------------------------------------
-    if PRO_KOL_REWRITE and candidates:
+    # Optional pro KOL rewrite (only when we already have 2 + providers exist)
+    if PRO_KOL_REWRITE and len(candidates) == 2 and have_providers:
         needs = (
-            len(candidates) < 2
-            or (PRO_KOL_STRICT and any(not pro_kol_ok(c, tweet_text) for c in candidates))
-            or (len(candidates) == 2 and _pair_too_similar(candidates[0], candidates[1]))
-            or (len(candidates) == 2 and candidates[0].split()[0].lower() == candidates[1].split()[0].lower())
+            (PRO_KOL_STRICT and any(not pro_kol_ok(c, tweet_text) for c in candidates))
+            or _pair_too_similar(candidates[0], candidates[1])
+            or candidates[0].split()[0].lower() == candidates[1].split()[0].lower()
             or any(template_burned(c) for c in candidates)
         )
-        if needs and have_providers:
-            improved = pro_kol_rewrite_pair(tweet_text, author, candidates)
+        if needs:
+            try:
+                improved = pro_kol_rewrite_pair(tweet_text, author, candidates)
+            except Exception as e:
+                logger.warning("pro_kol_rewrite_pair failed: %s", e)
+                improved = None
             if improved and len(improved) >= 2:
                 candidates = improved[:2]
 
-    out: List[Dict[str, Any]] = []
-    for c in candidates:
-        out.append({"lang": lang or "en", "text": c})
-
-    return out[:2]
+    return [{"lang": lang or "en", "text": c} for c in candidates[:2]]
 
 # --------------------------------------------------------------------------
 # API routes (batching + pacing)
