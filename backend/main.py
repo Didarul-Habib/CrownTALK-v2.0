@@ -2878,7 +2878,7 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
     return base
 
 
-def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
+def groq_two_comments(tweet_text: str, author: str | None, **kwargs) -> list[str]:
     """
     Groq path:
     - ONLY uses Groq output (plus parsing mined from the same Groq text).
@@ -2893,16 +2893,8 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines).\n"
-        "Hard rules:\n"
-        "- 6–13 tokens each.\n"
-        "- One thought only.\n"
-        "- No emojis/hashtags/links.\n"
-        "- Do NOT invent facts.\n"
-        "- Do NOT introduce new tickers or big numbers.\n"
-        "- Each comment must include >=1 anchor from the anchor bank.\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
     )
-    user_prompt += "\n" + _build_llm_variety_snippet(url, tweet_text) + "\n"
     user_prompt += _build_context_json_snippet()
 
     resp = None
@@ -2950,7 +2942,6 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         },
     )
 
-    # 1) primary candidates from JSON / structured output
     candidates = parse_two_comments_flex(raw)
     candidates = [
         restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text)
@@ -2959,7 +2950,6 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
 
-    # 2) If we still have <2, mine extra sentences from the *same* Groq text
     if len(candidates) < 2:
         sents = re.split(r"[.!?]\s+", raw)
         sents = [
@@ -2970,7 +2960,6 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         sents = [s for s in sents if 6 <= len(words(s)) <= 13]
         candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
 
-    # 3) De-duplicate near-identicals using only Groq content
     if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
         sents = re.split(r"[.!?]\s+", raw)
         sents = [
@@ -2986,22 +2975,15 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     return candidates[:2]
 
 
-def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+
+def openai_two_comments(tweet_text: str, author: Optional[str], **kwargs) -> list[str]:
     if not (USE_OPENAI and _openai_client):
         return []
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines).\n"
-        "Hard rules:\n"
-        "- 6–13 tokens each.\n"
-        "- One thought only.\n"
-        "- No emojis/hashtags/links.\n"
-        "- Do NOT invent facts.\n"
-        "- Do NOT introduce new tickers or big numbers.\n"
-        "- Each comment must include >=1 anchor from the anchor bank.\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
     )
-    user_prompt += "\n" + _build_llm_variety_snippet(url, tweet_text) + "\n"
     user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
 
@@ -3037,22 +3019,14 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
 
 
 
-def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+def gemini_two_comments(tweet_text: str, author: Optional[str], **kwargs) -> list[str]:
     if not (USE_GEMINI and _gemini_model):
         return []
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines).\n"
-        "Hard rules:\n"
-        "- 6–13 tokens each.\n"
-        "- One thought only.\n"
-        "- No emojis/hashtags/links.\n"
-        "- Do NOT invent facts.\n"
-        "- Do NOT introduce new tickers or big numbers.\n"
-        "- Each comment must include >=1 anchor from the anchor bank.\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
     )
-    user_prompt += "\n" + _build_llm_variety_snippet(url, tweet_text) + "\n"
     user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
     prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
@@ -3089,6 +3063,7 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
 
     return candidates[:2]
+
 
 def _available_providers() -> list[tuple[str, callable]]:
     """
