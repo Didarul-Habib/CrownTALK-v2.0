@@ -30,6 +30,11 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← 
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
+# How many raw LLM comments we ask for per tweet
+LLM_CANDIDATE_BATCH = int(os.environ.get("LLM_CANDIDATE_BATCH", "6"))
+# Hard cap on how many raw candidates we try to parse from the LLM response
+LLM_MAX_RAW_CANDIDATES = int(os.environ.get("LLM_MAX_RAW_CANDIDATES", "12"))
+
 # ------------------------------------------------------------------------------
 # Pro KOL upgrade switches (all three add-ons)
 # ------------------------------------------------------------------------------
@@ -277,6 +282,9 @@ if USE_GEMINI:
     except Exception:
         _gemini_model = None
         USE_GEMINI = False
+
+
+USE_OFFLINE_GENERATOR = os.getenv("USE_OFFLINE_GENERATOR", "0") == "1"
 
 # ------------------------------------------------------------------------------
 # Keepalive (Render free – optional)
@@ -2411,6 +2419,15 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
 # LLM parsing helper shared by providers
 # ------------------------------------------------------------------------------
 def parse_two_comments_flex(raw_text: str) -> list[str]:
+    """
+    Flexible parser for LLM output.
+
+    New behavior:
+    - Tries to read a JSON array of strings first (preferred).
+    - If that fails, falls back to lines / bullets / quoted strings.
+    - Returns up to LLM_MAX_RAW_CANDIDATES candidates (not just 2).
+    """
+    # 1) Try JSON array first
     out: list[str] = []
     try:
         m = re.search(r"\[[\s\S]*\]", raw_text)
@@ -2422,24 +2439,35 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
             out = [str(x).strip() for x in data if str(x).strip()]
     except Exception:
         out = []
-    if len(out) >= 2:
-        return out[:2]
+
+    if out:
+        return out[:LLM_MAX_RAW_CANDIDATES]
+
+    # 2) Fallbacks when JSON parse fails
+
+    # a) Quoted strings
     quoted = re.findall(r'["“](.+?)["”]', raw_text)
-    if len(quoted) >= 2:
-        return [q.strip() for q in quoted[:2]]
+    if quoted:
+        return [q.strip() for q in quoted[:LLM_MAX_RAW_CANDIDATES]]
+
+    # b) Numbered / bulleted list
     parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|[-•*])\s*", raw_text)
     parts = [p.strip() for p in parts if p and not p.isspace()]
     parts = [p for p in parts if len(p.split()) >= 3]
-    if len(parts) >= 2:
-        return parts[:2]
+    if parts:
+        return parts[:LLM_MAX_RAW_CANDIDATES]
+
+    # c) Plain lines
     lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
-    if len(lines) >= 2:
-        return lines[:2]
+    if lines:
+        return lines[:LLM_MAX_RAW_CANDIDATES]
+
+    # d) Last resort: split on separators like ';' or '/'
     m2 = re.split(r"\s*[;|/\\]+\s*", raw_text)
     if len(m2) >= 2:
-        return [m2[0].strip(), m2[1].strip()]
-    return []
+        return [s.strip() for s in m2[:LLM_MAX_RAW_CANDIDATES]]
 
+    return []
 # ------------------------------------------------------------------------------
 # Groq generator (exactly 2, 6–13 words, tolerant parsing)
 # ------------------------------------------------------------------------------
@@ -2505,7 +2533,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
 
     tries = 0
-    while len(candidates) < 2 and tries < 2:
+    while len(candidates) < 2 and tries < 2 and USE_OFFLINE_GENERATOR:
         tries += 1
         candidates = enforce_unique(
             candidates + offline_two_comments(tweet_text, author),
@@ -2540,12 +2568,30 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 # ------------------------------------------------------------------------------
 def _llm_sys_prompt(mode_line: str = "") -> str:
     base = (
+         "You generate a batch of short reply candidates to a tweet.\n"
+        "\n"
+        "Hard rules:\n"
+        f"- Output exactly {LLM_CANDIDATE_BATCH} candidate comments.\n"
+        "- Each comment must be 6–13 tokens.\n"
+        "- One thought per comment (no second clause like 'thanks for sharing').\n"
+        "- No emojis, hashtags, or links.\n"
+        "- Do NOT invent details not present in the tweet.\n"
+        "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
+        "\n"
         "Human style:\n"
         "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
-        "- Write each line as an inner reaction, not a public compliment (like a thought you’d type into a chat with a friend).\n"
+        "- Write each line as an inner reaction to the post, not a public compliment.\n"
         "- Avoid hype/fanboy language and vague praise.\n"
         "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
         "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
+        "\n"
+        "Diversity:\n"
+        "- Mix claims, questions, and cautious risk notes across the batch.\n"
+        "- Make the comments meaningfully different from each other.\n"
+        "\n"
+        "Output format:\n"
+        f"- Return a JSON array of {LLM_CANDIDATE_BATCH} strings: [\"...\", \"...\", ...].\n"
+        f"- If not JSON, return {LLM_CANDIDATE_BATCH} lines separated by newlines.\n"
     )
 
     # Voice roulette (per-request persona)
@@ -2586,10 +2632,11 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         raise RuntimeError("OpenAI disabled or client not available")
 
     user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
-    user_prompt += _build_context_json_snippet()
+    f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        f"Return {LLM_CANDIDATE_BATCH} distinct candidate comments "
+        f"(JSON array or {LLM_CANDIDATE_BATCH} lines)."
+)
+user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
     resp = _openai_client.chat.completions.create(
         model=OPENAI_MODEL,
@@ -2607,7 +2654,11 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
     if len(candidates) < 2:
         raise RuntimeError("OpenAI did not produce two valid comments")
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+    if (
+        USE_OFFLINE_GENERATOR
+        and len(candidates) >= 2
+        and _pair_too_similar(candidates[0], candidates[1])
+    ):
         extra = offline_two_comments(tweet_text, author)
         merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
         if len(merged) >= 2:
@@ -2619,10 +2670,11 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         raise RuntimeError("Gemini disabled or client not available")
 
     user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
-    user_prompt += _build_context_json_snippet()
+    f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        f"Return {LLM_CANDIDATE_BATCH} distinct candidate comments "
+        f"(JSON array or {LLM_CANDIDATE_BATCH} lines)."
+)
+user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
     prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
     resp = _gemini_model.generate_content(prompt)
@@ -2645,7 +2697,11 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
     if len(candidates) < 2:
         raise RuntimeError("Gemini did not produce two valid comments")
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+    if (
+        USE_OFFLINE_GENERATOR
+        and len(candidates) >= 2
+        and _pair_too_similar(candidates[0], candidates[1])
+    ):
         extra = offline_two_comments(tweet_text, author)
         merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
         if len(merged) >= 2:
@@ -2860,14 +2916,20 @@ def generate_two_comments_with_providers(
                 break
 
     # If we still don't have 2 comments, offline generator rescues
-    if len(candidates) < 2:
+    if len(candidates) < 2 and USE_OFFLINE_GENERATOR:
         try:
-            offline = offline_two_comments(tweet_text, author)
-            if offline:
-                candidates = enforce_unique(candidates + offline)
+            extra_items = generator.generate_two(
+                tweet_text,
+                author or None,
+                handle,
+                lang,
+                url=url,
+            )
+            
+            if extra:
+                candidates = enforce_unique(candidates + extra)
         except Exception as e:
-            logger.warning("Offline generator failed: %s", e)
-
+           
     # Last-chance fallback: call OfflineCommentGenerator directly
     if len(candidates) < 2:
         try:
@@ -2895,9 +2957,9 @@ def generate_two_comments_with_providers(
         except Exception as e:
             logger.exception("Total failure in provider cascade: %s", e)
 
-    # If still nothing, hard fallback to 2 simple offline lines
+    # If still nothing, keep empty; caller will handle
     if not candidates:
-        raw = _rescue_two(tweet_text)
+        candidates = []
         # Don't over-filter the rescue pair; we just need *something*.
         candidates = raw
 
@@ -2925,7 +2987,7 @@ def generate_two_comments_with_providers(
         out.append({"lang": lang or "en", "text": c})
 
     # If somehow we still ended up with < 2 dicts, ask offline generator directly
-    if len(out) < 2:
+    if len(out) < 2 and USE_OFFLINE_GENERATOR:
         try:
             extra_items = generator.generate_two(
                 tweet_text,
