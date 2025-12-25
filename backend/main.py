@@ -2379,15 +2379,20 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     )
 
     if len(candidates) < 2:
-        sents = re.split(r"[.!?]\s+", raw)
-        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
-        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-        candidates = enforce_unique(candidates + sents[:2]candidates = enforce_unique(candidates + sents[:2],
+    sents = re.split(r"[.!?]\s+", raw)
+    sents = [
+        restore_decimals_and_tickers(enforce_word_count_natural(s), tweet_text)
+        for s in sents
+        if s.strip()
+    ]
+    sents = [s for s in sents if 6 <= len(words(s)) <= 13]
+
+    candidates = enforce_unique(
+        candidates + sents[:2],
         tweet_text=tweet_text,
         url=kwargs.get("url", "") or "",
         lang="en",
     )
-
 
     tries = 0
     while len(candidates) < 2 and tries < 2:
