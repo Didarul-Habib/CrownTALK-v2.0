@@ -34,6 +34,7 @@ KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 LLM_CANDIDATE_BATCH = int(os.environ.get("LLM_CANDIDATE_BATCH", "6"))
 # Hard cap on how many raw candidates we try to parse from the LLM response
 LLM_MAX_RAW_CANDIDATES = int(os.environ.get("LLM_MAX_RAW_CANDIDATES", "12"))
+LLM_MAX_RETRIES = int(os.environ.get("LLM_MAX_RETRIES", "2"))
 
 # ------------------------------------------------------------------------------
 # Pro KOL upgrade switches (all three add-ons)
@@ -1291,6 +1292,63 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     if PRO_KOL_POLISH:
         out = pro_kol_polish(out, topic=detect_topic(raw or ""))
     return out
+
+PRO_POLISH_REPLACEMENTS = [
+    (r"^(wow|omg|yo|bro)\b[,\s]*", ""),
+    (r"\b(exciting|hype)\b", "notable"),
+    (r"\b(huge|massive)\b", "meaningful"),
+    (r"\b(insane)\b", "wild"),
+    (r"\b(amazing|awesome|incredible)\b", "solid"),
+    (r"\bsounds interesting\b", "worth watching"),
+    (r"[!]+", ""),
+]
+
+def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
+    """
+    Fix common LLM/tokenization artifacts:
+    - if tweet has 17.99 and comment contains '17 99', restore '17.99'
+    - if tweet has $SOL and comment contains 'SOL', restore '$SOL' (crypto-only)
+    """
+    c = comment or ""
+    t = tweet_text or ""
+
+    # decimals
+    for dec in re.findall(r"\d+\.\d+", t):
+        a, b = dec.split(".", 1)
+        spaced = f"{a} {b}"
+        c = re.sub(rf"\b{re.escape(spaced)}\b", dec, c)
+
+    # tickers (only if tweet looks crypto-ish)
+    if is_crypto_tweet(t):
+        for cashtag in re.findall(r"\$\w{2,15}", t):
+            sym = cashtag[1:]
+            # replace standalone symbol if $ version not already present
+            if cashtag not in c and re.search(rf"\b{re.escape(sym)}\b", c):
+                c = re.sub(rf"\b{re.escape(sym)}\b", cashtag, c, count=1)
+
+    return c
+
+
+def pro_kol_polish(text: str, topic: str = "") -> str:
+    """
+    Light touch polish. Keeps human tone.
+    For meme posts, we keep more personality.
+    """
+    t = (text or "").strip()
+    if not t:
+        return ""
+
+    # If meme, do less aggressive tone flattening
+    is_meme = (topic == "meme")
+    for pat, rep in PRO_POLISH_REPLACEMENTS:
+        if is_meme and "sounds interesting" in pat:
+            continue
+        t = re.sub(pat, rep, t, flags=re.I)
+
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+
 
 def kol_polish(text: str) -> str:
     t = (text or "").strip()
