@@ -1488,6 +1488,9 @@ class OfflineCommentGenerator:
     def _accept(self, line: str) -> bool:
         if self._violates_ai_blocklist(line):
             return False
+        # Hard-ban overused template fragments
+        if contains_pattern_phrase(line):
+            return False
         if not self._diversity_ok(line):
             return False
         if comment_seen(line):
@@ -1498,6 +1501,7 @@ class OfflineCommentGenerator:
         if not pro_kol_ok(line):
             return False
         return True
+
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
         remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
@@ -2100,7 +2104,7 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     seen_fps: set[str] = set()
     thesis_seen = False
 
-    for raw in (candidates or []):
+	for raw in (candidates or []):
         c = _prep(raw)
         if not c:
             continue
@@ -2115,12 +2119,15 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
         if contains_generic_phrase(c):
             continue
 
+        # Drop ultra-templatey CT phrases ("risk/reward around X", etc.)
+        if contains_pattern_phrase(c):
+            continue
+
         if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
             continue
 
         if tweet_text and not hallucination_safe(c, tweet_text):
             continue
-
         # Per-request structural dedupe
         fp = style_fingerprint(c)
         if fp and fp in seen_fps:
@@ -2167,9 +2174,12 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
             if contains_generic_phrase(c):
                 continue
 
-            if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
+            # Still never allow pattern phrases, even in relaxed mode
+            if contains_pattern_phrase(c):
                 continue
 
+            if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
+                continue
             if tweet_text and not hallucination_safe(c, tweet_text):
                 continue
 
@@ -2218,6 +2228,35 @@ PRO_OPERATOR_WORDS = {
     "positioning","constraints","tradeoffs","demand","supply",
     "mechanics","pricing","distribution","sizing","volatility","edge",
 }
+
+# Overused "template-y" fragments we never want in final comments
+PATTERN_PHRASES = {
+    "signal over noise:",
+    "quick take:",
+    "nuts and bolts:",
+
+    "risk mostly hides in",
+    "risk/reward around",
+    "risk reward around",
+    "risk profile matters more than hype",
+    "risk profile matters more than narratives fr",
+
+    "it lives or dies on",
+    "execution shows up as",
+    "the market will reward",
+    "most errors start before",
+
+    "and incentives line up",
+    "nice blend of risk and conviction for",
+    "is where the real risk sits rn",
+    "hold when volatility spikes",
+    "is the practical hinge",
+}
+
+def contains_pattern_phrase(text: str) -> bool:
+    low = (text or "").lower()
+    return any(p in low for p in PATTERN_PHRASES)
+
 
 def extract_entities(tweet_text: str) -> dict:
     t = tweet_text or ""
@@ -2390,18 +2429,12 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
         return False
     low = c.lower()
 
-    # ✅ New: comment must anchor to the tweet (ticker/number/keyword)
-    if tweet_text and not has_tweet_anchor(c, tweet_text):
+    # Never allow hard-coded template-y phrases (risk/reward around X, incentives line up, etc.)
+    if contains_pattern_phrase(c):
         return False
 
-    topic = detect_topic(tweet_text or "")
-
-    # hard rejects (unless meme and PRO_KOL_ALLOW_WIT)
-    if any(p in low for p in PRO_BAD_PHRASES):
-        if not (topic == "meme" and PRO_KOL_ALLOW_WIT):
-            return False
-
-    if contains_generic_phrase(c):
+    # ✅ New: comment must anchor to the tweet (ticker/number/keyword)
+    if tweet_text and not has_tweet_anchor(c, tweet_text):
         return False
 
     # must not be pure vague praise
@@ -2796,6 +2829,15 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
             "first principles",
             "quick take:",
             "nuts and bolts:",
+            "risk mostly hides in",
+            "risk/reward around",
+            "risk reward around",
+            "execution shows up as",
+            "the market will reward",
+            "and incentives line up",
+            "nice blend of risk and conviction for",
+            "is where the real risk sits rn",
+            "hold when volatility spikes",
         ],
     }
 
