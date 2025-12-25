@@ -8,6 +8,30 @@ from urllib.parse import urlparse
 
 import requests
 from flask import Flask, request, jsonify
+import time
+from typing import Any, Dict
+
+DEBUG_LAST_LLM: Dict[str, Any] = {
+    "groq": None,
+    "openai": None,
+    "gemini": None,
+}
+
+
+def _debug_store(provider: str, payload: Dict[str, Any]) -> None:
+    """
+    Store the latest raw LLM output for inspection via /debug.
+    Safe to fail silently – this is only for debugging.
+    """
+    try:
+        DEBUG_LAST_LLM[provider] = {
+            "ts": time.time(),
+            **payload,
+        }
+    except Exception:
+        # never break main flow for debug
+        pass
+
 
 # Helpers from utils.py (already deployed)
 from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
@@ -2510,35 +2534,141 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
 # ------------------------------------------------------------------------------
 # LLM parsing helper shared by providers
 # ------------------------------------------------------------------------------
-def parse_two_comments_flex(raw_text: str) -> list[str]:
-    out: list[str] = []
-    try:
-        m = re.search(r"\[[\s\S]*\]", raw_text)
-        candidate = m.group(0) if m else raw_text
-        data = json.loads(candidate)
-        if isinstance(data, dict):
-            data = data.get("comments") or data.get("items") or data.get("data")
-        if isinstance(data, list):
-            out = [str(x).strip() for x in data if str(x).strip()]
-    except Exception:
-        out = []
-    if len(out) >= 2:
-        return out[:2]
-    quoted = re.findall(r'["“](.+?)["”]', raw_text)
-    if len(quoted) >= 2:
-        return [q.strip() for q in quoted[:2]]
-    parts = re.split(r"(?:^|\n)\s*(?:\d+[\).\:-]|[-•*])\s*", raw_text)
-    parts = [p.strip() for p in parts if p and not p.isspace()]
-    parts = [p for p in parts if len(p.split()) >= 3]
-    if len(parts) >= 2:
-        return parts[:2]
-    lines = [ln.strip() for ln in raw_text.splitlines() if ln.strip()]
-    if len(lines) >= 2:
-        return lines[:2]
-    m2 = re.split(r"\s*[;|/\\]+\s*", raw_text)
-    if len(m2) >= 2:
-        return [m2[0].strip(), m2[1].strip()]
-    return []
+import json
+import re
+from typing import List
+
+_JSON_BLOCK_RE = re.compile(r"```(?:json)?(.*?)```", re.DOTALL | re.IGNORECASE)
+
+
+def parse_two_comments_flex(raw: str) -> List[str]:
+    """
+    Robust parser for Groq/OpenAI/Gemini outputs.
+
+    Accepts:
+    - JSON array of strings
+    - JSON array of objects with {comment|text|content|en...}
+    - JSON object with "comments": [...]
+    - JSON object with comment_1/comment_2/en_1/en_2 keys
+    - Plain text with EN #1 / EN #2 lines
+    - Plain text with one-per-line or "c1 || c2"
+
+    Returns up to 2 *distinct* cleaned strings (no word-count filtering here;
+    that still happens later via enforce_word_count_natural etc).
+    """
+    if not raw:
+        return []
+
+    text = raw.strip()
+    if not text:
+        return []
+
+    # 1. If the model wrapped JSON in ```json ...```, strip the fences first
+    m = _JSON_BLOCK_RE.search(text)
+    json_candidate = m.group(1).strip() if m else text
+
+    def _try_json(s: str):
+        # direct load
+        try:
+            return json.loads(s)
+        except Exception:
+            pass
+        # try first {...} or [...] segment within text
+        m2 = re.search(r"(\{.*\}|\[.*\])", s, flags=re.DOTALL)
+        if m2:
+            try:
+                return json.loads(m2.group(1))
+            except Exception:
+                return None
+        return None
+
+    data = _try_json(json_candidate)
+
+    items: List[str] = []
+
+    # 2. JSON array case
+    if isinstance(data, list):
+        for el in data:
+            if isinstance(el, str):
+                items.append(el)
+            elif isinstance(el, dict):
+                for k in ("comment", "text", "content", "en", "en1", "en_1", "en2", "en_2"):
+                    v = el.get(k)
+                    if isinstance(v, str):
+                        items.append(v)
+                        break
+
+    # 3. JSON object case
+    elif isinstance(data, dict):
+        # {"comments": ["..", ".."]} or {"comments": [{text: ...}, ...]}
+        comments = data.get("comments")
+        if isinstance(comments, list):
+            for el in comments:
+                if isinstance(el, str):
+                    items.append(el)
+                elif isinstance(el, dict):
+                    for k in ("comment", "text", "content", "en"):
+                        v = el.get(k)
+                        if isinstance(v, str):
+                            items.append(v)
+                            break
+
+        # {"comment_1": "...", "comment_2": "..."} / etc.
+        for k in (
+            "comment_1", "comment1", "first",
+            "comment_2", "comment2", "second",
+            "en_1", "en1", "en_2", "en2",
+        ):
+            v = data.get(k)
+            if isinstance(v, str):
+                items.append(v)
+
+    # 4. EN #1 / EN #2 format in plain text
+    if not items:
+        m1 = re.search(r"EN\s*#\s*1\s*[:\-]?\s*(.+)", text, flags=re.IGNORECASE)
+        m2 = re.search(r"EN\s*#\s*2\s*[:\-]?\s*(.+)", text, flags=re.IGNORECASE)
+        if m1:
+            items.append(m1.group(1))
+        if m2:
+            items.append(m2.group(1))
+
+    # 5. Fallback: one-per-line or "c1 || c2"
+    if not items:
+        # split by lines, drop bullets
+        lines = [ln.strip(" -*\t\r\n") for ln in text.splitlines()]
+        lines = [ln for ln in lines if ln]
+        if len(lines) >= 2:
+            items = lines[:2]
+        elif len(lines) == 1:
+            parts = [p.strip() for p in re.split(r"\s*\|\|\s*", lines[0]) if p.strip()]
+            items = parts[:2]
+
+    # 6. Final cleanup + dedupe
+    def _clean(s: str) -> str:
+        s = s.strip()
+        if (
+            len(s) >= 2
+            and s[0] in {"'", '"', "“"}
+            and s[-1] in {"'", '"', "”"}
+        ):
+            s = s[1:-1].strip()
+        return s
+
+    cleaned: List[str] = []
+    seen = set()
+    for s in items:
+        if not isinstance(s, str):
+            continue
+        s2 = _clean(s)
+        if not s2:
+            continue
+        if s2 in seen:
+            continue
+        seen.add(s2)
+        cleaned.append(s2)
+
+    return cleaned[:2]
+
 
 # ------------------------------------------------------------------------------
 # Groq generator (exactly 2, 6–13 words, tolerant parsing)
@@ -2598,6 +2728,15 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         return []
 
     raw = (resp.choices[0].message.content or "").strip()
+    _debug_store(
+    "groq",
+    {
+        "model": GROQ_MODEL,
+        "raw": raw,
+        "response_id": getattr(resp, "id", None),
+    },
+)
+
     candidates = parse_two_comments_flex(raw)
     candidates = [
         restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text)
@@ -2698,6 +2837,15 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         return []
 
     raw = (resp.choices[0].message.content or "").strip()
+    _debug_store(
+    "openai",
+    {
+        "model": OPENAI_MODEL,
+        "raw": raw,
+        "response_id": getattr(resp, "id", None),
+    },
+)
+
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
@@ -2740,6 +2888,14 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     except Exception:
         raw = str(resp)
     raw = (raw or "").strip()
+    _debug_store(
+    "gemini",
+    {
+        "model": GEMINI_MODEL_NAME,
+        "raw": raw,
+    },
+)
+
 
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
@@ -3267,6 +3423,26 @@ def reroll_endpoint():
             "comments": [],
             "code": "internal_error",
         }), 500
+
+from flask import Flask, request, jsonify
+
+@app.get("/debug")
+def debug_llm():
+    """
+    Debug endpoint: returns the last raw outputs per provider.
+
+    Optional query:
+      /debug?provider=groq   -> only Groq
+      /debug?provider=openai -> only OpenAI
+      /debug?provider=gemini -> only Gemini
+    """
+    provider = request.args.get("provider")
+    if provider:
+        data = DEBUG_LAST_LLM.get(provider)
+        return jsonify({"provider": provider, "data": data}), 200
+
+    return jsonify(DEBUG_LAST_LLM), 200
+
 # ------------------------------------------------------------------------------
 # Boot
 # ------------------------------------------------------------------------------
