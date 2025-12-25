@@ -39,6 +39,10 @@ PRO_KOL_MODE = os.getenv("PRO_KOL_MODE", "0").strip() == "1"
 PRO_KOL_POLISH = PRO_KOL_MODE
 PRO_KOL_STRICT = PRO_KOL_MODE
 PRO_KOL_REWRITE = PRO_KOL_MODE
+# If true, offline generator will *not* use KOL buckets/combinators.
+# It will only do a tiny rule-based rescue when all LLMs fail.
+DISABLE_OFFLINE_TEMPLATES = os.getenv("DISABLE_OFFLINE_TEMPLATES", "1").strip() == "1"
+
 
 # Rewrite tuning (extra LLM calls; can hit quota)
 PRO_KOL_REWRITE_MAX_TRIES = int(os.getenv("PRO_KOL_REWRITE_MAX_TRIES", "2"))
@@ -266,7 +270,8 @@ OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 # Optional Gemini
 # ------------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
-USE_GEMINI = bool(GEMINI_API_KEY)
+GEMINI_ENABLED = os.getenv("GEMINI_ENABLED", "1").strip() == "1"
+USE_GEMINI = bool(GEMINI_API_KEY) and GEMINI_ENABLED
 _gemini_model = None
 if USE_GEMINI:
     try:
@@ -277,6 +282,7 @@ if USE_GEMINI:
     except Exception:
         _gemini_model = None
         USE_GEMINI = False
+
 
 # ------------------------------------------------------------------------------
 # Keepalive (Render free – optional)
@@ -2470,6 +2476,20 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
 
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
+    """
+    Offline backup:
+    - If DISABLE_OFFLINE_TEMPLATES=1 (your default), we do a tiny rule-based
+      rescue using _rescue_two and pro_kol filters. No big KOL buckets.
+    - Otherwise, use the full OfflineCommentGenerator buckets/combinator.
+    """
+    # Minimal mode: avoid buckets/combinator templates
+    if DISABLE_OFFLINE_TEMPLATES:
+        raw = _rescue_two(text)  # returns two short generic-but-safe lines
+        # Enforce uniqueness & all the anti-template / anti-hallucination rules
+        result = enforce_unique(raw, tweet_text=text)
+        return result[:2]
+
+    # Legacy mode: full generator (buckets + combinator)
     items = generator.generate_two(text, author or None, None, None)
     en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
     non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
@@ -2485,6 +2505,7 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     # apply uniqueness + hybrid pairing
     result = enforce_unique(result, tweet_text=text)
     return result[:2]
+
 
 # ------------------------------------------------------------------------------
 # LLM parsing helper shared by providers
@@ -2523,8 +2544,14 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
 # Groq generator (exactly 2, 6–13 words, tolerant parsing)
 # ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
+    """
+    Best-effort Groq path:
+    - NEVER raises just because we got <2 comments.
+    - Returns 0–2 cleaned comments.
+    - Offline generator is responsible for filling gaps.
+    """
     if not (USE_GROQ and _groq_client):
-        raise RuntimeError("Groq disabled or client not available")
+        return []
 
     mode_line = llm_mode_hint(tweet_text)
     sys_prompt = _llm_sys_prompt(mode_line)
@@ -2564,10 +2591,11 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
             if wait_secs:
                 time.sleep(wait_secs)
                 continue
-            raise
+            # hard error (network etc) – give up on Groq, let caller try others
+            return []
 
     if resp is None:
-        raise RuntimeError("Groq call failed after retries")
+        return []
 
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
@@ -2578,17 +2606,28 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
 
-    # Fallback: try splitting raw text into sentences (still LLM-origin)
+    # Try to mine extra sentences from raw if we still have <2
     if len(candidates) < 2:
         sents = re.split(r"[.!?]\s+", raw)
         sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
         sents = [s for s in sents if 6 <= len(words(s)) <= 13]
         candidates = enforce_unique(candidates + sents[:2], tweet_text=tweet_text)
 
+    # As a final soft nudge, top up from offline if needed (caller may do this again)
     if len(candidates) < 2:
-        raise RuntimeError("Groq did not produce two valid comments")
+        offline = offline_two_comments(tweet_text, author)
+        candidates = enforce_unique(candidates + offline, tweet_text=tweet_text)
 
-    return candidates[:2]
+    # Hard cap and light de-dup
+    candidates = [c for c in candidates if c][:2]
+    if len(candidates) == 2 and _pair_too_similar(candidates[0], candidates[1]):
+        extra = offline_two_comments(tweet_text, author)
+        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
+    return candidates
+
 # ------------------------------------------------------------------------------
 # OpenAI / Gemini generators (same constraints as Groq)
 # ------------------------------------------------------------------------------
@@ -2637,7 +2676,7 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
 
 def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_OPENAI and _openai_client):
-        raise RuntimeError("OpenAI disabled or client not available")
+        return []
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
@@ -2645,30 +2684,36 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     )
     user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
-    resp = _openai_client.chat.completions.create(
-        model=OPENAI_MODEL,
-        messages=[
-            {"role": "system", "content": _llm_sys_prompt(mode_line)},
-            {"role": "user", "content": user_prompt},
-        ],
-        max_tokens=160,
-        temperature=0.7,
-    )
+    try:
+        resp = _openai_client.chat.completions.create(
+            model=OPENAI_MODEL,
+            messages=[
+                {"role": "system", "content": _llm_sys_prompt(mode_line)},
+                {"role": "user", "content": user_prompt},
+            ],
+            max_tokens=160,
+            temperature=0.7,
+        )
+    except Exception:
+        return []
+
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
 
-    if len(candidates) < 2:
-        raise RuntimeError("OpenAI did not produce two valid comments")
-
+    # No hard failures; just return what we have
+    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+        extra = offline_two_comments(tweet_text, author)
+        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
     return candidates[:2]
-
 
 def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_GEMINI and _gemini_model):
-        raise RuntimeError("Gemini disabled or client not available")
+        return []
 
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
@@ -2677,7 +2722,12 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     user_prompt += _build_context_json_snippet()
     mode_line = llm_mode_hint(tweet_text)
     prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
-    resp = _gemini_model.generate_content(prompt)
+
+    try:
+        resp = _gemini_model.generate_content(prompt)
+    except Exception:
+        return []
+
     raw = ""
     try:
         parts = getattr(getattr(resp, "candidates", [None])[0], "content", None)
@@ -2696,10 +2746,13 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
     candidates = enforce_unique(candidates, tweet_text=tweet_text)
 
-    if len(candidates) < 2:
-        raise RuntimeError("Gemini did not produce two valid comments")
-
+    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
+        extra = offline_two_comments(tweet_text, author)
+        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
     return candidates[:2]
+
 
 def _available_providers() -> list[tuple[str, callable]]:
     """
