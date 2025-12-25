@@ -358,6 +358,11 @@ def _do_init() -> None:
                 thash TEXT PRIMARY KEY,
                 created_at INTEGER
             );
+
+            CREATE TABLE IF NOT EXISTS comments_frames_seen(
+                fhash TEXT PRIMARY KEY,
+                created_at INTEGER
+            );
             """
         )
 
@@ -589,6 +594,58 @@ def remember_template(tmpl: str) -> None:
             c.execute(
                 "INSERT OR IGNORE INTO comments_templates_seen(thash, created_at) VALUES (?,?)",
                 (thash, now_ts()),
+            )
+    except Exception:
+        pass
+
+
+def frame_fingerprint(comment: str, tweet_text: str = "") -> str:
+    """
+    OTP-style 'frame' signature:
+    - voice id (trader/builder/researcher/etc)
+    - mode (support/question/skeptical/playful from guess_mode)
+    - question vs statement
+    - structural style fingerprint (W/W/$T pattern)
+    """
+    base_fp = style_fingerprint(comment)
+    if not base_fp:
+        return ""
+
+    voice = current_voice_card() or {}
+    voice_id = voice.get("id") or "generic"
+
+    mode = guess_mode(tweet_text or "")
+    qflag = "Q" if "?" in (comment or "") else "S"
+
+    return f"{voice_id}|{mode}|{qflag}|{base_fp}"
+
+
+def frame_seen(comment: str, tweet_text: str = "") -> bool:
+    fp = frame_fingerprint(comment, tweet_text)
+    if not fp:
+        return False
+    fh = sha256(fp)
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT 1 FROM comments_frames_seen WHERE fhash=? LIMIT 1",
+                (fh,),
+            ).fetchone()
+        return bool(row)
+    except Exception:
+        return False
+
+
+def remember_frame(comment: str, tweet_text: str = "") -> None:
+    fp = frame_fingerprint(comment, tweet_text)
+    if not fp:
+        return
+    fh = sha256(fp)
+    try:
+        with get_conn() as c:
+            c.execute(
+                "INSERT OR IGNORE INTO comments_frames_seen(fhash, created_at) VALUES (?,?)",
+                (fh, now_ts()),
             )
     except Exception:
         pass
@@ -956,7 +1013,7 @@ LEADINS = [
     "narratives aside,","strip it down:","here’s the edge:","what matters most:"
 ]
 CLAIMS = [
-    "{focus} is doing more work than the headline","{focus} is where the thesis tightens",
+    "{focus} is doing more work than the headline",
     "{focus} is the part that moves things","{focus} is the practical hinge",
     "{focus} is the constraint to solve","{focus} tells you the next step",
     "it lives or dies on {focus}","risk mostly hides in {focus}",
@@ -964,12 +1021,9 @@ CLAIMS = [
     "{focus} is the boring piece that decides outcomes","{focus} sets the real ceiling",
     "{focus} is the bit with actual leverage","most errors start before {focus} is clear",
 "{focus} is the real driver, everything else is noise",
-    "{focus} decides whether this trends or fades",
     "{focus} is where smart money will express the view",
-    "{focus} is the difference between thesis and cope",
     "{focus} is the lever, not the vibe",
     "{focus} is what makes this tradeable",
-    "if {focus} flips, sentiment flips fast",
     "the market will reward {focus}, not the narrative",
     "you can’t hand-wave {focus} and expect it to work",
 ]
@@ -994,7 +1048,6 @@ CLOSERS = [
 "and the trade becomes cleaner",
     "and you stop chasing vibes",
     "and you can actually size it",
-    "and the thesis stays honest",
     "and the market tells you if you’re wrong",
 ]
 
@@ -1287,7 +1340,7 @@ class OfflineCommentGenerator:
 
         vibe = [
             P(f"{focus_slot} feels very timeline core right now"),
-            P(f"The vibe around {focus_slot} here is pretty real"),
+            P(f"The read around {focus_slot} here feels real"),
             P(f"This hits the everyday side of {focus_slot} nicely"),
             P(f"Quietly one of the better posts on {focus_slot}"),
         ]
@@ -2022,64 +2075,132 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
 
 def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
     """
-    - sanitize + enforce 6–13 words
-    - drop generic phrases
-    - skip past repeats / templates / trigram overlaps
-    - small chance to tweak if previously seen
-    - finally: pick two diverse comments (Hybrid: statement + question if possible)
-    """
-    out: list[str] = []
+    Enforce uniqueness + non-generic quality for a set of candidate comments.
 
-    for c in candidates:
-        if tweet_text:
-            c = restore_decimals_and_tickers(c, tweet_text)
-        c = enforce_word_count_natural(c)
+    What it does:
+    - sanitize + enforce 6–13 tokens
+    - drop generic phrases
+    - skip past repeats / templates / n-gram overlap / near-duplicates
+    - prefer two comments with different "modes" (statement + question when possible)
+    - commits ONLY the final selected comments to the DB (so we don't burn patterns)
+    """
+    tweet_text = (tweet_text or "").strip()
+
+    def _prep(x: str) -> str:
+        # enforce_word_count_natural already sanitizes links/handles/emojis + cuts 2nd clause
+        return (enforce_word_count_natural(x, 6, 13) or "").strip()
+
+    # ----------------------------
+    # Pass 1: strict filtering
+    # ----------------------------
+    pool: list[str] = []
+    seen_fps: set[str] = set()
+    thesis_seen = False
+
+    for raw in (candidates or []):
+        c = _prep(raw)
         if not c:
             continue
+        low = c.lower()
 
-        # Pro strict gate (context-aware)
-        if PRO_KOL_STRICT and (not pro_kol_ok(c, tweet_text=tweet_text or "")):
-            continue
+        # Soft cap on "thesis" spam (keeps vibe varied)
+        if "thesis" in low:
+            if thesis_seen:
+                continue
+            thesis_seen = True
 
-        # Anti-hallucination: no new tickers / large numbers
-        if tweet_text and not hallucination_safe(c, tweet_text):
-            continue
-
-        # Block repeated sentence skeletons (structure-level repetition)
-        if template_burned(c):
-            continue
-
-        # kill very generic / overused phrases
         if contains_generic_phrase(c):
             continue
 
-        # structural repetition guards
-        if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
+        if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
             continue
 
-        if not comment_seen(c):
+        if tweet_text and not hallucination_safe(c, tweet_text):
+            continue
+
+        # Per-request structural dedupe
+        fp = style_fingerprint(c)
+        if fp and fp in seen_fps:
+            continue
+
+        # Historical repetition guards
+        if comment_seen(c):
+            continue
+        if template_burned(c):
+            continue
+        if opener_seen(_openers(c)):
+            continue
+        if trigram_overlap_bad(c, threshold=2):
+            continue
+        if too_similar_to_recent(c):
+            continue
+
+        pool.append(c)
+        if fp:
+            seen_fps.add(fp)
+
+    picked: list[str] = pick_two_diverse_text(pool)[:2] if pool else []
+
+    # ----------------------------
+    # Pass 2: relaxed filtering if we still need output
+    # (avoid hard-failing into the same rescue lines)
+    # ----------------------------
+    if len(picked) < 2:
+        relaxed: list[str] = []
+        seen_fps2: set[str] = set()
+        thesis_seen2 = False
+
+        for raw in (candidates or []):
+            c = _prep(raw)
+            if not c:
+                continue
+            low = c.lower()
+
+            if "thesis" in low:
+                if thesis_seen2:
+                    continue
+                thesis_seen2 = True
+
+            if contains_generic_phrase(c):
+                continue
+
+            if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
+                continue
+
+            if tweet_text and not hallucination_safe(c, tweet_text):
+                continue
+
+            fp = style_fingerprint(c)
+            if fp and fp in seen_fps2:
+                continue
+
+            if comment_seen(c):
+                continue
+
+            # Relax: allow template_burned + small n-gram overlap,
+            # but still block openers and near-paraphrases of recent outputs.
+            if opener_seen(_openers(c)):
+                continue
+            if too_similar_to_recent(c, threshold=0.72):
+                continue
+
+            relaxed.append(c)
+            if fp:
+                seen_fps2.add(fp)
+
+        picked = pick_two_diverse_text(relaxed)[:2] if relaxed else picked
+
+    # Commit ONLY what we return (prevents burning good patterns prematurely)
+    for c in picked:
+        try:
             remember_comment(c)
             remember_template(c)
             remember_opener(_openers(c))
             remember_ngrams(c)
-            out.append(c)
-        else:
-            # small tweak path to rescue near-duplicate if it's short
-            toks = words(c)
-            if len(toks) < 13:
-                alt = enforce_word_count_natural(c + " today")
-                if alt and not comment_seen(alt) and not contains_generic_phrase(alt):
-                    remember_comment(alt)
-                    remember_template(alt)
-                    remember_opener(_openers(alt))
-                    remember_ngrams(alt)
-                    out.append(alt)
+        except Exception:
+            pass
 
-    # final hybrid pairing: maximize vibe diversity
-    if len(out) >= 2:
-        out = pick_two_diverse_text(out)
-
-    return out[:2]
+    return picked[:2]
 
 PRO_BAD_PHRASES = {
     "wow", "exciting", "huge", "insane", "amazing", "awesome",
@@ -2419,30 +2540,12 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 # ------------------------------------------------------------------------------
 def _llm_sys_prompt(mode_line: str = "") -> str:
     base = (
-        "You generate two short replies to a tweet.\n"
-        "\n"
-        "Hard rules:\n"
-        "- Output exactly 2 comments.\n"
-        "- Each comment must be 6–13 tokens.\n"
-        "- One thought per comment (no second clause like 'thanks for sharing').\n"
-        "- No emojis, hashtags, or links.\n"
-        "- Do NOT invent details not present in the tweet.\n"
-        "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
-        "\n"
         "Human style:\n"
         "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
+        "- Write each line as an inner reaction, not a public compliment (like a thought you’d type into a chat with a friend).\n"
         "- Avoid hype/fanboy language and vague praise.\n"
         "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
         "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
-        "\n"
-        "Diversity:\n"
-        "- Comment #1: a clear observation or claim.\n"
-        "- Comment #2: a specific question OR a cautious risk note.\n"
-        "- Make the two comments meaningfully different.\n"
-        "\n"
-        "Output format:\n"
-        "- Return a JSON array of two strings: [\"...\", \"...\"].\n"
-        "- If not JSON, return two lines separated by a newline.\n"
     )
 
     # Voice roulette (per-request persona)
@@ -3002,10 +3105,11 @@ def reroll_endpoint():
                 "code": "bad_request",
             }), 400
 
+        # Fetch tweet info
         t = fetch_tweet_data(url)
         handle = t.handle or _extract_handle_from_url(url)
 
-        # Per-request context for reroll
+        # Per-request context (same as /comment)
         try:
             thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
         except Exception:
@@ -3020,6 +3124,14 @@ def reroll_endpoint():
 
         set_request_voice(t.text or "")
 
+        two = generate_two_comments_with_providers(
+            t.text,
+            t.author_name or None,
+            handle,
+            t.lang or None,
+            url=url,
+        )
+
         display_url = _canonical_x_url_from_tweet(url, t)
 
         return jsonify({
@@ -3028,22 +3140,22 @@ def reroll_endpoint():
         }), 200
 
     except CrownTALKError as e:
+        app.logger.error("CrownTALK error during reroll for %s", url, exc_info=True)
         return jsonify({
             "url": url,
             "error": str(e),
             "comments": [],
-            "code": e.code,
-        }), 502
+            "code": getattr(e, "code", "crown_error"),
+        }), 500
+
     except Exception:
-        logger.exception("Unhandled error during reroll for %s", url)
+        app.logger.error("Unhandled error during reroll for %s", url, exc_info=True)
         return jsonify({
             "url": url,
             "error": "internal_error",
             "comments": [],
             "code": "internal_error",
         }), 500
-
-
 # ------------------------------------------------------------------------------
 # Boot
 # ------------------------------------------------------------------------------
