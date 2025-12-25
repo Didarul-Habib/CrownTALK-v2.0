@@ -1756,17 +1756,20 @@ def _build_context_json_snippet() -> str:
         + blob[:2000]
     )
 
-    def _tweet_anchor_bank(tweet_text: str, max_kw: int = 8) -> list[str]:
+
+def _tweet_anchor_bank(tweet_text: str, max_kw: int = 8) -> list[str]:
     t = tweet_text or ""
     ents = extract_entities(t)
     kws = extract_keywords(t)[:max_kw]
+
     anchors: list[str] = []
     anchors += (ents.get("cashtags") or [])[:6]
     anchors += (ents.get("numbers") or [])[:6]
     anchors += kws
+
     # unique, preserve order
-    seen = set()
-    out = []
+    seen: set[str] = set()
+    out: list[str] = []
     for a in anchors:
         a = (a or "").strip()
         if not a:
@@ -1776,7 +1779,9 @@ def _build_context_json_snippet() -> str:
             continue
         seen.add(low)
         out.append(a)
+
     return out[:18]
+
 
 
 def _build_llm_variety_snippet(url: str, tweet_text: str) -> str:
