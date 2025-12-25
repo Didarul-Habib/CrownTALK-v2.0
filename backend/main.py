@@ -1783,6 +1783,43 @@ def _tweet_anchor_bank(tweet_text: str, max_kw: int = 8) -> list[str]:
     return out[:18]
 
 
+def _pick_two_comments(tweet_text: str, author: str | None, url: str | None = None):
+    """
+    Always returns exactly 2 comments.
+    Tries providers first; if parsing/filters yield <2, falls back to offline.
+    """
+    providers = []
+    # order matters; keep your preferred order
+    if USE_GROQ:
+        providers.append(("groq", groq_two_comments))
+    if USE_GEMINI:
+        providers.append(("gemini", gemini_two_comments))
+    if USE_OPENAI:
+        providers.append(("openai", openai_two_comments))
+
+    last_raw = None
+
+    for name, fn in providers:
+        try:
+            out = fn(tweet_text, author, url=url)
+            out = [c for c in (out or []) if isinstance(c, str) and c.strip()]
+            if len(out) >= 2:
+                return out[:2], name, False
+            # keep partial for debugging
+            last_raw = out
+        except Exception as e:
+            logger.warning("%s provider failed: %s", name, e)
+
+    # fallback offline must produce 2 lines
+    offline = offline_two_comments(tweet_text)
+    offline = [c for c in (offline or []) if isinstance(c, str) and c.strip()]
+    if len(offline) < 2:
+        # absolute last resort (should never happen)
+        offline = (offline + ["Interesting.", "True."])[:2]
+
+    logger.info("Falling back offline (provider_out=%s)", last_raw)
+    return offline[:2], "offline", True
+
 
 def _build_llm_variety_snippet(url: str, tweet_text: str) -> str:
     # prior outputs for this URL
@@ -3376,10 +3413,27 @@ def ping():
     }), 200
 
 
-@app.route("/comment", methods=["POST", "OPTIONS"])
-def comment_endpoint():
-    if request.method == "OPTIONS":
-        return ("", 204)
+@@app.post("/comment")
+def comment():
+    data = request.get_json(force=True, silent=True) or {}
+    url = data.get("url") or data.get("tweet_url") or ""
+
+    tweet = fetch_vxtwitter(url)  # whatever you already do
+    tweet_text = tweet.get("text") or ""
+    author = tweet.get("author") or tweet.get("user") or None
+
+    comments, provider, offline = _pick_two_comments(tweet_text, author, url=url)
+
+    return jsonify({
+        "ok": True,
+        "comments": comments,          # <-- frontend should read this
+        "provider": provider,
+        "offline": offline,
+        "tweet": {
+            "url": url,
+            "author": author,
+        },
+    }), 200
 
     try:
         payload = request.get_json(force=True, silent=True) or {}
@@ -3467,11 +3521,23 @@ def comment_endpoint():
     return jsonify({"results": results, "failed": failed}), 200
 
 
-@app.route("/reroll", methods=["POST", "OPTIONS"])
-def reroll_endpoint():
-    if request.method == "OPTIONS":
-        return ("", 204)
+@app.post("/reroll")
+def reroll():
+    data = request.get_json(force=True, silent=True) or {}
+    url = data.get("url") or ""
 
+    tweet = fetch_vxtwitter(url)
+    tweet_text = tweet.get("text") or ""
+    author = tweet.get("author") or tweet.get("user") or None
+
+    comments, provider, offline = _pick_two_comments(tweet_text, author, url=url)
+
+    return jsonify({
+        "ok": True,
+        "comments": comments,
+        "provider": provider,
+        "offline": offline,
+    }), 200
     try:
         data = request.get_json(force=True, silent=True) or {}
         url = data.get("url") or ""
