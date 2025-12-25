@@ -36,9 +36,9 @@ def _debug_store(provider: str, payload: Dict[str, Any]) -> None:
 # Helpers from utils.py (already deployed)
 from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # App / Logging / Config
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crowntalk")
@@ -54,11 +54,10 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← 
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Pro KOL upgrade switches (all three add-ons)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 PRO_KOL_MODE = os.getenv("PRO_KOL_MODE", "0").strip() == "1"
-
 
 PRO_KOL_POLISH = PRO_KOL_MODE
 PRO_KOL_STRICT = PRO_KOL_MODE
@@ -66,7 +65,6 @@ PRO_KOL_REWRITE = PRO_KOL_MODE
 # If true, offline generator will *not* use KOL buckets/combinators.
 # It will only do a tiny rule-based rescue when all LLMs fail.
 DISABLE_OFFLINE_TEMPLATES = os.getenv("DISABLE_OFFLINE_TEMPLATES", "1").strip() == "1"
-
 
 # Rewrite tuning (extra LLM calls; can hit quota)
 PRO_KOL_REWRITE_MAX_TRIES = int(os.getenv("PRO_KOL_REWRITE_MAX_TRIES", "2"))
@@ -76,9 +74,9 @@ PRO_KOL_REWRITE_MAX_TOKENS = int(os.getenv("PRO_KOL_REWRITE_MAX_TOKENS", "180"))
 # If meme tweet, allow 1 witty line (still no emojis/hashtags)
 PRO_KOL_ALLOW_WIT = os.getenv("PRO_KOL_ALLOW_WIT", "1").strip() != "0"
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Thread / Research / Voice toggles (add-ons)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 ENABLE_THREAD_CONTEXT = os.getenv("ENABLE_THREAD_CONTEXT", "0").strip() == "1"
 ENABLE_RESEARCH = os.getenv("ENABLE_RESEARCH", "0").strip() == "1"
 ENABLE_COINGECKO = os.getenv("ENABLE_COINGECKO", "0").strip() == "1"
@@ -95,7 +93,6 @@ _RESEARCH_CACHE: dict[str, tuple[float, dict]] = {}
 _DEFI_LLAMA_PROTOCOLS: Optional[tuple[float, list[dict]]] = None
 _COINGECKO_DISABLED_UNTIL: float = 0.0
 _RECENT_VOICES: list[str] = []
-
 
 DEFI_LLAMA_BASE = "https://api.llama.fi"
 COINGECKO_BASE = "https://api.coingecko.com/api/v3"
@@ -121,6 +118,7 @@ def _research_cache_set(key: str, data: dict) -> None:
     except Exception:
         pass
 
+
 def _load_defillama_protocols() -> list[dict]:
     global _DEFI_LLAMA_PROTOCOLS
     if not ENABLE_RESEARCH:
@@ -143,6 +141,7 @@ def _load_defillama_protocols() -> list[dict]:
         pass
 
     return _DEFI_LLAMA_PROTOCOLS[1] if _DEFI_LLAMA_PROTOCOLS else []
+
 
 def _resolve_protocol_slug_from_symbol(symbol: str) -> Optional[str]:
     """
@@ -187,6 +186,7 @@ def _resolve_protocol_slug_from_symbol(symbol: str) -> Optional[str]:
             upsert_entity_slug("name", name, slug)
     return slug
 
+
 def _fetch_defillama_for_slug(slug: str) -> dict:
     if not slug:
         return {}
@@ -214,6 +214,7 @@ def _fetch_defillama_for_slug(slug: str) -> dict:
     if out:
         _research_cache_set(cache_key, out)
     return out
+
 
 def _coingecko_search(symbol: str) -> Optional[str]:
     global _COINGECKO_DISABLED_UNTIL
@@ -261,9 +262,9 @@ def _coingecko_price(coin_id: str) -> Optional[dict]:
         return None
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Optional Groq (free-tier). If not set, we run fully offline.
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 GROQ_API_KEY = os.getenv("GROQ_API_KEY")
 USE_GROQ = bool(GROQ_API_KEY)
 if USE_GROQ:
@@ -275,9 +276,9 @@ if USE_GROQ:
         USE_GROQ = False
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Optional OpenAI
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY")
 USE_OPENAI = bool(OPENAI_API_KEY)
 _openai_client = None
@@ -290,9 +291,9 @@ if USE_OPENAI:
         USE_OPENAI = False
 OPENAI_MODEL = os.getenv("OPENAI_MODEL", "gpt-4o-mini")
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Optional Gemini
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 GEMINI_ENABLED = os.getenv("GEMINI_ENABLED", "1").strip() == "1"
 USE_GEMINI = bool(GEMINI_API_KEY) and GEMINI_ENABLED
@@ -308,9 +309,9 @@ if USE_GEMINI:
         USE_GEMINI = False
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Keepalive (Render free – optional)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 def keep_alive() -> None:
     if not BACKEND_PUBLIC_URL:
         return
@@ -321,17 +322,20 @@ def keep_alive() -> None:
             pass
         time.sleep(KEEP_ALIVE_INTERVAL)
 
-# ------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
 # DB init (safe across workers)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 try:
     import fcntl
     _HAS_FCNTL = True
 except Exception:
     _HAS_FCNTL = False
 
+
 def get_conn() -> sqlite3.Connection:
     return sqlite3.connect(DB_PATH, timeout=30, isolation_level=None, check_same_thread=False)
+
 
 def _locked_init(fn):
     if not _HAS_FCNTL:
@@ -343,6 +347,7 @@ def _locked_init(fn):
             return fn()
         finally:
             fcntl.flock(f, fcntl.LOCK_UN)
+
 
 def _do_init() -> None:
     with get_conn() as conn:
@@ -396,6 +401,7 @@ def _do_init() -> None:
             """
         )
 
+
 def init_db() -> None:
     def _safe():
         try:
@@ -408,17 +414,21 @@ def init_db() -> None:
                 raise
     _locked_init(_safe) if _HAS_FCNTL else _safe()
 
-# ------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
 # Light memory / OTP guards (anti-pattern, anti-repeat)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 def now_ts() -> int:
     return int(time.time())
+
 
 def sha256(s: str) -> str:
     return hashlib.sha256(s.encode("utf-8")).hexdigest()
 
+
 def normalize_ws(s: str) -> str:
     return re.sub(r"\s+", " ", (s or "")).strip()
+
 
 def upsert_entity_slug(kind: str, key: str, slug: str) -> None:
     """
@@ -460,14 +470,17 @@ def lookup_entity_slug(kind: str, key: str) -> Optional[str]:
     except Exception:
         return None
 
+
 TOKEN_RE = re.compile(
     r"(?:\$\w{2,15}|\d+(?:\.\d+)?|[A-Za-z0-9’']+(?:-[A-Za-z0-9’']+)*)"
 )
+
 
 def _normalize_for_memory(text: str) -> str:
     t = normalize_ws(text).lower()
     t = re.sub(r"[^\w\s']+", " ", t)
     return re.sub(r"\s+", " ", t).strip()
+
 
 def comment_seen(text: str) -> bool:
     norm = _normalize_for_memory(text)
@@ -479,6 +492,7 @@ def comment_seen(text: str) -> bool:
             return c.execute("SELECT 1 FROM comments_seen WHERE hash=? LIMIT 1", (h,)).fetchone() is not None
     except Exception:
         return False
+
 
 def remember_comment(text: str, url: str = "", lang: Optional[str] = None) -> None:
     try:
@@ -496,13 +510,16 @@ def remember_comment(text: str, url: str = "", lang: Optional[str] = None) -> No
     except Exception:
         pass
 
+
 def _openers(text: str) -> str:
     w = re.findall(r"[A-Za-z0-9']+", (text or "").lower())
     return " ".join(w[:3])
 
+
 def _trigrams(text: str) -> List[str]:
     w = re.findall(r"[A-Za-z0-9']+", (text or "").lower())
     return [" ".join(w[i:i+3]) for i in range(len(w) - 2)]
+
 
 def opener_seen(opener: str) -> bool:
     try:
@@ -511,12 +528,14 @@ def opener_seen(opener: str) -> bool:
     except Exception:
         return False
 
+
 def remember_opener(opener: str) -> None:
     try:
         with get_conn() as c:
             c.execute("INSERT OR IGNORE INTO comments_openers_seen(opener, created_at) VALUES (?,?)", (opener, now_ts()))
     except Exception:
         pass
+
 
 def trigram_overlap_bad(text: str, threshold: int = 2) -> bool:
     grams = _trigrams(text)
@@ -534,6 +553,7 @@ def trigram_overlap_bad(text: str, threshold: int = 2) -> bool:
         return False
     return False
 
+
 def remember_ngrams(text: str) -> None:
     grams = _trigrams(text)
     if not grams:
@@ -547,9 +567,10 @@ def remember_ngrams(text: str) -> None:
     except Exception:
         pass
 
-# ------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
 # Structure fingerprint (kills repeated "same skeleton, new topic" comments)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 STYLE_STOPWORDS = {
     "i","you","we","they","it","this","that","these","those",
     "is","are","was","were","be","been","being",
@@ -561,6 +582,7 @@ STYLE_STOPWORDS = {
 }
 
 _NUM_RE = re.compile(r"^\d+(?:\.\d+)?$")
+
 
 def style_fingerprint(text: str) -> str:
     """
@@ -613,6 +635,7 @@ def template_burned(tmpl: str) -> bool:
             ).fetchone() is not None
     except Exception:
         return False
+
 
 def remember_template(tmpl: str) -> None:
     try:
@@ -680,9 +703,11 @@ def remember_frame(comment: str, tweet_text: str = "") -> None:
     except Exception:
         pass
 
+
 def _word_trigrams(s: str) -> set:
     w = TOKEN_RE.findall((s or "").lower())
     return set(" ".join(w[i:i+3]) for i in range(max(0, len(w) - 2)))
+
 
 def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300) -> bool:
     """Jaccard(word-3grams) vs last N comments to block paraphrase repeats."""
@@ -704,6 +729,7 @@ def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300)
             return True
     return False
 
+
 def _pair_too_similar(a: str, b: str, threshold: float = 0.25) -> bool:
     """Pairwise similarity (Jaccard over trigrams) to avoid EN#1 ≈ EN#2."""
     ta = _word_trigrams(a)
@@ -716,55 +742,10 @@ def _pair_too_similar(a: str, b: str, threshold: float = 0.25) -> bool:
         return False
     return (inter / uni) >= threshold
 
-# ------------------------------------------------------------------------------
-# CORS + Health
-# ------------------------------------------------------------------------------
-@app.after_request
-def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
-    return response
 
-@app.route("/", methods=["GET"])
-def health():
-    return jsonify({"status": "ok", "groq": bool(USE_GROQ)}), 200
-
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Rules: word count + sanitization + Tokenization
-# ------------------------------------------------------------------------------
-TOKEN_RE = re.compile(
-    r"(?:\$\w{2,15}|\d+(?:\.\d+)?|[A-Za-z0-9’']+(?:-[A-Za-z0-9’']+)*)"
-)
-
-def words(text: str) -> list[str]:
-    return TOKEN_RE.findall(text or "")
-
-def sanitize_comment(raw: str) -> str:
-    txt = re.sub(r"https?://\S+", "", raw or "")
-    txt = re.sub(r"[@#]\S+", "", txt)
-    txt = re.sub(r"\s+", " ", txt).strip()
-    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
-    txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
-    return txt
-
-def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
-    txt = sanitize_comment(raw)
-    toks = words(txt)
-    if not toks:
-        return ""
-    if len(toks) > max_w:
-        toks = toks[:max_w]
-    while len(toks) < min_w:
-        for filler in ["honestly","tbh","still","though","right"]:
-            if len(toks) >= min_w: break
-            toks.append(filler)
-        if len(toks) < min_w: break
-    return " ".join(toks).strip()
-
-# ------------------------------------------------------------------------------
-# Topic / keywords (to keep comments context-aware, not templated)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 EN_STOPWORDS = {
     "the","a","an","and","or","but","to","in","on","of","for","with","at","from","by","about","as",
     "into","like","through","after","over","between","out","against","during","without","before","under",
@@ -915,9 +896,11 @@ GENERIC_PHRASES = {
     "the space has been waiting for this",
 }
 
+
 def contains_generic_phrase(text: str) -> bool:
     t = (text or "").lower()
     return any(p in t for p in GENERIC_PHRASES)
+
 
 STARTER_BLOCKLIST = {
     "yeah this","honestly this","kind of","nice to","hard to","feels like","this is","short line","funny how",
@@ -933,6 +916,7 @@ try:
     )
 except re.error:
     EMOJI_PATTERN = re.compile(r"[\u2600-\u27BF]+", flags=re.UNICODE)
+
 
 def detect_topic(text: str) -> str:
     t = (text or "").lower()
@@ -953,6 +937,7 @@ def detect_topic(text: str) -> str:
     if len(text) < 80:
         return "one_liner"
     return "generic"
+
 
 def llm_mode_hint(tweet_text: str) -> str:
     """
@@ -993,6 +978,7 @@ def is_crypto_tweet(text: str) -> bool:
     ]
     return any(k in t for k in crypto_keywords) or bool(re.search(r"\$\w{2,8}", text or ""))
 
+
 def detect_sentiment(text: str) -> str:
     """Very lightweight bullish / bearish tone detector for CT posts."""
     t = (text or "").lower()
@@ -1010,6 +996,7 @@ def detect_sentiment(text: str) -> str:
         return "bearish"
     return "neutral"
 
+
 def extract_keywords(text: str) -> list[str]:
     cleaned = re.sub(r"https?://\S+", "", text or "")
     cleaned = re.sub(r"[@#]\S+", "", cleaned)
@@ -1025,20 +1012,22 @@ def extract_keywords(text: str) -> list[str]:
             seen.add(lw); out.append(w)
     return out[:10]
 
+
 def pick_focus_token(tokens: List[str]) -> Optional[str]:
     if not tokens:
         return None
     upperish = [t for t in tokens if t.isupper() or t[0].isupper()]
     return random.choice(upperish) if upperish else random.choice(tokens)
 
-# ------------------------------------------------------------------------------
+
+# --------------------------------------------------------------------------
 # Variety buckets + combinator (keeps comments varied)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 LEADINS = [
     "short answer:","zooming out,","if you're weighing","plainly,","real talk:","on the math,",
     "from experience,","quick take:","low key,","no fluff:","in practice,","gut check:",
     "signal over noise:","nuts and bolts:","from the builder side,","first principles:",
-"ct lens:","flow check:","risk check:","tape says:","liq check:","timeframe matters:",
+    "ct lens:","flow check:","risk check:","tape says:","liq check:","timeframe matters:",
     "hot take:","cold take:","conviction check:","positioning wise:","alpha is:",
     "narratives aside,","strip it down:","here’s the edge:","what matters most:"
 ]
@@ -1050,7 +1039,7 @@ CLAIMS = [
     "execution shows up as {focus}","watch how {focus} trends, not the hype",
     "{focus} is the boring piece that decides outcomes","{focus} sets the real ceiling",
     "{focus} is the bit with actual leverage","most errors start before {focus} is clear",
-"{focus} is the real driver, everything else is noise",
+    "{focus} is the real driver, everything else is noise",
     "{focus} is where smart money will express the view",
     "{focus} is the lever, not the vibe",
     "{focus} is what makes this tradeable",
@@ -1062,7 +1051,7 @@ NUANCE = [
     "details beat slogans here","context > theatrics","measure it in weeks, not likes",
     "model it once and the picture clears","ship first, argue later","constraints explain the behavior",
     "once {focus} holds, the plan is simple","touch grass and look at {focus}",
-"watch liquidity, then talk",
+    "watch liquidity, then talk",
     "size it like uncertainty is real",
     "timeframe decides who’s right",
     "tape > timelines",
@@ -1075,57 +1064,11 @@ CLOSERS = [
     "then the plan makes sense","and the whole picture clicks","and entries/exits get cleaner",
     "and you avoid dumb errors","and the convo gets useful","and incentives line up",
     "and the path forward writes itself","and the take stops being vibes-only",
-"and the trade becomes cleaner",
+    "and the trade becomes cleaner",
     "and you stop chasing vibes",
     "and you can actually size it",
     "and the market tells you if you’re wrong",
 ]
-
-PRO_KOL_BAD = {
-    "wow", "exciting", "so excited", "can't wait", "cant wait", "love this", "love that",
-    "amazing", "awesome", "incredible", "huge", "insane", "legendary",
-}
-
-PRO_KOL_GOOD = {
-    "signal", "execution", "risk", "liquidity", "flow", "incentives",
-    "positioning", "distribution", "supply", "demand", "timeline", "context",
-    "constraint", "tradeoff", "edge", "verify", "confirm", "pricing", "variance",
-    "sizing", "asymmetric", "timeframe",
-}
-
-def pro_kol_score(text: str) -> int:
-    t = (text or "").strip()
-    low = t.lower()
-
-    score = 0
-
-    # penalize hype/fanboy
-    if any(p in low for p in PRO_KOL_BAD):
-        score -= 3
-
-    # reward grounded "operator" words
-    score += sum(1 for w in PRO_KOL_GOOD if w in low)
-
-    # reward "claim + constraint" structure
-    if any(x in low for x in ("if ", "once ", "as long as ", "depends on ", "until ", "unless ")):
-        score += 1
-
-    # reward questions that are specific (not vague “sounds interesting”)
-    if low.endswith("?") and any(x in low for x in ("how", "what", "where", "which", "when")):
-        score += 1
-
-    # penalize exclamation / hype punctuation
-    if "!" in t:
-        score -= 1
-
-    # penalize super generic
-    if contains_generic_phrase(t):
-        score -= 2
-
-    return score
-
-def pro_kol_ok(text: str, min_score: int = 1) -> bool:
-    return pro_kol_score(text) >= min_score
 
 PRO_POLISH_REPLACEMENTS = [
     (r"^(wow|omg|yo|bro)\b[,\s]*", ""),
@@ -1136,6 +1079,7 @@ PRO_POLISH_REPLACEMENTS = [
     (r"\bsounds interesting\b", "worth watching"),
     (r"[!]+", ""),
 ]
+
 
 def pro_kol_polish(text: str, topic: str = "") -> str:
     """
@@ -1186,13 +1130,10 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     out = re.sub(r"[.!?;:…]+$", "", out)
     return out
 
-# ------------------------------------------------------------------------------
-# Offline generator (with OTP guards + 6–13 words enforcement)
-# ------------------------------------------------------------------------------
-# ------------------------------------------------------------------------------
-# Offline generator (with OTP guards + 6–13 words enforcement)
-# ------------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# Offline generator (with OTP guards + 6–13 words enforcement)
+# --------------------------------------------------------------------------
 class OfflineCommentGenerator:
     def __init__(self) -> None:
         self.random = random.Random()
@@ -1394,24 +1335,25 @@ class OfflineCommentGenerator:
             P(f"{focus_slot} is what desks actually model risk around"),
             P(f"{focus_slot} feels like the lever, not the headline"),
             P(f"Respecting {focus_slot} flow, not just timeline noise"),
-    P(f"{focus_slot} is the kind of edge you only see early"),
-    P(f"{focus_slot} is tradable if liquidity stays decent"),
-    P(f"{focus_slot} looks like positioning, not retail hype"),
-    P(f"{focus_slot} is where the real risk sits rn"),
-    P(f"{focus_slot} needs confirmation from price, not quotes"),
-    P(f"{focus_slot} is the part market makers will punish"),
-    P(f"{focus_slot} is the pivot before sentiment catches up"),
-    P(f"{focus_slot} is the only part worth tracking daily"),
-    P(f"{focus_slot} feels like accumulation if you zoom out"),
-    P(f"{focus_slot} feels crowded if everyone agrees instantly"),
+            P(f"{focus_slot} is the kind of edge you only see early"),
+            P(f"{focus_slot} is tradable if liquidity stays decent"),
+            P(f"{focus_slot} looks like positioning, not retail hype"),
+            P(f"{focus_slot} is where the real risk sits rn"),
+            P(f"{focus_slot} needs confirmation from price, not quotes"),
+            P(f"{focus_slot} is the part market makers will punish"),
+            P(f"{focus_slot} is the pivot before sentiment catches up"),
+            P(f"{focus_slot} is the only part worth tracking daily"),
+            P(f"{focus_slot} feels like accumulation if you zoom out"),
+            P(f"{focus_slot} feels crowded if everyone agrees instantly"),
         ]
 
         kol_q = [
-    P(f"Where does {focus_slot} liquidity actually come from?"),
-    P(f"What's the catalyst for {focus_slot} besides narrative?"),
-    P(f"Is {focus_slot} real demand or just rotation?"),
-    P(f"Does {focus_slot} hold when volatility spikes?"),
-]
+            P(f"Where does {focus_slot} liquidity actually come from?"),
+            P(f"What's the catalyst for {focus_slot} besides narrative?"),
+            P(f"Is {focus_slot} real demand or just rotation?"),
+            P(f"Does {focus_slot} hold when volatility spikes?"),
+        ]
+
         buckets: Dict[str, List[str]] = {
             "react": react,
             "conversation": convo,
@@ -1531,7 +1473,6 @@ class OfflineCommentGenerator:
         if not pro_kol_ok(line):
             return False
         return True
-
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
         remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
@@ -1662,20 +1603,6 @@ def _rescue_two(tweet_text: str) -> List[str]:
     if not b: b = "Watching where this goes rn tbh still"
     return [a, b]
 
-def build_canonical_x_url(original_url: str, t: Any) -> str:
-    """
-    Build https://x.com/<handle>/status/<tweet_id> when possible.
-    Fallback: return original_url.
-    """
-    try:
-        handle = getattr(t, "handle", None)
-        tweet_id = getattr(t, "tweet_id", None) or getattr(t, "id", None)
-
-        if handle and tweet_id:
-            return f"https://x.com/{handle}/status/{tweet_id}"
-    except Exception:
-        pass
-    return original_url
 
 VX_API_BASE = "https://api.vxtwitter.com"
 
@@ -1741,6 +1668,7 @@ def fetch_thread_context(url: str, tweet_data: Any | None = None) -> Optional[di
         "parent_text": parent_text,
     }
 
+
 def _build_context_json_snippet() -> str:
     """
     Construct a compact JSON blob with thread + research context.
@@ -1770,6 +1698,7 @@ def _build_context_json_snippet() -> str:
         + blob[:2000]
     )
 
+
 def _extract_handle_from_url(url: str) -> Optional[str]:
     try:
         m = re.search(r"https?://(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/([^/]+)/status/", url, re.I)
@@ -1777,11 +1706,13 @@ def _extract_handle_from_url(url: str) -> Optional[str]:
     except Exception:
         return None
 
+
 generator = OfflineCommentGenerator()
 
 # --- Minimal helpers used by Groq path ---
 def words(text: str) -> list[str]:
     return TOKEN_RE.findall(text or "")
+
 
 def _sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
@@ -1790,6 +1721,7 @@ def _sanitize_comment(raw: str) -> str:
     txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
     txt = EMOJI_PATTERN.sub("", txt)
     return txt
+
 
 def _strip_second_clause(text: str) -> str:
     """
@@ -1810,8 +1742,10 @@ def _strip_second_clause(text: str) -> str:
     text = re.sub(r"[,\-–]+$", "", text).strip()
     return text
 
+
 QUESTION_HEADS = ["how","what","why","when","where","who","can","could","do","did","are","is","will","would","should"]
 QUESTION_PHRASES = ["any chance", "curious if", "wondering if", "what's the plan", "what is the plan"]
+
 
 def _ensure_question_punctuation(text: str) -> str:
     """
@@ -1834,6 +1768,27 @@ def _ensure_question_punctuation(text: str) -> str:
     if is_question:
         return t + "?"
     return t
+
+
+def kol_polish(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return ""
+
+    # remove common hype openers
+    t = re.sub(r"^(wow|omg|yo|bro)\b[,\s]*", "", t, flags=re.I)
+
+    # remove exclamation
+    t = t.replace("!", "")
+
+    # remove "sounds interesting" vagueness
+    t = re.sub(r"\bsounds interesting\b", "worth watching", t, flags=re.I)
+
+    # collapse whitespace
+    t = re.sub(r"\s+", " ", t).strip()
+
+    return t
+
 
 def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
     """
@@ -1894,24 +1849,6 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
         out = pro_kol_polish(out, topic=detect_topic(raw or ""))
     return out
 
-def kol_polish(text: str) -> str:
-    t = (text or "").strip()
-    if not t:
-        return ""
-
-    # remove common hype openers
-    t = re.sub(r"^(wow|omg|yo|bro)\b[,\s]*", "", t, flags=re.I)
-
-    # remove exclamation
-    t = t.replace("!", "")
-
-    # remove "sounds interesting" vagueness
-    t = re.sub(r"\bsounds interesting\b", "worth watching", t, flags=re.I)
-
-    # collapse whitespace
-    t = re.sub(r"\s+", " ", t).strip()
-
-    return t
 
 def guess_mode(text: str) -> str:
     """
@@ -2110,6 +2047,7 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
         return [a, b]
     return [a, b]
 
+
 def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
     """
     Enforce uniqueness + non-generic quality for a set of candidate comments.
@@ -2250,7 +2188,6 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     return picked[:2]
 
 
-
 PRO_BAD_PHRASES = {
     "wow", "exciting", "huge", "insane", "amazing", "awesome",
     "love this", "love that", "can't wait", "cant wait", "sounds interesting",
@@ -2289,6 +2226,7 @@ PATTERN_PHRASES = {
     "is the practical hinge",
 }
 
+
 def contains_pattern_phrase(text: str) -> bool:
     low = (text or "").lower()
     return any(p in low for p in PATTERN_PHRASES)
@@ -2305,6 +2243,7 @@ def extract_entities(tweet_text: str) -> dict:
         "handles": list(dict.fromkeys(handles)),
         "numbers": list(dict.fromkeys(decimals + integers)),
     }
+
 
 def build_research_context_for_tweet(tweet_text: str) -> dict:
     """
@@ -2398,6 +2337,7 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
     _research_cache_set(key, ctx)
     return ctx
 
+
 def hallucination_safe(comment: str, tweet_text: str) -> bool:
     """
     Anti-hallucination guard:
@@ -2429,6 +2369,7 @@ def hallucination_safe(comment: str, tweet_text: str) -> bool:
 
     return True
 
+
 def has_tweet_anchor(comment: str, tweet_text: str) -> bool:
     """
     Require each comment to hook into the tweet:
@@ -2455,6 +2396,7 @@ def has_tweet_anchor(comment: str, tweet_text: str) -> bool:
 
     low = comment.lower()
     return any(a and a in low for a in anchors)
+
 
 def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
     """
@@ -2531,13 +2473,9 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     return result[:2]
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # LLM parsing helper shared by providers
-# ------------------------------------------------------------------------------
-import json
-import re
-from typing import List
-
+# --------------------------------------------------------------------------
 _JSON_BLOCK_RE = re.compile(r"```(?:json)?(.*?)```", re.DOTALL | re.IGNORECASE)
 
 
@@ -2670,9 +2608,79 @@ def parse_two_comments_flex(raw: str) -> List[str]:
     return cleaned[:2]
 
 
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
 # Groq generator (exactly 2, 6–13 words, tolerant parsing)
-# ------------------------------------------------------------------------------
+# --------------------------------------------------------------------------
+def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
+    """
+    Fix common LLM/tokenization artifacts:
+    - if tweet has 17.99 and comment contains '17 99', restore '17.99'
+    - if tweet has $SOL and comment contains 'SOL', restore '$SOL' (crypto-only)
+    """
+    c = comment or ""
+    t = tweet_text or ""
+
+    # decimals
+    for dec in re.findall(r"\d+\.\d+", t):
+        a, b = dec.split(".", 1)
+        spaced = f"{a} {b}"
+        c = re.sub(rf"\b{re.escape(spaced)}\b", dec, c)
+
+    # tickers (only if tweet looks crypto-ish)
+    if is_crypto_tweet(t):
+        for cashtag in re.findall(r"\$\w{2,15}", t):
+            sym = cashtag[1:]
+            # replace standalone symbol if $ version not already present
+            if cashtag not in c and re.search(rf"\b{re.escape(sym)}\b", c):
+                c = re.sub(rf"\b{re.escape(sym)}\b", cashtag, c, count=1)
+
+    return c
+
+
+def _llm_sys_prompt(mode_line: str = "") -> str:
+    base = (
+        "Human style:\n"
+        "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
+        "- Write each line as an inner reaction, not a public compliment (like a thought you’d type into a chat with a friend).\n"
+        "- Avoid hype/fanboy language and vague praise.\n"
+        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
+        "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
+    )
+
+    # Voice roulette (per-request persona)
+    voice = current_voice_card()
+    if voice:
+        base += (
+            "\nVoice profile:\n"
+            f"- id: {voice.get('id')}\n"
+            f"- style: {voice.get('description')}\n"
+            "Write both comments in this voice, but still follow all hard rules.\n"
+        )
+
+    # Research realism (anti-hallucination)
+    research_ctx = REQUEST_RESEARCH_CTX.get(None)
+    if isinstance(research_ctx, dict):
+        status = research_ctx.get("status")
+        if status in {"empty", "disabled", "error"}:
+            base += (
+                "\nResearch note:\n"
+                "- You either have no reliable research data, or it is incomplete.\n"
+                "- If the project is unclear, prefer sharp *questions* over strong claims.\n"
+                "- Never invent TVL, yields, valuations, or tokenomics details.\n"
+            )
+        elif status == "ok":
+            base += (
+                "\nResearch note:\n"
+                "- You have some structured research context for the project.\n"
+                "- You may reference it cautiously, but never invent numbers beyond that data.\n"
+            )
+
+    mode_line = (mode_line or "").strip()
+    if mode_line:
+        base += "\n" + mode_line + "\n"
+    return base
+
+
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     """
     Best-effort Groq path:
@@ -2729,13 +2737,13 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 
     raw = (resp.choices[0].message.content or "").strip()
     _debug_store(
-    "groq",
-    {
-        "model": GROQ_MODEL,
-        "raw": raw,
-        "response_id": getattr(resp, "id", None),
-    },
-)
+        "groq",
+        {
+            "model": GROQ_MODEL,
+            "raw": raw,
+            "response_id": getattr(resp, "id", None),
+        },
+    )
 
     candidates = parse_two_comments_flex(raw)
     candidates = [
@@ -2767,51 +2775,6 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
 
     return candidates
 
-# ------------------------------------------------------------------------------
-# OpenAI / Gemini generators (same constraints as Groq)
-# ------------------------------------------------------------------------------
-def _llm_sys_prompt(mode_line: str = "") -> str:
-    base = (
-        "Human style:\n"
-        "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
-        "- Write each line as an inner reaction, not a public compliment (like a thought you’d type into a chat with a friend).\n"
-        "- Avoid hype/fanboy language and vague praise.\n"
-        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
-        "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
-    )
-
-    # Voice roulette (per-request persona)
-    voice = current_voice_card()
-    if voice:
-        base += (
-            "\nVoice profile:\n"
-            f"- id: {voice.get('id')}\n"
-            f"- style: {voice.get('description')}\n"
-            "Write both comments in this voice, but still follow all hard rules.\n"
-        )
-
-    # Research realism (anti-hallucination)
-    research_ctx = REQUEST_RESEARCH_CTX.get(None)
-    if isinstance(research_ctx, dict):
-        status = research_ctx.get("status")
-        if status in {"empty", "disabled", "error"}:
-            base += (
-                "\nResearch note:\n"
-                "- You either have no reliable research data, or it is incomplete.\n"
-                "- If the project is unclear, prefer sharp *questions* over strong claims.\n"
-                "- Never invent TVL, yields, valuations, or tokenomics details.\n"
-            )
-        elif status == "ok":
-            base += (
-                "\nResearch note:\n"
-                "- You have some structured research context for the project.\n"
-                "- You may reference it cautiously, but never invent numbers beyond that data.\n"
-            )
-
-    mode_line = (mode_line or "").strip()
-    if mode_line:
-        base += "\n" + mode_line + "\n"
-    return base
 
 def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_OPENAI and _openai_client):
@@ -2838,13 +2801,13 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
 
     raw = (resp.choices[0].message.content or "").strip()
     _debug_store(
-    "openai",
-    {
-        "model": OPENAI_MODEL,
-        "raw": raw,
-        "response_id": getattr(resp, "id", None),
-    },
-)
+        "openai",
+        {
+            "model": OPENAI_MODEL,
+            "raw": raw,
+            "response_id": getattr(resp, "id", None),
+        },
+    )
 
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
@@ -2858,6 +2821,7 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         if len(merged) >= 2:
             candidates = merged[:2]
     return candidates[:2]
+
 
 def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
     if not (USE_GEMINI and _gemini_model):
@@ -2889,13 +2853,12 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         raw = str(resp)
     raw = (raw or "").strip()
     _debug_store(
-    "gemini",
-    {
-        "model": GEMINI_MODEL_NAME,
-        "raw": raw,
-    },
-)
-
+        "gemini",
+        {
+            "model": GEMINI_MODEL_NAME,
+            "raw": raw,
+        },
+    )
 
     candidates = parse_two_comments_flex(raw)
     candidates = [enforce_word_count_natural(c) for c in candidates]
@@ -2924,36 +2887,13 @@ def _available_providers() -> list[tuple[str, callable]]:
         providers.append(("gemini", gemini_two_comments))
     return providers
 
-def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
-    """
-    Fix common LLM/tokenization artifacts:
-    - if tweet has 17.99 and comment contains '17 99', restore '17.99'
-    - if tweet has $SOL and comment contains 'SOL', restore '$SOL' (crypto-only)
-    """
-    c = comment or ""
-    t = tweet_text or ""
-
-    # decimals
-    for dec in re.findall(r"\d+\.\d+", t):
-        a, b = dec.split(".", 1)
-        spaced = f"{a} {b}"
-        c = re.sub(rf"\b{re.escape(spaced)}\b", dec, c)
-
-    # tickers (only if tweet looks crypto-ish)
-    if is_crypto_tweet(t):
-        for cashtag in re.findall(r"\$\w{2,15}", t):
-            sym = cashtag[1:]
-            # replace standalone symbol if $ version not already present
-            if cashtag not in c and re.search(rf"\b{re.escape(sym)}\b", c):
-                c = re.sub(rf"\b{re.escape(sym)}\b", cashtag, c, count=1)
-
-    return c
 
 def _pick_rewrite_provider_order() -> list[str]:
     # prefer fast/cheap first
     order = ["groq", "openai", "gemini"]
     random.shuffle(order)
     return order
+
 
 def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
     witty = (topic == "meme" and PRO_KOL_ALLOW_WIT)
@@ -2984,6 +2924,7 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "\n"
         "Return a JSON array of two strings: [\"...\", \"...\"].\n"
     )
+
 
 def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]) -> Optional[list[str]]:
     topic = detect_topic(tweet_text or "")
@@ -3091,6 +3032,7 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
                 logger.warning("pro rewrite provider %s failed: %s", provider, e)
 
     return None
+
 
 def generate_two_comments_with_providers(
     tweet_text: str,
@@ -3225,14 +3167,19 @@ def generate_two_comments_with_providers(
 
     return out[:2]
 
-# ------------------------------------------------------------------------------
-# API routes (batching + pacing)
-# ------------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# API routes (batching + pacing)
+# --------------------------------------------------------------------------
 def chunked(seq, size):
     size = max(1, int(size))
     for i in range(0, len(seq), size):
         yield seq[i:i+size]
+
+
+class TweetData:  # only for type checking hints if needed
+    handle: Optional[str]
+    tweet_id: Optional[str]
 
 
 def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
@@ -3243,7 +3190,7 @@ def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
         https://x.com/{handle}/status/{tweet_id}
     - Otherwise fall back to whatever url we already normalized.
     """
-    if t.handle and t.tweet_id:
+    if getattr(t, "handle", None) and getattr(t, "tweet_id", None):
         return f"https://x.com/{t.handle}/status/{t.tweet_id}"
     return original_url
 
@@ -3424,7 +3371,6 @@ def reroll_endpoint():
             "code": "internal_error",
         }), 500
 
-from flask import Flask, request, jsonify
 
 @app.get("/debug")
 def debug_llm():
@@ -3443,10 +3389,10 @@ def debug_llm():
 
     return jsonify(DEBUG_LAST_LLM), 200
 
-# ------------------------------------------------------------------------------
-# Boot
-# ------------------------------------------------------------------------------
 
+# --------------------------------------------------------------------------
+# Boot
+# --------------------------------------------------------------------------
 def main() -> None:
     init_db()
     # threading.Thread(target=keep_alive, daemon=True).start()  # optional keep-alive
