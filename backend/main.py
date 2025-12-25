@@ -2104,27 +2104,28 @@ def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> l
     seen_fps: set[str] = set()
     thesis_seen = False
 
-	for raw in (candidates or []):
-        c = _prep(raw)
-        if not c:
-            continue
-        low = c.lower()
-
-        # Soft cap on "thesis" spam (keeps vibe varied)
-        if "thesis" in low:
-            if thesis_seen:
+        for raw in (candidates or []):
+            c = _prep(raw)
+            if not c:
                 continue
-            thesis_seen = True
+            low = c.lower()
 
-        if contains_generic_phrase(c):
-            continue
+            # Soft cap on "thesis" spam (keeps vibe varied)
+            if "thesis" in low:
+                if thesis_seen:
+                    continue
+                thesis_seen = True
 
-        # Drop ultra-templatey CT phrases ("risk/reward around X", etc.)
-        if contains_pattern_phrase(c):
-            continue
+            if contains_generic_phrase(c):
+                continue
 
-        if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
-            continue
+            # Drop ultra-templatey CT phrases ("risk/reward around X", etc.)
+            if contains_pattern_phrase(c):
+                continue
+
+            if PRO_KOL_STRICT and not pro_kol_ok(c, tweet_text=tweet_text):
+                continue
+
 
         if tweet_text and not hallucination_safe(c, tweet_text):
             continue
