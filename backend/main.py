@@ -963,6 +963,46 @@ def llm_mode_hint(tweet_text: str) -> str:
     return "Mode: CT pro. Grounded, specific, calm. One observation + one sharp question."
 
 
+def _llm_sys_prompt(mode_line: str = "") -> str:
+    """
+    Build the base system prompt for all LLM providers.
+
+    - Explains the hard rules (length, no emojis/links, no hallucinations).
+    - Emphasizes "inner thought" CT style.
+    - Requests a batch of candidates; we later filter to the best 2.
+    """
+    base = (
+        "You generate a batch of short reply candidates to a tweet.\n"
+        "\n"
+        "Hard rules:\n"
+        f"- Output exactly {LLM_CANDIDATE_BATCH} candidate comments.\n"
+        "- Each comment must be 6–13 tokens.\n"
+        "- One thought per comment (no second clause like 'thanks for sharing').\n"
+        "- No emojis, hashtags, or links.\n"
+        "- Do NOT invent details not present in the tweet or extra context.\n"
+        "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
+        "\n"
+        "Human style:\n"
+        "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
+        "- Write each line as an inner reaction to the post, not a public compliment.\n"
+        "- Avoid hype/fanboy language and vague praise.\n"
+        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
+        "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
+        "\n"
+        "Diversity:\n"
+        "- Mix claims, questions, and cautious risk notes across the batch.\n"
+        "- Make the comments meaningfully different from each other.\n"
+        "\n"
+        "Output format:\n"
+        f"- Return a JSON array of {LLM_CANDIDATE_BATCH} strings: [\"...\", \"...\", ...].\n"
+        f"- If not JSON, return {LLM_CANDIDATE_BATCH} lines separated by newlines.\n"
+    )
+    if mode_line:
+        base += "\n\n" + mode_line.strip() + "\n"
+    return base
+
+
+
 def is_crypto_tweet(text: str) -> bool:
     t = (text or "").lower()
     crypto_keywords = [
@@ -2028,6 +2068,36 @@ def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
 
     return candidates[:2]
 
+
+
+
+def _available_providers() -> list[tuple[str, callable]]:
+    """
+    Decide which LLM providers are available for this request.
+
+    Returns a list of (name, fn) pairs used by `generate_two_comments_with_providers`.
+    Providers are enabled if their API keys were configured at startup.
+    """
+    providers: list[tuple[str, callable]] = []
+    try:
+        if USE_GROQ and _groq_client:
+            providers.append(("groq", groq_two_comments))
+    except NameError:
+        pass
+
+    try:
+        if USE_OPENAI and _openai_client:
+            providers.append(("openai", openai_two_comments))
+    except NameError:
+        pass
+
+    try:
+        if USE_GEMINI and _gemini_model:
+            providers.append(("gemini", gemini_two_comments))
+    except NameError:
+        pass
+
+    return providers
 
 def generate_two_comments_with_providers(
     tweet_text: str,
