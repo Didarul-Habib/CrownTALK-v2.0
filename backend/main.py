@@ -1099,6 +1099,18 @@ def _rescue_two(tweet_text: str) -> list[str]:
 # ------------------------------------------------------------------------------
 # LLM provider calls
 # ------------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
+# Groq model fallback list (fixes org-blocked model errors)
+# ------------------------------------------------------------------------------
+GROQ_MODEL_CANDIDATES = [
+    os.getenv("GROQ_MODEL", "").strip(),      # allow overriding from env
+    "llama-3.1-70b-versatile",
+    "llama-3.1-8b-instant",
+    "mixtral-8x7b-32768",
+]
+GROQ_MODEL_CANDIDATES = [m for m in GROQ_MODEL_CANDIDATES if m]
+
+
 def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
@@ -1114,29 +1126,42 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         "- Prefer returning a JSON array of two strings.\n"
     )
 
+    # keep your extra system rules (pro KOL / decimals / cashtags)
     sys_prompt += llm_extra_system_rules()
 
     ctx_blob = build_context_blob(tweet_text, author, url=None)
     user_prompt = (
-        ctx_blob +
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
+        ctx_blob
+        + f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        + "Return exactly two distinct comments (JSON array or two lines)."
     )
 
-    resp = _groq_client.chat.completions.create(
-        model="llama-3.3-70b-versatile",
-        messages=[
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        temperature=0.9,
-        max_tokens=180,
-    )
-    raw = (resp.choices[0].message.content or "").strip()
-    candidates = parse_two_comments_flex(raw)
-    candidates = [enforce_word_count_natural(c) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    return enforce_unique(candidates, tweet_text=tweet_text)
+    last_err: Exception | None = None
+
+    for model_name in GROQ_MODEL_CANDIDATES:
+        try:
+            resp = _groq_client.chat.completions.create(
+                model=model_name,
+                messages=[
+                    {"role": "system", "content": sys_prompt},
+                    {"role": "user", "content": user_prompt},
+                ],
+                temperature=0.9,
+                max_tokens=180,
+            )
+            raw = (resp.choices[0].message.content or "").strip()
+            candidates = parse_two_comments_flex(raw)
+            candidates = [enforce_word_count_natural(c) for c in candidates]
+            candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+            return enforce_unique(candidates, tweet_text=tweet_text)
+
+        except Exception as e:
+            last_err = e
+            # log and try next model
+            logger.warning("Groq model failed (%s): %s", model_name, e)
+            continue
+
+    raise RuntimeError(f"Groq failed all model candidates: {last_err}")
 
 
 def _llm_sys_prompt() -> str:
@@ -1327,6 +1352,14 @@ def generate_two_comments_with_providers(
     # Final hard cap: exactly 2
     try:
         return out[:2]
+        # Absolute guarantee: always 2 items
+if len(out) < 2:
+    rescue = _rescue_two(tweet_text)
+    for r in rescue:
+        if len(out) >= 2:
+            break
+        out.append({"lang": lang or "en", "text": sanitize_comment(r)})
+
     finally:
         try:
             if _research_token is not None:
