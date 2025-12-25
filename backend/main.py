@@ -30,6 +30,27 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← 
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
+# ---------------------------------------------------------------------------
+# Request nonce (anti-repeat salt per URL)
+# ---------------------------------------------------------------------------
+REQUEST_NONCE: ContextVar[str] = ContextVar("REQUEST_NONCE", default="")
+
+def set_request_nonce(url: str = "") -> str:
+    """
+    Sets a short per-request nonce used to vary generation per URL/request.
+    Avoids NameError and keeps behavior stable across workers.
+    """
+    try:
+        base = (url or "") + "|" + str(time.time()) + "|" + str(random.random())
+        nonce = hashlib.sha256(base.encode("utf-8")).hexdigest()[:12]
+    except Exception:
+        nonce = str(int(time.time()))
+    REQUEST_NONCE.set(nonce)
+    return nonce
+
+def get_request_nonce() -> str:
+    return REQUEST_NONCE.get("")
+
 # ------------------------------------------------------------------------------
 # Pro KOL upgrade switches (all three add-ons)
 # ------------------------------------------------------------------------------
@@ -2878,8 +2899,12 @@ def comment_endpoint():
 
     for batch in chunked(cleaned, BATCH_SIZE):
         for url in batch:
-            set_request_nonce(url)
             try:
+                try:
+                    set_request_nonce(url)
+                except Exception:
+                    pass
+
                 t = fetch_tweet_data(url)
 
                 # Per-request context: thread, research, voice
@@ -2895,13 +2920,15 @@ def comment_endpoint():
                     research_ctx = {"status": "error"}
                 REQUEST_RESEARCH_CTX.set(research_ctx)
 
-                set_request_voice(t.text or "")
+                try:
+                    set_request_voice(t.text or "")
+                except Exception:
+                    pass
 
-                # Prefer handle from upstream payload, fall back to URL parsing
                 handle = t.handle or _extract_handle_from_url(url)
 
                 two = generate_two_comments_with_providers(
-                    t.text,
+                    t.text or "",
                     t.author_name or None,
                     handle,
                     t.lang or None,
@@ -2910,23 +2937,14 @@ def comment_endpoint():
 
                 display_url = _canonical_x_url_from_tweet(url, t)
 
-                results.append({
-                    "url": display_url,
-                    "comments": two,
-                })
+                results.append({"url": display_url, "comments": two})
+
             except CrownTALKError as e:
-                failed.append({
-                    "url": url,
-                    "reason": str(e),
-                    "code": e.code,
-                })
+                failed.append({"url": url, "reason": str(e), "code": e.code})
             except Exception:
                 logger.exception("Unhandled error while processing %s", url)
-                failed.append({
-                    "url": url,
-                    "reason": "internal_error",
-                    "code": "internal_error",
-                })
+                failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
+
             time.sleep(PER_URL_SLEEP)
 
     return jsonify({"results": results, "failed": failed}), 200
