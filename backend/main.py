@@ -2018,13 +2018,16 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
         return [a, b]
     return [a, b]
 
-def enforce_unique(candidates: list[str], tweet_text: Optional[str] = None) -> list[str]:
+def enforce_unique(
+    candidates: list[str],
+    tweet_text: Optional[str] = None,
+    **_ignored_kwargs,  # allows url=..., lang=... without crashing
+) -> list[str]:
     """
     - sanitize + enforce 6–13 words
     - drop generic phrases
     - skip past repeats / templates / trigram overlaps
-    - small chance to tweak if previously seen
-    - finally: pick two diverse comments (Hybrid: statement + question if possible)
+    - finally: pick two diverse comments (statement + question if possible)
     """
     out: list[str] = []
 
@@ -2276,8 +2279,11 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     elif non:
         result.append(non[0])
 
-    # apply uniqueness + hybrid pairing
-    result = enforce_unique(raw, tweet_text=text, url="", lang="en")
+    # Apply your uniqueness filters + diversity pairing
+    result = enforce_unique(result, tweet_text=text)
+    if len(result) < 2:
+        result = enforce_unique(result + _rescue_two(text), tweet_text=text)
+
     return result[:2]
 
 # ------------------------------------------------------------------------------
@@ -2316,7 +2322,7 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
 # ------------------------------------------------------------------------------
 # Groq generator (exactly 2, 6–13 words, tolerant parsing)
 # ------------------------------------------------------------------------------
-def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
+def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> list[str]:
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
@@ -2328,8 +2334,7 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         "Return exactly two distinct comments (JSON array or two lines)."
     )
     user_prompt += _build_context_json_snippet()
-    user_prompt += "\n\n" + _build_llm_variety_snippet(kwargs.get("url", "") or "", tweet_text)
-
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
 
     resp = None
     for attempt in range(3):
@@ -2358,7 +2363,8 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
             if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
                 wait_secs = 2 + attempt
             if wait_secs:
-                time.sleep(wait_secs); continue
+                time.sleep(wait_secs)
+                continue
             raise
 
     if resp is None:
@@ -2371,60 +2377,26 @@ def groq_two_comments(tweet_text: str, author: str | None) -> list[str]:
         for c in candidates
     ]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(
-        candidates,
-        tweet_text=tweet_text,
-        url=kwargs.get("url", "") or "",
-        lang="en",
-    )
+
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
-        sents = re.split(r"[.!?]\s+", raw)
-        sents = [
-            restore_decimals_and_tickers(enforce_word_count_natural(s), tweet_text)
-            for s in sents
-            if s.strip()
-        ]
-        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-
-        candidates = enforce_unique(
-            candidates + sents[:2],
-            tweet_text=tweet_text,
-            url=kwargs.get("url", "") or "",
-            lang="en",
-        )
-
-
-    tries = 0
-    while len(candidates) < 2 and tries < 2:
-        tries += 1
-        candidates = enforce_unique(
-            candidates + offline_two_comments(tweet_text, author),
-            tweet_text=tweet_text,
-        )
+        # fallback: add offline
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
-        sents = re.split(r"[.!?]\s+", raw)
-        sents = [enforce_word_count_natural(s) for s in sents if s.strip()]
-        sents = [s for s in sents if 6 <= len(words(s)) <= 13]
-        candidates = enforce_unique(candidates + sents[:2])
-
-    tries = 0
-    while len(candidates) < 2 and tries < 2:
-        tries += 1
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author))
+        candidates = enforce_unique(candidates + _rescue_two(tweet_text), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("Could not produce two valid comments")
 
-    # final guard against EN#1 ≈ EN#2
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
-        extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra)
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
 
     return candidates[:2]
+
 
 # ------------------------------------------------------------------------------
 # OpenAI / Gemini generators (same constraints as Groq)
@@ -2490,16 +2462,16 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         base += "\n" + mode_line + "\n"
     return base
 
-def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     if not (USE_OPENAI and _openai_client):
         raise RuntimeError("OpenAI disabled or client not available")
 
     user_prompt = (
-    f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-    "Return exactly two distinct comments (JSON array or two lines)."
-)
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
     user_prompt += _build_context_json_snippet()
-    user_prompt += "\n\n" + _build_llm_variety_snippet(kwargs.get("url", "") or "", tweet_text)
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
 
     mode_line = llm_mode_hint(tweet_text)
     resp = _openai_client.chat.completions.create(
@@ -2511,77 +2483,72 @@ def openai_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
         max_tokens=160,
         temperature=0.7,
     )
+
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(
-        candidates,
-        tweet_text=tweet_text,
-        url=kwargs.get("url", "") or "",
-        lang="en",
-    )
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(candidates) < 2:
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("OpenAI did not produce two valid comments")
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
-        extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
+
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
+
     return candidates[:2]
 
-def gemini_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+
+def gemini_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     if not (USE_GEMINI and _gemini_model):
         raise RuntimeError("Gemini disabled or client not available")
 
     user_prompt = (
-    f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-    "Return exactly two distinct comments (JSON array or two lines)."
-)
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
     user_prompt += _build_context_json_snippet()
-    user_prompt += "\n\n" + _build_llm_variety_snippet(kwargs.get("url", "") or "", tweet_text)
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
 
     mode_line = llm_mode_hint(tweet_text)
     prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
+
     resp = _gemini_model.generate_content(prompt)
     raw = ""
     try:
-        parts = getattr(getattr(resp, "candidates", [None])[0], "content", None)
-        if parts and getattr(parts, "parts", None):
-            raw = "".join(getattr(p, "text", "") for p in parts.parts)
-        elif hasattr(resp, "text"):
-            raw = resp.text
+        if hasattr(resp, "text"):
+            raw = resp.text or ""
         else:
             raw = str(resp)
     except Exception:
         raw = str(resp)
-    raw = (raw or "").strip()
 
+    raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
-    candidates = [enforce_word_count_natural(c) for c in candidates]
+    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-    candidates = enforce_unique(
-        candidates,
-        tweet_text=tweet_text,
-        url=kwargs.get("url", "") or "",
-        lang="en",
-    )
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(candidates) < 2:
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("Gemini did not produce two valid comments")
-    if len(candidates) >= 2 and _pair_too_similar(candidates[0], candidates[1]):
-        extra = offline_two_comments(tweet_text, author)
-        merged = enforce_unique(candidates + extra, tweet_text=tweet_text)
+
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
+
     return candidates[:2]
 
+
 def _available_providers() -> list[tuple[str, callable]]:
-    """
-    Build a list of (name, fn) for all enabled LLM providers.
-    Order is randomized per request by the caller.
-    """
     providers: list[tuple[str, callable]] = []
     if USE_GROQ and _groq_client:
         providers.append(("groq", groq_two_comments))
@@ -2590,6 +2557,7 @@ def _available_providers() -> list[tuple[str, callable]]:
     if USE_GEMINI and _gemini_model:
         providers.append(("gemini", gemini_two_comments))
     return providers
+
 
 def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
     """
@@ -2615,6 +2583,19 @@ def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
                 c = re.sub(rf"\b{re.escape(sym)}\b", cashtag, c, count=1)
 
     return c
+
+def _maybe_llm_variety_snippet(url: str, tweet_text: str) -> str:
+    """
+    Some builds include _build_llm_variety_snippet(), some don't.
+    This prevents NameError crashes.
+    """
+    try:
+        fn = globals().get("_build_llm_variety_snippet")
+        if callable(fn):
+            return "\n\n" + (fn(url or "", tweet_text or "") or "")
+    except Exception:
+        pass
+    return ""
 
 def _pick_rewrite_provider_order() -> list[str]:
     # prefer fast/cheap first
@@ -2758,154 +2739,64 @@ def generate_two_comments_with_providers(
     url: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
-    Hybrid provider strategy with randomness:
-
-    - For each request, randomize the order of enabled providers (Groq, OpenAI, Gemini).
-    - Try them in that random order, accumulating comments.
-    - As soon as we have 2 solid comments, stop.
-    - If all fail or give < 2, fall back to offline generator.
+    Working cascade:
+    - Try enabled providers in random order
+    - Enforce constraints + uniqueness
+    - Fallback to offline
+    - Always return exactly two dicts: [{"lang": "...", "text": "..."}, ...]
     """
+    url = url or ""
+    lang_out = lang or "en"
+
     candidates: list[str] = []
 
     providers = _available_providers()
-    if providers:
-        # randomize call order each request
-        random.shuffle(providers)
+    random.shuffle(providers)
 
-        for name, fn in providers:
-            try:
-                more = fn(tweet_text, author)
-                if more:
-                    # merge + dedupe / anti-pattern logic
-                    candidates = enforce_unique(
-                        candidates + more,
-                        tweet_text=tweet_text,
-                        url=(url or ""),
-                        lang=(lang or "en"),
-                    )
+    for name, fn in providers:
+        try:
+            # All provider fns accept (tweet_text, author, url=...)
+            more = fn(tweet_text, author, url=url)
+            if more:
+                candidates = enforce_unique(candidates + more, tweet_text=tweet_text, url=url, lang=lang_out)
+        except Exception as e:
+            logger.warning("%s provider failed: %s", name, e)
 
-            except Exception as e:
-                logger.warning("%s provider failed: %s", name, e)
+        if len(candidates) >= 2:
+            break
 
-            if len(candidates) >= 2:
-                break
-
-    # If we still don't have 2 comments, offline generator rescues
     if len(candidates) < 2:
         try:
-            offline = offline_two_comments(tweet_text, author)
-            if offline:
-                candidates = enforce_unique(
-                    candidates + more,
-                    tweet_text=tweet_text,
-                    url=(url or ""),
-                    lang=(lang or "en"),
-                )
-
-                
+            candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         except Exception as e:
-            logger.warning("Offline generator failed: %s", e)
+            logger.warning("offline fallback failed: %s", e)
 
-    # Last-chance fallback: call OfflineCommentGenerator directly
     if len(candidates) < 2:
-        try:
-            extra_items = generator.generate_two(
-                tweet_text,
-                author or None,
-                handle,
-                lang,
-                url=url,
-            )
+        candidates = enforce_unique(candidates + _rescue_two(tweet_text), tweet_text=tweet_text)
 
-            # FIX: tolerate list elements that are dict OR str (prevents item.get crash)
-            extra: list[str] = []
-            for i in (extra_items or []):
-                if isinstance(i, dict):
-                    txt = i.get("text")
-                else:
-                    txt = i
-                txt = (str(txt).strip() if txt is not None else "")
-                if txt:
-                    extra.append(txt)
-
-            if extra:
-                candidates = enforce_unique(
-                    candidates + more,
-                    tweet_text=tweet_text,
-                    url=(url or ""),
-                    lang=(lang or "en"),
-                )
-
-        except Exception as e:
-            logger.exception("Total failure in provider cascade: %s", e)
-
-    # If still nothing, hard fallback to 2 simple offline lines
-    if not candidates:
-        raw = _rescue_two(tweet_text)
-        candidates = enforce_unique(
-            candidates + more,
-            tweet_text=tweet_text,
-            url=(url or ""),
-            lang=(lang or "en"),
-        )
-
-
-    # Limit to exactly 2 text comments
-    candidates = [c for c in candidates if c][:2]
-
-# ------------------------------------------------------------------------------
-    # Pro KOL rewrite/regenerate pass (Add-on #3)
-    # ------------------------------------------------------------------------------
+    # Pro KOL rewrite (optional, only if enabled)
     if PRO_KOL_REWRITE:
-        needs = (
-            len(candidates) < 2
-            or (PRO_KOL_STRICT and any(not pro_kol_ok(c, tweet_text) for c in candidates))
-            or (len(candidates) == 2 and (_pair_too_similar(candidates[0], candidates[1])))
-            or (len(candidates) == 2 and candidates[0].split()[0].lower() == candidates[1].split()[0].lower())
-            or any(template_burned(c) for c in candidates)
-        )
-        if needs:
-            improved = pro_kol_rewrite_pair(tweet_text, author, candidates)
-            if improved and len(improved) >= 2:
-                candidates = improved[:2]
-
-    out: List[Dict[str, Any]] = []
-    for c in candidates:
-        out.append({"lang": lang or "en", "text": c})
-
-    # If somehow we still ended up with < 2 dicts, ask offline generator directly
-    if len(out) < 2:
         try:
-            extra_items = generator.generate_two(
-                tweet_text,
-                author or None,
-                handle,
-                lang,
-                url=url,
+            needs = (
+                len(candidates) < 2
+                or (PRO_KOL_STRICT and any(not pro_kol_ok(c, tweet_text) for c in candidates))
+                or (len(candidates) == 2 and _pair_too_similar(candidates[0], candidates[1]))
+                or (len(candidates) == 2 and candidates[0].split()[0].lower() == candidates[1].split()[0].lower())
             )
-            for item in extra_items:
-                if len(out) >= 2:
-                    break
+            if needs:
+                improved = pro_kol_rewrite_pair(tweet_text, author, candidates)
+                if improved and len(improved) >= 2:
+                    candidates = improved[:2]
+        except Exception as e:
+            logger.warning("pro rewrite failed: %s", e)
 
-                # FIX: tolerate str items (prevents item.get crash)
-                if isinstance(item, dict):
-                    txt = item.get("text")
-                    ilang = item.get("lang")
-                else:
-                    txt = item
-                    ilang = None
+    # final hard guarantee: two strings
+    candidates = [c for c in candidates if c][:2]
+    if len(candidates) < 2:
+        candidates = (_rescue_two(tweet_text) + candidates)[:2]
 
-                if not txt:
-                    continue
-                out.append({
-                    "lang": ilang or lang or "en",
-                    "text": txt,
-                })
-        except Exception:
-            pass
+    return [{"lang": lang_out, "text": candidates[0]}, {"lang": lang_out, "text": candidates[1]}]
 
-    # Final hard cap: exactly 2
-    return out[:2]
 
 # ------------------------------------------------------------------------------
 # API routes (batching + pacing)
@@ -2967,11 +2858,11 @@ def comment_endpoint():
 
     try:
         cleaned = clean_and_normalize_urls(urls)
-        set_request_nonce(url)
     except CrownTALKError as e:
         return jsonify({"error": str(e), "code": e.code}), 400
     except Exception:
         return jsonify({"error": "url_clean_error", "code": "url_clean_error"}), 400
+
 
     # Hard cap per request
     if len(cleaned) > MAX_URLS_PER_REQUEST:
@@ -3046,19 +2937,15 @@ def reroll_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
 
+    url = ""
     try:
         data = request.get_json(force=True, silent=True) or {}
         url = data.get("url") or ""
         if not url:
-            return jsonify({
-                "error": "Missing 'url' field",
-                "comments": [],
-                "code": "bad_request",
-            }), 400
+            return jsonify({"error": "Missing 'url' field", "comments": [], "code": "bad_request"}), 400
 
-        t = fetch_tweet_data(url)
         set_request_nonce(url)
-        handle = t.handle or _extract_handle_from_url(url)
+        t = fetch_tweet_data(url)
 
         # Per-request context for reroll
         try:
@@ -3075,28 +2962,24 @@ def reroll_endpoint():
 
         set_request_voice(t.text or "")
 
+        handle = t.handle or _extract_handle_from_url(url)
+        two = generate_two_comments_with_providers(
+            t.text or "",
+            t.author_name or None,
+            handle,
+            t.lang or None,
+            url=url,
+        )
+
         display_url = _canonical_x_url_from_tweet(url, t)
 
-        return jsonify({
-            "url": display_url,
-            "comments": two,
-        }), 200
+        return jsonify({"url": display_url, "comments": two}), 200
 
     except CrownTALKError as e:
-        return jsonify({
-            "url": url,
-            "error": str(e),
-            "comments": [],
-            "code": e.code,
-        }), 502
+        return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
     except Exception:
         logger.exception("Unhandled error during reroll for %s", url)
-        return jsonify({
-            "url": url,
-            "error": "internal_error",
-            "comments": [],
-            "code": "internal_error",
-        }), 500
+        return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
 
 
 # ------------------------------------------------------------------------------
