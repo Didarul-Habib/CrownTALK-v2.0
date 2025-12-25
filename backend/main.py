@@ -674,7 +674,7 @@ def too_similar_to_recent(text: str, threshold: float = 0.62, sample: int = 300)
             return True
     return False
 
-def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
+def _pair_too_similar(a: str, b: str, threshold: float = 0.25) -> bool:
     """Pairwise similarity (Jaccard over trigrams) to avoid EN#1 ≈ EN#2."""
     ta = _word_trigrams(a)
     tb = _word_trigrams(b)
@@ -1491,6 +1491,9 @@ class OfflineCommentGenerator:
         if not self._diversity_ok(line):
             return False
         if comment_seen(line):
+            return False
+        # 🚫 Block repeated sentence skeletons across tweets
+        if template_burned(line):
             return False
         if not pro_kol_ok(line):
             return False
@@ -2351,7 +2354,32 @@ def hallucination_safe(comment: str, tweet_text: str) -> bool:
 
     return True
 
+def has_tweet_anchor(comment: str, tweet_text: str) -> bool:
+    """
+    Require each comment to hook into the tweet:
+    - a cashtag ($SOL)
+    - a number (26, 17.99)
+    - or one of the top extracted keywords
+    """
+    if not comment or not tweet_text:
+        return False
 
+    ents = extract_entities(tweet_text or "")
+    keys = extract_keywords(tweet_text or "")
+
+    anchors = set()
+
+    for tag in ents.get("cashtags") or []:
+        anchors.add(tag.lower())
+
+    for num in ents.get("numbers") or []:
+        anchors.add(num.lower())
+
+    for k in keys[:8]:
+        anchors.add(k.lower())
+
+    low = comment.lower()
+    return any(a and a in low for a in anchors)
 
 def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
     """
@@ -2361,6 +2389,10 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
     if not c:
         return False
     low = c.lower()
+
+    # ✅ New: comment must anchor to the tweet (ticker/number/keyword)
+    if tweet_text and not has_tweet_anchor(c, tweet_text):
+        return False
 
     topic = detect_topic(tweet_text or "")
 
@@ -2379,7 +2411,12 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
     # on-topic signal: mention at least ONE entity/keyword/operator angle
     ents = extract_entities(tweet_text or "")
     keys = extract_keywords(tweet_text or "")
-    focus_pool = set([k.lower() for k in keys] + [x.lower() for x in ents["cashtags"]] + [x.lower().lstrip("@") for x in ents["handles"]] + [x.lower() for x in ents["numbers"]])
+    focus_pool = set(
+        [k.lower() for k in keys]
+        + [x.lower() for x in ents["cashtags"]]
+        + [x.lower().lstrip("@") for x in ents["handles"]]
+        + [x.lower() for x in ents["numbers"]]
+    )
 
     has_focus = any(fp and fp in low for fp in list(focus_pool)[:12])
     has_operator = any(w in low for w in PRO_OPERATOR_WORDS)
@@ -2389,6 +2426,7 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
         return True if ("?" in low or len(c.split()) >= 6) else False
 
     return has_focus or has_operator
+
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     items = generator.generate_two(text, author or None, None, None)
