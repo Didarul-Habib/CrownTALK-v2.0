@@ -29,7 +29,12 @@ PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "1.0"))  # ← sle
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← hard cap per request
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
-
+# Optional: override default LLM provider order, e.g. "groq,openai,gemini,mistral,cohere,huggingface"
+CROWNTALK_LLM_ORDER = [
+    x.strip().lower()
+    for x in os.getenv("CROWNTALK_LLM_ORDER", "").split(",")
+    if x.strip()
+]
 # ---------------------------------------------------------------------------
 # Request nonce (anti-repeat salt per URL)
 # ---------------------------------------------------------------------------
@@ -299,6 +304,30 @@ if USE_GEMINI:
         _gemini_model = None
         USE_GEMINI = False
 
+# ------------------------------------------------------------------------------
+# Optional Mistral (HTTP client, OpenAI-style API)
+# ------------------------------------------------------------------------------
+MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "").strip()
+USE_MISTRAL = bool(MISTRAL_API_KEY)
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "open-mixtral-8x7b")
+MISTRAL_API_BASE = os.getenv("MISTRAL_API_BASE", "https://api.mistral.ai/v1")
+
+# ------------------------------------------------------------------------------
+# Optional Cohere (HTTP client)
+# ------------------------------------------------------------------------------
+COHERE_API_KEY = os.getenv("COHERE_API_KEY", "").strip()
+USE_COHERE = bool(COHERE_API_KEY)
+COHERE_MODEL = os.getenv("COHERE_MODEL", "command-r")
+
+# ------------------------------------------------------------------------------
+# Optional HuggingFace Inference (HTTP client)
+# ------------------------------------------------------------------------------
+HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "").strip()
+USE_HUGGINGFACE = bool(HUGGINGFACE_API_KEY)
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "").strip()
+HUGGINGFACE_API_BASE = os.getenv(
+    "HUGGINGFACE_API_BASE", "https://api-inference.huggingface.co/models"
+)
 # ------------------------------------------------------------------------------
 # Keepalive (Render free – optional)
 # ------------------------------------------------------------------------------
@@ -726,7 +755,12 @@ def add_cors_headers(response):
 
 @app.route("/", methods=["GET"])
 def health():
-    return jsonify({"status": "ok", "groq": bool(USE_GROQ)}), 200
+    """Basic healthcheck used by Render and Docker health probe.
+
+    We delegate to `ping()` so `/` and `/ping` stay in sync.
+    """
+    return ping()
+
 
 # ------------------------------------------------------------------------------
 # Rules: word count + sanitization + Tokenization
@@ -755,21 +789,35 @@ def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
         toks = toks[:max_w]
     while len(toks) < min_w:
         for filler in ["honestly","tbh","still","though","right"]:
-            if len(toks) >= min_w: break
+            if len(toks) >= min_w:
+                break
             toks.append(filler)
-        if len(toks) < min_w: break
+        if len(toks) < min_w:
+            break
     return " ".join(toks).strip()
 
 
-def postprocess_comment(text: str, source: str) -> str:
-    text = _clean_spaces(text)  # from Fix 1, or your own cleaner
+def enforce_word_count_llm(raw: str, min_w: int = 6, max_w: int = 18, soft_max: int = 22) -> str:
+    """
+    Length control specifically for LLM outputs.
 
-    # LLM output: allow longer (prevents broken sentences)
+    Uses smart_trim_words so we avoid chopping sentences in the middle while
+    still keeping things short.
+    """
+    txt = sanitize_comment(raw)
+    return smart_trim_words(txt, min_words=min_w, max_words=max_w, soft_max=soft_max)
+
+
+def postprocess_comment(text: str, source: str) -> str:
+    text = _clean_spaces(text)
+
+    # LLM output: allow a bit more room and try hard not to cut mid-sentence.
     if source == "llm":
-        return smart_trim_words(text, 6, 16, soft_max=20)
+        return smart_trim_words(text, 6, 18, soft_max=22)
 
     # Offline/template: shorter is fine
-    return smart_trim_words(text, 6, 13, soft_max=16)
+    return smart_trim_words(text, 6, 15, soft_max=18)
+
 
 
 # ------------------------------------------------------------------------------
@@ -2470,11 +2518,10 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [
-        restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text)
+        restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
         for c in candidates
     ]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
-
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
@@ -2504,16 +2551,19 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         "\n"
         "Hard rules:\n"
         "- Output exactly 2 comments.\n"
-        "- Each comment must be 6–13 tokens.\n"
+        "- Each comment must be a single short sentence of around 6–18 words (never more than 20).\n"
         "- One thought per comment (no second clause like 'thanks for sharing').\n"
         "- No emojis, hashtags, or links.\n"
         "- Do NOT invent details not present in the tweet.\n"
+        "- Anchor each comment in a concrete detail from the tweet (names, numbers, tickers, claims).\n"
         "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
+        "- Do not mention that you are an AI, a bot, or a model.\n"
+        "- Do not say 'this tweet', 'this thread', or 'thanks for sharing' – just respond naturally.\n"
         "\n"
         "Human style:\n"
         "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
         "- Avoid hype/fanboy language and vague praise.\n"
-        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
+        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting, interesting take, great breakdown, nice summary, well said, thanks for sharing.\n"
         "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
         "\n"
         "Diversity:\n"
@@ -2583,8 +2633,8 @@ def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
 
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
-    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
@@ -2627,8 +2677,8 @@ def gemini_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
 
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
-    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
@@ -2645,14 +2695,223 @@ def gemini_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     return candidates[:2]
 
 
+def mistral_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    if not (USE_MISTRAL and MISTRAL_API_KEY):
+        raise RuntimeError("Mistral disabled or API key not available")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    user_prompt += _build_context_json_snippet()
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
+
+    mode_line = llm_mode_hint(tweet_text)
+    payload = {
+        "model": MISTRAL_MODEL,
+        "messages": [
+            {"role": "system", "content": _llm_sys_prompt(mode_line)},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.7,
+        "max_tokens": 160,
+    }
+    headers = {
+        "Authorization": f"Bearer {MISTRAL_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    resp = requests.post(
+        f"{MISTRAL_API_BASE}/chat/completions",
+        headers=headers,
+        json=payload,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json() or {}
+    raw = ""
+    try:
+        choices = data.get("choices") or []
+        if choices:
+            msg = choices[0].get("message") or {}
+            raw = msg.get("content") or ""
+    except Exception:
+        raw = json.dumps(data, ensure_ascii=False)
+
+    raw = (raw or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(candidates) < 2:
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+
+    if len(candidates) < 2:
+        raise RuntimeError("Mistral did not produce two valid comments")
+
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
+    return candidates[:2]
+
+
+def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    if not (USE_COHERE and COHERE_API_KEY):
+        raise RuntimeError("Cohere disabled or API key not available")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    user_prompt += _build_context_json_snippet()
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
+
+    mode_line = llm_mode_hint(tweet_text)
+    prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
+
+    payload = {
+        "model": COHERE_MODEL,
+        "prompt": prompt,
+        "max_tokens": 160,
+        "temperature": 0.7,
+    }
+    headers = {
+        "Authorization": f"Bearer {COHERE_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    resp = requests.post(
+        "https://api.cohere.com/v1/generate",
+        headers=headers,
+        json=payload,
+        timeout=30,
+    )
+    resp.raise_for_status()
+    data = resp.json() or {}
+    raw = ""
+    try:
+        gens = data.get("generations") or []
+        if gens:
+            raw = gens[0].get("text") or ""
+    except Exception:
+        raw = json.dumps(data, ensure_ascii=False)
+
+    raw = (raw or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(candidates) < 2:
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+
+    if len(candidates) < 2:
+        raise RuntimeError("Cohere did not produce two valid comments")
+
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
+    return candidates[:2]
+
+
+def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    if not (USE_HUGGINGFACE and HUGGINGFACE_MODEL and HUGGINGFACE_API_KEY):
+        raise RuntimeError("HuggingFace disabled or not fully configured")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    user_prompt += _build_context_json_snippet()
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
+
+    mode_line = llm_mode_hint(tweet_text)
+    prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
+
+    headers = {
+        "Authorization": f"Bearer {HUGGINGFACE_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    payload = {
+        "inputs": prompt,
+        "parameters": {"max_new_tokens": 160, "temperature": 0.7},
+    }
+
+    resp = requests.post(
+        f"{HUGGINGFACE_API_BASE}/{HUGGINGFACE_MODEL}",
+        headers=headers,
+        json=payload,
+        timeout=60,
+    )
+    resp.raise_for_status()
+    data = resp.json()
+    raw = ""
+    try:
+        if isinstance(data, list) and data and isinstance(data[0], dict):
+            raw = (
+                data[0].get("generated_text")
+                or data[0].get("summary_text")
+                or ""
+            )
+        else:
+            raw = str(data)
+    except Exception:
+        raw = json.dumps(data, ensure_ascii=False)
+
+    raw = (raw or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(candidates) < 2:
+        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+
+    if len(candidates) < 2:
+        raise RuntimeError("HuggingFace did not produce two valid comments")
+
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
+    return candidates[:2]
+
+
 def _available_providers() -> list[tuple[str, callable]]:
+    """
+    Returns [(name, fn), ...] for all enabled providers.
+    Respects CROWNTALK_LLM_ORDER if set; otherwise keeps the original default order.
+    """
+    all_providers: dict[str, tuple[bool, Optional[callable]]] = {
+        "groq": (USE_GROQ and _groq_client, groq_two_comments),
+        "openai": (USE_OPENAI and _openai_client, openai_two_comments),
+        "gemini": (USE_GEMINI and _gemini_model, gemini_two_comments),
+        "mistral": (USE_MISTRAL and MISTRAL_API_KEY, mistral_two_comments),
+        "cohere": (USE_COHERE and COHERE_API_KEY, cohere_two_comments),
+        "huggingface": (USE_HUGGINGFACE and HUGGINGFACE_MODEL, huggingface_two_comments),
+    }
+
     providers: list[tuple[str, callable]] = []
-    if USE_GROQ and _groq_client:
-        providers.append(("groq", groq_two_comments))
-    if USE_OPENAI and _openai_client:
-        providers.append(("openai", openai_two_comments))
-    if USE_GEMINI and _gemini_model:
-        providers.append(("gemini", gemini_two_comments))
+
+    # Respect explicit order if provided
+    order = CROWNTALK_LLM_ORDER or ["groq", "openai", "gemini", "mistral", "cohere", "huggingface"]
+    for name in order:
+        ok, fn = all_providers.get(name, (False, None))
+        if ok and fn:
+            providers.append((name, fn))
+
+    # Append any enabled provider that wasn't explicitly ordered
+    seen = {name for name, _ in providers}
+    for name, (ok, fn) in all_providers.items():
+        if ok and fn and name not in seen:
+            providers.append((name, fn))
+
     return providers
 
 
@@ -2695,10 +2954,32 @@ def _maybe_llm_variety_snippet(url: str, tweet_text: str) -> str:
     return ""
 
 def _pick_rewrite_provider_order() -> list[str]:
-    # prefer fast/cheap first
-    order = ["groq", "openai", "gemini"]
-    random.shuffle(order)
-    return order
+    """
+    Order of providers used for PRO_KOL rewrite.
+    Respects CROWNTALK_LLM_ORDER when set.
+    """
+    base = ["groq", "openai", "gemini", "mistral", "cohere", "huggingface"]
+    enabled = {
+        "groq": bool(USE_GROQ and _groq_client),
+        "openai": bool(USE_OPENAI and _openai_client),
+        "gemini": bool(USE_GEMINI and _gemini_model),
+        "mistral": bool(USE_MISTRAL and MISTRAL_API_KEY),
+        "cohere": bool(USE_COHERE and COHERE_API_KEY),
+        "huggingface": bool(USE_HUGGINGFACE and HUGGINGFACE_MODEL),
+    }
+
+    order = CROWNTALK_LLM_ORDER or base
+    out = [name for name in order if enabled.get(name)]
+
+    if not out:
+        out = [name for name, ok in enabled.items() if ok]
+
+    # Preserve the original randomness when no explicit order is set
+    if not CROWNTALK_LLM_ORDER:
+        random.shuffle(out)
+
+    return out
+
 
 def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
     witty = (topic == "meme" and PRO_KOL_ALLOW_WIT)
@@ -2848,7 +3129,8 @@ def generate_two_comments_with_providers(
     candidates: list[str] = []
 
     providers = _available_providers()
-    random.shuffle(providers)
+    if not CROWNTALK_LLM_ORDER:
+        random.shuffle(providers)
 
     for name, fn in providers:
         try:
@@ -2892,7 +3174,10 @@ def generate_two_comments_with_providers(
     if len(candidates) < 2:
         candidates = (_rescue_two(tweet_text) + candidates)[:2]
 
-    return [{"lang": lang_out, "text": candidates[0]}, {"lang": lang_out, "text": candidates[1]}]
+    # Final trimming / formatting pass
+    processed = [postprocess_comment(c, "llm") for c in candidates]
+
+    return [{"lang": lang_out, "text": processed[0]}, {"lang": lang_out, "text": processed[1]}]
 
 
 # ------------------------------------------------------------------------------
