@@ -333,6 +333,49 @@ HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "").strip()
 HUGGINGFACE_API_BASE = os.getenv(
     "HUGGINGFACE_API_BASE", "https://api-inference.huggingface.co/models"
 )
+
+# ------------------------------------------------------------------------------
+# Provider retries / backoff (shared across non-Groq providers)
+# ------------------------------------------------------------------------------
+API_RETRY_MAX = int(os.getenv("API_RETRY_MAX", "3"))
+API_RETRY_BASE_SLEEP = float(os.getenv("API_RETRY_BASE_SLEEP_SECONDS", "1.5"))
+API_RETRY_JITTER = float(os.getenv("API_RETRY_JITTER_SECONDS", "0.35"))
+
+def _is_retryable_provider_error(e: Exception) -> bool:
+    msg = (str(e) or "").lower()
+    # Common transient buckets
+    if any(k in msg for k in ("429", "rate limit", "quota", "timeout", "temporarily", "overloaded", "service unavailable", "502", "503", "504")):
+        return True
+    # requests exceptions tend to stringify with these hints
+    if any(k in msg for k in ("connection aborted", "connection reset", "read timed out", "connect timed out")):
+        return True
+    return False
+
+def _sleep_for_retry(attempt: int) -> None:
+    # Exponential backoff with jitter (attempt starts at 0)
+    base = API_RETRY_BASE_SLEEP * (2 ** attempt)
+    jitter = random.random() * API_RETRY_JITTER
+    time.sleep(min(base + jitter, 30.0))
+
+def call_with_retries(label: str, fn):
+    """
+    Best-effort wrapper around provider calls so transient 429/5xx doesn't instantly
+    knock us into offline mode.
+    """
+    last_err: Exception | None = None
+    for attempt in range(max(1, API_RETRY_MAX)):
+        try:
+            return fn()
+        except Exception as e:
+            last_err = e
+            if not _is_retryable_provider_error(e) or attempt >= API_RETRY_MAX - 1:
+                raise
+            logger.warning("%s transient error, retrying (%d/%d): %s", label, attempt + 1, API_RETRY_MAX, e)
+            _sleep_for_retry(attempt)
+    if last_err:
+        raise last_err
+    raise RuntimeError(f"{label} failed")
+
 # ------------------------------------------------------------------------------
 # Keepalive (Render free – optional)
 # ------------------------------------------------------------------------------
@@ -1580,25 +1623,15 @@ class OfflineCommentGenerator:
         out = self._tidy_en(out)
         return out or None
 
-    def _accept(self, line: str, tweet_text: str) -> bool:
-        """
-        Final gate for offline lines.
-
-        - AI slop / hype filtered
-        - diversity + repetition guards
-        - Pro KOL strict check using full tweet context
-        """
+    def _accept(self, line: str) -> bool:
         if self._violates_ai_blocklist(line):
             return False
         if not self._diversity_ok(line):
             return False
         if comment_seen(line):
             return False
-
-        # Use the *new* pro_kol_ok(comment, tweet_text) here
-        if PRO_KOL_STRICT and not pro_kol_ok(line, tweet_text=tweet_text or ""):
+        if not pro_kol_ok(line):
             return False
-
         return True
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
@@ -1622,7 +1655,7 @@ class OfflineCommentGenerator:
         # if non-Latin, try to include one native + one EN
         if non_en:
             native = self._make_native_comment(text, ctx)
-            if native and self._accept(native):
+            if native and self._accept(native, tweet_text=text):
                 if ctx["script"] in {"ja", "ko", "zh"}:
                     native = self._enforce_length_cjk(native)
                 else:
@@ -1642,7 +1675,7 @@ class OfflineCommentGenerator:
                 continue
             if any(cand.strip().lower() == c["text"].strip().lower() for c in out):
                 continue
-            if self._accept(cand):
+            if self._accept(cand, tweet_text=text):
                 self._commit(cand, url=url, lang="en")
                 out.append({"lang": "en", "text": cand})
 
@@ -1661,7 +1694,7 @@ class OfflineCommentGenerator:
             for e in extras:
                 if not e:
                     continue
-                if not self._accept(e):
+                if not self._accept(e, tweet_text=text):
                     continue
                 out[1] = {"lang": "en", "text": e}
                 break
@@ -2687,7 +2720,7 @@ def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
 
     mode_line = llm_mode_hint(tweet_text)
-    resp = _openai_client.chat.completions.create(
+    resp = call_with_retries("OpenAI", lambda: _openai_client.chat.completions.create(
         model=OPENAI_MODEL,
         messages=[
             {"role": "system", "content": _llm_sys_prompt(mode_line)},
@@ -2695,7 +2728,7 @@ def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
         ],
         max_tokens=160,
         temperature=0.7,
-    )
+    ))
 
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
@@ -2731,7 +2764,7 @@ def gemini_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     mode_line = llm_mode_hint(tweet_text)
     prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
 
-    resp = _gemini_model.generate_content(prompt)
+    resp = call_with_retries("Gemini", lambda: _gemini_model.generate_content(prompt))
     raw = ""
     try:
         if hasattr(resp, "text"):
@@ -2787,12 +2820,12 @@ def mistral_two_comments(tweet_text: str, author: Optional[str], url: str = "") 
         "Content-Type": "application/json",
     }
 
-    resp = requests.post(
+    resp = call_with_retries("Mistral", lambda: requests.post(
         f"{MISTRAL_API_BASE}/chat/completions",
         headers=headers,
         json=payload,
         timeout=30,
-    )
+    ))
     resp.raise_for_status()
     data = resp.json() or {}
     raw = ""
@@ -2849,12 +2882,12 @@ def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
         "Content-Type": "application/json",
     }
 
-    resp = requests.post(
+    resp = call_with_retries("Cohere", lambda: requests.post(
         "https://api.cohere.com/v1/generate",
         headers=headers,
         json=payload,
         timeout=30,
-    )
+    ))
     resp.raise_for_status()
     data = resp.json() or {}
     raw = ""
@@ -2908,12 +2941,12 @@ def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = 
         "parameters": {"max_new_tokens": 160, "temperature": 0.7},
     }
 
-    resp = requests.post(
+    resp = call_with_retries("HuggingFace", lambda: requests.post(
         f"{HUGGINGFACE_API_BASE}/{HUGGINGFACE_MODEL}",
         headers=headers,
         json=payload,
         timeout=60,
-    )
+    ))
     resp.raise_for_status()
     data = resp.json()
     raw = ""
@@ -3269,15 +3302,15 @@ def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
     return original_url
 
 
-@app.after_request
-def add_cors_headers(response):
+# @app.after_request  # duplicate removed; CORS handled above
+def add_cors_headers_v2(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type"
     return response
 
 
-@app.route("/", methods=["GET"])
+# @app.route("/", methods=["GET"])  # duplicate removed; "/" is handled by health()
 @app.route("/ping", methods=["GET"])
 def ping():
     return jsonify({
