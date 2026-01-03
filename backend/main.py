@@ -272,7 +272,12 @@ if USE_GROQ:
         _groq_client = None
         USE_GROQ = False
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
-
+# Groq pacing / backoff (to avoid falling back too quickly)
+GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "1.0"))  # spacing between calls
+GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "6"))               # how many times to retry one call
+GROQ_BACKOFF_SECONDS = float(os.getenv("GROQ_BACKOFF_SECONDS", "10"))   # extra wait on 429/rate-limit
+_GROQ_LAST_CALL_TS: float = 0.0
+_GROQ_DISABLED_UNTIL: float = 0.0
 # ------------------------------------------------------------------------------
 # Optional OpenAI
 # ------------------------------------------------------------------------------
@@ -298,7 +303,7 @@ if USE_GEMINI:
     try:
         import google.generativeai as genai
         genai.configure(api_key=GEMINI_API_KEY)
-        GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-1.5-flash")
+        GEMINI_MODEL_NAME = os.getenv("GEMINI_MODEL", "gemini-2.5-flash")
         _gemini_model = genai.GenerativeModel(GEMINI_MODEL_NAME)
     except Exception:
         _gemini_model = None
@@ -2471,6 +2476,8 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
+    global _GROQ_LAST_CALL_TS, _GROQ_DISABLED_UNTIL
+
     mode_line = llm_mode_hint(tweet_text)
     sys_prompt = _llm_sys_prompt(mode_line)
 
@@ -2482,7 +2489,26 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
 
     resp = None
-    for attempt in range(3):
+
+    for attempt in range(GROQ_MAX_RETRIES):
+        # --- global spacing + backoff guard ---
+        now = time.time()
+
+        # If we previously hit a hard rate-limit, wait out that window
+        if now < _GROQ_DISABLED_UNTIL:
+            sleep_for = _GROQ_DISABLED_UNTIL - now
+            if sleep_for > 0:
+                logger.info("Groq backoff active, sleeping %.2fs before next call", sleep_for)
+                time.sleep(sleep_for)
+            now = time.time()
+
+        # Enforce minimum interval between Groq calls
+        delta = now - _GROQ_LAST_CALL_TS
+        if delta < GROQ_MIN_INTERVAL:
+            sleep_for = GROQ_MIN_INTERVAL - delta
+            if sleep_for > 0:
+                time.sleep(sleep_for)
+
         try:
             resp = _groq_client.chat.completions.create(
                 model=GROQ_MODEL,
@@ -2494,22 +2520,42 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
                 max_tokens=160,
                 temperature=0.9,
             )
+            _GROQ_LAST_CALL_TS = time.time()
             break
+
         except Exception as e:
-            wait_secs = 0
+            wait_secs = 0.0
+            msg = str(e).lower()
+
+            # Try to read Retry-After header if present
             try:
                 hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
-                ra = hdrs.get("Retry-After")
-                if ra:
-                    wait_secs = max(1, int(ra))
+                ra = hdrs.get("Retry-After") or hdrs.get("retry-after")
+                if ra is not None:
+                    try:
+                        wait_secs = max(wait_secs, float(ra))
+                    except Exception:
+                        pass
             except Exception:
                 pass
-            msg = str(e).lower()
-            if not wait_secs and ("429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg):
-                wait_secs = 2 + attempt
-            if wait_secs:
+
+            # Generic rate-limit / quota hints
+            if "429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg:
+                wait_secs = max(wait_secs, GROQ_BACKOFF_SECONDS)
+
+            if wait_secs > 0:
+                _GROQ_DISABLED_UNTIL = time.time() + wait_secs
+                logger.warning(
+                    "Groq rate-limited or quota hit, backing off for %.2fs (attempt %d/%d)",
+                    wait_secs,
+                    attempt + 1,
+                    GROQ_MAX_RETRIES,
+                )
                 time.sleep(wait_secs)
                 continue
+
+            # Non rate-limit error → bubble up so other providers/offline can handle
+            logger.warning("Groq error (non-rate-limit): %s", e)
             raise
 
     if resp is None:
@@ -2526,20 +2572,30 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
 
     if len(candidates) < 2:
         # fallback: add offline
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        candidates = enforce_unique(
+            candidates + offline_two_comments(tweet_text, author),
+            tweet_text=tweet_text,
+        )
 
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + _rescue_two(tweet_text), tweet_text=tweet_text)
+        candidates = enforce_unique(
+            candidates + _rescue_two(tweet_text),
+            tweet_text=tweet_text,
+        )
 
     if len(candidates) < 2:
         raise RuntimeError("Could not produce two valid comments")
 
     if _pair_too_similar(candidates[0], candidates[1]):
-        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        merged = enforce_unique(
+            candidates + offline_two_comments(tweet_text, author),
+            tweet_text=tweet_text,
+        )
         if len(merged) >= 2:
             candidates = merged[:2]
 
     return candidates[:2]
+
 
 
 # ------------------------------------------------------------------------------
