@@ -1,40 +1,63 @@
-name: Apply backend/main.patch
-
-on:
-  workflow_dispatch:
-  push:
-    paths:
-      - backend/main.patch
-
-permissions:
-  contents: write
-  pull-requests: write
-
-jobs:
-  apply:
-    runs-on: ubuntu-latest
-    steps:
-      - name: Checkout
-        uses: actions/checkout@v4
-        with:
-          fetch-depth: 0
-
-      - name: Apply patch
-        run: |
-          cd backend
-          git apply --verbose main.patch
-
-      - name: Sanity check (compile)
-        run: |
-          cd backend
-          python -m py_compile main.py
-
-      - name: Create Pull Request
-        uses: peter-evans/create-pull-request@v6
-        with:
-          commit-message: "Apply research-grade patch (backend/main.patch)"
-          title: "Apply research-grade patch"
-          body: |
-            Applies backend/main.patch to backend/main.py and verifies compilation.
-          branch: bot/apply-backend-patch
-          delete-branch: true
+ (cd "$(git rev-parse --show-toplevel)" && git apply --3way <<'EOF' 
+diff --git a/backend/tests/test_utils.py b/backend/tests/test_utils.py
+new file mode 100644
+index 0000000000000000000000000000000000000000..40eedb97d645415457c2f72e72651112c1187a4d
+--- /dev/null
++++ b/backend/tests/test_utils.py
+@@ -0,0 +1,53 @@
++import os
++import sys
++
++import pytest
++
++
++BACKEND_DIR = os.path.abspath(os.path.join(os.path.dirname(__file__), ".."))
++if BACKEND_DIR not in sys.path:
++    sys.path.insert(0, BACKEND_DIR)
++
++from utils import clean_and_normalize_urls
++
++
++@pytest.mark.parametrize(
++    "raw,expected",
++    [
++        (
++            ["https://x.com/someuser/status/1234567890"],
++            ["https://x.com/someuser/status/1234567890"],
++        ),
++        (
++            ["https://x.com/i/status/987654321"],
++            ["https://x.com/i/status/987654321"],
++        ),
++        (
++            ["x.com/handle/status/13579"],
++            ["https://x.com/handle/status/13579"],
++        ),
++    ],
++)
++def test_clean_and_normalize_urls_basic_cases(raw, expected):
++    assert clean_and_normalize_urls(raw) == expected
++
++
++def test_clean_and_normalize_urls_mixed_text():
++    raw = [
++        "Check this https://x.com/alpha/status/1 and also x.com/bravo/status/2 thanks",
++    ]
++    expected = [
++        "https://x.com/alpha/status/1",
++        "https://x.com/bravo/status/2",
++    ]
++    assert clean_and_normalize_urls(raw) == expected
++
++
++def test_clean_and_normalize_urls_dedupes():
++    raw = [
++        "https://x.com/alpha/status/1",
++        "Some extra x.com/alpha/status/1 text",
++        "x.com/alpha/status/1",
++    ]
++    expected = ["https://x.com/alpha/status/1"]
++    assert clean_and_normalize_urls(raw) == expected
+ 
+EOF
+)
