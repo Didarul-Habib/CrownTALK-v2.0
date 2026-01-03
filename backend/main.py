@@ -2740,8 +2740,8 @@ def mistral_two_comments(tweet_text: str, author: Optional[str], url: str = "") 
 
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
-    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
@@ -2801,8 +2801,8 @@ def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
 
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
-    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
@@ -2865,8 +2865,8 @@ def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = 
 
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
-    candidates = [restore_decimals_and_tickers(enforce_word_count_natural(c), tweet_text) for c in candidates]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 13]
+    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
@@ -2988,7 +2988,7 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "\n"
         "Hard rules:\n"
         "- Output exactly 2 comments.\n"
-        "- Each comment must be 6–13 tokens.\n"
+        "- Each comment must be a single short sentence of around 6–18 words (never more than 20).\n"
         "- One thought per comment (no second clause like 'thanks for sharing').\n"
         "- No emojis, no hashtags, no links.\n"
         "- Do NOT invent facts not present in the tweet.\n"
@@ -3088,9 +3088,9 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
                     continue
 
                 cand = parse_two_comments_flex(raw)
-                cand = [restore_decimals_and_tickers(enforce_word_count_natural(x), tweet_text) for x in cand]
-                cand = [x for x in cand if 6 <= len(words(x)) <= 13]
-
+                cand = [restore_decimals_and_tickers(enforce_word_count_llm(x), tweet_text) for x in cand]
+                cand = [x for x in cand if 6 <= len(words(x)) <= 18]
+                cand = [postprocess_comment(x, "llm") for x in cand]
                 # strict + variety pass
                 cand = enforce_unique(cand, tweet_text=tweet_text)
 
