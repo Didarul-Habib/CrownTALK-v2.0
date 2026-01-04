@@ -377,7 +377,7 @@ def call_with_retries(label: str, fn):
     raise RuntimeError(f"{label} failed")
 
 # ------------------------------------------------------------------------------
-# Keepalive (Render free – optional)
+# Keepalive (Render free - optional)
 # ------------------------------------------------------------------------------
 def keep_alive() -> None:
     if not BACKEND_PUBLIC_URL:
@@ -632,7 +632,7 @@ def _ends_badly(s: str) -> bool:
 
 def smart_trim_words(text: str, min_words: int = 6, max_words: int = 13, soft_max: int = 16) -> str:
     """
-    Tries to keep 6–13 words, but:
+    Tries to keep 6-13 words, but:
       - never cuts mid-clause,
       - allows up to soft_max to avoid broken endings,
       - prefers ending on punctuation.
@@ -1296,10 +1296,10 @@ def _combinator(ctx: Dict[str, Any], key_tokens: List[str]) -> str:
     return out
 
 # ------------------------------------------------------------------------------
-# Offline generator (with OTP guards + 6–13 words enforcement)
+# Offline generator (with OTP guards + 6-13 words enforcement)
 # ------------------------------------------------------------------------------
 # ------------------------------------------------------------------------------
-# Offline generator (with OTP guards + 6–13 words enforcement)
+# Offline generator (with OTP guards + 6-13 words enforcement)
 # ------------------------------------------------------------------------------
 
 class OfflineCommentGenerator:
@@ -2061,9 +2061,7 @@ def _build_comment_user_prompt(
     analysis: Optional[TweetAnalysis],
     url: str = "",
 ) -> str:
-    ...
-    variety_snippet = _maybe_llm_variety_snippet(url, tweet_text)
-
+    """
     Build the user prompt for LLM comment generation, with:
     - raw tweet text
     - optional structured analysis (tone, sarcasm, sentiment, type)
@@ -2073,7 +2071,7 @@ def _build_comment_user_prompt(
 
     # Existing context + variety helpers already in your codebase
     context_snippet = _build_context_json_snippet()
-    variety_snippet = _maybe_llm_variety_snippet()
+    variety_snippet = _maybe_llm_variety_snippet(url, tweet_text)
 
     analysis_snippet = ""
     if analysis is not None:
@@ -2150,7 +2148,7 @@ def _strip_second_clause(text: str) -> str:
     if cut_positions:
         cut_at = min(cut_positions)
         text = text[:cut_at]
-    text = re.sub(r"[,\-–]+$", "", text).strip()
+    text = re.sub(r"[,\--]+$", "", text).strip()
     return text
 
 QUESTION_HEADS = ["how","what","why","when","where","who","can","could","do","did","are","is","will","would","should"]
@@ -2182,7 +2180,7 @@ def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str
     """
     Shared final cleaner for ALL comments (offline + Groq + OpenAI + Gemini).
     - strips links/handles/emojis
-    - enforces 6–13 tokens
+    - enforces 6-13 tokens
     - cuts second polite clause ("thanks for sharing" etc)
     - removes some AI-ish fillers
     - adds '?' to clear questions
@@ -2459,7 +2457,7 @@ def enforce_unique(
     **_ignored_kwargs,  # allows url=..., lang=... without crashing
 ) -> list[str]:
     """
-    - sanitize + enforce 6–13 words
+    - sanitize + enforce 6-13 words
     - drop generic phrases
     - skip past repeats / templates / trigram overlaps
     - finally: pick two diverse comments (statement + question if possible)
@@ -2755,7 +2753,7 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
     return []
 
 # ------------------------------------------------------------------------------
-# Groq generator (exactly 2, 6–13 words, tolerant parsing)
+# Groq generator (exactly 2, 6-13 words, tolerant parsing)
 # ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> list[str]:
     """
@@ -2902,14 +2900,14 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         "\n"
         "Hard rules:\n"
         "- Output exactly 2 comments.\n"
-        "- Each comment must be a single short sentence of around 6–18 words (never more than 20).\n"
+        "- Each comment must be a single short sentence of around 6-18 words (never more than 20).\n"
         "- One thought per comment (no second clause like 'thanks for sharing').\n"
         "- No emojis, hashtags, or links.\n"
         "- Do NOT invent details not present in the tweet.\n"
         "- Anchor each comment in a concrete detail from the tweet (names, numbers, tickers, claims).\n"
         "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
         "- Do not mention that you are an AI, a bot, or a model.\n"
-        "- Do not say 'this tweet', 'this thread', or 'thanks for sharing' – just respond naturally.\n"
+        "- Do not say 'this tweet', 'this thread', or 'thanks for sharing' - just respond naturally.\n"
         "\n"
         "Human style:\n"
         "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
@@ -3339,7 +3337,7 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "\n"
         "Hard rules:\n"
         "- Output exactly 2 comments.\n"
-        "- Each comment must be a single short sentence of around 6–18 words (never more than 20).\n"
+        "- Each comment must be a single short sentence of around 6-18 words (never more than 20).\n"
         "- One thought per comment (no second clause like 'thanks for sharing').\n"
         "- No emojis, no hashtags, no links.\n"
         "- Do NOT invent facts not present in the tweet.\n"
@@ -3603,7 +3601,7 @@ def comment_endpoint():
             "error": f"Too many URLs in one request; send at most {MAX_URLS_PER_REQUEST} links at a time.",
             "code": "too_many_urls",
             "max_urls_per_request": MAX_URLS_PER_REQUEST,
-            "hint": "For best results, chunk your list into batches of around 20–25 links.",
+            "hint": "For best results, chunk your list into batches of around 20-25 links.",
         }), 400
 
     results: list[dict] = []
