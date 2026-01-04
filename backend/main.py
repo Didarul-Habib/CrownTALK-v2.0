@@ -66,6 +66,10 @@ PRO_KOL_POLISH = PRO_KOL_MODE
 PRO_KOL_STRICT = PRO_KOL_MODE
 PRO_KOL_REWRITE = PRO_KOL_MODE
 
+# --- Voice & slang tuning (env) ---
+DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "").strip().lower()  # e.g. "ct_kol_v2"
+SLANG_LEVEL = int(os.getenv("SLANG_LEVEL", "0"))  # 0=none, 1=light, 2=more
+
 # Rewrite tuning (extra LLM calls; can hit quota)
 PRO_KOL_REWRITE_MAX_TRIES = int(os.getenv("PRO_KOL_REWRITE_MAX_TRIES", "2"))
 PRO_KOL_REWRITE_TEMPERATURE = float(os.getenv("PRO_KOL_REWRITE_TEMPERATURE", "0.7"))
@@ -1202,6 +1206,18 @@ PRO_KOL_GOOD = {
     "sizing", "asymmetric", "timeframe",
 }
 
+def pick_angle(tweet_text: str) -> str:
+    t = (tweet_text or "").lower()
+    if any(x in t for x in ["vesting", "unlock", "emissions", "fdv", "tokenomics"]):
+        return "tokenomics"
+    if any(x in t for x in ["trade", "trading", "long", "short", "liq", "liquidity", "chart"]):
+        return "trading"
+    if any(x in t for x in ["dev", "build", "shipping", "repo", "integration", "protocol"]):
+        return "dev"
+    if any(x in t for x in ["community", "participation", "noise", "followers"]):
+        return "community"
+    return "general"
+
 def pro_kol_score(text: str) -> int:
     t = (text or "").strip()
     low = t.lower()
@@ -2335,6 +2351,17 @@ VOICE_CARDS = [
     },
 ]
 
+VOICE_CARDS["ct_kol_v2"] = {
+    "label": "CT KOL (seasoned)",
+    "rules": [
+        "Sound like an experienced Crypto Twitter operator: crisp, grounded, slightly skeptical.",
+        "Use at most ONE slang token per comment when SLANG_LEVEL>0 (e.g., ngl, lowkey, cooked, locked in, ser).",
+        "Prefer domain nouns: liquidity/positioning/vesting/incentives/distribution/retention.",
+        "No cheerleading, no filler praise, no emojis/hashtags/links.",
+        "One sentence, one thought. Punchy.",
+    ],
+}
+
 
 def _pick_voice_card(tweet_text: str) -> dict:
     topic = detect_topic(tweet_text or "")
@@ -2698,6 +2725,43 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
         return True if ("?" in low or len(c.split()) >= 6) else False
 
     return has_focus or has_operator
+
+CT_SLANG_LIGHT = ["ngl", "lowkey", "locked in", "cooked", "based"]
+CT_SLANG_TRADING = ["tape says", "flow check", "positioning looks", "liq matters"]
+CT_SLANG_DEV = ["ship it", "distribution wins", "integration > narrative"]
+
+def maybe_inject_slang(comment: str, tweet_text: str) -> str:
+    if not comment or SLANG_LEVEL <= 0:
+        return comment
+
+    t = (tweet_text or "").lower()
+    c = comment.strip()
+
+    # Don't double-slang
+    if any(s in c.lower() for s in CT_SLANG_LIGHT):
+        return c
+
+    # probability: light = subtle, level2 = more frequent
+    p = 0.18 if SLANG_LEVEL == 1 else 0.35
+    if random.random() > p:
+        return c
+
+    # pick slang by context
+    pool = CT_SLANG_LIGHT[:]
+    if any(k in t for k in ["trade", "trading", "long", "short", "entry", "btc", "eth", "chart", "liq", "liquidity"]):
+        pool += CT_SLANG_TRADING
+    if any(k in t for k in ["dev", "build", "shipping", "repo", "onchain", "contract", "protocol"]):
+        pool += CT_SLANG_DEV
+
+    tag = random.choice(pool)
+
+    # inject as prefix OR suffix (keep single sentence)
+    if random.random() < 0.5:
+        return f"{tag.capitalize()} — {c}".strip()
+    else:
+        # suffix with a short tag, no extra clause
+        return f"{c} ({tag})".strip()
+
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     items = generator.generate_two(text, author or None, None, None)
