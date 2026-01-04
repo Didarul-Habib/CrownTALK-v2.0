@@ -1624,19 +1624,19 @@ class OfflineCommentGenerator:
         return out or None
 
     def _accept(self, line: str, tweet_text: str = "") -> bool:
-    """
-    Decide if a candidate line is acceptable given the original tweet.
-    The tweet_text is used by pro_kol_ok for context-aware checks.
-    """
-    if self._violates_ai_blocklist(line):
-        return False
-    if not self._diversity_ok(line):
-        return False
-    if comment_seen(line):
-        return False
-    if not pro_kol_ok(line, tweet_text=tweet_text or ""):
-        return False
-    return True
+        """Decide if a cleaned comment line should be kept."""
+        t = line.strip()
+        if not t:
+            return False
+        if self._violates_ai_blocklist(line):
+            return False
+        if not self._diversity_ok(t):
+            return False
+        if comment_seen(t):
+            return False
+        if not pro_kol_ok(line, tweet_text=tweet_text):
+            return False
+        return True
 
     def _commit(self, line: str, url: str = "", lang: str = "en") -> None:
         remember_template(re.sub(r"\b\w+\b", "w", line)[:80])
