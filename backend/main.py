@@ -871,6 +871,7 @@ def postprocess_comment(text: str, source: str) -> str:
 # ------------------------------------------------------------------------------
 # Topic / keywords (to keep comments context-aware, not templated)
 # ------------------------------------------------------------------------------
+
 EN_STOPWORDS = {
     "the","a","an","and","or","but","to","in","on","of","for","with","at","from","by","about","as",
     "into","like","through","after","over","between","out","against","during","without","before","under",
@@ -1875,6 +1876,227 @@ def _build_context_json_snippet() -> str:
         + blob[:2000]
     )
 
+# ==== Tweet analysis layer (Groq pre-pass) ====================================
+# This is a lightweight “brain” that classifies the tweet (meme, greeting,
+# sarcasm, etc.) so the main LLM can respond more intelligently.
+
+from typing import Any  # already imported at top in your file; if not, add it
+
+class TweetAnalysis:
+    """Lightweight container for tweet-level meta signals.
+
+    Intentionally simple (no dataclasses) to match the current code style.
+    """
+
+    def __init__(
+        self,
+        *,
+        mood: str = "neutral",
+        is_greeting: bool = False,
+        greeting_type: str = "none",
+        is_meme: bool = False,
+        is_sarcastic: bool = False,
+        is_question: bool = False,
+        topic_tags: list[str] | None = None,
+    ) -> None:
+        self.mood = mood
+        self.is_greeting = bool(is_greeting)
+        self.greeting_type = greeting_type
+        self.is_meme = bool(is_meme)
+        self.is_sarcastic = bool(is_sarcastic)
+        self.is_question = bool(is_question)
+        self.topic_tags = topic_tags or []
+
+    @classmethod
+    def from_llm_dict(cls, data: dict[str, Any]) -> "TweetAnalysis":
+        """Safe conversion from a Groq JSON dict into our object."""
+        return cls(
+            mood=str(data.get("mood", "neutral")),
+            is_greeting=bool(data.get("is_greeting", False)),
+            greeting_type=str(data.get("greeting_type", "none")),
+            is_meme=bool(data.get("is_meme", False)),
+            is_sarcastic=bool(data.get("is_sarcastic", False)),
+            is_question=bool(data.get("is_question", False)),
+            topic_tags=[
+                str(t).strip()
+                for t in (data.get("topic_tags") or [])
+                if isinstance(t, (str, int, float, str))
+            ],
+        )
+
+    def to_prompt_fragment(self) -> str:
+        """Return a short natural-language hint used inside the main LLM prompt."""
+        parts: list[str] = []
+
+        if self.mood and self.mood != "neutral":
+            parts.append(f"Overall mood: {self.mood}.")
+
+        if self.is_greeting and self.greeting_type != "none":
+            parts.append(
+                "Tweet is a greeting. Mirror the same greeting in at least one reply "
+                f"(greeting_type='{self.greeting_type}')."
+            )
+
+        if self.is_meme:
+            parts.append(
+                "Tweet is meme/banter style. You can answer in a playful tone while staying concise."
+            )
+
+        if self.is_sarcastic:
+            parts.append(
+                "Tweet contains sarcasm/irony. Show that you understand the sarcasm; "
+                "do not take the text literally."
+            )
+
+        if self.is_question:
+            parts.append(
+                "Tweet includes a question. At least one reply should directly answer that question."
+            )
+
+        if self.topic_tags:
+            tags_str = ", ".join(self.topic_tags[:6])
+            parts.append(f"Topics: {tags_str}.")
+
+        if not parts:
+            return ""
+
+        return "Tweet analysis hints: " + " ".join(parts)
+
+def analyze_tweet_with_groq(tweet_text: str) -> TweetAnalysis | None:
+    """Ask Groq for a compact JSON analysis of the tweet.
+
+    This is a cheap/light pre-pass to make the main replies more context-aware.
+    If anything fails, we log and return None, and the rest of the pipeline
+    continues using the old behaviour.
+    """
+    # If Groq is disabled or no client, just skip.
+    if not USE_GROQ:
+        return None
+
+    global _groq_client  # matches your existing style
+    if not _groq_client:
+        logger.info("Groq analysis skipped: _groq_client is not initialized")
+        return None
+
+    tweet_text = (tweet_text or "").strip()
+    if not tweet_text:
+        return None
+
+    sys_prompt = (
+        "You are a tweet analyst. You must reply with ONE single-line JSON object only, "
+        "no extra text, no markdown, no code fences. The JSON keys are fixed."
+    )
+
+    # IMPORTANT: we force JSON-only, small schema, so parsing stays reliable.
+    user_prompt = (
+        "Analyze the following tweet and return a JSON object with these keys:\\n"
+        '- "mood": one of ["bullish","bearish","bullish-meme","neutral","happy","sad","angry","excited"]\\n'
+        '- "is_greeting": true/false (is it a greeting like gm/gn/hello?)\\n'
+        '- "greeting_type": one of ["morning","night","other","none"]\\n'
+        '- "is_meme": true/false (is it mostly a meme/joke shitpost?)\\n'
+        '- "is_sarcastic": true/false\\n'
+        '- "is_question": true/false (does it contain a real question?)\\n'
+        '- "topic_tags": short array of 1-5 lowercase tags, e.g. ["btc","memes","defi"]\\n\\n'
+        f"Tweet: {tweet_text}"
+    )
+
+    try:
+        logger.debug("Groq analysis: sending request")
+        resp = _groq_client.chat.completions.create(
+            model=GROQ_MODEL,  # same model you already use; you can swap to 8B here if you want
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            temperature=0.1,
+            max_tokens=256,
+        )
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Groq analysis request failed: %s", exc)
+        return None
+
+    try:
+        content = (resp.choices[0].message.content or "").strip()
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Groq analysis empty/invalid response: %s", exc)
+        return None
+
+    # Groq *should* return bare JSON, but we defend against ```json fences.
+    if content.startswith("```"):
+        content = content.strip().strip("`")
+        if content.lower().startswith("json"):
+            content = content[4:].lstrip()
+
+    try:
+        data = json.loads(content)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Groq analysis JSON parse failed: %s | content=%r", exc, content[:200])
+        return None
+
+    if not isinstance(data, dict):
+        logger.warning("Groq analysis returned non-dict JSON: %r", data)
+        return None
+
+    try:
+        analysis = TweetAnalysis.from_llm_dict(data)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Groq analysis mapping failed: %s | data=%r", exc, data)
+        return None
+
+    logger.debug(
+        "Groq analysis result: mood=%s greeting=%s/%s meme=%s sarcasm=%s question=%s tags=%s",
+        analysis.mood,
+        analysis.is_greeting,
+        analysis.greeting_type,
+        analysis.is_meme,
+        analysis.is_sarcastic,
+        analysis.is_question,
+        analysis.topic_tags,
+    )
+    return analysis
+
+
+def _build_comment_user_prompt(
+    tweet_text: str,
+    vx_data: dict[str, Any] | None,
+    analysis: TweetAnalysis | None,
+) -> str:
+    """Shared user prompt builder for all LLM providers.
+
+    - Keeps your existing mode hint + variety behaviour.
+    - Adds TweetAnalysis hints when available.
+    - Still returns the bullet-list instruction the parsers expect.
+    """
+    tweet_text = (tweet_text or "").strip()
+
+    mode_snippet = llm_mode_hint(tweet_text)
+    variety_snippet = _maybe_llm_variety_snippet()
+    context_snippet = _build_context_json_snippet(vx_data)
+    analysis_snippet = analysis.to_prompt_fragment() if analysis is not None else ""
+
+    parts: list[str] = [
+        (
+            "Given the tweet and context below, write exactly two short, natural-sounding replies "
+            "as if you were a real crypto degen on X. Keep each reply under ~30 words."
+        ),
+        mode_snippet,
+        variety_snippet,
+        analysis_snippet,
+        context_snippet,
+        "Tweet:",
+        tweet_text,
+        "",
+        "Return only the two replies as a bullet list, one per line, like:\\n"
+        "- first reply...\\n"
+        "- second reply...",
+    ]
+
+    # Filter out empty snippets to avoid double blank lines
+    return "\\n\\n".join(p for p in parts if p)
+
+
+
+
 def _extract_handle_from_url(url: str) -> Optional[str]:
     try:
         m = re.search(r"https?://(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/([^/]+)/status/", url, re.I)
@@ -2525,15 +2747,18 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
 
     global _GROQ_LAST_CALL_TS, _GROQ_DISABLED_UNTIL
 
-    mode_line = llm_mode_hint(tweet_text)
-    sys_prompt = _llm_sys_prompt(mode_line)
+    analysis: TweetAnalysis | None = None
+try:
+    analysis = analyze_tweet_with_groq(tweet_text)
+except Exception as exc:  # noqa: BLE001
+    logger.warning("Groq tweet analysis failed (will continue without it): %s", exc)
 
-    user_prompt = (
-        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
-    )
-    user_prompt += _build_context_json_snippet()
-    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
+sys_prompt = _llm_sys_prompt()
+user_prompt = _build_comment_user_prompt(
+    tweet_text=tweet_text,
+    vx_data=vx_data,
+    analysis=analysis,
+)
 
     resp = None
 
