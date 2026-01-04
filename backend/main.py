@@ -2083,8 +2083,7 @@ def _build_comment_user_prompt(
 
     parts.append(
         "Given the following tweet from X / Twitter, generate exactly TWO reply comments.\n"
-        "You must:\n"
-        "- Understand the tweet's intent, emotion, and possible sarcasm.\n"
+        "You must:- Understand the tweet's intent, emotion, and possible sarcasm.\n"
         "- Match the tone (funny, serious, degen, wholesome, etc.) but keep it respectful.\n"
         "- If it's a GM / GN / greetings post, you must also greet back.\n"
         "- If it's a meme or image-heavy shitpost, lean playful / witty.\n"
