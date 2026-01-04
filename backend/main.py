@@ -2058,43 +2058,57 @@ def analyze_tweet_with_groq(tweet_text: str) -> TweetAnalysis | None:
 
 def _build_comment_user_prompt(
     tweet_text: str,
-    vx_data: dict[str, Any] | None,
     analysis: TweetAnalysis | None,
 ) -> str:
-    """Shared user prompt builder for all LLM providers.
-
-    - Keeps your existing mode hint + variety behaviour.
-    - Adds TweetAnalysis hints when available.
-    - Still returns the bullet-list instruction the parsers expect.
+    """
+    Build the user prompt for LLM comment generation, with:
+    - raw tweet text
+    - optional structured analysis (tone, sarcasm, sentiment, type)
+    - extra context from vx / research (thread, author, etc.)
     """
     tweet_text = (tweet_text or "").strip()
 
-    mode_snippet = llm_mode_hint(tweet_text)
+    # Existing context + variety helpers already in your codebase
+    context_snippet = _build_context_json_snippet()
     variety_snippet = _maybe_llm_variety_snippet()
-    context_snippet = _build_context_json_snippet(vx_data)
-    analysis_snippet = analysis.to_prompt_fragment() if analysis is not None else ""
 
-    parts: list[str] = [
-        (
-            "Given the tweet and context below, write exactly two short, natural-sounding replies "
-            "as if you were a real crypto degen on X. Keep each reply under ~30 words."
-        ),
-        mode_snippet,
-        variety_snippet,
-        analysis_snippet,
-        context_snippet,
-        "Tweet:",
-        tweet_text,
-        "",
-        "Return only the two replies as a bullet list, one per line, like:\\n"
-        "- first reply...\\n"
-        "- second reply...",
-    ]
+    analysis_snippet = ""
+    if analysis is not None:
+        analysis_snippet = analysis.to_prompt_fragment()
 
-    # Filter out empty snippets to avoid double blank lines
-    return "\\n\\n".join(p for p in parts if p)
+    parts: list[str] = []
 
+    parts.append(
+        "Given the following tweet from X / Twitter, generate exactly TWO reply comments.\n"
+        "You must:\n"
+        "- Understand the tweet's intent, emotion, and possible sarcasm.\n"
+        "- Match the tone (funny, serious, degen, wholesome, etc.) but keep it respectful.\n"
+        "- If it's a GM / GN / greetings post, you must also greet back.\n"
+        "- If it's a meme or image-heavy shitpost, lean playful / witty.\n"
+        "- Avoid financial advice, promises, or guarantees.\n"
+        "- Keep each reply between 6 and 18 words.\n"
+        "- Do NOT repeat the tweet text, and do NOT ask questions in both replies."
+    )
 
+    parts.append(
+        f"--- TWEET TEXT START ---\n{tweet_text}\n--- TWEET TEXT END ---"
+    )
+
+    if analysis_snippet:
+        parts.append(analysis_snippet)
+
+    if context_snippet:
+        parts.append(context_snippet)
+
+    if variety_snippet:
+        parts.append(variety_snippet)
+
+    parts.append(
+        "Now write TWO different reply comments, numbered 1 and 2.\n"
+        "Each on its own line, no quotes, no hashtags unless they clearly fit the tweet."
+    )
+
+    return "\n\n".join(p for p in parts if p)
 
 
 def _extract_handle_from_url(url: str) -> Optional[str]:
@@ -2760,10 +2774,9 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     except Exception as exc:  # noqa: BLE001
         logger.warning("Groq tweet analysis failed (will continue without it): %s", exc)
 
-    # ---------- 2) Build prompts ----------
     mode_line = llm_mode_hint(tweet_text[:80])
-    # Pass tweet_text into sys prompt so context JSON + variety hints work
-    sys_prompt = _llm_sys_prompt(mode_line, tweet_text)
+    sys_prompt = _llm_sys_prompt(mode_line)
+
     user_prompt = _build_comment_user_prompt(
         tweet_text=tweet_text,
         analysis=analysis,
