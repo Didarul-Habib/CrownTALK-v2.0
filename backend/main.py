@@ -25,7 +25,7 @@ BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onr
 
 # Batch & pacing (env-tunable)
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))                 # ← process N at a time
-PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "1.0"))  # ← sleep after every URL
+PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "1.5"))  # ← sleep after every URL
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← hard cap per request
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
@@ -273,7 +273,7 @@ if USE_GROQ:
         USE_GROQ = False
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 # Groq pacing / backoff (to avoid falling back too quickly)
-GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "1.0"))  # spacing between calls
+GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "3.0"))  # spacing between calls
 GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "6"))               # how many times to retry one call
 GROQ_BACKOFF_SECONDS = float(os.getenv("GROQ_BACKOFF_SECONDS", "10"))   # extra wait on 429/rate-limit
 _GROQ_LAST_CALL_TS: float = 0.0
@@ -338,8 +338,8 @@ HUGGINGFACE_API_BASE = os.getenv(
 # Provider retries / backoff (shared across non-Groq providers)
 # ------------------------------------------------------------------------------
 API_RETRY_MAX = int(os.getenv("API_RETRY_MAX", "3"))
-API_RETRY_BASE_SLEEP = float(os.getenv("API_RETRY_BASE_SLEEP_SECONDS", "1.5"))
-API_RETRY_JITTER = float(os.getenv("API_RETRY_JITTER_SECONDS", "0.35"))
+API_RETRY_BASE_SLEEP = float(os.getenv("API_RETRY_BASE_SLEEP_SECONDS", "3.0"))
+API_RETRY_JITTER = float(os.getenv("API_RETRY_JITTER_SECONDS", "1.0"))
 
 def _is_retryable_provider_error(e: Exception) -> bool:
     msg = (str(e) or "").lower()
@@ -1623,7 +1623,7 @@ class OfflineCommentGenerator:
         out = self._tidy_en(out)
         return out or None
 
-def _accept(self, line: str, tweet_text: str = "") -> bool:
+    def _accept(self, line: str, tweet_text: str = "") -> bool:
     """
     Decide if a candidate line is acceptable given the original tweet.
     The tweet_text is used by pro_kol_ok for context-aware checks.
