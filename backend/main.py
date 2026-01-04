@@ -2742,39 +2742,51 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
 # Groq generator (exactly 2, 6–13 words, tolerant parsing)
 # ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> list[str]:
+    """
+    Main Groq-based generator.
+    - Does a quick analysis pass (TweetAnalysis) to understand tone, meme, gm/gn, etc.
+    - Then generates two short replies guided by that analysis.
+    - Has rate-limit aware retries and falls back to offline if needed.
+    """
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
     global _GROQ_LAST_CALL_TS, _GROQ_DISABLED_UNTIL
 
+    # ---------- 1) Try to analyze the tweet (best-effort) ----------
     analysis: TweetAnalysis | None = None
-try:
-    analysis = analyze_tweet_with_groq(tweet_text)
-except Exception as exc:  # noqa: BLE001
-    logger.warning("Groq tweet analysis failed (will continue without it): %s", exc)
+    try:
+        analysis = analyze_tweet_with_groq(tweet_text)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("Groq tweet analysis failed (will continue without it): %s", exc)
 
-sys_prompt = _llm_sys_prompt()
-user_prompt = _build_comment_user_prompt(
-    tweet_text=tweet_text,
-    vx_data=vx_data,
-    analysis=analysis,
-)
+    # ---------- 2) Build prompts ----------
+    mode_line = llm_mode_hint(tweet_text[:80])
+    # Pass tweet_text into sys prompt so context JSON + variety hints work
+    sys_prompt = _llm_sys_prompt(mode_line, tweet_text)
+    user_prompt = _build_comment_user_prompt(
+        tweet_text=tweet_text,
+        analysis=analysis,
+    )
 
     resp = None
 
+    # ---------- 3) Call Groq with spacing + backoff ----------
     for attempt in range(GROQ_MAX_RETRIES):
-        # --- global spacing + backoff guard ---
         now = time.time()
 
-        # If we previously hit a hard rate-limit, wait out that window
+        # Respect any prior hard backoff window
         if now < _GROQ_DISABLED_UNTIL:
             sleep_for = _GROQ_DISABLED_UNTIL - now
             if sleep_for > 0:
-                logger.info("Groq backoff active, sleeping %.2fs before next call", sleep_for)
+                logger.info(
+                    "Groq backoff active, sleeping %.2fs before next call",
+                    sleep_for,
+                )
                 time.sleep(sleep_for)
             now = time.time()
 
-        # Enforce minimum interval between Groq calls
+        # Enforce minimum spacing between calls to avoid hammering the API
         delta = now - _GROQ_LAST_CALL_TS
         if delta < GROQ_MIN_INTERVAL:
             sleep_for = GROQ_MIN_INTERVAL - delta
@@ -2795,7 +2807,7 @@ user_prompt = _build_comment_user_prompt(
             _GROQ_LAST_CALL_TS = time.time()
             break
 
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             wait_secs = 0.0
             msg = str(e).lower()
 
@@ -2806,9 +2818,9 @@ user_prompt = _build_comment_user_prompt(
                 if ra is not None:
                     try:
                         wait_secs = max(wait_secs, float(ra))
-                    except Exception:
+                    except Exception:  # noqa: BLE001
                         pass
-            except Exception:
+            except Exception:  # noqa: BLE001
                 pass
 
             # Generic rate-limit / quota hints
@@ -2826,13 +2838,14 @@ user_prompt = _build_comment_user_prompt(
                 time.sleep(wait_secs)
                 continue
 
-            # Non rate-limit error → bubble up so other providers/offline can handle
+            # Non rate-limit error → bubble up so the provider wrapper can fall back
             logger.warning("Groq error (non-rate-limit): %s", e)
             raise
 
     if resp is None:
         raise RuntimeError("Groq call failed after retries")
 
+    # ---------- 4) Turn raw text into two clean comments ----------
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [
@@ -2842,8 +2855,8 @@ user_prompt = _build_comment_user_prompt(
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
+    # ---------- 5) Fallbacks if Groq output is weak ----------
     if len(candidates) < 2:
-        # fallback: add offline
         candidates = enforce_unique(
             candidates + offline_two_comments(tweet_text, author),
             tweet_text=tweet_text,
@@ -2858,6 +2871,7 @@ user_prompt = _build_comment_user_prompt(
     if len(candidates) < 2:
         raise RuntimeError("Could not produce two valid comments")
 
+    # If the pair is too similar, try to diversify by mixing in offline ones
     if _pair_too_similar(candidates[0], candidates[1]):
         merged = enforce_unique(
             candidates + offline_two_comments(tweet_text, author),
@@ -2867,9 +2881,6 @@ user_prompt = _build_comment_user_prompt(
             candidates = merged[:2]
 
     return candidates[:2]
-
-
-
 # ------------------------------------------------------------------------------
 # OpenAI / Gemini generators (same constraints as Groq)
 # ------------------------------------------------------------------------------
