@@ -2058,9 +2058,12 @@ def analyze_tweet_with_groq(tweet_text: str) -> TweetAnalysis | None:
 
 def _build_comment_user_prompt(
     tweet_text: str,
-    analysis: TweetAnalysis | None,
+    analysis: Optional[TweetAnalysis],
+    url: str = "",
 ) -> str:
-    """
+    ...
+    variety_snippet = _maybe_llm_variety_snippet(url, tweet_text)
+
     Build the user prompt for LLM comment generation, with:
     - raw tweet text
     - optional structured analysis (tone, sarcasm, sentiment, type)
@@ -2777,10 +2780,7 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     mode_line = llm_mode_hint(tweet_text[:80])
     sys_prompt = _llm_sys_prompt(mode_line)
 
-    user_prompt = _build_comment_user_prompt(
-        tweet_text=tweet_text,
-        analysis=analysis,
-    )
+    user_prompt = _build_comment_user_prompt(tweet_text=tweet_text, analysis=analysis, url=url)
 
     resp = None
 
