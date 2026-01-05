@@ -2351,17 +2351,17 @@ VOICE_CARDS = [
     },
 ]
 
-VOICE_CARDS["ct_kol_v2"] = {
-    "label": "CT KOL (seasoned)",
-    "rules": [
-        "Sound like an experienced Crypto Twitter operator: crisp, grounded, slightly skeptical.",
-        "Use at most ONE slang token per comment when SLANG_LEVEL>0 (e.g., ngl, lowkey, cooked, locked in, ser).",
-        "Prefer domain nouns: liquidity/positioning/vesting/incentives/distribution/retention.",
-        "No cheerleading, no filler praise, no emojis/hashtags/links.",
-        "One sentence, one thought. Punchy.",
-    ],
-}
-
+# CT KOL (seasoned) voice card (v2). Used by the LLM 'Voice profile' section.
+VOICE_CARDS.append({
+    "id": "ct_kol_v2",
+    "description": (
+        "Seasoned CT KOL: crisp, grounded, slightly skeptical. One sentence, punchy. "
+        "No emojis/hashtags/links. Use <=1 light slang token when SLANG_LEVEL>0. "
+        "Anchor on incentives/liquidity/positioning/vesting/execution."
+    ),
+    "boost_topics": {"chart": 1.4, "announcement": 1.2, "question": 1.1, "thread": 1.1},
+    "boost_if_crypto": 2.2,
+})
 
 def _pick_voice_card(tweet_text: str) -> dict:
     topic = detect_topic(tweet_text or "")
@@ -2726,62 +2726,73 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
 
     return has_focus or has_operator
 
-CT_SLANG_LIGHT = ["ngl", "lowkey", "locked in", "cooked", "based"]
-CT_SLANG_TRADING = ["tape says", "flow check", "positioning looks", "liq matters"]
-CT_SLANG_DEV = ["ship it", "distribution wins", "integration > narrative"]
+CT_SLANG_LIGHT = ["ngl", "lowkey", "real talk", "locked in", "cooked", "based", "respect"]
+CT_SLANG_TRADING = [
+    "tape says",
+    "flow check",
+    "positioning looks",
+    "liq matters",
+    "risk is the trade",
+    "thin books",
+    "unlock overhang",
+]
+CT_SLANG_DEV = ["ship it", "distribution wins", "integration > narrative", "execution > vibes", "docs > dopamine"]
+CT_SLANG_OPERATOR = ["on my screen", "clean setup", "timing matters", "stay nimble", "let the tape confirm"]
 
-def maybe_inject_slang(comment: str, tweet_text: str) -> str:
+def maybe_inject_slang(comment: str, tweet_text: str, used: Optional[set[str]] = None) -> str:
+    """
+    Light CT-flavored slang injection (optional).
+    - Keeps ONE short tag/prefix, never adds extra sentences.
+    - Avoids repeating the same tag across the pair via `used`.
+    """
     if not comment or SLANG_LEVEL <= 0:
         return comment
 
+    if not is_crypto_tweet(tweet_text or ""):
+        return comment.strip()
+
+    used = used or set()
     t = (tweet_text or "").lower()
     c = comment.strip()
 
-    # Don't double-slang
-    if any(s in c.lower() for s in CT_SLANG_LIGHT):
+    # Don't double-slang (or stack tags)
+    all_tags = CT_SLANG_LIGHT + CT_SLANG_TRADING + CT_SLANG_DEV + CT_SLANG_OPERATOR
+    if any(tag in c.lower() for tag in all_tags):
         return c
 
-    # probability: light = subtle, level2 = more frequent
-    p = 0.18 if SLANG_LEVEL == 1 else 0.35
+    # probability: level1 = subtle, level2+ = more frequent
+    p = 0.15 if SLANG_LEVEL == 1 else 0.28
     if random.random() > p:
         return c
 
     # pick slang by context
     pool = CT_SLANG_LIGHT[:]
-    if any(k in t for k in ["trade", "trading", "long", "short", "entry", "btc", "eth", "chart", "liq", "liquidity"]):
-        pool += CT_SLANG_TRADING
-    if any(k in t for k in ["dev", "build", "shipping", "repo", "onchain", "contract", "protocol"]):
+    if any(k in t for k in ["trade", "trading", "long", "short", "entry", "exit", "btc", "eth", "chart", "liq", "liquidity", "perp"]):
+        pool += CT_SLANG_TRADING + CT_SLANG_OPERATOR
+    if any(k in t for k in ["dev", "build", "shipping", "repo", "github", "onchain", "contract", "protocol", "audit"]):
         pool += CT_SLANG_DEV
 
-    tag = random.choice(pool)
+    # Try a few times to avoid reusing the same tag across the pair
+    tag = ""
+    for _ in range(5):
+        cand = random.choice(pool)
+        if cand.lower() not in used:
+            tag = cand
+            used.add(cand.lower())
+            break
+    if not tag:
+        return c
 
     # inject as prefix OR suffix (keep single sentence)
-    if random.random() < 0.5:
-        return f"{tag.capitalize()} — {c}".strip()
+    if random.random() < 0.6:
+        out = f"{tag.capitalize()} — {c}".strip()
     else:
-        # suffix with a short tag, no extra clause
-        return f"{c} ({tag})".strip()
+        out = f"{c} ({tag})".strip()
 
-
-def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
-    items = generator.generate_two(text, author or None, None, None)
-    en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
-    non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
-
-    result: list[str] = []
-    if en:
-        result.append(en[0])
-    if len(en) >= 2:
-        result.append(en[1])
-    elif non:
-        result.append(non[0])
-
-    # Apply your uniqueness filters + diversity pairing
-    result = enforce_unique(result, tweet_text=text)
-    if len(result) < 2:
-        result = enforce_unique(result + _rescue_two(text), tweet_text=text)
-
-    return result[:2]
+    # Safety: don't bloat past the later postprocess trim window too much
+    if len(out.split()) > 24:
+        return c
+    return out
 
 # ------------------------------------------------------------------------------
 # LLM parsing helper shared by providers
@@ -3409,6 +3420,9 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "\n"
         "Human quality:\n"
         "- Sound like a real person on CT: grounded, specific, slightly opinionated.\n"
+        "- KOL tone: seasoned operator vibe (calm, specific, slightly skeptical), not a newbie shill.\n"
+        "- Mirror the tweet's register: trading -> risk/timing/liquidity; builders -> execution/distribution; tokenomics -> incentives/unlocks/vesting.\n"
+        "- If you use slang, keep it to ONE light CT term max (e.g., ngl, lowkey, locked in, tape/flows) and never derogatory.\n"
         "- Avoid hype/fanboy language and generic praise.\n"
         "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
         "- If the tweet is funny, allow ONE witty/deadpan line.\n"
@@ -3588,6 +3602,19 @@ def generate_two_comments_with_providers(
         candidates = (_rescue_two(tweet_text) + candidates)[:2]
 
     # Final trimming / formatting pass
+
+    # Optional slang flavor (kept subtle; postprocess_comment will re-trim)
+    if SLANG_LEVEL > 0:
+        try:
+            used_tags: set[str] = set()
+            candidates = [maybe_inject_slang(c, tweet_text, used=used_tags) for c in candidates]
+            if len(candidates) == 2 and (
+                _pair_too_similar(candidates[0], candidates[1])
+                or candidates[0].split()[0].lower() == candidates[1].split()[0].lower()
+            ):
+                candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang=lang_out)
+        except Exception as e:
+            logger.debug("slang injection skipped: %s", e)
     processed = [postprocess_comment(c, "llm") for c in candidates]
 
     return [{"lang": lang_out, "text": processed[0]}, {"lang": lang_out, "text": processed[1]}]
