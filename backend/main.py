@@ -66,10 +66,6 @@ PRO_KOL_POLISH = PRO_KOL_MODE
 PRO_KOL_STRICT = PRO_KOL_MODE
 PRO_KOL_REWRITE = PRO_KOL_MODE
 
-# --- Voice & slang tuning (env) ---
-DEFAULT_VOICE = os.getenv("DEFAULT_VOICE", "").strip().lower()  # e.g. "ct_kol_v2"
-SLANG_LEVEL = int(os.getenv("SLANG_LEVEL", "0"))  # 0=none, 1=light, 2=more
-
 # Rewrite tuning (extra LLM calls; can hit quota)
 PRO_KOL_REWRITE_MAX_TRIES = int(os.getenv("PRO_KOL_REWRITE_MAX_TRIES", "2"))
 PRO_KOL_REWRITE_TEMPERATURE = float(os.getenv("PRO_KOL_REWRITE_TEMPERATURE", "0.7"))
@@ -347,6 +343,17 @@ API_RETRY_JITTER = float(os.getenv("API_RETRY_JITTER_SECONDS", "1.0"))
 
 def _is_retryable_provider_error(e: Exception) -> bool:
     msg = (str(e) or "").lower()
+
+    # Gemini free-tier daily quota errors are not meaningfully retryable.
+    # Example strings: "You exceeded your current quota", "free_tier_requests", "GenerateRequestsPerDayPerProjectPerModel-FreeTier"
+    if any(k in msg for k in (
+        "exceeded your current quota",
+        "free_tier_requests",
+        "generaterequestsperday",
+        "generativelanguage.googleapis.com",
+        "free tier",
+    )):
+        return False
     # Common transient buckets
     if any(k in msg for k in ("429", "rate limit", "quota", "timeout", "temporarily", "overloaded", "service unavailable", "502", "503", "504")):
         return True
@@ -1205,18 +1212,6 @@ PRO_KOL_GOOD = {
     "constraint", "tradeoff", "edge", "verify", "confirm", "pricing", "variance",
     "sizing", "asymmetric", "timeframe",
 }
-
-def pick_angle(tweet_text: str) -> str:
-    t = (tweet_text or "").lower()
-    if any(x in t for x in ["vesting", "unlock", "emissions", "fdv", "tokenomics"]):
-        return "tokenomics"
-    if any(x in t for x in ["trade", "trading", "long", "short", "liq", "liquidity", "chart"]):
-        return "trading"
-    if any(x in t for x in ["dev", "build", "shipping", "repo", "integration", "protocol"]):
-        return "dev"
-    if any(x in t for x in ["community", "participation", "noise", "followers"]):
-        return "community"
-    return "general"
 
 def pro_kol_score(text: str) -> int:
     t = (text or "").strip()
@@ -2351,17 +2346,6 @@ VOICE_CARDS = [
     },
 ]
 
-# CT KOL (seasoned) voice card (v2). Used by the LLM 'Voice profile' section.
-VOICE_CARDS.append({
-    "id": "ct_kol_v2",
-    "description": (
-        "Seasoned CT KOL: crisp, grounded, slightly skeptical. One sentence, punchy. "
-        "No emojis/hashtags/links. Use <=1 light slang token when SLANG_LEVEL>0. "
-        "Anchor on incentives/liquidity/positioning/vesting/execution."
-    ),
-    "boost_topics": {"chart": 1.4, "announcement": 1.2, "question": 1.1, "thread": 1.1},
-    "boost_if_crypto": 2.2,
-})
 
 def _pick_voice_card(tweet_text: str) -> dict:
     topic = detect_topic(tweet_text or "")
@@ -2726,74 +2710,50 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
 
     return has_focus or has_operator
 
-CT_SLANG_LIGHT = ["ngl", "lowkey", "real talk", "locked in", "cooked", "based", "respect"]
-CT_SLANG_TRADING = [
-    "tape says",
-    "flow check",
-    "positioning looks",
-    "liq matters",
-    "risk is the trade",
-    "thin books",
-    "unlock overhang",
-]
-CT_SLANG_DEV = ["ship it", "distribution wins", "integration > narrative", "execution > vibes", "docs > dopamine"]
-CT_SLANG_OPERATOR = ["on my screen", "clean setup", "timing matters", "stay nimble", "let the tape confirm"]
+def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
+    items = generator.generate_two(text, author or None, None, None)
+    en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
+    non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
 
-def maybe_inject_slang(comment: str, tweet_text: str, used: Optional[set[str]] = None) -> str:
-    """
-    Light CT-flavored slang injection (optional).
-    - Keeps ONE short tag/prefix, never adds extra sentences.
-    - Avoids repeating the same tag across the pair via `used`.
-    """
-    if not comment or SLANG_LEVEL <= 0:
-        return comment
+    result: list[str] = []
+    if en:
+        result.append(en[0])
+    if len(en) >= 2:
+        result.append(en[1])
+    elif non:
+        result.append(non[0])
 
-    if not is_crypto_tweet(tweet_text or ""):
-        return comment.strip()
+    # Apply your uniqueness filters + diversity pairing
+    result = enforce_unique(result, tweet_text=text)
+    if len(result) < 2:
+        result = enforce_unique(result + _rescue_two(text), tweet_text=text)
 
-    used = used or set()
-    t = (tweet_text or "").lower()
-    c = comment.strip()
+    return result[:2]
 
-    # Don't double-slang (or stack tags)
-    all_tags = CT_SLANG_LIGHT + CT_SLANG_TRADING + CT_SLANG_DEV + CT_SLANG_OPERATOR
-    if any(tag in c.lower() for tag in all_tags):
-        return c
 
-    # probability: level1 = subtle, level2+ = more frequent
-    p = 0.15 if SLANG_LEVEL == 1 else 0.28
-    if random.random() > p:
-        return c
 
-    # pick slang by context
-    pool = CT_SLANG_LIGHT[:]
-    if any(k in t for k in ["trade", "trading", "long", "short", "entry", "exit", "btc", "eth", "chart", "liq", "liquidity", "perp"]):
-        pool += CT_SLANG_TRADING + CT_SLANG_OPERATOR
-    if any(k in t for k in ["dev", "build", "shipping", "repo", "github", "onchain", "contract", "protocol", "audit"]):
-        pool += CT_SLANG_DEV
+def safe_offline_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+    """Best-effort offline fallback that never raises NameError."""
+    fn = globals().get("offline_two_comments")
+    if callable(fn):
+        try:
+            return fn(tweet_text, author)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("offline_two_comments failed, using rescue: %s", e)
 
-    # Try a few times to avoid reusing the same tag across the pair
-    tag = ""
-    for _ in range(5):
-        cand = random.choice(pool)
-        if cand.lower() not in used:
-            tag = cand
-            used.add(cand.lower())
-            break
-    if not tag:
-        return c
+    # Last resort: use the offline generator directly, then rescue.
+    try:
+        items = generator.generate_two(tweet_text, author or None, None, None)
+        out = [i.get("text","").strip() for i in items if i and i.get("text")]
+        out = [o for o in out if o]
+        if len(out) >= 2:
+            return out[:2]
+        if out:
+            return (out + _rescue_two(tweet_text))[:2]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("offline generator failed, using rescue: %s", e)
 
-    # inject as prefix OR suffix (keep single sentence)
-    if random.random() < 0.6:
-        out = f"{tag.capitalize()} — {c}".strip()
-    else:
-        out = f"{c} ({tag})".strip()
-
-    # Safety: don't bloat past the later postprocess trim window too much
-    if len(out.split()) > 24:
-        return c
-    return out
-
+    return _rescue_two(tweet_text)[:2]
 # ------------------------------------------------------------------------------
 # LLM parsing helper shared by providers
 # ------------------------------------------------------------------------------
@@ -2943,7 +2903,7 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     # ---------- 5) Fallbacks if Groq output is weak ----------
     if len(candidates) < 2:
         candidates = enforce_unique(
-            candidates + offline_two_comments(tweet_text, author),
+            candidates + safe_offline_two_comments(tweet_text, author),
             tweet_text=tweet_text,
         )
 
@@ -2959,7 +2919,7 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     # If the pair is too similar, try to diversify by mixing in offline ones
     if _pair_too_similar(candidates[0], candidates[1]):
         merged = enforce_unique(
-            candidates + offline_two_comments(tweet_text, author),
+            candidates + safe_offline_two_comments(tweet_text, author),
             tweet_text=tweet_text,
         )
         if len(merged) >= 2:
@@ -3062,13 +3022,13 @@ def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("OpenAI did not produce two valid comments")
 
     if _pair_too_similar(candidates[0], candidates[1]):
-        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
 
@@ -3106,13 +3066,13 @@ def gemini_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("Gemini did not produce two valid comments")
 
     if _pair_too_similar(candidates[0], candidates[1]):
-        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
 
@@ -3169,13 +3129,13 @@ def mistral_two_comments(tweet_text: str, author: Optional[str], url: str = "") 
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("Mistral did not produce two valid comments")
 
     if _pair_too_similar(candidates[0], candidates[1]):
-        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
 
@@ -3230,13 +3190,13 @@ def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("Cohere did not produce two valid comments")
 
     if _pair_too_similar(candidates[0], candidates[1]):
-        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
 
@@ -3294,13 +3254,13 @@ def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = 
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
 
     if len(candidates) < 2:
         raise RuntimeError("HuggingFace did not produce two valid comments")
 
     if _pair_too_similar(candidates[0], candidates[1]):
-        merged = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         if len(merged) >= 2:
             candidates = merged[:2]
 
@@ -3420,9 +3380,6 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "\n"
         "Human quality:\n"
         "- Sound like a real person on CT: grounded, specific, slightly opinionated.\n"
-        "- KOL tone: seasoned operator vibe (calm, specific, slightly skeptical), not a newbie shill.\n"
-        "- Mirror the tweet's register: trading -> risk/timing/liquidity; builders -> execution/distribution; tokenomics -> incentives/unlocks/vesting.\n"
-        "- If you use slang, keep it to ONE light CT term max (e.g., ngl, lowkey, locked in, tape/flows) and never derogatory.\n"
         "- Avoid hype/fanboy language and generic praise.\n"
         "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting.\n"
         "- If the tweet is funny, allow ONE witty/deadpan line.\n"
@@ -3573,7 +3530,7 @@ def generate_two_comments_with_providers(
 
     if len(candidates) < 2:
         try:
-            candidates = enforce_unique(candidates + offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+            candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
         except Exception as e:
             logger.warning("offline fallback failed: %s", e)
 
@@ -3602,19 +3559,6 @@ def generate_two_comments_with_providers(
         candidates = (_rescue_two(tweet_text) + candidates)[:2]
 
     # Final trimming / formatting pass
-
-    # Optional slang flavor (kept subtle; postprocess_comment will re-trim)
-    if SLANG_LEVEL > 0:
-        try:
-            used_tags: set[str] = set()
-            candidates = [maybe_inject_slang(c, tweet_text, used=used_tags) for c in candidates]
-            if len(candidates) == 2 and (
-                _pair_too_similar(candidates[0], candidates[1])
-                or candidates[0].split()[0].lower() == candidates[1].split()[0].lower()
-            ):
-                candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang=lang_out)
-        except Exception as e:
-            logger.debug("slang injection skipped: %s", e)
     processed = [postprocess_comment(c, "llm") for c in candidates]
 
     return [{"lang": lang_out, "text": processed[0]}, {"lang": lang_out, "text": processed[1]}]
