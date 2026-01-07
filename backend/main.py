@@ -1,5 +1,11 @@
 from __future__ import annotations
 
+from contextlib import contextmanager
+try:
+    import fcntl  # Linux / Render
+except Exception:  # noqa: BLE001
+    fcntl = None
+
 import json, os, re, time, random, hashlib, logging, sqlite3, threading
 from collections import Counter
 from contextvars import ContextVar
@@ -29,6 +35,32 @@ PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "2.5"))  # ← sle
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← hard cap per request
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
+
+URL_LOCK_PATH = os.getenv("URL_LOCK_PATH", "/tmp/crowntalk_url.lock")
+
+@contextmanager
+def global_url_lock():
+    """
+    Ensures ONLY ONE URL is processed at a time, even across gunicorn workers
+    (within the same Render instance).
+    """
+    if fcntl is None:
+        # fallback (won't coordinate across processes, but works in threads)
+        _fallback_lock = threading.Lock()
+        with _fallback_lock:
+            yield
+        return
+
+    fp = open(URL_LOCK_PATH, "w")  # noqa: SIM115
+    try:
+        fcntl.flock(fp.fileno(), fcntl.LOCK_EX)
+        yield
+    finally:
+        try:
+            fcntl.flock(fp.fileno(), fcntl.LOCK_UN)
+        finally:
+            fp.close()
+
 # Optional: override default LLM provider order, e.g. "groq,openai,gemini,mistral,cohere,huggingface"
 CROWNTALK_LLM_ORDER = [
     x.strip().lower()
@@ -278,6 +310,84 @@ GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "6"))               # how m
 GROQ_BACKOFF_SECONDS = float(os.getenv("GROQ_BACKOFF_SECONDS", "15"))   # extra wait on 429/rate-limit
 _GROQ_LAST_CALL_TS: float = 0.0
 _GROQ_DISABLED_UNTIL: float = 0.0
+
+GROQ_STATE_PATH = os.getenv("GROQ_STATE_PATH", "/tmp/groq_state.json")
+
+def _load_groq_state() -> dict:
+    try:
+        with open(GROQ_STATE_PATH, "r", encoding="utf-8") as f:
+            data = json.load(f)
+        if not isinstance(data, dict):
+            return {"last_call_ts": 0.0, "disabled_until": 0.0}
+        return {
+            "last_call_ts": float(data.get("last_call_ts", 0.0)),
+            "disabled_until": float(data.get("disabled_until", 0.0)),
+        }
+    except Exception:
+        return {"last_call_ts": 0.0, "disabled_until": 0.0}
+
+def _save_groq_state(state: dict) -> None:
+    try:
+        with open(GROQ_STATE_PATH, "w", encoding="utf-8") as f:
+            json.dump(state, f)
+    except Exception:
+        pass
+
+def _is_rate_limit_error(e: Exception) -> bool:
+    msg = str(e).lower()
+    return ("429" in msg) or ("too many requests" in msg) or ("rate" in msg) or ("quota" in msg)
+
+def groq_chat_limited(*, messages, max_tokens: int, temperature: float, n: int = 1):
+    """
+    SINGLE entry-point for Groq calls.
+    - Serialized across workers (same instance) by using the URL lock file.
+    - Enforces GROQ_MIN_INTERVAL spacing globally.
+    - On 429: waits (backoff) and retries up to GROQ_MAX_RETRIES.
+    """
+    if not (USE_GROQ and _groq_client):
+        raise RuntimeError("Groq disabled or client not available")
+
+    for attempt in range(1, GROQ_MAX_RETRIES + 1):
+        # Reuse the same global URL lock so no other URL/Groq runs concurrently
+        with global_url_lock():
+            state = _load_groq_state()
+            now = time.time()
+
+            # If we are in cooldown, WAIT (you asked for wait system)
+            if now < state["disabled_until"]:
+                time.sleep(state["disabled_until"] - now)
+                now = time.time()
+
+            # Enforce spacing between ANY two Groq calls (global)
+            delta = now - state["last_call_ts"]
+            if delta < GROQ_MIN_INTERVAL:
+                time.sleep(GROQ_MIN_INTERVAL - delta)
+
+            try:
+                resp = _groq_client.chat.completions.create(
+                    model=GROQ_MODEL,
+                    messages=messages,
+                    n=n,
+                    max_tokens=max_tokens,
+                    temperature=temperature,
+                )
+                state["last_call_ts"] = time.time()
+                state["disabled_until"] = 0.0
+                _save_groq_state(state)
+                return resp
+
+            except Exception as e:  # noqa: BLE001
+                if _is_rate_limit_error(e):
+                    # Backoff grows per attempt (15s, 30s, 45s...)
+                    backoff = GROQ_BACKOFF_SECONDS * attempt
+                    state["disabled_until"] = time.time() + backoff
+                    _save_groq_state(state)
+                    # loop retry (will WAIT next iteration)
+                    continue
+                raise
+
+    raise RuntimeError("Groq rate-limited too long; retries exhausted")
+
 # ------------------------------------------------------------------------------
 # Optional OpenAI
 # ------------------------------------------------------------------------------
@@ -2013,8 +2123,7 @@ def analyze_tweet_with_groq(tweet_text: str) -> TweetAnalysis | None:
 
     try:
         logger.debug("Groq analysis: sending request")
-        resp = _groq_client.chat.completions.create(
-            model=GROQ_MODEL,  # same model you already use; you can swap to 8B here if you want
+        resp = groq_chat_limited(
             messages=[
                 {"role": "system", "content": sys_prompt},
                 {"role": "user", "content": user_prompt},
@@ -2839,8 +2948,7 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
                 time.sleep(sleep_for)
 
         try:
-            resp = _groq_client.chat.completions.create(
-                model=GROQ_MODEL,
+            resp = groq_chat_limited(
                 messages=[
                     {"role": "system", "content": sys_prompt},
                     {"role": "user", "content": user_prompt},
@@ -3441,8 +3549,7 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
             try:
                 raw = ""
                 if provider == "groq" and USE_GROQ and _groq_client:
-                    resp = _groq_client.chat.completions.create(
-                        model=GROQ_MODEL,
+                    resp = groq_chat_limited(
                         messages=[{"role": "system", "content": sys_prompt},
                                   {"role": "user", "content": user_prompt}],
                         max_tokens=PRO_KOL_REWRITE_MAX_TOKENS,
