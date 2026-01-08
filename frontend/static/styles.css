@@ -4413,28 +4413,22 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
   gap:6px;
 }
 
-/* Desktop comment studio split view */
+/* Desktop comment studio split view
+   -> disabled now so the Results side gets full width */
 @media (min-width: 1024px) and (pointer:fine){
   .main{
-    grid-template-columns:minmax(0,0.95fr) minmax(0,1.1fr);
+    grid-template-columns:minmax(0,1fr);
     column-gap:18px;
-  }
-  .main > .card:first-of-type{
-    grid-column:1;
-  }
-  .main > .card:nth-of-type(2),
-  .main > .card:nth-of-type(3),
-  .main > .card:nth-of-type(4){
-    grid-column:2;
   }
 }
 
-/* Results layout + copy queue (desktop only) */
+/* Results layout + copy queue (desktop only)
+   -> copy queue hidden, layout stays single-column */
 .results-layout{
   display:block;
 }
 .copy-queue-panel{
-  display:none;
+  display:none; /* fully hidden but styles kept if you re-enable later */
   border-radius:14px;
   border:1px dashed rgba(148,163,184,.55);
   background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(15,23,42,.88));
@@ -4485,19 +4479,6 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
   display:flex;
   flex-wrap:wrap;
   gap:6px;
-}
-
-@media (min-width: 1024px) and (pointer:fine){
-  .results-layout{
-    display:grid;
-    grid-template-columns:minmax(0,1.45fr) minmax(260px,0.9fr);
-    gap:16px;
-    align-items:flex-start;
-  }
-  .copy-queue-panel{
-    display:flex;
-    flex-direction:column;
-  }
 }
 
 /* Session tabs */
@@ -4552,7 +4533,7 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
   color:#e5e7eb;
 }
 
-/* Keyboard HUD */
+/* Keyboard HUD (still inline for now) */
 .keyboard-hud{
   margin-top:8px;
   padding:6px 8px;
@@ -4649,61 +4630,60 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
 }
 
 /* =========================================================
-   PATCH: Fix comment visibility + premium progress bar
-   (add at the very bottom of styles.css)
+   Fix comment visibility + premium progress bar
    ========================================================= */
 
 /* 1) Let comments show fully (no cutoff) */
 .comment-text{
-  white-space: normal;
-  overflow: visible;
-  text-overflow: unset;
-  line-height: 1.4;
+  white-space:normal;
+  overflow:visible;
+  text-overflow:unset;
+  line-height:1.4;
 }
 
 /* Align multi-line rows a bit nicer */
 .comment-line{
-  align-items: flex-start;
+  align-items:flex-start;
 }
 
 /* 2) Premium animated progress bar */
 
 /* Outer track: slightly taller + soft inner shadow */
 .progress-bar-outer{
-  width: 100%;
-  height: 6px;
-  border-radius: 999px;
-  background: radial-gradient(circle at 0 0, rgba(148,163,184,.25), transparent 45%) rgba(15,23,42,.85);
+  width:100%;
+  height:6px;
+  border-radius:999px;
+  background:radial-gradient(circle at 0 0,rgba(148,163,184,.25),transparent 45%) rgba(15,23,42,.85);
   box-shadow:
     inset 0 0 0 1px rgba(15,23,42,.9),
     0 0 0 1px rgba(15,23,42,.9);
-  overflow: hidden;
+  overflow:hidden;
 }
 
 /* Inner fill: full width, animated via scaleX + shimmer */
 .progress-bar-inner{
-  width: 100%;                   /* <-- important: let scaleX work */
-  height: 100%;
-  border-radius: inherit;
-  transform-origin: left center;
-  transform: scaleX(var(--ct-progress-frac, 0));
-  background-image: linear-gradient(90deg, #22c55e, #a855f7, #f97316);
-  background-size: 200% 100%;
+  width:100%;
+  height:100%;
+  border-radius:inherit;
+  transform-origin:left center;
+  transform:scaleX(var(--ct-progress-frac,0));
+  background-image:linear-gradient(90deg,#22c55e,#a855f7,#f97316);
+  background-size:200% 100%;
   box-shadow:
     0 0 18px rgba(129,140,248,.55),
     0 0 8px rgba(34,197,94,.75);
-  transition: transform .28s cubic-bezier(.22,.61,.36,1),
-              box-shadow .25s ease-out;
+  transition:transform .28s cubic-bezier(.22,.61,.36,1),
+             box-shadow .25s ease-out;
 }
 
 /* While generating, add subtle moving shine */
 body.is-generating .progress-bar-inner{
-  animation: ct-progress-wave 1.2s linear infinite;
+  animation:ct-progress-wave 1.2s linear infinite;
 }
 
 @keyframes ct-progress-wave{
-  0%{ background-position: 0 0; }
-  100%{ background-position: -200% 0; }
+  0%{ background-position:0 0; }
+  100%{ background-position:-200% 0; }
 }
 
 /* When we flash "done" (ct-progress-done), give a quick glow pop */
@@ -4715,7 +4695,8 @@ body.ct-progress-done .progress-bar-inner{
 
 /* 3) Slight tidy for results column */
 #results.tweets{
-  display: flex;
-  flex-direction: column;
-  gap: 10px;
+  display:flex;
+  flex-direction:column;
+  gap:10px;
 }
+
