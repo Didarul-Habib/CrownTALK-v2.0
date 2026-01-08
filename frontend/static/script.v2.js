@@ -1356,6 +1356,20 @@ function bootAppUI() {
   downloadTxtBtn?.addEventListener("click", (e) => { e.preventDefault(); exportComments("download"); });
 
   window.addEventListener("keydown", handleGlobalHotkeys);
+  // === RESULTS MENU DROPDOWN (desktop) ===
+  const resultsMenu      = document.getElementById("resultsMenu");
+  const resultsMenuToggle = document.getElementById("resultsMenuToggle");
+
+  if (resultsMenu && resultsMenuToggle) {
+    resultsMenuToggle.addEventListener("click", (e) => {
+      e.stopPropagation();
+      resultsMenu.classList.toggle("is-open");
+    });
+
+    document.addEventListener("click", () => {
+      resultsMenu.classList.remove("is-open");
+    });
+  }
 }
 
 /* =========================================================
