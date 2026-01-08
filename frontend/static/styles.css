@@ -4353,40 +4353,297 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
 #progressBarFill{ will-change: transform; }
 
 
-/* ===== PATCH-00: Desktop-only helper START ===== */
-.ct-desktop-only { display: none !important; }
+/* =========================================================
+   CrownTALK — Desktop Comment Studio & premium tools
+   (All additions are additive; no existing class/id changed)
+   ========================================================= */
 
-@media (min-width: 900px) and (pointer: fine) {
-  .ct-desktop-only { display: inline-flex !important; }
-}
-/* ===== PATCH-00 END ===== */
-
-/* ===== PATCH-03: Results toolbar START ===== */
-.ct-results-toolbar{
-  display: none;
-  margin: 10px 0 2px;
-  gap: 8px;
-  justify-content: flex-end;
-  flex-wrap: wrap;
+/* Utility: hide on small screens or coarse pointers */
+.hide-on-mobile{
+  display:none !important;
 }
 
-@media (min-width: 900px) and (pointer: fine) {
-  .ct-results-toolbar{ display: flex; }
-}
-/* ===== PATCH-03 END ===== */
-/* ===== PATCH-04: Desktop grain overlay START ===== */
-@media (min-width: 900px) and (pointer: fine) {
-  body::before{
-    content:"";
-    position: fixed;
-    inset: 0;
-    pointer-events: none;
-    z-index: 0;
-    background: url("static/texture.jpg") repeat;
-    opacity: .06;
-    mix-blend-mode: overlay;
+@media (min-width: 768px){
+  .hide-on-mobile{
+    display:initial !important;
   }
 }
-/* Safety: if ultralite mode is enabled, never show grain */
-html.ultralite-on body::before{ display: none !important; }
-/* ===== PATCH-04 END ===== */
+
+/* Tiny button size used in toolbars */
+.btn-xs{
+  padding:4px 10px;
+  font-size:11px;
+  line-height:1.35;
+}
+
+/* URL tools row under textarea */
+.url-tools-row{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:8px 2px 6px;
+  font-size:11px;
+}
+.url-health{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.url-health-badge{
+  padding:3px 8px;
+  border-radius:999px;
+  background:rgba(15,23,42,.9);
+  border:1px solid rgba(148,163,184,.6);
+  font-size:11px;
+  color:#e5e7eb;
+}
+.url-health-badge[data-status="warn"]{
+  border-color:rgba(248,113,113,.9);
+  background:linear-gradient(90deg,rgba(127,29,29,.9),rgba(30,64,175,.8));
+}
+.url-health-badge[data-status="ok"]{
+  border-color:rgba(52,211,153,.9);
+  background:linear-gradient(90deg,rgba(6,95,70,.95),rgba(30,64,175,.85));
+}
+.url-tools-buttons{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+/* Desktop comment studio split view */
+@media (min-width: 1024px) and (pointer:fine){
+  .main{
+    grid-template-columns:minmax(0,0.95fr) minmax(0,1.1fr);
+    column-gap:18px;
+  }
+  .main > .card:first-of-type{
+    grid-column:1;
+  }
+  .main > .card:nth-of-type(2),
+  .main > .card:nth-of-type(3),
+  .main > .card:nth-of-type(4){
+    grid-column:2;
+  }
+}
+
+/* Results layout + copy queue (desktop only) */
+.results-layout{
+  display:block;
+}
+.copy-queue-panel{
+  display:none;
+  border-radius:14px;
+  border:1px dashed rgba(148,163,184,.55);
+  background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(15,23,42,.88));
+  padding:10px;
+  font-size:11px;
+  min-height:120px;
+}
+.copy-queue-head{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin-bottom:6px;
+}
+.copy-queue-head h3{
+  font-size:12px;
+  font-weight:600;
+}
+.copy-queue-empty{
+  opacity:.7;
+}
+.copy-queue-list{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  max-height:200px;
+  overflow:auto;
+  padding-right:2px;
+}
+.copy-queue-item{
+  text-align:left;
+  border-radius:10px;
+  border:1px solid rgba(30,64,175,.5);
+  background:rgba(15,23,42,.95);
+  padding:5px 8px;
+  font-size:11px;
+  cursor:pointer;
+  transition:background-color .12s, border-color .12s, transform .08s;
+}
+.copy-queue-item.is-active{
+  border-color:rgba(251,191,36,.9);
+  background:linear-gradient(90deg,rgba(30,64,175,1),rgba(30,64,175,.4));
+}
+.copy-queue-item:hover{
+  transform:translateY(-1px);
+}
+.copy-queue-footer{
+  margin-top:8px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+@media (min-width: 1024px) and (pointer:fine){
+  .results-layout{
+    display:grid;
+    grid-template-columns:minmax(0,1.45fr) minmax(260px,0.9fr);
+    gap:16px;
+    align-items:flex-start;
+  }
+  .copy-queue-panel{
+    display:flex;
+    flex-direction:column;
+  }
+}
+
+/* Session tabs */
+.session-tabs{
+  margin-top:6px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.session-chip{
+  padding:3px 9px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.65);
+  background:rgba(15,23,42,.9);
+  font-size:11px;
+  cursor:pointer;
+  opacity:.75;
+  transition:background-color .15s, border-color .15s, opacity .12s, transform .08s;
+}
+.session-chip.is-active{
+  border-color:rgba(var(--btn-glow,59,130,246),.95);
+  background:radial-gradient(circle at 0 0,rgba(251,191,36,.14),transparent 55%), rgba(15,23,42,.98);
+  opacity:1;
+  transform:translateY(-0.5px);
+}
+
+/* Results toolbar */
+.results-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin:4px 0 8px;
+  font-size:11px;
+}
+.results-toolbar-left{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.preset-label{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.preset-select{
+  border-radius:999px;
+  background:rgba(15,23,42,.9);
+  border:1px solid rgba(148,163,184,.7);
+  padding:4px 22px 4px 8px;
+  font-size:11px;
+  color:#e5e7eb;
+}
+
+/* Keyboard HUD */
+.keyboard-hud{
+  margin-top:8px;
+  padding:6px 8px;
+  border-radius:999px;
+  border:1px dashed rgba(148,163,184,.6);
+  background:radial-gradient(circle at 0 0,rgba(59,130,246,.22),transparent 55%), rgba(15,23,42,.9);
+  font-size:11px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-start;
+}
+.keyboard-hud span{
+  opacity:.86;
+}
+
+/* Analytics HUD */
+.analytics-row{
+  margin-top:6px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+  font-size:11px;
+  opacity:0;
+  transition:opacity .18s ease-out;
+}
+.analytics-pill{
+  padding:3px 8px;
+  border-radius:999px;
+  background:rgba(15,23,42,.95);
+  border:1px solid rgba(148,163,184,.65);
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+.analytics-pill .label{
+  opacity:.8;
+}
+.analytics-pill .value{
+  font-weight:600;
+}
+
+/* Tweet collapse & pin */
+.tweet.is-collapsed .comment-line:nth-of-type(n+2){
+  display:none;
+}
+.tweet.is-collapsed .comments{
+  max-height:46px;
+  overflow:hidden;
+}
+.tweet.is-pinned{
+  border-color:rgba(251,191,36,.9);
+  box-shadow:0 0 0 1px rgba(251,191,36,.4);
+}
+.tweet-collapse-btn,
+.tweet-pin-btn{
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.7);
+  background:rgba(15,23,42,.9);
+  padding:3px 7px;
+  font-size:11px;
+  cursor:pointer;
+}
+.tweet-pin-btn::before{
+  content:"📌";
+  margin-right:2px;
+}
+
+/* Queue button on each comment line */
+.queue-btn{
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.6);
+  background:rgba(15,23,42,.9);
+  font-size:11px;
+  padding:2px 6px;
+  margin-inline:4px;
+  cursor:pointer;
+}
+.comment-line.queued{
+  border-color:rgba(251,191,36,.8);
+}
+
+/* Focus mode subtle emphasis on desktop while generating */
+@media (min-width: 1024px) and (pointer:fine){
+  body.is-generating header,
+  body.is-generating .footer{
+    opacity:.65;
+    filter:blur(.2px);
+  }
+  body.is-generating .card{
+    box-shadow:0 22px 60px rgba(0,0,0,.7);
+  }
+}
