@@ -135,11 +135,38 @@ const yearEl          = document.getElementById("year");
 // theme dots (live node list -> array)
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 
+/* ========= PATCH: premium DOM handles ========= */
+const sessionTabsEl     = document.getElementById("sessionTabs");
+const analyticsHudEl    = document.getElementById("analyticsHud");
+const urlHealthBadgeEl  = document.getElementById("urlHealthBadge");
+const sortUrlsBtn       = document.getElementById("sortUrlsBtn");
+const shuffleUrlsBtn    = document.getElementById("shuffleUrlsBtn");
+const removeInvalidBtn  = document.getElementById("removeInvalidBtn");
+const copyQueuePanel    = document.getElementById("copyQueuePanel");
+const copyQueueListEl   = document.getElementById("copyQueueList");
+const copyQueueEmptyEl  = document.getElementById("copyQueueEmpty");
+const copyQueueNextBtn  = document.getElementById("copyQueueNextBtn");
+const copyQueueClearBtn = document.getElementById("copyQueueClearBtn");
+const presetSelect      = document.getElementById("presetSelect");
+const keyboardHudEl     = document.getElementById("keyboardHud");
+const exportAllBtn      = document.getElementById("exportAllBtn");
+const exportEnBtn       = document.getElementById("exportEnBtn");
+const exportNativeBtn   = document.getElementById("exportNativeBtn");
+const downloadTxtBtn    = document.getElementById("downloadTxtBtn");
+
 // ------------------------
 // State
 // ------------------------
 let cancelled    = false;
 let historyItems = [];
+
+/* ========= PATCH: premium state ========= */
+let ctSessions = [];
+let ctActiveSessionId = null;
+let ctSessionCounter = 0;
+
+let ctCopyQueue = [];
+let ctCopyQueueIndex = 0;
 
 /* =========================================================
    === PATCH: Mini Toast + Snack (used by multiple bits) ===
@@ -319,6 +346,278 @@ function renumberTextareaAndDedupe(showToasts=true) {
 }
 
 /* =========================================================
+   === PATCH: URL health + sorting / cleaning (desktop-ok) ===
+   ========================================================= */
+function analyzeUrlLines(raw) {
+  const lines = (raw || "").split(/\r?\n/);
+  const entries = [];
+  const seen = new Set();
+  let valid = 0, invalid = 0, duplicates = 0;
+  const urlRegex = /^https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^/]+\/status\/\d+/i;
+
+  for (let line of lines) {
+    const cleaned = line.replace(/^\s*(?:\d+[\.)]\s*)?/, "").trim();
+    if (!cleaned) continue;
+    const isValid = urlRegex.test(cleaned);
+    const isDup = seen.has(cleaned);
+    if (!isDup) seen.add(cleaned); else duplicates++;
+    if (isValid) valid++; else invalid++;
+    entries.push({ raw: line, url: cleaned, isValid, isDup });
+  }
+  return { entries, valid, invalid, duplicates, total: entries.length };
+}
+function updateUrlHealth() {
+  if (!urlInput || !urlHealthBadgeEl) return;
+  const info = analyzeUrlLines(urlInput.value || "");
+  if (!info.total) {
+    urlHealthBadgeEl.textContent = "No URLs yet";
+    urlHealthBadgeEl.dataset.status = "empty";
+    return;
+  }
+  urlHealthBadgeEl.textContent = `${info.valid} valid · ${info.invalid} invalid · ${info.duplicates} dupes`;
+  urlHealthBadgeEl.dataset.status = info.invalid ? "warn" : "ok";
+}
+function sortUrlsAscending() {
+  if (!urlInput) return;
+  const urls = parseURLs(urlInput.value || "");
+  urls.sort((a, b) => a.localeCompare(b));
+  urlInput.value = urls.map((u, i) => `${i + 1}. ${u}`).join("\n");
+  urlInput.dispatchEvent(new Event("input", { bubbles: true }));
+}
+function shuffleUrlsOrder() {
+  if (!urlInput) return;
+  const urls = parseURLs(urlInput.value || "");
+  for (let i = urls.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    [urls[i], urls[j]] = [urls[j], urls[i]];
+  }
+  urlInput.value = urls.map((u, i) => `${i + 1}. ${u}`).join("\n");
+  urlInput.dispatchEvent(new Event("input", { bubbles: true }));
+}
+function removeInvalidUrls() {
+  if (!urlInput) return;
+  const info = analyzeUrlLines(urlInput.value || "");
+  const validEntries = info.entries.filter((e) => e.isValid);
+  if (!validEntries.length) {
+    ctToast("No valid X URLs found.", "warn");
+    return;
+  }
+  urlInput.value = validEntries.map((entry, idx) => `${idx + 1}. ${entry.url}`).join("\n");
+  urlInput.dispatchEvent(new Event("input", { bubbles: true }));
+  if (info.invalid) {
+    ctToast(`Removed ${info.invalid} invalid line${info.invalid > 1 ? "s" : ""}.`, "ok");
+  }
+}
+
+/* =========================================================
+   === PATCH: Sessions timeline (desktop tabs) ==============
+   ========================================================= */
+function getSessionById(id) {
+  return ctSessions.find((s) => s.id === id);
+}
+function renderSessionTabs() {
+  if (!sessionTabsEl) return;
+  sessionTabsEl.innerHTML = "";
+  if (!ctSessions.length) {
+    sessionTabsEl.style.display = "none";
+    return;
+  }
+  sessionTabsEl.style.display = "flex";
+  ctSessions.forEach((s) => {
+    const btn = document.createElement("button");
+    btn.type = "button";
+    btn.className = "session-chip" + (s.id === ctActiveSessionId ? " is-active" : "");
+    btn.textContent = s.label;
+    btn.title = `Generated at ${s.createdAt}`;
+    btn.addEventListener("click", () => {
+      ctActiveSessionId = s.id;
+      renderSessionTabs();
+      restoreSessionSnapshot(s.id);
+    });
+    sessionTabsEl.appendChild(btn);
+  });
+}
+function addSessionSnapshot(meta) {
+  if (!resultsEl || !failedEl) return;
+  const id = `run_${Date.now()}_${++ctSessionCounter}`;
+  const label = `Run ${ctSessionCounter}`;
+  const createdAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const snapshot = {
+    resultsHTML: resultsEl.innerHTML,
+    failedHTML: failedEl.innerHTML,
+    rc: resultCountEl ? resultCountEl.textContent : "",
+    fc: failedCountEl ? failedCountEl.textContent : "",
+    meta: meta || {},
+  };
+  ctSessions.push({ id, label, createdAt, snapshot });
+  ctActiveSessionId = id;
+  renderSessionTabs();
+}
+function restoreSessionSnapshot(id) {
+  const s = getSessionById(id);
+  if (!s || !s.snapshot) return;
+  if (resultsEl) resultsEl.innerHTML = s.snapshot.resultsHTML || "";
+  if (failedEl) failedEl.innerHTML = s.snapshot.failedHTML || "";
+  if (resultCountEl) resultCountEl.textContent = s.snapshot.rc || "0 tweets";
+  if (failedCountEl) failedCountEl.textContent = s.snapshot.fc || "0";
+}
+
+/* =========================================================
+   === PATCH: Copy queue (power copy) =======================
+   ========================================================= */
+function renderCopyQueue() {
+  if (!copyQueueListEl) return;
+  copyQueueListEl.innerHTML = "";
+  const hasItems = ctCopyQueue.length > 0;
+  if (copyQueueEmptyEl) {
+    copyQueueEmptyEl.style.display = hasItems ? "none" : "block";
+  }
+  ctCopyQueue.forEach((item, idx) => {
+    const row = document.createElement("button");
+    row.type = "button";
+    row.className = "copy-queue-item" + (idx === ctCopyQueueIndex ? " is-active" : "");
+    row.textContent = item.text;
+    row.title = "Click to copy";
+    row.addEventListener("click", async () => {
+      await copyToClipboard(item.text);
+      addToHistory(item.text);
+    });
+    copyQueueListEl.appendChild(row);
+  });
+  const enabled = hasItems;
+  if (copyQueueNextBtn) copyQueueNextBtn.disabled = !enabled;
+  if (copyQueueClearBtn) copyQueueClearBtn.disabled = !enabled;
+}
+function addToCopyQueue(text) {
+  if (!text) return;
+  ctCopyQueue.push({ text });
+  if (ctCopyQueue.length === 1) ctCopyQueueIndex = 0;
+  renderCopyQueue();
+}
+async function copyNextFromQueue() {
+  if (!ctCopyQueue.length) return;
+  const item = ctCopyQueue[ctCopyQueueIndex];
+  await copyToClipboard(item.text);
+  addToHistory(item.text);
+  ctCopyQueueIndex = (ctCopyQueueIndex + 1) % ctCopyQueue.length;
+  renderCopyQueue();
+}
+function clearCopyQueue() {
+  ctCopyQueue = [];
+  ctCopyQueueIndex = 0;
+  renderCopyQueue();
+}
+
+/* =========================================================
+   === PATCH: Analytics HUD + export helpers ===============
+   ========================================================= */
+function updateAnalytics(meta) {
+  if (!analyticsHudEl) return;
+  const summaryEl = document.getElementById("analyticsSummary");
+  const tweetsEl = document.getElementById("analyticsTweets");
+  const failedElMetric = document.getElementById("analyticsFailed");
+  const timeEl = document.getElementById("analyticsTime");
+  const m = meta || {};
+  const tweets = m.tweets || 0;
+  const totalUrls = m.totalUrls || tweets;
+  const failed = m.failed || 0;
+  const durationSec = m.durationSec || 0;
+  if (summaryEl) summaryEl.textContent = `${tweets}/${totalUrls} tweets · ${failed} failed`;
+  if (tweetsEl) tweetsEl.textContent = String(tweets);
+  if (failedElMetric) failedElMetric.textContent = String(failed);
+  if (timeEl) timeEl.textContent = `${durationSec}s`;
+  analyticsHudEl.style.opacity = "1";
+  analyticsHudEl.setAttribute("aria-hidden", "false");
+}
+async function exportComments(mode) {
+  if (!resultsEl) return;
+  const lines = [];
+  const nodes = resultsEl.querySelectorAll(".comment-line");
+  nodes.forEach((line) => {
+    const bubble = line.querySelector(".comment-text");
+    if (!bubble) return;
+    const text = bubble.textContent.trim();
+    if (!text) return;
+    const lang = line.dataset.lang || "en";
+    if (mode === "en" && lang !== "en") return;
+    if (mode === "native" && lang === "en") return;
+    lines.push(text);
+  });
+  if (!lines.length) {
+    ctToast("No comments to export yet.", "warn");
+    return;
+  }
+  const joined = lines.join("\n");
+  if (mode === "download") {
+    const blob = new Blob([joined], { type: "text/plain" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = "crowntalk-comments.txt";
+    document.body.appendChild(a);
+    a.click();
+    setTimeout(() => {
+      URL.revokeObjectURL(url);
+      a.remove();
+    }, 0);
+    ctToast(`Downloaded ${lines.length} comment${lines.length > 1 ? "s" : ""} as .txt`, "ok");
+  } else {
+    await copyToClipboard(joined);
+    ctToast(`Copied ${lines.length} comment${lines.length > 1 ? "s" : ""}.`, "ok");
+  }
+}
+
+/* =========================================================
+   === PATCH: Presets & keyboard HUD / hotkeys =============
+   ========================================================= */
+function applyPreset(presetName) {
+  const p = presetName || (presetSelect && presetSelect.value) || "default";
+  document.documentElement.setAttribute("data-ct-preset", p);
+  try {
+    localStorage.setItem("ct_preset_v1", p);
+  } catch {}
+}
+function initPresetFromStorage() {
+  if (!presetSelect) return;
+  let stored = "default";
+  try {
+    const v = localStorage.getItem("ct_preset_v1");
+    if (v) stored = v;
+  } catch {}
+  presetSelect.value = stored;
+  applyPreset(stored);
+}
+function initKeyboardHud() {
+  if (!keyboardHudEl) return;
+  const desktop = matchMedia("(min-width: 1024px)").matches && matchMedia("(pointer:fine)").matches;
+  keyboardHudEl.style.display = desktop ? "flex" : "none";
+}
+function handleGlobalHotkeys(event) {
+  const key = event.key;
+  const metaOrCtrl = event.metaKey || event.ctrlKey;
+  if (metaOrCtrl && key === "Enter") {
+    event.preventDefault();
+    if (!document.body.classList.contains("is-generating")) {
+      handleGenerate();
+    }
+  } else if (key === "Escape") {
+    if (document.body.classList.contains("is-generating")) {
+      event.preventDefault();
+      handleCancel();
+    }
+  } else if (metaOrCtrl && (key === "l" || key === "L")) {
+    if (urlInput) {
+      event.preventDefault();
+      urlInput.focus();
+      urlInput.select();
+    }
+  } else if (event.ctrlKey && event.shiftKey && (key === "c" || key === "C")) {
+    event.preventDefault();
+    copyNextFromQueue();
+  }
+}
+
+/* =========================================================
                         History
    ========================================================= */
 function addToHistory(text) {
@@ -404,10 +703,36 @@ function buildTweetBlock(result) {
   rerollBtn.className = "reroll-btn";
   rerollBtn.textContent = "Reroll";
 
+  /* === PATCH: collapse + pin buttons === */
+  const collapseBtn = document.createElement("button");
+  collapseBtn.type = "button";
+  collapseBtn.className = "tweet-collapse-btn";
+  collapseBtn.title = "Collapse / expand comments";
+  collapseBtn.textContent = "▾";
+
+  const pinBtn = document.createElement("button");
+  pinBtn.type = "button";
+  pinBtn.className = "tweet-pin-btn";
+  pinBtn.title = "Pin this tweet";
+
   actions.appendChild(rerollBtn);
+  actions.appendChild(collapseBtn);
+  actions.appendChild(pinBtn);
+
   header.appendChild(link);
   header.appendChild(actions);
   tweet.appendChild(header);
+
+  // collapse & pin behaviour
+  collapseBtn.addEventListener("click", () => {
+    tweet.classList.toggle("is-collapsed");
+  });
+  pinBtn.addEventListener("click", () => {
+    tweet.classList.toggle("is-pinned");
+    if (resultsEl && tweet.parentElement === resultsEl) {
+      resultsEl.insertBefore(tweet, resultsEl.firstChild);
+    }
+  });
 
   const commentsWrap = document.createElement("div");
   commentsWrap.className = "comments";
@@ -462,8 +787,21 @@ function buildTweetBlock(result) {
     copyBtn.appendChild(copyMain);
     copyBtn.appendChild(copyAlt);
     copyBtn.dataset.text = comment.text;
+
+    /* === PATCH: make comment text available for queue === */
+    line.dataset.commentText = comment.text;
+
     line.appendChild(tag);
     line.appendChild(bubble);
+
+    // small "+" button to queue this comment
+    const queueBtn = document.createElement("button");
+    queueBtn.type = "button";
+    queueBtn.className = "queue-btn";
+    queueBtn.title = "Add to copy queue";
+    queueBtn.textContent = "+";
+    line.appendChild(queueBtn);
+
     line.appendChild(copyBtn);
     commentsWrap.appendChild(line);
   });
@@ -601,6 +939,8 @@ async function handleGenerate() {
   let totalResults = 0;
   let totalFailed  = 0;
 
+  const runStartedAt = performance.now(); // PATCH: analytics timing
+
   for (let i = 0; i < urls.length; i++) {
     if (cancelled) break;
 
@@ -714,6 +1054,11 @@ async function handleGenerate() {
     setProgressText(`Processed ${processedUrls} tweet${processedUrls === 1 ? "" : "s"}.`);
     setProgressRatio(1);
   }
+
+  /* === PATCH: analytics + session snapshot === */
+  const durationSec = Math.max(1, Math.round((performance.now() - runStartedAt) / 1000));
+  updateAnalytics({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
+  addSessionSnapshot({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
 }
 
 // ------------------------
@@ -860,10 +1205,15 @@ function bootAppUI() {
   initTheme();
   renderHistory();
   autoResizeTextarea();
+  updateUrlHealth();
+  initPresetFromStorage();
+  initKeyboardHud();
+  renderCopyQueue();
 
   setTimeout(() => { maybeWarmBackend(); }, 4000);
 
   urlInput?.addEventListener("input", autoResizeTextarea);
+  urlInput?.addEventListener("input", updateUrlHealth);
 
   // === PATCH: keep numbering correct as user types (light)
   urlInput?.addEventListener('blur', ()=> renumberTextareaAndDedupe(false));
@@ -886,6 +1236,7 @@ function bootAppUI() {
   resultsEl?.addEventListener("click", async (event) => {
     const copyBtn  = event.target.closest(".copy-btn, .copy-btn-en");
     const rerollBtn = event.target.closest(".reroll-btn");
+    const queueBtn = event.target.closest(".queue-btn");
 
     if (copyBtn) {
       const text = copyBtn.dataset.text || "";
@@ -902,6 +1253,15 @@ function bootAppUI() {
         copyBtn.textContent = old;
         copyBtn.disabled = false;
       }, 700);
+    }
+
+    if (queueBtn) {
+      const line = queueBtn.closest(".comment-line");
+      const text = (line && line.dataset.commentText) || line?.querySelector(".comment-text")?.textContent || "";
+      if (text) {
+        addToCopyQueue(text);
+        if (line) line.classList.add("queued");
+      }
     }
 
     if (rerollBtn) {
@@ -931,6 +1291,23 @@ function bootAppUI() {
       if (t) applyTheme(t);
     });
   });
+
+  /* === PATCH: premium controls wiring === */
+  sortUrlsBtn?.addEventListener("click", (e) => { e.preventDefault(); sortUrlsAscending(); });
+  shuffleUrlsBtn?.addEventListener("click", (e) => { e.preventDefault(); shuffleUrlsOrder(); });
+  removeInvalidBtn?.addEventListener("click", (e) => { e.preventDefault(); removeInvalidUrls(); });
+
+  copyQueueNextBtn?.addEventListener("click", (e) => { e.preventDefault(); copyNextFromQueue(); });
+  copyQueueClearBtn?.addEventListener("click", (e) => { e.preventDefault(); clearCopyQueue(); });
+
+  presetSelect?.addEventListener("change", () => applyPreset(presetSelect.value));
+
+  exportAllBtn?.addEventListener("click", (e) => { e.preventDefault(); exportComments("all"); });
+  exportEnBtn?.addEventListener("click", (e) => { e.preventDefault(); exportComments("en"); });
+  exportNativeBtn?.addEventListener("click", (e) => { e.preventDefault(); exportComments("native"); });
+  downloadTxtBtn?.addEventListener("click", (e) => { e.preventDefault(); exportComments("download"); });
+
+  window.addEventListener("keydown", handleGlobalHotkeys);
 }
 
 /* =========================================================
