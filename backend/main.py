@@ -3736,7 +3736,6 @@ def comment_endpoint():
     except Exception:
         return jsonify({"error": "url_clean_error", "code": "url_clean_error"}), 400
 
-
     # Hard cap per request
     if len(cleaned) > MAX_URLS_PER_REQUEST:
         return jsonify({
@@ -3749,66 +3748,63 @@ def comment_endpoint():
     results: list[dict] = []
     failed: list[dict] = []
 
-total = len(cleaned)
-done = 0
+    total = len(cleaned)
+    done = 0
 
-for batch in chunked(cleaned, BATCH_SIZE):
-    for url in batch:
-        try:
+    for batch in chunked(cleaned, BATCH_SIZE):
+        for url in batch:
             try:
-                set_request_nonce(url)
+                try:
+                    set_request_nonce(url)
+                except Exception:
+                    pass
+
+                t = fetch_tweet_data(url)
+
+                # Per-request context: thread, research, voice
+                try:
+                    thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
+                except Exception:
+                    thread_ctx = None
+                REQUEST_THREAD_CTX.set(thread_ctx)
+
+                try:
+                    research_ctx = build_research_context_for_tweet(t.text or "") if ENABLE_RESEARCH else {"status": "disabled"}
+                except Exception:
+                    research_ctx = {"status": "error"}
+                REQUEST_RESEARCH_CTX.set(research_ctx)
+
+                try:
+                    set_request_voice(t.text or "")
+                except Exception:
+                    pass
+
+                handle = t.handle or _extract_handle_from_url(url)
+
+                two = generate_two_comments_with_providers(
+                    t.text or "",
+                    t.author_name or None,
+                    handle,
+                    t.lang or None,
+                    url=url,
+                )
+
+                display_url = _canonical_x_url_from_tweet(url, t)
+                results.append({"url": display_url, "comments": two})
+
+            except CrownTALKError as e:
+                failed.append({"url": url, "reason": str(e), "code": e.code})
             except Exception:
-                pass
+                logger.exception("Unhandled error while processing %s", url)
+                failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
 
-            t = fetch_tweet_data(url)
+            done += 1
 
-            # Per-request context: thread, research, voice
-            try:
-                thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
-            except Exception:
-                thread_ctx = None
-            REQUEST_THREAD_CTX.set(thread_ctx)
-
-            try:
-                research_ctx = build_research_context_for_tweet(t.text or "") if ENABLE_RESEARCH else {"status": "disabled"}
-            except Exception:
-                research_ctx = {"status": "error"}
-            REQUEST_RESEARCH_CTX.set(research_ctx)
-
-            try:
-                set_request_voice(t.text or "")
-            except Exception:
-                pass
-
-            handle = t.handle or _extract_handle_from_url(url)
-
-            two = generate_two_comments_with_providers(
-                t.text or "",
-                t.author_name or None,
-                handle,
-                t.lang or None,
-                url=url,
-            )
-
-            display_url = _canonical_x_url_from_tweet(url, t)
-
-            results.append({"url": display_url, "comments": two})
-
-        except CrownTALKError as e:
-            failed.append({"url": url, "reason": str(e), "code": e.code})
-        except Exception:
-            logger.exception("Unhandled error while processing %s", url)
-            failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
-
-        done += 1
-        logger.info("Processed %d/%d urls", done, total)
-
-        # ✅ Sleep only if there are more URLs left
-        if done < total and PER_URL_SLEEP and PER_URL_SLEEP > 0:
-            time.sleep(PER_URL_SLEEP)
+            # ✅ Sleep only if there are more URLs left (no sleep after last)
+            if done < total and PER_URL_SLEEP and PER_URL_SLEEP > 0:
+                time.sleep(PER_URL_SLEEP)
 
     return jsonify({"results": results, "failed": failed}), 200
-
 
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
