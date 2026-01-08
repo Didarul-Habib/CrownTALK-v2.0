@@ -186,19 +186,26 @@ function maybeWarmBackend() {
     warmBackendOnce();
   }
 }
+
+/* ================================
+   PATCH: Abort-aware fetch timeout
+   ================================ */
+let __activeAbortController = null;
+
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   if (typeof AbortController === "undefined") {
     return fetch(url, options);
   }
   const controller = new AbortController();
+  __activeAbortController = controller;
+
   const id = setTimeout(() => controller.abort(), timeoutMs);
   try {
     const res = await fetch(url, { ...options, signal: controller.signal });
-    clearTimeout(id);
     return res;
-  } catch (err) {
+  } finally {
     clearTimeout(id);
-    throw err;
+    if (__activeAbortController === controller) __activeAbortController = null;
   }
 }
 
@@ -553,7 +560,7 @@ async function handleGenerate() {
   const raw = urlInput.value;
 
   // === PATCH: preflight renumber + dedupe BEFORE parse ===
-  const { removed } = renumberTextareaAndDedupe(true);
+  renumberTextareaAndDedupe(true);
 
   const urls = parseURLs(raw);
   if (!urls.length) {
@@ -580,88 +587,132 @@ async function handleGenerate() {
   setProgressRatio(0.03);
   showSkeletons(urls.length);
 
-  const payload = JSON.stringify({ urls });
-  const requestOptions = {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: payload,
-  };
+  /* ==========================================
+     PATCH: Sequential queue (1 URL per request)
+     - fixes "5 links => no comments"
+     - avoids long single request timeout
+     ========================================== */
+  const PER_URL_TIMEOUT_MS = 90000; // 90s per URL
+  const CLIENT_DELAY_MS = 1200;     // spacing between URLs (client-side)
+  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
 
-  try {
-    let res;
+  let clearedSkeletons = false;
+  let processedUrls = 0;
+  let totalResults = 0;
+  let totalFailed  = 0;
+
+  for (let i = 0; i < urls.length; i++) {
+    if (cancelled) break;
+
+    const oneUrl = urls[i];
+
+    // progress tick BEFORE request
+    setProgressText(`Processing ${i + 1}/${urls.length}…`);
+    setProgressRatio(Math.max(0.03, i / Math.max(1, urls.length)));
+
+    const requestOptions = {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ urls: [oneUrl] }),
+    };
+
     try {
-      res = await fetchWithTimeout(commentURL, requestOptions, 45000);
-    } catch (firstErr) {
-      console.warn("First generate attempt failed, warming backend then retrying…", firstErr);
-      setProgressText("Waking CrownTALK engine… retrying once.");
-      warmBackendOnce();
-      res = await fetchWithTimeout(commentURL, requestOptions, 45000);
-    }
+      let res;
+      try {
+        res = await fetchWithTimeout(commentURL, requestOptions, PER_URL_TIMEOUT_MS);
+      } catch (firstErr) {
+        console.warn("Generate attempt failed, warming backend then retrying once…", firstErr);
+        setProgressText("Waking CrownTALK engine… retrying once.");
+        warmBackendOnce();
+        res = await fetchWithTimeout(commentURL, requestOptions, PER_URL_TIMEOUT_MS);
+      }
 
-    if (!res.ok) throw new Error(`Backend error: ${res.status}`);
+      let data = {};
+      try { data = await res.json(); } catch {}
 
-    const data = await res.json();
-    if (cancelled) return;
-
-    const results = Array.isArray(data.results) ? data.results : [];
-    const failed  = Array.isArray(data.failed)  ? data.failed  : [];
-
-    resultsEl.innerHTML = "";
-    failedEl.innerHTML  = "";
-
-    let processed = 0;
-    const total = results.length || urls.length;
-
-    let delay = 50;
-    results.forEach((item) => {
-      setTimeout(() => {
-        if (cancelled) return;
-        appendResultBlock(item);
-        processed += 1;
-        const ratio = total ? processed / total : 1;
-        setProgressRatio(ratio);
-        setProgressText(`Processed ${processed}/${total} tweets…`);
-        resultCountEl.textContent = formatTweetCount(processed);
-        if (processed === total) {
-          setProgressText(`Processed ${processed} tweet${processed === 1 ? "" : "s"}.`);
-          document.body.classList.remove("is-generating");
-          document.documentElement.classList.remove('ultralite-on'); // PATCH off
-          generateBtn.disabled = false;
-          cancelBtn.disabled   = true;
+      if (!res.ok) {
+        // treat this URL as failed but continue
+        if (!clearedSkeletons) {
+          resultsEl.innerHTML = "";
+          failedEl.innerHTML  = "";
+          clearedSkeletons = true;
         }
-      }, delay);
-      delay += 120;
-    });
+        const failure = {
+          url: oneUrl,
+          reason: data?.error || `Backend error: ${res.status}`,
+          code: data?.code || `http_${res.status}`,
+        };
+        appendFailedItem(failure);
+        totalFailed += 1;
+        failedCountEl.textContent = String(totalFailed);
+      } else {
+        const results = Array.isArray(data.results) ? data.results : [];
+        const failed  = Array.isArray(data.failed)  ? data.failed  : [];
 
-    failed.forEach((f) => appendFailedItem(f));
-    failedCountEl.textContent = String(failed.length);
+        if (!clearedSkeletons) {
+          resultsEl.innerHTML = "";
+          failedEl.innerHTML  = "";
+          clearedSkeletons = true;
+        }
 
-    if (!results.length) {
-      document.body.classList.remove("is-generating");
-      document.documentElement.classList.remove('ultralite-on'); // PATCH off
-      generateBtn.disabled = false;
-      cancelBtn.disabled   = true;
-      setProgressText(failed.length ? "All URLs failed to process." : "No comments returned.");
-      setProgressRatio(1);
-    }
-  } catch (err) {
-    console.error("Generate error", err);
-    // === PATCH: Crash Guard snapshot
-    try {
-      const snap = {
-        when: Date.now(),
-        input: urlInput?.value || '',
-        resultsHTML: resultsEl?.innerHTML || '',
-        failedHTML: failedEl?.innerHTML || ''
+        for (const item of results) {
+          appendResultBlock(item);
+          totalResults += 1;
+        }
+        for (const f of failed) {
+          appendFailedItem(f);
+          totalFailed += 1;
+        }
+
+        resultCountEl.textContent = formatTweetCount(totalResults);
+        failedCountEl.textContent = String(totalFailed);
+      }
+    } catch (err) {
+      // timeout/abort/network — mark failed, keep going
+      if (cancelled) break;
+
+      if (!clearedSkeletons) {
+        resultsEl.innerHTML = "";
+        failedEl.innerHTML  = "";
+        clearedSkeletons = true;
+      }
+
+      const failure = {
+        url: oneUrl,
+        reason: String(err),
+        code: "client_timeout_or_network",
       };
-      localStorage.setItem('ct_crash_snapshot_v1', JSON.stringify(snap));
-    } catch {}
-    document.body.classList.remove("is-generating");
-    document.documentElement.classList.remove('ultralite-on'); // PATCH off
-    generateBtn.disabled = false;
-    cancelBtn.disabled   = true;
-    setProgressText("Error contacting CrownTALK backend. Please try again.");
-    setProgressRatio(0);
+      appendFailedItem(failure);
+      totalFailed += 1;
+      failedCountEl.textContent = String(totalFailed);
+    }
+
+    processedUrls = i + 1;
+    setProgressText(`Processed ${processedUrls}/${urls.length} tweets…`);
+    setProgressRatio(processedUrls / Math.max(1, urls.length));
+
+    if (i < urls.length - 1 && !cancelled) {
+      await sleep(CLIENT_DELAY_MS);
+    }
+  }
+
+  // Final UI cleanup
+  if (cancelled) return; // handleCancel already cleaned UI
+
+  document.body.classList.remove("is-generating");
+  document.documentElement.classList.remove('ultralite-on'); // PATCH off
+  generateBtn.disabled = false;
+  cancelBtn.disabled   = true;
+
+  if (!totalResults && totalFailed) {
+    setProgressText("All URLs failed to process.");
+    setProgressRatio(1);
+  } else if (!totalResults && !totalFailed) {
+    setProgressText("No comments returned.");
+    setProgressRatio(1);
+  } else {
+    setProgressText(`Processed ${processedUrls} tweet${processedUrls === 1 ? "" : "s"}.`);
+    setProgressRatio(1);
   }
 }
 
@@ -671,6 +722,10 @@ async function handleGenerate() {
 let __lastClear = null; // === PATCH: Undo Clear buffer
 function handleCancel() {
   cancelled = true;
+
+  // === PATCH: Abort the active fetch immediately (prevents "stuck" UI)
+  try { __activeAbortController?.abort(); } catch {}
+
   document.body.classList.remove("is-generating");
   document.documentElement.classList.remove('ultralite-on'); // PATCH off
   generateBtn.disabled = false;
