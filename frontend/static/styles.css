@@ -4700,3 +4700,126 @@ body.ct-progress-done .progress-bar-inner{
   gap:10px;
 }
 
+/* =========================================================
+   RESULTS MENU DROPDOWN + FLOATING SHORTCUTS
+   ========================================================= */
+
+/* Completely hide any old copy queue card if it’s still in DOM */
+.copy-queue-panel,
+#copyQueuePanel{
+  display:none !important;
+}
+
+/* Toolbar layout tweaks */
+.results-toolbar-right{
+  display:flex;
+  align-items:center;
+  margin-left:auto;
+}
+
+/* Menu shell */
+.results-menu{
+  position:relative;
+}
+.results-menu-toggle{
+  border-radius:999px;
+  background:rgba(15,23,42,.96);
+  border:1px solid rgba(148,163,184,.7);
+  color:#e5e7eb;
+  font-weight:500;
+  padding:4px 12px;
+  cursor:pointer;
+}
+
+/* Dropdown panel */
+.results-menu-pop{
+  position:absolute;
+  right:0;
+  top:115%;
+  min-width:230px;
+  padding:8px 9px;
+  border-radius:12px;
+  background:radial-gradient(circle at 0 0,rgba(59,130,246,.22),transparent 55%), rgba(15,23,42,.98);
+  border:1px solid rgba(148,163,184,.75);
+  box-shadow:0 18px 45px rgba(0,0,0,.75);
+  display:none;
+  z-index:20;
+}
+.results-menu.is-open .results-menu-pop{
+  display:block;
+}
+
+.results-menu-group{
+  padding:6px 4px;
+  border-radius:8px;
+}
+.results-menu-group + .results-menu-group{
+  border-top:1px solid rgba(31,41,55,.9);
+  margin-top:4px;
+  padding-top:8px;
+}
+.results-menu-title{
+  font-size:11px;
+  opacity:.8;
+  margin-bottom:4px;
+}
+.results-menu-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+/* Tiny “Run” badge */
+.badge-run{
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.7);
+  font-size:11px;
+}
+
+/* Floating keyboard hint */
+.keyboard-floating{
+  margin-top:6px;
+  display:flex;
+  justify-content:flex-end;
+  position:relative;
+}
+.keyboard-fab{
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.8);
+  background:radial-gradient(circle at 0 0,rgba(251,191,36,.25),transparent 55%), rgba(15,23,42,.98);
+  color:#e5e7eb;
+  font-size:14px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* Reuse keyboard-hud styling as a tooltip panel */
+.keyboard-fab-panel{
+  position:absolute;
+  right:36px;
+  bottom:0;
+  max-width:420px;
+  padding:6px 10px;
+  border-radius:999px;
+  white-space:nowrap;
+  opacity:0;
+  pointer-events:none;
+  transform:translateY(4px);
+  transition:opacity .15s ease-out, transform .15s ease-out;
+}
+.keyboard-fab-panel span + span{
+  margin-left:10px;
+}
+
+/* Show on hover / focus */
+.keyboard-floating:hover .keyboard-fab-panel,
+.keyboard-floating:focus-within .keyboard-fab-panel{
+  opacity:1;
+  pointer-events:auto;
+  transform:translateY(0);
+}
