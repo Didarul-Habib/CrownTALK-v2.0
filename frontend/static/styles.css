@@ -4823,3 +4823,8 @@ body.ct-progress-done .progress-bar-inner{
   pointer-events:auto;
   transform:translateY(0);
 }
+/* CrownTALK — ensure only the dropdown Menu button shows on Results card */
+#resultsCard .card-head button:not(#resultsMenuToggle){
+  display:none !important;
+}
+
