@@ -4351,3 +4351,42 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
 
 /* Small a11y tweak: ensure progress bar stays crisp */
 #progressBarFill{ will-change: transform; }
+
+
+/* ===== PATCH-00: Desktop-only helper START ===== */
+.ct-desktop-only { display: none !important; }
+
+@media (min-width: 900px) and (pointer: fine) {
+  .ct-desktop-only { display: inline-flex !important; }
+}
+/* ===== PATCH-00 END ===== */
+
+/* ===== PATCH-03: Results toolbar START ===== */
+.ct-results-toolbar{
+  display: none;
+  margin: 10px 0 2px;
+  gap: 8px;
+  justify-content: flex-end;
+  flex-wrap: wrap;
+}
+
+@media (min-width: 900px) and (pointer: fine) {
+  .ct-results-toolbar{ display: flex; }
+}
+/* ===== PATCH-03 END ===== */
+/* ===== PATCH-04: Desktop grain overlay START ===== */
+@media (min-width: 900px) and (pointer: fine) {
+  body::before{
+    content:"";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    z-index: 0;
+    background: url("static/texture.jpg") repeat;
+    opacity: .06;
+    mix-blend-mode: overlay;
+  }
+}
+/* Safety: if ultralite mode is enabled, never show grain */
+html.ultralite-on body::before{ display: none !important; }
+/* ===== PATCH-04 END ===== */
