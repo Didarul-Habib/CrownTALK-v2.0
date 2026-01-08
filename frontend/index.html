@@ -234,55 +234,45 @@
         </section>
 
 <!-- RESULTS -->
-<section class="card">
+<section class="card" id="resultsCard">
   <div class="card-head">
-    <div>
+    <!-- left side: title + subtitle -->
+    <div class="card-head-main">
       <h2>Results <span id="resultCount" class="chip">0</span></h2>
       <p class="muted">Human style smart comments ready to copy</p>
     </div>
 
-    <!-- Results toolbar + MENU (desktop only) -->
+    <!-- right side: run badge + dropdown menu (desktop only) -->
     <div class="results-toolbar hide-on-mobile">
-      <div class="results-toolbar-left">
-        <span class="badge badge-run">Run <span id="runCount">1</span></span>
-      </div>
+      <span class="badge badge-run">Run <span id="runCount">1</span></span>
 
-      <div class="results-toolbar-right">
-        <!-- DROPDOWN MENU WRAPPER -->
-        <div class="results-menu" id="resultsMenu">
-          <button type="button" id="resultsMenuToggle" class="btn-xs results-menu-toggle">
-            Menu ▾
-          </button>
-          <div class="results-menu-pop">
-            <div class="results-menu-group">
-              <div class="results-menu-title">Preset</div>
-              <!-- your preset select lives here -->
-              <select id="presetSelect" class="preset-select">
-                <option value="default">Default</option>
-                <!-- add more later -->
-              </select>
-            </div>
+      <div class="results-menu" id="resultsMenu">
+        <button type="button"
+                id="resultsMenuToggle"
+                class="btn-xs results-menu-toggle">
+          Menu ▾
+        </button>
 
-            <div class="results-menu-group">
-              <div class="results-menu-title">Bulk actions</div>
-              <div class="results-menu-actions">
-                <button type="button" class="btn-xs" id="copyAllBtn">Copy all</button>
-                <button type="button" class="btn-xs" id="copyAllEnBtn">Copy EN</button>
-                <button type="button" class="btn-xs" id="copyAllNativeBtn">Copy native</button>
-                <button type="button" class="btn-xs" id="downloadTxtBtn">Download .txt</button>
-              </div>
+        <div class="results-menu-pop">
+          <!-- group 1: bulk actions only (preset row removed) -->
+          <div class="results-menu-group">
+            <div class="results-menu-title">Bulk actions</div>
+            <div class="results-menu-actions">
+              <button type="button" class="btn-xs" id="copyAllBtn">Copy all</button>
+              <button type="button" class="btn-xs" id="copyAllEnBtn">Copy EN</button>
+              <button type="button" class="btn-xs" id="copyAllNativeBtn">Copy native</button>
+              <button type="button" class="btn-xs" id="downloadTxtBtn">Download .txt</button>
             </div>
           </div>
         </div>
-        <!-- /results-menu -->
       </div>
     </div>
   </div>
 
-  <!-- RESULTS LIST ONLY (no copy queue) -->
+  <!-- results list -->
   <div id="results" class="tweets"></div>
 
-  <!-- FLOATING SHORTCUT HINT -->
+  <!-- floating keyboard shortcut bubble -->
   <div class="keyboard-floating hide-on-mobile">
     <button type="button" class="keyboard-fab" aria-label="Keyboard shortcuts">⌨</button>
     <div class="keyboard-hud keyboard-fab-panel">
@@ -293,7 +283,6 @@
     </div>
   </div>
 </section>
-
 
         <!-- FAILED -->
         <section class="card">
