@@ -4647,3 +4647,75 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
     box-shadow:0 22px 60px rgba(0,0,0,.7);
   }
 }
+
+/* =========================================================
+   PATCH: Fix comment visibility + premium progress bar
+   (add at the very bottom of styles.css)
+   ========================================================= */
+
+/* 1) Let comments show fully (no cutoff) */
+.comment-text{
+  white-space: normal;
+  overflow: visible;
+  text-overflow: unset;
+  line-height: 1.4;
+}
+
+/* Align multi-line rows a bit nicer */
+.comment-line{
+  align-items: flex-start;
+}
+
+/* 2) Premium animated progress bar */
+
+/* Outer track: slightly taller + soft inner shadow */
+.progress-bar-outer{
+  width: 100%;
+  height: 6px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 0 0, rgba(148,163,184,.25), transparent 45%) rgba(15,23,42,.85);
+  box-shadow:
+    inset 0 0 0 1px rgba(15,23,42,.9),
+    0 0 0 1px rgba(15,23,42,.9);
+  overflow: hidden;
+}
+
+/* Inner fill: full width, animated via scaleX + shimmer */
+.progress-bar-inner{
+  width: 100%;                   /* <-- important: let scaleX work */
+  height: 100%;
+  border-radius: inherit;
+  transform-origin: left center;
+  transform: scaleX(var(--ct-progress-frac, 0));
+  background-image: linear-gradient(90deg, #22c55e, #a855f7, #f97316);
+  background-size: 200% 100%;
+  box-shadow:
+    0 0 18px rgba(129,140,248,.55),
+    0 0 8px rgba(34,197,94,.75);
+  transition: transform .28s cubic-bezier(.22,.61,.36,1),
+              box-shadow .25s ease-out;
+}
+
+/* While generating, add subtle moving shine */
+body.is-generating .progress-bar-inner{
+  animation: ct-progress-wave 1.2s linear infinite;
+}
+
+@keyframes ct-progress-wave{
+  0%{ background-position: 0 0; }
+  100%{ background-position: -200% 0; }
+}
+
+/* When we flash "done" (ct-progress-done), give a quick glow pop */
+body.ct-progress-done .progress-bar-inner{
+  box-shadow:
+    0 0 24px rgba(251,191,36,.9),
+    0 0 12px rgba(129,140,248,.85);
+}
+
+/* 3) Slight tidy for results column */
+#results.tweets{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
