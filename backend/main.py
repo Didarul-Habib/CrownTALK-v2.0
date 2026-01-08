@@ -3801,6 +3801,7 @@ for batch in chunked(cleaned, BATCH_SIZE):
             failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
 
         done += 1
+        logger.info("Processed %d/%d urls", done, total)
 
         # ✅ Sleep only if there are more URLs left
         if done < total and PER_URL_SLEEP and PER_URL_SLEEP > 0:
