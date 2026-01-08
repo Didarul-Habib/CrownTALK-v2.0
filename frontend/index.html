@@ -140,9 +140,10 @@
                   spellcheck="false"></textarea>
                 <div class="gradient-overlay"></div>
               </div>
-<!-- ===== PATCH-01: Input HUD START ===== -->
-<div id="ctInputHud" class="ct-input-hud" aria-live="polite"></div>
-<!-- ===== PATCH-01 END ===== -->
+
+              <!-- ===== PATCH-01: Input HUD START (kept as-is) ===== -->
+              <div id="ctInputHud" class="ct-input-hud" aria-live="polite"></div>
+              <!-- ===== PATCH-01 END ===== -->
 
               <div class="footer-info">
                 <div class="shortcut-info">
@@ -160,6 +161,19 @@
               <div class="floating-overlay"></div>
             </div>
           </div>
+
+          <!-- ===== PATCH-02: URL tools row (pure UI, JS later) ===== -->
+          <div class="url-tools-row">
+            <div class="url-health">
+              <span id="urlHealthBadge" class="url-health-badge">No URLs yet</span>
+            </div>
+            <div class="url-tools-buttons">
+              <button id="removeInvalidBtn" type="button" class="btn-secondary subtle btn-xs">Clean invalid</button>
+              <button id="sortUrlsBtn" type="button" class="btn-secondary subtle btn-xs hide-on-mobile">Sort A→Z</button>
+              <button id="shuffleUrlsBtn" type="button" class="btn-secondary subtle btn-xs hide-on-mobile">Shuffle</button>
+            </div>
+          </div>
+          <!-- ===== PATCH-02 END ===== -->
 
           <div class="controls">
             <button id="generateBtn" type="button" class="btn">
@@ -196,6 +210,27 @@
             <span id="progress" class="helper-text"></span>
             <div class="progress-bar-outer"><div id="progressBarFill" class="progress-bar-inner"></div></div>
           </div>
+
+          <!-- ===== PATCH-03: Analytics HUD row (pure UI) ===== -->
+          <div id="analyticsHud" class="analytics-row hide-on-mobile" aria-hidden="true">
+            <div class="analytics-pill">
+              <span class="label">Last run</span>
+              <span class="value" id="analyticsSummary">—</span>
+            </div>
+            <div class="analytics-pill">
+              <span class="label">Tweets</span>
+              <span class="value" id="analyticsTweets">0</span>
+            </div>
+            <div class="analytics-pill">
+              <span class="label">Failed</span>
+              <span class="value" id="analyticsFailed">0</span>
+            </div>
+            <div class="analytics-pill">
+              <span class="label">Time</span>
+              <span class="value" id="analyticsTime">0s</span>
+            </div>
+          </div>
+          <!-- ===== PATCH-03 END ===== -->
         </section>
 
         <!-- RESULTS -->
@@ -203,8 +238,63 @@
           <div class="card-head">
             <h2>Results <span id="resultCount" class="chip">0</span></h2>
             <p class="muted">Human style smart comments ready to copy</p>
+
+            <!-- ===== PATCH-04: sessions tabs + toolbar ===== -->
+            <div id="sessionTabs" class="session-tabs hide-on-mobile" aria-label="Previous runs"></div>
+
+            <div class="results-toolbar hide-on-mobile">
+              <div class="results-toolbar-left">
+                <label class="preset-label">
+                  Preset:
+                  <select id="presetSelect" class="preset-select">
+                    <option value="default">Default</option>
+                    <option value="engagement">Engagement mode</option>
+                    <option value="brand">Brand safe</option>
+                    <option value="replyguy">Reply guy</option>
+                  </select>
+                </label>
+              </div>
+              <div class="results-toolbar-right">
+                <button id="exportAllBtn" type="button" class="btn-secondary subtle btn-xs">Copy all</button>
+                <button id="exportEnBtn" type="button" class="btn-secondary subtle btn-xs">Copy EN</button>
+                <button id="exportNativeBtn" type="button" class="btn-secondary subtle btn-xs">Copy native</button>
+                <button id="downloadTxtBtn" type="button" class="btn-secondary subtle btn-xs hide-on-mobile">Download .txt</button>
+              </div>
+            </div>
+            <!-- ===== PATCH-04 END ===== -->
           </div>
-          <div id="results" class="tweets"></div>
+
+          <!-- ===== PATCH-05: results layout + copy queue + keyboard HUD ===== -->
+          <div class="results-layout">
+            <div class="results-main">
+              <!-- original results div kept exactly same id/class -->
+              <div id="results" class="tweets"></div>
+            </div>
+
+            <aside id="copyQueuePanel" class="copy-queue-panel hide-on-mobile" aria-label="Copy queue">
+              <div class="copy-queue-head">
+                <h3>Copy queue</h3>
+                <p id="copyQueueEmpty" class="copy-queue-empty">Use + icons to queue comments</p>
+              </div>
+              <div id="copyQueueList" class="copy-queue-list"></div>
+              <div class="copy-queue-footer">
+                <button id="copyQueueNextBtn" type="button" class="btn-secondary subtle btn-xs" disabled>
+                  Copy next (Ctrl+Shift+C)
+                </button>
+                <button id="copyQueueClearBtn" type="button" class="btn-secondary subtle btn-xs" disabled>
+                  Clear queue
+                </button>
+              </div>
+            </aside>
+          </div>
+
+          <div id="keyboardHud" class="keyboard-hud hide-on-mobile" aria-hidden="true">
+            <span>⌘/Ctrl + Enter → Generate</span>
+            <span>Esc → Cancel</span>
+            <span>Ctrl + L → Focus URL box</span>
+            <span>Ctrl + Shift + C → Copy next</span>
+          </div>
+          <!-- ===== PATCH-05 END ===== -->
         </section>
 
         <!-- FAILED -->
