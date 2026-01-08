@@ -14,14 +14,13 @@ bind = f"0.0.0.0:{os.getenv('PORT', '8000')}"
 # Timeouts
 #
 # Hard timeout: if a worker takes longer than this, kill it.
-timeout = int(os.getenv("WEB_TIMEOUT", "120"))
+timeout = int(os.getenv("WEB_TIMEOUT", "300"))  # 5 minutes
 
-# Graceful timeout: how long to wait for workers to finish requests
-# after receiving a reload/quit signal before force-killing.
-graceful_timeout = int(os.getenv("WEB_GRACEFUL_TIMEOUT", str(timeout + 30)))
+# Graceful timeout: time for workers to finish ongoing requests on restart
+graceful_timeout = int(os.getenv("WEB_GRACEFUL_TIMEOUT", "300"))
 
-# Keep-alive for HTTP connections
-keepalive = int(os.getenv("WEB_KEEPALIVE", "30"))
+# Keep-alive for client connections (seconds)
+keepalive = int(os.getenv("WEB_KEEPALIVE", "5"))
 
 #
 # Process naming
