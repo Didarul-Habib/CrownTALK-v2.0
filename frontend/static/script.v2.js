@@ -274,10 +274,9 @@ function setProgressText(text) {
 function setProgressRatio(ratio) {
   if (!progressBarFill) return;
   const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
-  progressBarFill.style.transform = `scaleX(${clamped})`;
-  // === PATCH: micro-shadow sync + comet power var
-  document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(clamped*100)));
+  // drive only via CSS variables (progress bar CSS uses --ct-progress-frac)
   document.documentElement.style.setProperty('--ct-progress-frac', String(clamped));
+  document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(clamped*100)));
 }
 function resetProgress() {
   setProgressText("");
@@ -463,7 +462,7 @@ function restoreSessionSnapshot(id) {
 }
 
 /* =========================================================
-   === PATCH: Copy queue (power copy) =======================
+   === PATCH: Copy queue (logic still present, UI hidden) ===
    ========================================================= */
 function renderCopyQueue() {
   if (!copyQueueListEl) return;
@@ -590,7 +589,12 @@ function initPresetFromStorage() {
 function initKeyboardHud() {
   if (!keyboardHudEl) return;
   const desktop = matchMedia("(min-width: 1024px)").matches && matchMedia("(pointer:fine)").matches;
-  keyboardHudEl.style.display = desktop ? "flex" : "none";
+  if (!desktop) {
+    keyboardHudEl.style.display = "none";
+    return;
+  }
+  // we'll control visibility via .is-open + floating fab
+  keyboardHudEl.style.display = "none";
 }
 function handleGlobalHotkeys(event) {
   const key = event.key;
@@ -615,6 +619,28 @@ function handleGlobalHotkeys(event) {
     event.preventDefault();
     copyNextFromQueue();
   }
+}
+
+/* floating shortcut button */
+function initShortcutFab() {
+  if (!keyboardHudEl) return;
+  const desktop = matchMedia("(min-width: 1024px)").matches && matchMedia("(pointer:fine)").matches;
+  if (!desktop) return;
+  if (document.getElementById("shortcutFab")) return;
+
+  const fab = document.createElement("button");
+  fab.id = "shortcutFab";
+  fab.type = "button";
+  fab.className = "shortcut-fab";
+  fab.title = "Keyboard shortcuts";
+  fab.textContent = "⌨";
+  document.body.appendChild(fab);
+
+  fab.addEventListener("click", () => {
+    const open = !keyboardHudEl.classList.contains("is-open");
+    keyboardHudEl.classList.toggle("is-open", open);
+    keyboardHudEl.style.display = open ? "flex" : "none";
+  });
 }
 
 /* =========================================================
@@ -703,7 +729,7 @@ function buildTweetBlock(result) {
   rerollBtn.className = "reroll-btn";
   rerollBtn.textContent = "Reroll";
 
-  /* === PATCH: collapse + pin buttons === */
+  /* collapse + pin buttons */
   const collapseBtn = document.createElement("button");
   collapseBtn.type = "button";
   collapseBtn.className = "tweet-collapse-btn";
@@ -788,7 +814,7 @@ function buildTweetBlock(result) {
     copyBtn.appendChild(copyAlt);
     copyBtn.dataset.text = comment.text;
 
-    /* === PATCH: make comment text available for queue === */
+    // make comment text available for queue
     line.dataset.commentText = comment.text;
 
     line.appendChild(tag);
@@ -897,7 +923,7 @@ setProgressText = function patchedSetProgressText(t){
 async function handleGenerate() {
   const raw = urlInput.value;
 
-  // === PATCH: preflight renumber + dedupe BEFORE parse ===
+  // preflight renumber + dedupe BEFORE parse
   renumberTextareaAndDedupe(true);
 
   const urls = parseURLs(raw);
@@ -911,7 +937,7 @@ async function handleGenerate() {
   cancelled = false;
   document.body.classList.add("is-generating");
 
-  // === PATCH: Ultra-Lite mode if phone/low-motion ===
+  // Ultra-Lite mode if phone/low-motion
   if (matchMedia('(pointer:coarse)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) {
     document.documentElement.classList.add('ultralite-on');
   }
@@ -925,11 +951,6 @@ async function handleGenerate() {
   setProgressRatio(0.03);
   showSkeletons(urls.length);
 
-  /* ==========================================
-     PATCH: Sequential queue (1 URL per request)
-     - fixes "5 links => no comments"
-     - avoids long single request timeout
-     ========================================== */
   const PER_URL_TIMEOUT_MS = 90000; // 90s per URL
   const CLIENT_DELAY_MS = 1200;     // spacing between URLs (client-side)
   const sleep = (ms) => new Promise(r => setTimeout(r, ms));
@@ -939,7 +960,7 @@ async function handleGenerate() {
   let totalResults = 0;
   let totalFailed  = 0;
 
-  const runStartedAt = performance.now(); // PATCH: analytics timing
+  const runStartedAt = performance.now();
 
   for (let i = 0; i < urls.length; i++) {
     if (cancelled) break;
@@ -971,7 +992,6 @@ async function handleGenerate() {
       try { data = await res.json(); } catch {}
 
       if (!res.ok) {
-        // treat this URL as failed but continue
         if (!clearedSkeletons) {
           resultsEl.innerHTML = "";
           failedEl.innerHTML  = "";
@@ -1008,7 +1028,6 @@ async function handleGenerate() {
         failedCountEl.textContent = String(totalFailed);
       }
     } catch (err) {
-      // timeout/abort/network — mark failed, keep going
       if (cancelled) break;
 
       if (!clearedSkeletons) {
@@ -1036,11 +1055,10 @@ async function handleGenerate() {
     }
   }
 
-  // Final UI cleanup
-  if (cancelled) return; // handleCancel already cleaned UI
+  if (cancelled) return;
 
   document.body.classList.remove("is-generating");
-  document.documentElement.classList.remove('ultralite-on'); // PATCH off
+  document.documentElement.classList.remove('ultralite-on');
   generateBtn.disabled = false;
   cancelBtn.disabled   = true;
 
@@ -1055,7 +1073,6 @@ async function handleGenerate() {
     setProgressRatio(1);
   }
 
-  /* === PATCH: analytics + session snapshot === */
   const durationSec = Math.max(1, Math.round((performance.now() - runStartedAt) / 1000));
   updateAnalytics({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
   addSessionSnapshot({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
@@ -1064,22 +1081,20 @@ async function handleGenerate() {
 // ------------------------
 // Cancel & Clear
 // ------------------------
-let __lastClear = null; // === PATCH: Undo Clear buffer
+let __lastClear = null;
 function handleCancel() {
   cancelled = true;
 
-  // === PATCH: Abort the active fetch immediately (prevents "stuck" UI)
   try { __activeAbortController?.abort(); } catch {}
 
   document.body.classList.remove("is-generating");
-  document.documentElement.classList.remove('ultralite-on'); // PATCH off
+  document.documentElement.classList.remove('ultralite-on');
   generateBtn.disabled = false;
   cancelBtn.disabled   = true;
   setProgressText("Cancelled.");
   setProgressRatio(0);
 }
 function handleClear() {
-  // === PATCH: capture for undo
   __lastClear = {
     input: urlInput.value,
     results: resultsEl.innerHTML,
@@ -1199,6 +1214,40 @@ function initTheme() {
   applyTheme(theme);
 }
 
+/* ---------- Results menu: wrap preset + export into dropdown ---------- */
+function initResultsMenu() {
+  if (!resultsEl) return;
+  const card = resultsEl.closest(".card");
+  if (!card) return;
+  const toolbar = card.querySelector(".results-toolbar");
+  if (!toolbar) return;
+  if (toolbar.dataset.menuInit === "1") return;
+  toolbar.dataset.menuInit = "1";
+
+  const menu = document.createElement("div");
+  menu.id = "resultsMenu";
+  menu.className = "results-menu";
+
+  const presetBlock = presetSelect ? (presetSelect.closest(".preset-label") || presetSelect.parentElement) : null;
+  const exportBlock = exportAllBtn ? exportAllBtn.parentElement : null;
+
+  if (presetBlock) menu.appendChild(presetBlock);
+  if (exportBlock) menu.appendChild(exportBlock);
+
+  const toggle = document.createElement("button");
+  toggle.id = "resultsMenuToggle";
+  toggle.type = "button";
+  toggle.className = "results-menu-toggle btn-xs";
+  toggle.textContent = "Menu";
+
+  toolbar.appendChild(toggle);
+  toolbar.appendChild(menu);
+
+  toggle.addEventListener("click", () => {
+    menu.classList.toggle("is-open");
+  });
+}
+
 /* ---------- Boot UI once unlocked ---------- */
 function bootAppUI() {
   if (yearEl) yearEl.textContent = String(new Date().getFullYear());
@@ -1209,20 +1258,20 @@ function bootAppUI() {
   initPresetFromStorage();
   initKeyboardHud();
   renderCopyQueue();
+  initResultsMenu();
+  initShortcutFab();
 
   setTimeout(() => { maybeWarmBackend(); }, 4000);
 
   urlInput?.addEventListener("input", autoResizeTextarea);
   urlInput?.addEventListener("input", updateUrlHealth);
 
-  // === PATCH: keep numbering correct as user types (light)
   urlInput?.addEventListener('blur', ()=> renumberTextareaAndDedupe(false));
 
   generateBtn?.addEventListener("click", () => {
     if (!document.body.classList.contains("is-generating")) handleGenerate();
   });
 
-  // === PATCH: pre-click guard to renumber/dedupe & hide undo soon
   generateBtn?.addEventListener('click', () => { renumberTextareaAndDedupe(true); hideUndoSnackSoon(); }, true);
 
   cancelBtn?.addEventListener("click", handleCancel);
@@ -1292,7 +1341,6 @@ function bootAppUI() {
     });
   });
 
-  /* === PATCH: premium controls wiring === */
   sortUrlsBtn?.addEventListener("click", (e) => { e.preventDefault(); sortUrlsAscending(); });
   shuffleUrlsBtn?.addEventListener("click", (e) => { e.preventDefault(); shuffleUrlsOrder(); });
   removeInvalidBtn?.addEventListener("click", (e) => { e.preventDefault(); removeInvalidUrls(); });
@@ -1365,7 +1413,6 @@ function bootAppUI() {
     step(pct){
       if (!FILL || typeof pct !== 'number') return;
       FILL.style.width = (clamp01(pct / 100) * 100).toFixed(2) + '%';
-      // keep CSS vars in sync for comet/shadow
       document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(Math.max(0,Math.min(100,pct)))));
       document.documentElement.style.setProperty('--ct-progress-frac', String(Math.max(0,Math.min(1,pct/100))));
     },
@@ -1407,12 +1454,10 @@ function bootAppUI() {
     e.preventDefault(); hideHalo();
     let txt = e.dataTransfer.getData('text/uri-list') || e.dataTransfer.getData('text/plain') || '';
     if (!txt) return;
-    // append cleanly
     const curr = urlInput.value.trim();
     const toAdd = txt.trim();
     urlInput.value = curr ? (curr + '\n' + toAdd) : toAdd;
     urlInput.dispatchEvent(new Event('input', {bubbles:true}));
-    // auto-fix numbering & dedupe
     const { removed } = renumberTextareaAndDedupe(true);
     ctToast(removed>0 ? 'Link added · duplicates removed' : 'Link added', 'ok');
   }, false);
