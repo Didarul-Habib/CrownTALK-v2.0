@@ -233,69 +233,67 @@
           <!-- ===== PATCH-03 END ===== -->
         </section>
 
-        <!-- RESULTS -->
-        <section class="card">
-          <div class="card-head">
-            <h2>Results <span id="resultCount" class="chip">0</span></h2>
-            <p class="muted">Human style smart comments ready to copy</p>
+<!-- RESULTS -->
+<section class="card">
+  <div class="card-head">
+    <div>
+      <h2>Results <span id="resultCount" class="chip">0</span></h2>
+      <p class="muted">Human style smart comments ready to copy</p>
+    </div>
 
-            <!-- ===== PATCH-04: sessions tabs + toolbar ===== -->
-            <div id="sessionTabs" class="session-tabs hide-on-mobile" aria-label="Previous runs"></div>
+    <!-- Results toolbar + MENU (desktop only) -->
+    <div class="results-toolbar hide-on-mobile">
+      <div class="results-toolbar-left">
+        <span class="badge badge-run">Run <span id="runCount">1</span></span>
+      </div>
 
-            <div class="results-toolbar hide-on-mobile">
-              <div class="results-toolbar-left">
-                <label class="preset-label">
-                  Preset:
-                  <select id="presetSelect" class="preset-select">
-                    <option value="default">Default</option>
-                    <option value="engagement">Engagement mode</option>
-                    <option value="brand">Brand safe</option>
-                    <option value="replyguy">Reply guy</option>
-                  </select>
-                </label>
-              </div>
-              <div class="results-toolbar-right">
-                <button id="exportAllBtn" type="button" class="btn-secondary subtle btn-xs">Copy all</button>
-                <button id="exportEnBtn" type="button" class="btn-secondary subtle btn-xs">Copy EN</button>
-                <button id="exportNativeBtn" type="button" class="btn-secondary subtle btn-xs">Copy native</button>
-                <button id="downloadTxtBtn" type="button" class="btn-secondary subtle btn-xs hide-on-mobile">Download .txt</button>
-              </div>
-            </div>
-            <!-- ===== PATCH-04 END ===== -->
-          </div>
-
-          <!-- ===== PATCH-05: results layout + copy queue + keyboard HUD ===== -->
-          <div class="results-layout">
-            <div class="results-main">
-              <!-- original results div kept exactly same id/class -->
-              <div id="results" class="tweets"></div>
+      <div class="results-toolbar-right">
+        <!-- DROPDOWN MENU WRAPPER -->
+        <div class="results-menu" id="resultsMenu">
+          <button type="button" id="resultsMenuToggle" class="btn-xs results-menu-toggle">
+            Menu ▾
+          </button>
+          <div class="results-menu-pop">
+            <div class="results-menu-group">
+              <div class="results-menu-title">Preset</div>
+              <!-- your preset select lives here -->
+              <select id="presetSelect" class="preset-select">
+                <option value="default">Default</option>
+                <!-- add more later -->
+              </select>
             </div>
 
-            <aside id="copyQueuePanel" class="copy-queue-panel hide-on-mobile" aria-label="Copy queue">
-              <div class="copy-queue-head">
-                <h3>Copy queue</h3>
-                <p id="copyQueueEmpty" class="copy-queue-empty">Use + icons to queue comments</p>
+            <div class="results-menu-group">
+              <div class="results-menu-title">Bulk actions</div>
+              <div class="results-menu-actions">
+                <button type="button" class="btn-xs" id="copyAllBtn">Copy all</button>
+                <button type="button" class="btn-xs" id="copyAllEnBtn">Copy EN</button>
+                <button type="button" class="btn-xs" id="copyAllNativeBtn">Copy native</button>
+                <button type="button" class="btn-xs" id="downloadTxtBtn">Download .txt</button>
               </div>
-              <div id="copyQueueList" class="copy-queue-list"></div>
-              <div class="copy-queue-footer">
-                <button id="copyQueueNextBtn" type="button" class="btn-secondary subtle btn-xs" disabled>
-                  Copy next (Ctrl+Shift+C)
-                </button>
-                <button id="copyQueueClearBtn" type="button" class="btn-secondary subtle btn-xs" disabled>
-                  Clear queue
-                </button>
-              </div>
-            </aside>
+            </div>
           </div>
+        </div>
+        <!-- /results-menu -->
+      </div>
+    </div>
+  </div>
 
-          <div id="keyboardHud" class="keyboard-hud hide-on-mobile" aria-hidden="true">
-            <span>⌘/Ctrl + Enter → Generate</span>
-            <span>Esc → Cancel</span>
-            <span>Ctrl + L → Focus URL box</span>
-            <span>Ctrl + Shift + C → Copy next</span>
-          </div>
-          <!-- ===== PATCH-05 END ===== -->
-        </section>
+  <!-- RESULTS LIST ONLY (no copy queue) -->
+  <div id="results" class="tweets"></div>
+
+  <!-- FLOATING SHORTCUT HINT -->
+  <div class="keyboard-floating hide-on-mobile">
+    <button type="button" class="keyboard-fab" aria-label="Keyboard shortcuts">⌨</button>
+    <div class="keyboard-hud keyboard-fab-panel">
+      <span>⌘/Ctrl + Enter → Generate</span>
+      <span>Esc → Cancel</span>
+      <span>Ctrl + L → Focus URL box</span>
+      <span>Ctrl + Shift + C → Copy next</span>
+    </div>
+  </div>
+</section>
+
 
         <!-- FAILED -->
         <section class="card">
