@@ -115,6 +115,100 @@ ENABLE_COINGECKO = os.getenv("ENABLE_COINGECKO", "0").strip() == "1"
 COINGECKO_DEMO_KEY = os.getenv("COINGECKO_DEMO_KEY", "").strip() or None
 RESEARCH_CACHE_TTL_SEC = int(os.getenv("RESEARCH_CACHE_TTL_SEC", "900"))  # default 15m
 
+# --------------------------------------------------------------------------
+# Local per-project research notes (static files keyed by @handle)
+# --------------------------------------------------------------------------
+PROJECT_RESEARCH_DIR = os.getenv(
+    "PROJECT_RESEARCH_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "project_research"),
+)
+PROJECT_RESEARCH_MAX_CHARS = int(
+    os.getenv("PROJECT_RESEARCH_MAX_CHARS", "4000")
+)
+
+
+def _load_project_research(handles: list[str]) -> list[dict]:
+    """
+    Look for research files for any @handles mentioned in the tweet.
+
+    Files live in PROJECT_RESEARCH_DIR.
+
+    For a handle '@warden_protocol', we will check (in this order):
+      - '@warden_protocol.md'
+      - '@warden_protocol.txt'
+      - '@warden_protocol'
+      - 'warden_protocol.md'
+      - 'warden_protocol.txt'
+      - 'warden_protocol'
+    The first existing non-empty file per handle wins.
+    """
+    base = PROJECT_RESEARCH_DIR
+    results: list[dict] = []
+    seen_paths: set[str] = set()
+
+    if not handles:
+        return results
+
+    for raw in handles:
+        h = (raw or "").strip()
+        if not h:
+            continue
+
+        # Keep letters, digits, _, -, @ (avoid weird path chars)
+        safe = re.sub(r"[^A-Za-z0-9_@\-]+", "", h)
+        if not safe:
+            continue
+
+        candidates: list[str] = [
+            os.path.join(base, safe + ".md"),
+            os.path.join(base, safe + ".txt"),
+            os.path.join(base, safe),
+        ]
+
+        # Also support filenames without the leading '@'
+        if safe.startswith("@"):
+            bare = safe[1:]
+            if bare:
+                candidates.extend(
+                    [
+                        os.path.join(base, bare + ".md"),
+                        os.path.join(base, bare + ".txt"),
+                        os.path.join(base, bare),
+                    ]
+                )
+
+        for path in candidates:
+            if path in seen_paths:
+                continue
+            if not os.path.isfile(path):
+                continue
+
+            try:
+                with open(path, "r", encoding="utf-8") as f:
+                    raw_text = f.read().strip()
+            except Exception as e:  # noqa: BLE001
+                logger.warning("Error reading project research file %s: %s", path, e)
+                continue
+
+            if not raw_text:
+                continue
+
+            text = raw_text[:PROJECT_RESEARCH_MAX_CHARS]
+
+            results.append(
+                {
+                    "handle": h,                       # e.g. "@warden_protocol"
+                    "file": os.path.basename(path),   # e.g. "@warden_protocol.txt"
+                    "path": path,
+                    "summary": text,                  # truncated content
+                }
+            )
+            seen_paths.add(path)
+            break
+
+    return results
+
+
 # Request-scoped context (per tweet request)
 REQUEST_THREAD_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_THREAD_CTX", default=None)
 REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_CTX", default=None)
@@ -2659,94 +2753,121 @@ def extract_entities(tweet_text: str) -> dict:
 
 def build_research_context_for_tweet(tweet_text: str) -> dict:
     """
-    Best-effort DeFi research:
-    - use DefiLlama /protocols + /protocol/{slug} + /tvl/{slug}
-    - optional CoinGecko for spot price
-    - aggressive caching + short timeouts
-    Stores:
-      {
-        "status": "ok" | "empty" | "disabled" | "error",
-        "cashtags": [...],
-        "protocols": [
-          {
-            "cashtag": "$SOL",
-            "slug": "solana",
-            "name": "...",
-            "symbol": "SOL",
-            "category": "...",
-            "chains": [...],
-            "url": "...",
-            "tvl": 123456789.0,
-            "price": {"coin_id": "solana", "usd": 172.3}  # optional
-          },
-          ...
-        ]
-      }
+    Combined research context for a tweet.
+
+    - On-chain / DeFi research keyed by $TICKERS (existing behavior).
+    - Local project research loaded from files keyed by @handles (NEW).
     """
     if not ENABLE_RESEARCH:
         return {"status": "disabled"}
 
-    if not is_crypto_tweet(tweet_text or ""):
-        return {"status": "empty"}
-
+    # Extract entities once (both cashtags and handles)
     ents = extract_entities(tweet_text or "")
     cashtags = ents.get("cashtags") or []
-    if not cashtags:
-        return {"status": "empty", "cashtags": []}
+    handles = ents.get("handles") or []
 
-    key = "tweet:" + "|".join(sorted(cashtags))
-    cached = _research_cache_get(key)
-    if cached is not None:
-        return cached
+    # Build a cache key that includes both cashtags and handles so we
+    # don't re-hit APIs or disk for the same pattern.
+    key_parts: list[str] = []
+    if cashtags:
+        key_parts.append("cashtags:" + "|".join(sorted(cashtags)))
+    if handles:
+        key_parts.append("handles:" + "|".join(sorted(handles)))
 
+    cache_key = "tweet:" + ";".join(key_parts) if key_parts else None
+    if cache_key:
+        cached = _research_cache_get(cache_key)
+        if cached is not None:
+            return cached
+
+    # ------------------------------------------------------------------
+    # 1) DeFi / on-chain research (same as before, just moved inside)
+    # ------------------------------------------------------------------
     protocols: list[dict] = []
-    for tag in cashtags[:3]:  # keep it small
-        symbol = tag[1:].upper()
-        slug = _resolve_protocol_slug_from_symbol(symbol)
-        if not slug:
-            continue
 
-        llama = _fetch_defillama_for_slug(slug)
-        if not llama:
-            continue
+    # Only hit DefiLlama/CoinGecko if it looks like a crypto tweet
+    # AND we actually have cashtags.
+    if is_crypto_tweet(tweet_text or "") and cashtags:
+        for tag in cashtags[:3]:  # limit to first 3 cashtags
+            symbol = tag[1:]  # "$SOL" -> "SOL"
+            slug = _resolve_protocol_slug_from_symbol(symbol)
+            if not slug:
+                continue
 
-        proto = llama.get("protocol") or {}
-        tvl_data = llama.get("tvl") or []
+            try:
+                proto_bundle = _fetch_defillama_for_slug(slug) or {}
+            except Exception as e:  # noqa: BLE001
+                logger.warning("DefiLlama fetch failed for %s: %s", slug, e)
+                proto_bundle = {}
 
-        entry: dict[str, Any] = {
-            "cashtag": tag,
-            "slug": slug,
-            "name": proto.get("name") or "",
-            "symbol": proto.get("symbol") or "",
-            "category": proto.get("category") or proto.get("sector") or "",
-            "chains": proto.get("chains") or [],
-            "url": proto.get("url") or "",
-            "tvl": None,
-        }
+            proto = proto_bundle.get("protocol") or {}
+            tvl_data = proto_bundle.get("tvl")
 
-        try:
-            if isinstance(tvl_data, list) and tvl_data:
-                last = tvl_data[-1]
-                entry["tvl"] = float(last.get("totalLiquidityUSD") or 0.0)
-        except Exception:
-            pass
+            entry: dict[str, Any] = {
+                "cashtag": tag,
+                "slug": slug,
+                "name": proto.get("name") or "",
+                "symbol": proto.get("symbol") or "",
+                "category": proto.get("category") or proto.get("sector") or "",
+                "chains": proto.get("chains") or [],
+                "url": proto.get("url") or "",
+                "tvl": None,
+            }
 
-        # optional price
-        price_block = None
-        if ENABLE_COINGECKO:
-            coin_id = proto.get("gecko_id") or _coingecko_search(symbol)
-            if coin_id:
-                price = _coingecko_price(coin_id)
-                if price:
-                    price_block = {"coin_id": coin_id, "usd": price.get("usd")}
-        if price_block:
-            entry["price"] = price_block
+            # TVL: last point in the TVL array, if present
+            try:
+                if isinstance(tvl_data, list) and tvl_data:
+                    last = tvl_data[-1]
+                    entry["tvl"] = float(last.get("totalLiquidityUSD") or 0.0)
+            except Exception:
+                pass
 
-        protocols.append(entry)
+            # Optional price via CoinGecko
+            price_block = None
+            if ENABLE_COINGECKO:
+                coin_id = proto.get("gecko_id") or _coingecko_search(symbol)
+                if coin_id:
+                    try:
+                        price = _coingecko_price(coin_id)
+                    except Exception:
+                        price = None
+                    if price:
+                        # simple shape: {"usd": 1.23}
+                        usd = price.get("usd")
+                        if usd is not None:
+                            price_block = {"coin_id": coin_id, "usd": usd}
+            if price_block:
+                entry["price"] = price_block
 
-    status = "ok" if protocols else "empty"
-    ctx = {"status": status, "cashtags": cashtags, "protocols": protocols}
-    _research_cache_set(key, ctx)
+            protocols.append(entry)
+
+    # ------------------------------------------------------------------
+    # 2) Local project research by @handle (NEW)
+    # ------------------------------------------------------------------
+    projects: list[dict] = []
+    if handles:
+        projects = _load_project_research(handles)
+
+    # ------------------------------------------------------------------
+    # Final status + payload
+    # ------------------------------------------------------------------
+    if not protocols and not projects:
+        ctx = {"status": "empty", "cashtags": cashtags}
+        if cache_key:
+            _research_cache_set(cache_key, ctx)
+        return ctx
+
+    ctx: dict[str, Any] = {
+        "status": "ok",
+        "cashtags": cashtags,
+        "protocols": protocols,
+    }
+    if projects:
+        ctx["projects"] = projects
+
+    if cache_key:
+        _research_cache_set(cache_key, ctx)
+
     return ctx
 
 def hallucination_safe(comment: str, tweet_text: str) -> bool:
