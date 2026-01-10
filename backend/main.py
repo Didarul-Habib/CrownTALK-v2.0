@@ -9,6 +9,8 @@ except Exception:  # noqa: BLE001
 import json, os, re, time, random, hashlib, logging, sqlite3, threading
 from collections import Counter
 from contextvars import ContextVar
+from datetime import datetime
+from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 
@@ -37,6 +39,10 @@ MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
 
 URL_LOCK_PATH = os.getenv("URL_LOCK_PATH", "/tmp/crowntalk_url.lock")
+
+CT_TIMEZONE = os.getenv("CT_TIMEZONE", "UTC")
+THREAD_PAIR_MODE = os.getenv("THREAD_PAIR_MODE", "0") == "1"
+
 
 @contextmanager
 def global_url_lock():
@@ -222,6 +228,73 @@ def set_request_reaction_plan(plan: Optional[dict]) -> None:
 def current_reaction_plan() -> Optional[dict]:
     return REQUEST_REACTION_PLAN.get(None)
 
+def current_ct_vibe(now: datetime | None = None) -> str:
+    """
+    Returns one of: 'morning', 'day', 'late_night', 'weekend'.
+
+    Used to bias reaction selection and voice.
+    """
+    if now is None:
+        try:
+            tz = ZoneInfo(CT_TIMEZONE)
+        except Exception:
+            tz = ZoneInfo("UTC")
+
+        now = datetime.now(tz=tz)
+
+    weekday = now.weekday()  # 0 = Monday
+    hour = now.hour
+
+    if weekday >= 5:
+        return "weekend"
+
+    if 7 <= hour < 12:
+        return "morning"
+
+    if 23 <= hour or hour < 3:
+        return "late_night"
+
+    return "day"
+
+
+def build_reaction_plan(tweet, author_fam, *, debug: bool = False):
+    plan: dict[str, object] = {}
+
+    # ... your existing logic (topics, sentiment, etc.)
+
+    ct_vibe = current_ct_vibe()
+    plan["ct_vibe"] = ct_vibe
+
+    # Example: adjust reaction weights according to vibe
+    reaction_weights = {
+        "agree_plus": 1.0,
+        "question": 1.0,
+        "soft_pushback": 1.0,
+        "banter": 1.0,
+        # ... whatever you already use
+    }
+
+    # --- vibe adjustments ---
+    if ct_vibe == "morning":
+        reaction_weights["question"] *= 1.2
+        reaction_weights["agree_plus"] *= 1.1
+        reaction_weights["banter"] *= 0.6
+
+    elif ct_vibe == "late_night":
+        reaction_weights["banter"] *= 1.4
+        reaction_weights["soft_pushback"] *= 1.2
+
+    elif ct_vibe == "weekend":
+        reaction_weights["banter"] *= 1.25
+        reaction_weights["soft_pushback"] *= 0.9
+
+    # Attach to plan so later code can see it
+    plan["reaction_weights"] = reaction_weights
+
+    # ... the rest of your function where you sample a reaction
+    # using reaction_weights ("roulette" / random choice etc.)
+
+    return plan
 
 # In-memory caches (process-local)
 _RESEARCH_CACHE: dict[str, tuple[float, dict]] = {}
@@ -2583,7 +2656,6 @@ def _build_comment_user_prompt(
     """
     tweet_text = (tweet_text or "").strip()
 
-    # Existing context + variety helpers already in your codebase
     context_snippet = _build_context_json_snippet()
     variety_snippet = _maybe_llm_variety_snippet(url, tweet_text)
 
@@ -2591,7 +2663,7 @@ def _build_comment_user_prompt(
     if analysis is not None:
         analysis_snippet = analysis.to_prompt_fragment()
 
-    # NEW: reaction plan snippet for the LLM
+    # NEW: reaction plan snippet for the LLM (so it understands #1 vs #2 roles)
     reaction_snippet = ""
     plan = current_reaction_plan()
     if isinstance(plan, dict):
@@ -2664,8 +2736,13 @@ def _build_comment_user_prompt(
     if reaction_snippet:
         parts.append(reaction_snippet)
 
+    # 🔁 NEW: explicitly make #2 a follow-up to #1
     parts.append(
-        "Now write TWO different reply comments, numbered 1 and 2.\n"
+        "Now write TWO reply comments, numbered 1 and 2.\n"
+        "- Comment #1 should read as a direct reply to the tweet.\n"
+        "- Comment #2 should read like a natural follow-up to YOUR OWN comment #1 "
+        "(it still stays grounded in the same tweet, but should feel like you continued your own thought).\n"
+        "- Do NOT make #2 look like a totally separate, unrelated comment.\n"
         "Each on its own line, no quotes, no hashtags unless they clearly fit the tweet."
     )
 
@@ -2896,6 +2973,86 @@ VOICE_CARDS = [
     },
 ]
 
+CT_SLANG_TOKENS = [
+    {"token": "lowkey", "strength": "soft"},
+    {"token": "ngl", "strength": "soft"},
+    {"token": "fr", "strength": "soft"},
+    {"token": "ngmi", "strength": "degen"},
+    {"token": "cope", "strength": "degen"},
+    {"token": "based", "strength": "degen"},
+]
+
+CT_SERIOUS_KEYWORDS = [
+    "suicide", "self harm", "self-harm", "dying", "die",
+    "scam", "rugged", "rugpull", "rug pull",
+    "exploit", "hack", "stolen", "loss", "lost everything",
+    "hospital", "depression", "anxiety",
+]
+def maybe_inject_ct_slang(
+    text: str,
+    *,
+    reaction_kind: str | None = None,
+    ct_vibe: str | None = None,
+) -> str:
+    """
+    Injects at most one CT slang token into `text`, with some safety rules.
+    Returns original text if conditions aren't met.
+    """
+    clean = text.strip()
+    if not clean:
+        return text
+
+    # Word count bounds: don't slang super short or super long comments
+    words = clean.split()
+    if len(words) < 6 or len(words) > 26:
+        return text
+
+    # Avoid obviously serious content
+    lower = clean.lower()
+    if any(kw in lower for kw in CT_SERIOUS_KEYWORDS):
+        return text
+
+    # Base probability
+    p = 0.15
+
+    # More slang on late night / weekend
+    if ct_vibe in ("late_night", "weekend"):
+        p += 0.10
+
+    # Slightly more if this is banter / soft pushback
+    if reaction_kind in ("banter", "soft_pushback"):
+        p += 0.10
+
+    # Clamp
+    p = max(0.0, min(0.4, p))
+
+    if random.random() > p:
+        return text
+
+    # Choose a token, avoid repeating the last used one in the same process
+    candidate_tokens = CT_SLANG_TOKENS[:]
+    last_token = getattr(maybe_inject_ct_slang, "_last_token", None)
+    if last_token:
+        candidate_tokens = [t for t in candidate_tokens if t["token"] != last_token] or CT_SLANG_TOKENS
+
+    token_obj = random.choice(candidate_tokens)
+    token = token_obj["token"]
+
+    # Very simple injection: either prefix or suffix
+    inject_at_start = random.random() < 0.5
+
+    if inject_at_start:
+        # e.g. "lowkey this is solid"
+        new_text = f"{token} {clean}"
+    else:
+        # e.g. "this is solid fr"
+        if clean.endswith((".", "!", "?")):
+            new_text = f"{clean[:-1]} {token}{clean[-1]}"
+        else:
+            new_text = f"{clean} {token}"
+
+    maybe_inject_ct_slang._last_token = token
+    return new_text
 
 def _pick_voice_card(tweet_text: str) -> dict:
     topic = detect_topic(tweet_text or "")
@@ -2932,6 +3089,35 @@ def _pick_voice_card(tweet_text: str) -> dict:
     if len(_RECENT_VOICES) > 16:
         _RECENT_VOICES.pop(0)
     return chosen
+
+def _pick_voice_card(plan: dict) -> str:
+    ct_vibe = plan.get("ct_vibe", "day")
+
+    # Example starting weights
+    voice_weights = {
+        "builder": 1.0,
+        "curious_friend": 1.0,
+        "deadpan_meme": 1.0,
+        "professional": 1.0,
+    }
+
+    if ct_vibe == "morning":
+        voice_weights["builder"] *= 1.2
+        voice_weights["professional"] *= 1.1
+        voice_weights["deadpan_meme"] *= 0.7
+
+    elif ct_vibe == "late_night":
+        voice_weights["deadpan_meme"] *= 1.4
+        voice_weights["curious_friend"] *= 1.1
+        voice_weights["professional"] *= 0.7
+
+    elif ct_vibe == "weekend":
+        voice_weights["curious_friend"] *= 1.2
+        voice_weights["deadpan_meme"] *= 1.2
+
+    # TODO: sample a voice from voice_weights (reuse your sampling helper)
+    voice = weighted_sample(voice_weights)  # whatever helper you already use
+    return voice
 
 
 def set_request_voice(tweet_text: str) -> None:
@@ -3523,12 +3709,15 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         "Human style:\n"
         "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
         "- Avoid hype/fanboy language and vague praise.\n"
-        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting, interesting take, great breakdown, nice summary, well said, thanks for sharing.\n"
+        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting, "
+        "interesting take, great breakdown, nice summary, well said, thanks for sharing.\n"
         "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
         "\n"
-        "Diversity:\n"
-        "- Comment #1: a clear observation or claim.\n"
-        "- Comment #2: a specific question OR a cautious risk note.\n"
+        "Diversity + thread behavior:\n"
+        "- Comment #1: a clear observation or claim, as a direct reply to the tweet.\n"
+        "- Comment #2: a follow-up to your own Comment #1 that either asks a sharp question "
+        "or adds a cautious risk/constraint note.\n"
+        "- Comment #2 must read like you continued the same mini-conversation, not a totally separate reply.\n"
         "- Make the two comments meaningfully different.\n"
         "\n"
         "Output format:\n"
@@ -3536,7 +3725,6 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         "- If not JSON, return two lines separated by a newline.\n"
     )
 
-    # Voice roulette (per-request persona)
     voice = current_voice_card()
     if voice:
         base += (
@@ -3546,7 +3734,6 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
             "Write both comments in this voice, but still follow all hard rules.\n"
         )
 
-    # Research realism (anti-hallucination)
     research_ctx = REQUEST_RESEARCH_CTX.get(None)
     if isinstance(research_ctx, dict):
         status = research_ctx.get("status")
@@ -3954,6 +4141,11 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "- Do NOT invent facts not present in the tweet.\n"
         "- Preserve numbers and tickers exactly (17.99 stays 17.99, $SOL stays $SOL).\n"
         "\n"
+        "Thread behavior:\n"
+        "- Comment #1: a direct reply to the tweet.\n"
+        "- Comment #2: a natural follow-up to your own Comment #1, still grounded in the tweet.\n"
+        "- Do NOT make #2 sound like a separate independent reply.\n"
+        "\n"
         "Human quality:\n"
         "- Sound like a real person on CT: grounded, specific, slightly opinionated.\n"
         "- Avoid hype/fanboy language and generic praise.\n"
@@ -3962,7 +4154,7 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "\n"
         "Variety rules:\n"
         "- Comment #1: observation/claim.\n"
-        "- Comment #2: sharp question OR risk/constraint note.\n"
+        "- Comment #2: sharp question OR risk/constraint note that builds on #1.\n"
         "- Do not reuse the same sentence skeleton (avoid template feel).\n"
         "- Do not start both comments with the same first word.\n"
         "\n"
@@ -4080,17 +4272,40 @@ def generate_two_comments_with_providers(
     """
     Working cascade:
     - Build a reaction plan (reaction types + delays + skip hints).
-    - Try enabled providers in random order, collecting multiple candidates.
-    - Run a small self-critic / selection step to pick a diverse pair.
+    - Try enabled providers in order, collecting multiple candidates.
+    - Run uniqueness / diversity selection to pick a strong pair.
     - Fallback to offline + rescue.
-    - Optional Pro KOL rewrite.
+    - Optional Pro KOL rewrite pass.
+    - Optionally inject CT slang depending on vibe/reaction.
     - Always return exactly two dicts:
-        [{"lang": "...", "text": "...", "reaction": "...", ...}, ...]
+        [
+          {
+            "lang": "...",
+            "text": "...",
+            "reaction": "...",
+            "delay_sec": <int>,
+            "mode": "...",
+            "thread_pair": <bool>,
+            "thread_index": 0,
+          },
+          {
+            "lang": "...",
+            "text": "...",
+            "reaction": "...",
+            "delay_sec": <int>,
+            "mode": "...",
+            "thread_pair": <bool>,
+            "thread_index": 1,
+            "follow_up": true/false,
+          },
+        ]
+    When THREAD_PAIR_MODE=1, the caller can treat index 0 as reply to the tweet
+    and index 1 as a follow-up reply to comment 0 (thread behaviour).
     """
     url = url or ""
     lang_out = lang or "en"
 
-    # Build + store reaction plan for this tweet so LLM paths can see it
+    # --- Build + store reaction plan for this tweet ---------------------------
     try:
         plan = build_reaction_plan(tweet_text, handle, lang_hint=lang)
     except Exception:
@@ -4106,10 +4321,9 @@ def generate_two_comments_with_providers(
     if not CROWNTALK_LLM_ORDER:
         random.shuffle(providers)
 
-    # 1) Collect candidates from all enabled providers
+    # --- 1) Collect candidates from all enabled providers --------------------
     for name, fn in providers:
         try:
-            # All provider fns accept (tweet_text, author, url=...)
             more = fn(tweet_text, author, url=url)
             if more:
                 candidates = enforce_unique(
@@ -4118,13 +4332,13 @@ def generate_two_comments_with_providers(
                     url=url,
                     lang=lang_out,
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("%s provider failed: %s", name, e)
 
         if len(candidates) >= MAX_CANDIDATES_FOR_SELECTION:
             break
 
-    # 2) Offline/template fallback if we still don't have enough
+    # --- 2) Offline/template fallback if still thin --------------------------
     if len(candidates) < 2:
         try:
             more = safe_offline_two_comments(tweet_text, author)
@@ -4135,10 +4349,10 @@ def generate_two_comments_with_providers(
                     url=url,
                     lang=lang_out,
                 )
-        except Exception as e:
+        except Exception as e:  # noqa: BLE001
             logger.warning("offline fallback failed: %s", e)
 
-    # 3) Last-resort short templates
+    # --- 3) Last-resort short templates -------------------------------------
     if len(candidates) < 2:
         candidates = enforce_unique(
             candidates + _rescue_two(tweet_text),
@@ -4147,114 +4361,73 @@ def generate_two_comments_with_providers(
             lang=lang_out,
         )
 
-    # 4) Multi-candidate + self-critic style selection:
-    #    prefer a diverse pair when we have several options.
-    if len(candidates) >= 3:
-        try:
-            pair = pick_two_diverse_text(candidates)
-            if len(pair) == 2:
-                candidates = pair
-        except Exception as e:
-            logger.warning("pick_two_diverse_text failed: %s", e)
+    if len(candidates) < 2:
+        raise CrownTALKError("Could not generate two comments")
 
-    # 5) Pro KOL rewrite (optional, only if enabled)
+    # Ensure we only keep two, with diversity pairing
+    if len(candidates) > 2:
+        candidates = pick_two_diverse_text(candidates)
+
+    base_pair = candidates[:2]
+
+    # --- 4) Optional Pro KOL rewrite ----------------------------------------
+    final_pair = base_pair[:]
     if PRO_KOL_REWRITE:
         try:
-            needs = (
-                len(candidates) < 2
-                or (PRO_KOL_STRICT and any(not pro_kol_ok(c, tweet_text) for c in candidates))
-                or (len(candidates) == 2 and _pair_too_similar(candidates[0], candidates[1]))
-                or (len(candidates) == 2 and candidates[0].split()[0].lower() == candidates[1].split()[0].lower())
-            )
-            if needs:
-                improved = pro_kol_rewrite_pair(tweet_text, author, candidates)
-                if improved and len(improved) >= 2:
-                    candidates = improved[:2]
-        except Exception as e:
-            logger.warning("pro rewrite failed: %s", e)
+            rewritten = pro_kol_rewrite_pair(tweet_text, author, base_pair)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("pro_kol_rewrite_pair failed: %s", e)
+            rewritten = None
 
-    # final hard guarantee: two strings
-    candidates = [c for c in candidates if c][:2]
-    if len(candidates) < 2:
-        candidates = (_rescue_two(tweet_text) + candidates)[:2]
+        if rewritten and len(rewritten) == 2:
+            final_pair = rewritten
 
-    # 6) Determine reaction setup for final formatting
-    comment_reactions: list[str] = []
-    delays: list[int] = []
-    script = "latn"
-    topic = sentiment = None
-    heat = None
-    fam_level = None
-    schedule_pressure = None
-    skip_recommended = False
-
+    # --- 5) Optional CT slang injection (late-night/weekend + banter etc.) ---
+    ct_vibe = None
     if isinstance(plan, dict):
-        comment_reactions = list(plan.get("comment_reactions") or [])
-        delays = list(plan.get("delays") or [])
-        script = plan.get("script") or "latn"
-        topic = plan.get("topic")
-        sentiment = plan.get("sentiment")
-        heat = plan.get("heat")
-        fam = plan.get("familiarity") or {}
-        fam_level = fam.get("level")
-        schedule_pressure = plan.get("schedule_pressure")
-        skip_recommended = bool(plan.get("skip_recommended"))
+        ct_vibe = plan.get("ct_vibe")
 
-    # 7) Final trimming / formatting pass (length + emoji rules per reaction)
-    processed: list[str] = []
-    for idx, c in enumerate(candidates):
-        reaction = comment_reactions[idx] if idx < len(comment_reactions) else None
-        processed.append(
-            postprocess_comment_with_reaction(c, "llm", reaction, script=script)
+    reactions = (plan or {}).get("comment_reactions") or []
+    processed_texts: list[str] = []
+    for idx, text in enumerate(final_pair):
+        reaction_kind = reactions[idx] if idx < len(reactions) else None
+        text = maybe_inject_ct_slang(
+            text,
+            reaction_kind=reaction_kind,
+            ct_vibe=ct_vibe,
         )
+        processed_texts.append(text)
 
-    # 8) Register pacing + familiarity AFTER successful generation
-    try:
-        _register_reaction_timestamp()
-    except Exception:
-        pass
-    try:
-        bump_author_familiarity(handle)
-    except Exception:
-        pass
+    final_pair = processed_texts
 
-    # 9) Build structured response with metadata for each comment
+    # --- 6) Build structured outputs with thread tagging ---------------------
+    delays = (plan or {}).get("delays") or []
+    thread_flag = bool(THREAD_PAIR_MODE)
     out: List[Dict[str, Any]] = []
-    for idx, txt in enumerate(processed[:2]):
-        reaction = comment_reactions[idx] if idx < len(comment_reactions) else None
-        delay = delays[idx] if idx < len(delays) else None
 
-        meta = {
-            "reaction": reaction,
-            "delay_sec": delay,
-            "topic": topic,
-            "sentiment": sentiment,
-            "heat": heat,
-            "familiarity_level": fam_level,
-            "schedule_pressure": schedule_pressure,
-            "script": script,
-            "skip_recommended": skip_recommended,
+    for idx, text in enumerate(final_pair):
+        reaction_kind = reactions[idx] if idx < len(reactions) else None
+        delay_sec = delays[idx] if idx < len(delays) else None
+
+        item: Dict[str, Any] = {
+            "lang": lang_out,
+            "text": text,
+            "reaction": reaction_kind,
+            "delay_sec": delay_sec,
+            "mode": guess_mode(text),
+            "thread_pair": thread_flag,   # 2.1: tag the pair as 'thread' from backend
+            "thread_index": idx,
         }
-
-        item: Dict[str, Any] = {"lang": lang_out, "text": txt}
-        if reaction:
-            item["reaction"] = reaction
-        if delay is not None:
-            try:
-                item["delay_sec"] = int(delay)
-            except Exception:
-                item["delay_sec"] = delay
-        if skip_recommended:
-            item["skip_recommended"] = True
-        item["meta"] = meta
+        # #2 is explicitly a follow-up in thread_pair mode
+        if thread_flag and idx == 1:
+            item["follow_up"] = True
         out.append(item)
 
-    # Guarantee exactly two items
-    if len(out) == 1:
-        out.append(out[0])
+    # Safety: always exactly two items
+    if len(out) != 2:
+        raise CrownTALKError("internal: expected exactly two comments")
 
-    return out[:2]
-
+    return out
 
 
 # ------------------------------------------------------------------------------
