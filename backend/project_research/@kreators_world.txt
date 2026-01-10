@@ -1,0 +1,201 @@
+Kreators World (kreators.world) — Deep Dive (All Angles)
+Generated: 2026-01-10
+
+NOTE ON SOURCE ACCESS
+- The main website (kreators.world) blocks some automated fetches (HTTP 403) in this environment, so I relied on: (a) search-engine cached extracts of key pages, (b) the project’s Linktree, (c) the project’s X profile via a public mirror (Muskviewer), (d) Telegram preview pages, and (e) other public references. Where something couldn’t be directly verified from primary pages, I clearly mark it as “unconfirmed / needs verification.”
+
+======================================================================
+1) What the project is (plain-English)
+======================================================================
+Kreators World is a Web3-oriented “KOL / creator marketing” platform that connects crypto projects (brands) with vetted creators (KOLs) to run social campaigns—primarily around X/Twitter. It positions itself as:
+- A marketplace and workflow tool for brands to launch influencer campaigns.
+- A creator monetization layer where creators complete campaign tasks and earn rewards.
+- An AI/ML layer that helps brands select KOLs and plan campaigns and helps the platform score/forecast campaign performance.
+
+A distinguishing angle in the project’s public messaging:
+- Payments are described as “dripping USDC on Base directly into your wallet” (USDC payouts on Base L2), implying payouts happen on-chain.
+
+======================================================================
+2) Who it’s for
+======================================================================
+For Web3 brands / projects
+- Run campaigns to increase visibility, impressions, and engagement.
+- Source KOLs quickly and (per positioning) reduce middlemen.
+
+For creators / KOLs
+- Join as a “Kreator.”
+- Participate in verified campaigns and earn rewards (described as USDC on Base, and also “tokens through social engagement” in site copy).
+
+======================================================================
+3) Product surface (what users see)
+======================================================================
+Public site navigation (as shown in cached extracts) includes:
+- Campaigns
+- K-rank
+- LB (leaderboard)
+- Discover KOLs
+- For Creators
+- For Brands
+- Dashboard
+- Technology / ML
+- How It Works
+- Company / About
+- Privacy / Terms
+
+3.1 Campaigns
+- The “Campaigns” page is intended to show active blockchain marketing campaigns and let creators earn via social engagement.
+- Cached extracts show the page sometimes returns an error loading campaigns (suggesting the frontend depends on an API response).
+
+3.2 K-rank + Leaderboard (LB)
+- These appear to be ranking/leaderboard surfaces, likely used to measure creator performance and/or campaign contribution. (Details not fully visible from accessible sources—needs direct in-app inspection.)
+
+3.3 Discover KOLs
+- Suggests a searchable creator directory for brands to find and shortlist creators.
+
+3.4 Dashboard (auth-gated)
+- The dashboard requires sign-in and likely contains:
+  - Campaign creation flows (for brands)
+  - Campaign participation/task submission (for creators)
+  - Wallet/payout configuration
+  - Analytics / performance reporting
+
+======================================================================
+4) “AI Campaign Agents” (automation angle)
+======================================================================
+The homepage cached extract references “AI Campaign Agents” and pitches:
+- Let AI create a campaign strategy,
+- Source top KOLs,
+- Monitor performance automatically.
+
+This implies a roadmap / current feature that resembles:
+- Automated campaign brief generation
+- Automated creator shortlisting and outreach
+- Automated monitoring and reporting
+
+======================================================================
+5) ML / Scoring & Selection (the “tech” claim)
+======================================================================
+A cached extract from the Technology/ML section claims:
+- “Our proprietary ensemble of 5 ML models”
+- Analyzing “35+ factors including sentiment, engagement patterns, content quality, and historical performance”
+- Producing “confidence-scored predictions” with “95%+ accuracy”
+
+Important due diligence note:
+- The “95%+ accuracy” claim is marketing unless there is a published methodology (test sets, evaluation window, definition of accuracy, etc.). Ask the team for:
+  - What is being predicted (engagement? conversions? ROI?)
+  - How they label outcomes
+  - How accuracy is measured (AUC, MAPE, etc.)
+
+======================================================================
+6) Reward / payout system (creator economics)
+======================================================================
+6.1 Fair Reward System (site claim)
+The “How it works” page (cached extract) frames rewards as:
+- Transparent
+- Fair
+- Performance-based
+- “Every kreator deserves to know exactly how their earnings are calculated.”
+
+6.2 USDC on Base (X bio claim)
+The project’s X profile (via public mirror) states:
+- They “drip USDC on Base, directly into your wallet.”
+
+So the platform appears to align with:
+- On-chain payouts in USDC on Base (L2), likely to reduce friction and make payouts fast/trackable.
+
+6.3 Tokens vs USDC (possible ambiguity)
+Some site copy also says “Earn tokens through social media engagement.”
+This could mean:
+- Some campaigns pay in project tokens, while the platform itself pays USDC for certain tasks.
+- Or “tokens” is generic marketing language for rewards.
+
+Recommendation:
+- Validate payout types by checking the dashboard payout screen, recent campaign terms, and on-chain payout transactions (Base explorer links).
+
+======================================================================
+7) Traction / metrics (from public social)
+======================================================================
+In a New Year post (via X mirror), the account claims that since launching campaigns in October:
+- Worked with 15 clients
+- Distributed over $25,000 to creators
+- Onboarded 3,000 monthly active users
+- Generated 11.1M+ impressions
+
+Treat these as self-reported metrics until independently verified (e.g., campaign list + payout proofs + analytics screenshots).
+
+======================================================================
+8) Community / distribution channels
+======================================================================
+- Linktree: positions Kreators as an “AI powered KOL campaign creation tool” connecting Web3 brands to KOLs.
+- Telegram: public preview indicates an official group described as “a space dedicated to creators to help drive growth across X campaigns.”
+- YouTube: a short promo video claims “Connect to over 1500 KOLs for free” (needs verification in-product).
+
+======================================================================
+9) Competitive landscape (how it compares)
+======================================================================
+Category: Web3 influencer/KOL campaign platforms
+Typical competitors include:
+- KOL marketplaces / agencies (often Web2 style with manual matching)
+- Web3 campaign platforms (task boards, “earn for posts” systems)
+- Social incentive products on Base/Solana that pay creators
+
+Likely differentiation levers for Kreators:
+- AI-based creator selection and campaign automation (“AI Campaign Agents”)
+- On-chain USDC payouts on Base
+- Ranking/leaderboard layers (K-rank/LB) to measure performance
+
+======================================================================
+10) Risks & due diligence checklist (important)
+======================================================================
+A) Transparency & accuracy of ML claims
+- Ask for evaluation methodology behind “95%+ accuracy” and what KPI it predicts.
+
+B) Payout proofs and fraud prevention
+- How does Kreators verify that a creator actually performed tasks (posts, engagement quality, link clicks)?
+- Anti-sybil / anti-bot mechanisms: account age, follower integrity scoring, content originality checks, etc.
+
+C) Legal / compliance
+- Terms/Privacy exist on the site but were not directly accessible here due to anti-bot measures.
+- If you plan to onboard brands, confirm:
+  - Payment terms, dispute policy, refund rules
+  - Data usage policy (creator data / social graph)
+  - Jurisdiction, entity name, and contact methods
+
+D) “Token” confusion
+There is a Solana token labeled “Kreators” on Solscan with a 1B supply and “pump.fun” tag. This may be unrelated to the Kreators World platform.
+Do NOT assume it is the platform’s token unless the team explicitly confirms the mint address.
+
+======================================================================
+11) How to evaluate quickly (practical steps)
+======================================================================
+For brands
+1) Try to create a campaign:
+   - Is there a campaign brief builder?
+   - Can you define deliverables, timeline, payout, and tracking?
+2) Check creator discovery:
+   - Can you filter by niche, engagement, geography, and quality metrics?
+3) Check reporting:
+   - Are impressions/engagement tracked automatically?
+   - Are there proofs (links to posts, snapshots, verifications)?
+4) Confirm payouts:
+   - USDC on Base? Any escrow? Any platform fees?
+
+For creators
+1) Sign up and connect your X account.
+2) Look at campaign terms and rules.
+3) Track how rewards are computed (performance-based formula).
+4) Verify payouts via your wallet and on Base explorer links.
+
+======================================================================
+12) Primary Sources Used
+======================================================================
+Official
+- Website: https://www.kreators.world/
+- X: https://x.com/kreators_world
+- Linktree: https://linktr.ee/kreatorsworld
+- Telegram: https://t.me/Kreators_world
+
+Public mirrors / third-party references
+- X mirror: https://www.muskviewer.com/kreators_world
+- YouTube promo snippet (crawl): https://www.youtube.com/watch?v=d0ZM9uvRCaM
+- Solscan token listing (possible unrelated): https://solscan.io/token/4U9L25NuLMJXtrTxDT9atA7UxhXY2ZDFzun7pa2Zpump
