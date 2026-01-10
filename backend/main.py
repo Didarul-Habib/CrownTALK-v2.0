@@ -214,6 +214,15 @@ REQUEST_THREAD_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_THREAD_CTX"
 REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_CTX", default=None)
 REQUEST_VOICE: ContextVar[Optional[dict]] = ContextVar("REQUEST_VOICE", default=None)
 
+REQUEST_REACTION_PLAN: ContextVar[Optional[dict]] = ContextVar("REQUEST_REACTION_PLAN", default=None)
+
+def set_request_reaction_plan(plan: Optional[dict]) -> None:
+    REQUEST_REACTION_PLAN.set(plan)
+
+def current_reaction_plan() -> Optional[dict]:
+    return REQUEST_REACTION_PLAN.get(None)
+
+
 # In-memory caches (process-local)
 _RESEARCH_CACHE: dict[str, tuple[float, dict]] = {}
 _DEFI_LLAMA_PROTOCOLS: Optional[tuple[float, list[dict]]] = None
@@ -667,6 +676,12 @@ def _do_init() -> None:
                 ngram TEXT PRIMARY KEY,
                 created_at INTEGER
             );
+             -- Author familiarity (per handle)
+            CREATE TABLE IF NOT EXISTS author_familiarity(
+                handle TEXT PRIMARY KEY,
+                reply_count INTEGER NOT NULL DEFAULT 0,
+                last_replied_at INTEGER
+            );
             CREATE TABLE IF NOT EXISTS comments_templates_seen(
                 thash TEXT PRIMARY KEY,
                 created_at INTEGER
@@ -1081,6 +1096,32 @@ def postprocess_comment(text: str, source: str) -> str:
     # Offline/template: shorter is fine
     return smart_trim_words(text, 6, 15, soft_max=18)
 
+def postprocess_comment_with_reaction(
+    text: str,
+    source: str,
+    reaction: Optional[str],
+    script: str = "latn",
+) -> str:
+    """
+    Wrapper over smart_trim_words that:
+    - enforces per-reaction word ranges
+    - strips emojis when not allowed
+    """
+    text = _clean_spaces(text)
+    cfg = REACTION_CONFIG.get(reaction or "", {})
+    min_w = cfg.get("min_words", 6)
+    max_w = cfg.get("max_words", 18)
+    soft_max = cfg.get("soft_max", max_w + 4)
+    allow_emojis = cfg.get("allow_emojis", False)
+
+    if not allow_emojis:
+        try:
+            text = EMOJI_PATTERN.sub("", text)
+        except Exception:
+            pass
+
+    # For now we treat all scripts the same here; CJK already handled elsewhere.
+    return smart_trim_words(text, min_words=min_w, max_words=max_w, soft_max=soft_max)
 
 
 # ------------------------------------------------------------------------------
@@ -1329,6 +1370,264 @@ def detect_sentiment(text: str) -> str:
     if any(k in t for k in bear):
         return "bearish"
     return "neutral"
+
+# ------------------------------------------------------------------------------
+# Reaction engine: types, profiles, heat score, familiarity & pacing
+# ------------------------------------------------------------------------------
+
+REACTION_CONFIG: dict[str, dict] = {
+    "agree_plus": {
+        "min_words": 6,
+        "max_words": 20,
+        "soft_max": 24,
+        "allow_emojis": True,
+        "delay_range": (20, 80),
+    },
+    "question": {
+        "min_words": 7,
+        "max_words": 26,
+        "soft_max": 30,
+        "allow_emojis": False,
+        "delay_range": (40, 120),
+    },
+    "banter": {
+        "min_words": 5,
+        "max_words": 18,
+        "soft_max": 22,
+        "allow_emojis": True,
+        "delay_range": (15, 60),
+    },
+    "soft_pushback": {
+        "min_words": 8,
+        "max_words": 28,
+        "soft_max": 32,
+        "allow_emojis": False,
+        "delay_range": (50, 150),
+    },
+    "congrats": {
+        "min_words": 6,
+        "max_words": 20,
+        "soft_max": 24,
+        "allow_emojis": True,
+        "delay_range": (20, 90),
+    },
+    # "sit_out" is only used as a skip suggestion
+    "sit_out": {
+        "min_words": 0,
+        "max_words": 0,
+        "soft_max": 0,
+        "allow_emojis": False,
+        "delay_range": (0, 0),
+    },
+}
+
+REACTION_MATRIX: dict[str, dict] = {
+    "greeting": {
+        "bullish": ["congrats", "agree_plus", "banter"],
+        "neutral": ["agree_plus", "banter"],
+        "bearish": ["question"],
+    },
+    "giveaway": {
+        "bullish": ["agree_plus", "banter"],
+        "neutral": ["agree_plus"],
+        "bearish": ["question"],
+    },
+    "chart": {
+        "bullish": ["agree_plus", "question"],
+        "neutral": ["question"],
+        "bearish": ["soft_pushback", "question"],
+    },
+    "complaint": {
+        "bullish": ["question"],
+        "neutral": ["question", "soft_pushback"],
+        "bearish": ["soft_pushback", "question"],
+    },
+    "announcement": {
+        "bullish": ["congrats", "agree_plus"],
+        "neutral": ["agree_plus", "question"],
+        "bearish": ["soft_pushback", "question"],
+    },
+    "meme": {
+        "bullish": ["banter", "agree_plus"],
+        "neutral": ["banter"],
+        "bearish": ["banter", "soft_pushback"],
+    },
+    "thread": {
+        "bullish": ["agree_plus", "question"],
+        "neutral": ["question"],
+        "bearish": ["soft_pushback", "question"],
+    },
+    "generic": {
+        "bullish": ["agree_plus", "congrats"],
+        "neutral": ["agree_plus", "question"],
+        "bearish": ["soft_pushback", "question"],
+    },
+}
+
+# words that make a tweet "hot" (drama/politics/scam vibes)
+HEAT_SOFT = [
+    "politics", "election", "government", "religion", "religious", "war", "conflict",
+    "racist", "sexist", "hate", "cancel", "drama", "exposed", "calling out", "toxic",
+]
+HEAT_SCAM = [
+    "send me", "double your", "guaranteed profit", "risk free", "seed phrase",
+    "private key", "giveaway winner dm me", "investment scheme",
+]
+
+# simple rate window for pacing hints (not hard enforcement)
+REACTION_RATE_WINDOW_SEC = 300  # 5 minutes
+REACTION_RATE_MAX = 80          # “normal” max comments in that window
+_RECENT_REACTIONS: list[float] = []
+
+def _reaction_pressure_now() -> float:
+    now = time.time()
+    global _RECENT_REACTIONS
+    _RECENT_REACTIONS = [ts for ts in _RECENT_REACTIONS if now - ts < REACTION_RATE_WINDOW_SEC]
+    return len(_RECENT_REACTIONS) / max(1, REACTION_RATE_MAX)
+
+def _register_reaction_timestamp() -> float:
+    ts = time.time()
+    _RECENT_REACTIONS.append(ts)
+    _reaction_pressure_now()
+    return ts
+
+def heat_score(text: str) -> int:
+    t = (text or "").lower()
+    score = 0
+    if any(w in t for w in HEAT_SOFT):
+        score += 1
+    if any(w in t for w in HEAT_SCAM):
+        score += 2
+    return score
+
+def _normalize_handle(handle: Optional[str]) -> Optional[str]:
+    if not handle:
+        return None
+    h = handle.strip().lower()
+    h = h.lstrip("@")
+    return h or None
+
+def get_author_familiarity(handle: Optional[str]) -> dict:
+    """
+    Lightweight per-author familiarity:
+    -> level: new / warm / regular / unknown
+    """
+    h = _normalize_handle(handle)
+    if not h:
+        return {"handle": None, "reply_count": 0, "last_replied_at": None, "level": "unknown"}
+    try:
+        with get_conn() as c:
+            row = c.execute(
+                "SELECT reply_count, last_replied_at FROM author_familiarity WHERE handle=?",
+                (h,),
+            ).fetchone()
+    except Exception:
+        row = None
+    reply_count = int(row[0]) if row else 0
+    last_ts = int(row[1]) if row and row[1] is not None else None
+    if reply_count >= 20:
+        level = "regular"
+    elif reply_count >= 5:
+        level = "warm"
+    elif reply_count >= 1:
+        level = "new"
+    else:
+        level = "new"
+    return {"handle": h, "reply_count": reply_count, "last_replied_at": last_ts, "level": level}
+
+def bump_author_familiarity(handle: Optional[str]) -> None:
+    h = _normalize_handle(handle)
+    if not h:
+        return
+    ts = now_ts()
+    try:
+        with get_conn() as c:
+            c.execute(
+                "INSERT INTO author_familiarity(handle, reply_count, last_replied_at) "
+                "VALUES (?, 1, ?) "
+                "ON CONFLICT(handle) DO UPDATE SET reply_count = reply_count + 1, last_replied_at = excluded.last_replied_at",
+                (h, ts),
+            )
+    except Exception:
+        return
+
+def build_reaction_plan(tweet_text: str, handle: Optional[str], lang_hint: Optional[str] = None) -> dict:
+    """
+    Decide:
+    - reaction types for comment #1 and #2
+    - whether we should *recommend* skipping
+    - per-comment delay ranges (for human timing)
+    """
+    topic = detect_topic(tweet_text or "")
+    sentiment = detect_sentiment(tweet_text or "")
+    heat = heat_score(tweet_text or "")
+    fam = get_author_familiarity(handle)
+
+    script = "latn"
+    try:
+        prof = build_context_profile(tweet_text or "", url=None, tweet_author=None, handle=handle)
+        script = prof.get("script") or "latn"
+    except Exception:
+        pass
+
+    topic_map = REACTION_MATRIX.get(topic) or REACTION_MATRIX["generic"]
+    bucket = topic_map.get(sentiment) or topic_map.get("neutral") or ["agree_plus", "question"]
+    candidates = list(bucket)
+
+    level = fam.get("level") or "unknown"
+    if level == "new":
+        # be safer with new accounts; no banter/pushback
+        candidates = [r for r in candidates if r not in ("banter", "soft_pushback")]
+        if not candidates:
+            candidates = ["agree_plus", "question"]
+    elif level == "warm":
+        # allow some pushback, but slightly rarer
+        if "soft_pushback" in candidates and random.random() < 0.4:
+            candidates.remove("soft_pushback")
+
+    if not candidates:
+        candidates = ["agree_plus", "question"]
+
+    r1 = random.choice(candidates)
+    r2 = "question" if "question" in candidates else random.choice(candidates)
+    if r2 == r1 and len(candidates) > 1:
+        alt = [c for c in candidates if c != r1]
+        if alt:
+            r2 = random.choice(alt)
+
+    # skip suggestion logic
+    skip_recommended = False
+    pressure = _reaction_pressure_now()
+    if heat >= 3 and level == "new":
+        skip_recommended = True
+    if pressure > 1.2:  # too many recent comments in this window
+        skip_recommended = True
+
+    # per-comment human timing
+    delays: list[int] = []
+    for r in (r1, r2):
+        cfg = REACTION_CONFIG.get(r, {})
+        dmin, dmax = cfg.get("delay_range", (20, 80))
+        if dmax <= dmin:
+            delays.append(dmin)
+        else:
+            delays.append(random.randint(dmin, dmax))
+
+    lang_effective = lang_hint or ("bn" if script == "bn" else "en")
+
+    return {
+        "topic": topic,
+        "sentiment": sentiment,
+        "heat": heat,
+        "familiarity": fam,
+        "comment_reactions": [r1, r2],
+        "delays": delays,
+        "skip_recommended": skip_recommended,
+        "script": script,
+        "lang_hint": lang_effective,
+        "schedule_pressure": pressure,
+    }
+
 
 def extract_keywords(text: str) -> list[str]:
     cleaned = re.sub(r"https?://\S+", "", text or "")
@@ -2280,6 +2579,7 @@ def _build_comment_user_prompt(
     - raw tweet text
     - optional structured analysis (tone, sarcasm, sentiment, type)
     - extra context from vx / research (thread, author, etc.)
+    - optional reaction plan (reaction types + diversity)
     """
     tweet_text = (tweet_text or "").strip()
 
@@ -2291,11 +2591,55 @@ def _build_comment_user_prompt(
     if analysis is not None:
         analysis_snippet = analysis.to_prompt_fragment()
 
+    # NEW: reaction plan snippet for the LLM
+    reaction_snippet = ""
+    plan = current_reaction_plan()
+    if isinstance(plan, dict):
+        reactions = plan.get("comment_reactions") or []
+        topic = plan.get("topic")
+        sentiment = plan.get("sentiment")
+        heat = plan.get("heat")
+        fam = plan.get("familiarity") or {}
+        r1 = reactions[0] if len(reactions) >= 1 else None
+        r2 = reactions[1] if len(reactions) >= 2 else None
+
+        bits = ["Reaction plan:"]
+        if topic:
+            bits.append(f"- Detected topic: {topic}")
+        if sentiment:
+            bits.append(f"- Detected sentiment: {sentiment}")
+        if heat is not None:
+            bits.append(f"- Heat score (0-3+): {heat}")
+        level = fam.get("level")
+        if level:
+            bits.append(f"- Familiarity with author: {level}")
+
+        if r1 or r2:
+            bits.append(
+                "- Comment #1 should follow reaction type: "
+                f"{(r1 or 'agree_plus').replace('_', ' ')}."
+            )
+            bits.append(
+                "- Comment #2 should follow reaction type: "
+                f"{(r2 or 'question').replace('_', ' ')}."
+            )
+            bits.append(
+                "Reaction type meanings:\n"
+                "- agree_plus: you agree or resonate and add one concrete detail.\n"
+                "- question: you ask one sharp question, no more.\n"
+                "- banter: playful CT banter, light memes, still respectful.\n"
+                "- soft_pushback: polite doubt or concern, no aggression.\n"
+                "- congrats: celebrate a win or milestone without fanboy hype.\n"
+            )
+
+        reaction_snippet = "\n".join(bits)
+
     parts: list[str] = []
 
     parts.append(
         "Given the following tweet from X / Twitter, generate exactly TWO reply comments.\n"
-        "You must:- Understand the tweet's intent, emotion, and possible sarcasm.\n"
+        "You must:\n"
+        "- Understand the tweet's intent, emotion, and possible sarcasm.\n"
         "- Match the tone (funny, serious, degen, wholesome, etc.) but keep it respectful.\n"
         "- If it's a GM / GN / greetings post, you must also greet back.\n"
         "- If it's a meme or image-heavy shitpost, lean playful / witty.\n"
@@ -2316,6 +2660,9 @@ def _build_comment_user_prompt(
 
     if variety_snippet:
         parts.append(variety_snippet)
+
+    if reaction_snippet:
+        parts.append(reaction_snippet)
 
     parts.append(
         "Now write TWO different reply comments, numbered 1 and 2.\n"
@@ -3721,6 +4068,8 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
 
     return None
 
+MAX_CANDIDATES_FOR_SELECTION = int(os.getenv("CROWNTALK_MAX_CANDIDATES", "6"))
+
 def generate_two_comments_with_providers(
     tweet_text: str,
     author: Optional[str],
@@ -3730,13 +4079,26 @@ def generate_two_comments_with_providers(
 ) -> List[Dict[str, Any]]:
     """
     Working cascade:
-    - Try enabled providers in random order
-    - Enforce constraints + uniqueness
-    - Fallback to offline
-    - Always return exactly two dicts: [{"lang": "...", "text": "..."}, ...]
+    - Build a reaction plan (reaction types + delays + skip hints).
+    - Try enabled providers in random order, collecting multiple candidates.
+    - Run a small self-critic / selection step to pick a diverse pair.
+    - Fallback to offline + rescue.
+    - Optional Pro KOL rewrite.
+    - Always return exactly two dicts:
+        [{"lang": "...", "text": "...", "reaction": "...", ...}, ...]
     """
     url = url or ""
     lang_out = lang or "en"
+
+    # Build + store reaction plan for this tweet so LLM paths can see it
+    try:
+        plan = build_reaction_plan(tweet_text, handle, lang_hint=lang)
+    except Exception:
+        plan = None
+    try:
+        set_request_reaction_plan(plan)
+    except Exception:
+        pass
 
     candidates: list[str] = []
 
@@ -3744,28 +4106,58 @@ def generate_two_comments_with_providers(
     if not CROWNTALK_LLM_ORDER:
         random.shuffle(providers)
 
+    # 1) Collect candidates from all enabled providers
     for name, fn in providers:
         try:
             # All provider fns accept (tweet_text, author, url=...)
             more = fn(tweet_text, author, url=url)
             if more:
-                candidates = enforce_unique(candidates + more, tweet_text=tweet_text, url=url, lang=lang_out)
+                candidates = enforce_unique(
+                    candidates + more,
+                    tweet_text=tweet_text,
+                    url=url,
+                    lang=lang_out,
+                )
         except Exception as e:
             logger.warning("%s provider failed: %s", name, e)
 
-        if len(candidates) >= 2:
+        if len(candidates) >= MAX_CANDIDATES_FOR_SELECTION:
             break
 
+    # 2) Offline/template fallback if we still don't have enough
     if len(candidates) < 2:
         try:
-            candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+            more = safe_offline_two_comments(tweet_text, author)
+            if more:
+                candidates = enforce_unique(
+                    candidates + more,
+                    tweet_text=tweet_text,
+                    url=url,
+                    lang=lang_out,
+                )
         except Exception as e:
             logger.warning("offline fallback failed: %s", e)
 
+    # 3) Last-resort short templates
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + _rescue_two(tweet_text), tweet_text=tweet_text)
+        candidates = enforce_unique(
+            candidates + _rescue_two(tweet_text),
+            tweet_text=tweet_text,
+            url=url,
+            lang=lang_out,
+        )
 
-    # Pro KOL rewrite (optional, only if enabled)
+    # 4) Multi-candidate + self-critic style selection:
+    #    prefer a diverse pair when we have several options.
+    if len(candidates) >= 3:
+        try:
+            pair = pick_two_diverse_text(candidates)
+            if len(pair) == 2:
+                candidates = pair
+        except Exception as e:
+            logger.warning("pick_two_diverse_text failed: %s", e)
+
+    # 5) Pro KOL rewrite (optional, only if enabled)
     if PRO_KOL_REWRITE:
         try:
             needs = (
@@ -3786,10 +4178,83 @@ def generate_two_comments_with_providers(
     if len(candidates) < 2:
         candidates = (_rescue_two(tweet_text) + candidates)[:2]
 
-    # Final trimming / formatting pass
-    processed = [postprocess_comment(c, "llm") for c in candidates]
+    # 6) Determine reaction setup for final formatting
+    comment_reactions: list[str] = []
+    delays: list[int] = []
+    script = "latn"
+    topic = sentiment = None
+    heat = None
+    fam_level = None
+    schedule_pressure = None
+    skip_recommended = False
 
-    return [{"lang": lang_out, "text": processed[0]}, {"lang": lang_out, "text": processed[1]}]
+    if isinstance(plan, dict):
+        comment_reactions = list(plan.get("comment_reactions") or [])
+        delays = list(plan.get("delays") or [])
+        script = plan.get("script") or "latn"
+        topic = plan.get("topic")
+        sentiment = plan.get("sentiment")
+        heat = plan.get("heat")
+        fam = plan.get("familiarity") or {}
+        fam_level = fam.get("level")
+        schedule_pressure = plan.get("schedule_pressure")
+        skip_recommended = bool(plan.get("skip_recommended"))
+
+    # 7) Final trimming / formatting pass (length + emoji rules per reaction)
+    processed: list[str] = []
+    for idx, c in enumerate(candidates):
+        reaction = comment_reactions[idx] if idx < len(comment_reactions) else None
+        processed.append(
+            postprocess_comment_with_reaction(c, "llm", reaction, script=script)
+        )
+
+    # 8) Register pacing + familiarity AFTER successful generation
+    try:
+        _register_reaction_timestamp()
+    except Exception:
+        pass
+    try:
+        bump_author_familiarity(handle)
+    except Exception:
+        pass
+
+    # 9) Build structured response with metadata for each comment
+    out: List[Dict[str, Any]] = []
+    for idx, txt in enumerate(processed[:2]):
+        reaction = comment_reactions[idx] if idx < len(comment_reactions) else None
+        delay = delays[idx] if idx < len(delays) else None
+
+        meta = {
+            "reaction": reaction,
+            "delay_sec": delay,
+            "topic": topic,
+            "sentiment": sentiment,
+            "heat": heat,
+            "familiarity_level": fam_level,
+            "schedule_pressure": schedule_pressure,
+            "script": script,
+            "skip_recommended": skip_recommended,
+        }
+
+        item: Dict[str, Any] = {"lang": lang_out, "text": txt}
+        if reaction:
+            item["reaction"] = reaction
+        if delay is not None:
+            try:
+                item["delay_sec"] = int(delay)
+            except Exception:
+                item["delay_sec"] = delay
+        if skip_recommended:
+            item["skip_recommended"] = True
+        item["meta"] = meta
+        out.append(item)
+
+    # Guarantee exactly two items
+    if len(out) == 1:
+        out.append(out[0])
+
+    return out[:2]
+
 
 
 # ------------------------------------------------------------------------------
