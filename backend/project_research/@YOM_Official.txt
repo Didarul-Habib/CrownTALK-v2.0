@@ -1,0 +1,299 @@
+YOM (yom.net) — Deep-Dive Research Report
+Generated: 2026-01-10 (Asia/Dhaka)
+
+NOTE ON SOURCES & DATES
+- This report is built from YOM’s official website and documentation (GitBook), plus reputable third‑party sources (e.g., TrustSwap, Outlier Ventures).
+- Some time-sensitive items (like TGE/IDO dates) appear inconsistent across sources. Where relevant, the report cites both the “as announced” and “later updated” statements and flags uncertainty.
+
+===============================================================================
+1) Executive Summary (What YOM is)
+===============================================================================
+YOM positions itself as a decentralized cloud gaming infrastructure (a DePIN) that turns distributed GPU capacity (e.g., community gaming PCs and other providers) into a network that can stream high-end games and 3D experiences to any device via the browser (pixel streaming / “instant play”). 
+
+Core thesis:
+- Cloud gaming is expensive and latency-sensitive when done via centralized datacenters.
+- YOM tries to reduce cost and improve reach by orchestrating a distributed edge network of GPUs closer to players, and by making distribution “link/embed-based” (like embedding a video).
+
+High-level value props (per YOM):
+- “Instant Play” (1-click, no installs) across channels (web embeds, Telegram/Discord, etc.).
+- “Server-less” distribution: the network allocates GPUs/nodes dynamically, so publishers don’t pre-reserve instances.
+- Lower cost vs centralized streaming, with session-based pricing.
+- A tokenized incentives layer to reward operators based on real usage, plus deflationary mechanics.
+
+Primary sources:
+- YOM product site: https://yom.net/product
+- YOM Docs (overview / solution / tokenomics): https://docs.yom.net/
+
+===============================================================================
+2) The Problem YOM Claims to Solve
+===============================================================================
+2.1 Centralized cloud gaming constraints
+- Centralized cloud gaming requires large capital expenditure and high operational costs.
+- Latency is a major constraint; far-away datacenters can create high input lag and poor experience.
+
+YOM’s framing (docs + marketing):
+- Cloud gaming should feel “console-like” (low latency, high FPS).
+- Distribution should be as easy as sharing a link (no downloads).
+- Studios should avoid “platform tolls” and distribution gatekeepers.
+
+(See docs overview and “How it works” chapter)
+- https://docs.yom.net/
+- https://docs.yom.net/solution/how-it-works
+
+===============================================================================
+3) YOM’s Product Offering (Publisher / Studio Side)
+===============================================================================
+YOM describes itself as a cloud gaming distribution platform for publishers that makes any game “instant-play” through streaming. 
+
+3.1 “Publish” / deploy flow
+The docs include a “Quick Start” that describes a basic deployment lifecycle:
+- Compile a game build for Linux
+- Publish via YOM’s app (app.yom.net), deploy on network
+- Integrate streams/embeds and handle authentication/events as needed
+Source:
+- Quick Start: https://docs.yom.net/build/quick-start
+
+3.2 Distribution formats & channels
+From YOM’s product page, they emphasize embedding games anywhere and running in multiple channels (Telegram/Discord/Facebook, etc.), with responsive HUDs and easy integration.
+Source:
+- https://yom.net/product
+
+3.3 Pricing model (what studios pay)
+YOM describes session-based pricing (often referenced as ~$0.05 per session, with subscriptions/tiers for analytics/support). The docs FAQ clarifies a model like:
+- $0.05 per session (based on ~10 minutes average session)
+- $89/month base fee for analytics/dashboard access
+Source:
+- FAQ: https://docs.yom.net/about/faq
+- Product page tiers: https://yom.net/product
+
+3.4 “Keep 100% revenue / zero platform fees”
+YOM’s messaging claims developers keep 100% of revenue by bypassing platform fees/tolls, and can self-publish.
+Source:
+- https://yom.net/product
+(Interpretation: this is a distribution + streaming layer; the “100% revenue” claim depends on your monetization stack and where you distribute.)
+
+===============================================================================
+4) YOM’s DePIN / Network Architecture (Operator Side)
+===============================================================================
+4.1 What is a “node” in YOM?
+YOM nodes are machines that can run (host) a single concurrent game session for a player; the game is rendered on the node and streamed to the player in real time.
+Source:
+- Operators: https://docs.yom.net/solution/operators
+
+4.2 HyperOrch scheduler (orchestration layer)
+YOM describes HyperOrch as its orchestration engine that:
+- Collects a “capability vector” from nodes (GPU/CPU/memory/bandwidth/thermal headroom, etc.)
+- Characterizes game workloads by resource footprint
+- Matches players to nodes in real time based on latency + suitability + load
+- Learns from session outcomes to improve placement decisions
+Source:
+- Network: https://docs.yom.net/solution/network
+
+4.3 NodeOS / isolation & ops automation (as described)
+In the network section, YOM describes an operating layer that:
+- Auto-detects hardware and installs signed GPU drivers
+- Performs registration, bandwidth/latency checks, publishes capability vector to the discovery ledger
+- Provides an isolated sandbox for execution (read-only mount of images; GPU pass-through)
+Source:
+- Network: https://docs.yom.net/solution/network
+
+4.4 Rewards model (high-level mechanics)
+YOM emphasizes “real work” and usage-driven rewards vs emissions-only models.
+Key details:
+- Studios/publishers pay for sessions (priced in USD)
+- A distribution key allocates rewards among nodes, network operations, and burns
+- A burn component makes supply deflationary (see tokenomics section)
+
+Sources:
+- Operators: https://docs.yom.net/solution/operators
+- Payout: https://docs.yom.net/solution/payout
+- Blockchain: https://docs.yom.net/solution/blockchain
+
+4.5 Workload and regional differentiation
+YOM describes reward multipliers based on:
+- Workload difficulty (harder games/4K/60FPS etc. consume more resources)
+- Regional differentiation via “regional tokens” (e.g., $yEU, $yCHN) in burn/mint relationship with $YOM, and liquidity pools that support region-specific pricing
+Sources:
+- Payout: https://docs.yom.net/solution/payout
+
+===============================================================================
+5) “NANO” Hardware + Node Licenses + Delegation
+===============================================================================
+5.1 YOM NANO concept (plug-and-play operator product)
+YOM markets “NANO” as a plug-and-play node runner concept to turn a gaming PC into a revenue-generating node setup (their marketing claims potential monthly earning ranges; treat as illustrative, not guaranteed).
+Sources:
+- YOM NANO landing: https://yom.net/nano
+- Docs (earn section): https://docs.yom.net/earn
+
+5.2 Node Licenses (capacity scaling)
+- YOM describes “Node License” NFTs as the right to stream more nodes from a host machine or delegate them to others.
+- Docs state a maximum of 8 licenses per PC (depending on bandwidth and rig performance), and that every NANO starts with 1 free embedded license.
+Source:
+- Node Licenses: https://docs.yom.net/earn/node-licenses
+- Operators: https://docs.yom.net/solution/operators
+
+5.3 NaaS Delegation (Node-as-a-Service)
+For users who don’t want to run hardware themselves, YOM docs describe delegating a Node License to NaaS providers for a monthly fee; rewards depend on provider performance (not risk-free).
+Source:
+- NaaS Delegation: https://docs.yom.net/earn/naas-delegation
+
+5.4 Maximizing payout (behavioral + technical levers)
+YOM suggests operators can optimize earnings by:
+- Increasing node count (more licenses)
+- Increasing node utilization by boosting “XP/reputation” and uptime reliability
+- Being available during high demand periods
+Source:
+- Maximizing Payout: https://docs.yom.net/earn/maximizing-payout
+
+===============================================================================
+6) Token, Chain, and Economic Design
+===============================================================================
+6.1 Chain approach (Avalanche + YOM L1)
+YOM’s docs describe:
+- Built on Avalanche, with plans/positioning around a custom Avalanche-based L1 engineered for edge gaming.
+Source:
+- Blockchain: https://docs.yom.net/solution/blockchain
+
+6.2 Deflationary mechanics and burns
+YOM describes:
+- No new tokens can be minted (strict cap)
+- When someone plays/uses the network, a portion is burned in $YOM and a regional token (e.g., 2.5% + 2.5% for a 5% total burn, per docs)
+Sources:
+- Blockchain: https://docs.yom.net/solution/blockchain
+- Payout: https://docs.yom.net/solution/payout
+
+6.3 Staking vs LP/farming (per docs)
+YOM docs state that because payouts are for compute provided, users cannot “stake” tokens to earn rewards in the same way; instead, holders can provide liquidity in pools and farm rewards.
+Source:
+- Blockchain: https://docs.yom.net/solution/blockchain
+
+6.4 Token allocation snapshot (from YOM docs)
+YOM’s docs list:
+- Total tokens: 250,000,000
+- Home chain: Avalanche (C-Chain / YOM L1)
+- Trading chains via LayerZero: Base, BSC, peaq, Solana, Somnia, Avalanche C-Chain
+- TGE price: 0.1000
+- Initial market cap (excl locked liquidity): $679,645
+Allocation categories include (percentages as in docs):
+- Ecosystem: 22.5%
+- OPEX: 37.5%
+- Community: 27.5%
+- Public Round: 2%
+- Strategic Round: 5%
+- Liquidity pool: 6%
+Source:
+- Token Allocation: https://docs.yom.net/about/token-allocation
+
+6.5 Token launch / TGE timing — conflicting signals
+There are conflicting statements across sources:
+- YOM’s Telegram announcement (Oct 29, 2025) says “TGE set for Dec 9, 2025 on Avalanche”.
+  Source: https://t.me/s/YOM_announcements (post referenced in web snapshot)
+- TrustSwap blog (Nov 20, 2025) says the team chose to postpone the IDO and TGE into Q1 2026, even though the same page also lists prior dates.
+  Source: https://trustswap.com/blog/yom-on-trustswap-launchpad/
+
+Practical guidance:
+- Treat TGE/IDO dates as “subject to change”.
+- Verify on official channels (YOM announcements + launchpad updates).
+
+===============================================================================
+7) Team, Entity, and Partners / Ecosystem
+===============================================================================
+7.1 Team (from YOM’s official team page)
+YOM lists key roles including:
+- Jorrit Velzeboer (CEO)
+- Andrew Pringle (CCO)
+- Jeff Outlaw (CXO)
+- Rohan Solanki (CTO)
+…plus additional engineering/ops members.
+Source:
+- https://yom.net/team
+
+7.2 Corporate entity references
+YOM’s website footer references: “YOM B.V. | YOM UK Ltd.”
+Source:
+- https://yom.net/team (footer)
+
+7.3 Partnerships / ecosystem page
+YOM’s site claims an ecosystem of “leading tech innovators, 30+ game studios, and infrastructure partners”, and lists many logos (studios, alliances, compute providers).
+Source:
+- https://yom.net/team (ecosystem section)
+- https://yom.net/product (ecosystem section)
+
+7.4 Accelerator / VC association
+Outlier Ventures portfolio page references YOM as a DePIN cloud gaming project (note: parts of Outlier’s page may reflect earlier chain positioning, historically mentioning Solana).
+Source:
+- Outlier Ventures portfolio: https://outlierventures.io/portfolio/yom-2/
+
+7.5 Launchpad / fundraising snapshot (public)
+TrustSwap’s blog page (Nov 20, 2025) includes a fundraising/IDO overview (e.g., raise amount $100k) and KYC notes. CryptoRank also reflects a $100k raise figure.
+Sources:
+- TrustSwap: https://trustswap.com/blog/yom-on-trustswap-launchpad/
+- CryptoRank (fundraising insight): https://cryptorank.io/ico/yom-new
+
+===============================================================================
+8) Governance, Reputation, and Programs
+===============================================================================
+8.1 XP / reputation
+YOM docs refer to XP as a soul-bound value representing contributions and engagement. It’s used for:
+- Workload allocation priority
+- Governance participation (DAO)
+- Eligibility for drops/rewards
+Source:
+- FAQ: https://docs.yom.net/about/faq
+- Maximizing payout: https://docs.yom.net/earn/maximizing-payout
+
+8.2 DAO roles
+The FAQ describes roles like Moderators, Commissioners, Cardinals and participation through community engagement.
+Source:
+- FAQ: https://docs.yom.net/about/faq
+
+8.3 Loyalty / quests
+YOM runs a “Loyalty Program” site (quests) indicating airdrop eligibility mechanics.
+Source:
+- https://quests.yom.net/loyalty
+
+===============================================================================
+9) Compliance / Legal Disclaimers
+===============================================================================
+YOM’s docs include a token disclaimer emphasizing that nothing in the materials is legal/financial advice and references “YOM B.V.” and the team.
+Source:
+- Token Disclaimer: https://docs.yom.net/compliancy/token-disclaimer
+
+===============================================================================
+10) Practical Due-Diligence Checklist (Risks, Verification Steps)
+===============================================================================
+If you’re evaluating YOM (as an operator, studio, or investor), consider verifying:
+
+A) Product reality & traction
+- Can you access a live demo or published games running on YOM today?
+- Check app.yom.net deployment flow and whether “instant play” experiences meet the latency/FPS claims.
+- Ask for case studies beyond marketing highlights.
+
+B) Economics
+- Confirm actual session demand and utilization rates for operators (earnings depend on demand).
+- Understand how regional tokens work, where liquidity sits, and what volatility looks like.
+
+C) Token / launch
+- Confirm current contract addresses, supported chains, and official exchange listings ONLY via official channels.
+- Resolve TGE/IDO schedule by checking the latest official announcements.
+
+D) Security / isolation
+- Review how game images are sandboxed, how anti-cheat / abuse prevention works (if applicable), and how operator machines are protected.
+
+E) Legal and compliance
+- Read token disclaimer, terms and privacy policies, and confirm your jurisdictional constraints.
+
+===============================================================================
+11) Official Links (Starting Points)
+===============================================================================
+- Website: https://yom.net/
+- Docs: https://docs.yom.net/
+- App / dashboard: https://app.yom.net/ (linked via YOM site)
+- X (official handle): https://x.com/YOM_Official
+- Telegram announcements: https://t.me/YOM_announcements
+- Telegram community: https://t.me/YOM_community
+- Loyalty / quests: https://quests.yom.net/loyalty
+
+===============================================================================
+End of report
+===============================================================================
