@@ -1,0 +1,206 @@
+ALTURA TRADE (altura.trade) — Deep Dive (multi-angle review)
+Last updated: 2026-01-10 (Asia/Dhaka)
+
+IMPORTANT DISAMBIGUATION
+- This report covers “Altura Trade” at https://www.altura.trade/ (and its docs at https://docs.altura.trade/), a USDT0 vault protocol on Hyperliquid/HyperEVM. citeturn18view0turn23view2
+- There are other unrelated “Altura” entities online (e.g., gaming/NFT marketplace projects). Be careful not to mix them up when researching tickers like “ALU.” citeturn20search21turn22search16
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+1) Project snapshot (what it is, in one page)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Altura positions itself as a non-custodial, multi-strategy yield protocol on Hyperliquid’s HyperEVM: users deposit USDT0, receive vault shares, and the protocol runs strategies “in the background” while an on-chain Price Per Share (PPS) increases as yield is realized. citeturn18view0turn23view2
+
+Key claims & differentiators:
+- “Single multi-strategy vault” where users deposit USDT0 and get vault shares (ownership % of vault). citeturn18view0turn23view2
+- Yield sources framed as diversified/hedged and “not token emissions.” citeturn23view2turn18view1
+- On-chain verifiability: balances, PPS updates, withdrawal queue, and asset flows intended to be observable on-chain. citeturn18view0turn19search2
+- Layered security (oracle controls, access controls, timelocks, withdrawal safeguards) and multiple audits listed. citeturn18view0turn23view1turn26view0
+
+Core primitives (as described in docs):
+- Vault contract
+- Share token (referred to in docs/UX as AVLT shares)
+- Oracle reporter for PPS updates
+- Role-based controls (pausing, governance, strategy execution)
+- Withdrawal queue/epochs for orderly liquidity citeturn19search2turn18view0turn26view0
+
+Official links (user-supplied + discovered):
+- Website: https://www.altura.trade/
+- App: https://app.altura.trade/
+- Docs: https://docs.altura.trade/
+- Audits page: https://docs.altura.trade/audit
+- GitHub org (public): https://github.com/AlturaTrade citeturn18view0turn23view1turn14view0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2) Product & user experience (what a user does)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+2.1 Deposit flow
+Altura’s website describes this user path:
+1) Deposit USDT0 on HyperEVM
+2) Receive vault shares (represents exact ownership %)
+3) Protocol deploys strategies automatically
+4) PPS increases as yield is generated
+5) Withdraw anytime (but note a minimum waiting period after deposit before withdrawals can be claimed) citeturn18view0
+
+Bridging/onboarding:
+- The website suggests users can “deposit from any EVM-compatible wallet” and the protocol bridges the rest. citeturn18view0
+- The app UI includes an option labeled “Bridge via relay.link” (suggesting an integrated bridging route). citeturn2view6
+
+2.2 “Shares + PPS” accounting model
+- Instead of constantly increasing your share count, Altura frames growth via “Price Per Share (PPS)” increasing. citeturn18view0turn19search2
+- Docs emphasize PPS should reflect “real, realized” performance and be visible, timestamped, and signed by authorized reporters. citeturn19search2
+
+2.3 Withdrawal flow (queue + claim)
+Altura describes a withdrawal queue mechanism:
+- Withdrawals are requested on-chain and processed through an on-chain queue/epochs to manage liquidity. citeturn18view0turn19search2
+- The website also mentions “a 6-hour waiting period after deposit before withdrawals can be claimed.” citeturn18view0
+
+Fee/wait nuance (possible doc/UX mismatch):
+- Some docs/UX text references “Instant Withdrawals” vs epoch withdrawals (e.g., 0.01% instant withdrawal fee vs 0% epoch fee) on the app’s “Vault” screen. citeturn2view6
+- Meanwhile, the FAQ section on the site says Altura “may charge performance and operational fees” and that it’s visible on-chain; exact parameters may change. citeturn18view1
+Because fee/wait parameters can change rapidly, treat the UI/on-chain config as source of truth at the time of use.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+3) Strategies & yield sources (how it claims to make money)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Altura’s marketing and docs present diversified, (largely) market-neutral or hedged sources of yield.
+
+3.1 Website “Architecture / Institutional-Grade Yield Sources”
+The website lists three sources:
+- Arbitrage & funding / trading: “market inefficiency capture through hedged perp/spot positions.”
+- Real-World Asset (RWA): “RWA trading strategy focused on gold.”
+- Structured liquidity provision: “fee generation from Hyperliquid market-making and GMX-style pools.” citeturn18view0
+
+3.2 Docs “Sustainable yield comes from…”
+Docs enumerate “organic” sources such as market inefficiencies, funding payments, protocol-level staking rewards, trading fees, and “RWA Markets.” citeturn23view2
+
+3.3 Docs “Strategies” page: off-chain RWA gold trading (important detail)
+The strategies page (as indexed in early Jan 2026) specifically describes “Pillar 2” as RWA gold trading via a licensed third-party manager and suggests this is off-chain and historically stable/low volatility. citeturn3view1
+
+NOTE ON INCONSISTENCIES:
+- Some pages emphasize staking/restaking as a yield source; the “Strategies” page (in the captured version) emphasizes RWA gold trading as a pillar.
+This may be normal evolution of messaging or a partial update across pages; verify the latest docs sections before publishing conclusions. citeturn23view2turn18view1turn3view1
+
+3.4 “Hybrid execution” and off-chain components
+Altura explicitly allows for off-chain components (e.g., centralized/perpetual venues, RWA cashflows), but claims all cashflows and PnL movements are “mirrored/settled/accounted for on-chain” over the lifecycle of positions. citeturn19search2turn23view2
+
+Takeaway:
+- The protocol’s key promise is that even when execution is hybrid, accounting and value updates should be verifiable on-chain (PPS, balances, flows).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4) Security model, risk controls, and audits
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+4.1 Layered security (high-level)
+The website claims:
+- Oracle safety
+- Vault protections (audits, access controls, safeguards)
+- Role restrictions + timelocks
+- Withdrawal safeguards citeturn18view0
+
+4.2 Docs: “Safety & Protections” (more concrete controls)
+Altura lists smart contract hardening items such as:
+- corrected share accounting (rounding/precision attacks)
+- slippage/value protection enforcing PPS-aligned outcomes
+- oracle validation improvements (bounds, timestamp thresholds, movement limits)
+- enforced paused states for sensitive functions
+- permissioned transfers only to pre-approved contracts/keeper EOAs
+- strict ERC20 allowance handling patterns citeturn26view0
+
+4.3 On-chain verifiability features
+Docs claim users can independently verify:
+- AUM, shares, PPS changes, NAV movement
+- strategy outputs and contributions (funding capture, arbitrage settlements, staking inflows, LP fee revenue)
+- oracle report visibility (timestamped, signed, bounded)
+- withdrawal queue status and eligibility conditions citeturn19search2
+
+4.4 Audits (as publicly listed)
+Altura’s audit index lists:
+- Predeposit Audit — Adevarlabs (Dec 2025)
+- Vault Audit — Adevarlabs (Dec 2025)
+- Vault Audit — Omniscia (Jan 2026) citeturn23view1turn20search1
+Notes:
+- The audit index links to GitHub/Omniscia; in this environment some GitHub-linked PDFs could not be fetched reliably, so this report only confirms the audit listings, not their findings.
+
+4.5 Risks (what they acknowledge)
+The website explicitly calls out:
+- smart contract risk
+- oracle risk
+- liquidity constraints
+- broader market risks citeturn18view1
+Docs also include a “Legal & User Responsibility Disclosures” section that frames user responsibility and general risks. citeturn10view0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5) Token / points / incentives (what users “earn” besides yield)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+5.1 Vault shares (AVLT / preAVLT)
+- The protocol uses a share token (“AVLT” in docs/app context) representing vault ownership. citeturn23view3turn2view6
+- Pre-deposit program: users deposit USDT on HyperEVM during pre-deposit and receive “preAVLT” that can be claimed 1:1 for AVLT later. citeturn23view3
+
+5.2 Pre-deposit “Nest Boxes” and points
+Docs describe a points gamification layer:
+- Depositors receive “Nest Boxes” based on deposit tiers (e.g., $199 → 1 box; $4,999 → 40 boxes).
+- Each box yields 1,000 to 50,000 points (range stated).
+- “Waitlist users” earn 1 Nest Box if depositing ≥ 10 USDT in HyperEVM. citeturn23view3
+
+5.3 “Altura Points” (mainnet / ongoing)
+Some third-party exchange-news posts mention “Altura Points” as ongoing incentives; however, these are secondary sources and can be inaccurate. Prefer protocol docs/app announcements for definitive rules. citeturn20search3turn20search6
+
+5.4 Governance token?
+- Public materials captured here focus on vault shares and points; they do not clearly document a separate governance token on the official docs pages captured.
+- Treat any “token sale / ALU tokenomics” pages you find online as likely referring to a different Altura project unless the source explicitly ties to altura.trade and HyperEVM/Hyperliquid. citeturn20search21turn22search16
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6) Business/market context (funding, positioning, ecosystem)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+6.1 Positioning
+Altura’s narrative is “sustainable yield” vs “inflationary emission APYs” and “opaque black-box strategies,” with an emphasis on verifiability, hedging, and non-directional/market-neutral approaches. citeturn23view2turn18view1
+
+6.2 Funding (public, but not from Altura docs)
+Several public aggregators and reposts report a ~$4M seed round led by Ascension with Moonfare and InnoFinCon participating (reported around Dec 1, 2025). These are not first-party announcements in the captured Altura docs, so treat as context—not core protocol fact.
+- CryptoRank fundraising page summary (raised $4M). citeturn22search13
+- CypherHunter fundraising entry (Dec 1, 2025; $4M). citeturn22search11
+- Multiple news reposts cite Decrypt; direct access to Decrypt was blocked in this environment. citeturn22search10turn22search1
+
+6.3 Ecosystem: Hyperliquid / HyperEVM
+Altura states it is deployed on Hyperliquid’s HyperEVM and supports EVM-compatible wallets, with USDT0 as the deposit asset (for now). citeturn18view1turn18view0
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+7) Due diligence checklist (what to verify before trusting/using it)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+If you’re writing research or considering usage, verify these items directly from on-chain data and the latest docs/app parameters:
+
+A) Contracts & addresses
+- Confirm vault/share token/oracle contract addresses from the docs “Public Contract Addresses” section and compare with on-chain explorers. citeturn19search2
+
+B) Oracle mechanics & movement limits
+- Confirm the bounds/timestamp rules for PPS reporting and the authorized reporter addresses. citeturn19search2turn26view0
+
+C) Withdrawal mechanics + fees
+- Confirm whether withdrawals are instant vs epoch-based; confirm any explicit fees (instant withdrawal fee, performance/ops fees) from the app UI and/or on-chain contract config. citeturn2view6turn18view1
+
+D) Strategy allocation & “hybrid execution”
+- Determine what portion is executed on-chain vs off-chain; confirm how off-chain cashflows are reconciled on-chain, and what transparency you can actually observe. citeturn19search2turn23view2turn3view1
+
+E) Audit reports
+- Read the actual PDF reports and verify whether findings were fixed; confirm commit hashes and deployed contract versions match the audited scope. citeturn23view1
+
+F) Points programs
+- Confirm whether “Nest Points / Altura Points” affect any token distribution, fee rebates, or future governance; avoid relying on third-party “airdrop speculation.” citeturn23view3turn20search3
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+8) Sources (quick list)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Primary (first-party)
+- Website / product overview: https://www.altura.trade/ citeturn18view0
+- App UI: https://app.altura.trade/ citeturn0search26turn2view6
+- Docs (Introduction): https://docs.altura.trade/ citeturn23view2
+- Docs (Predeposit): https://docs.altura.trade/predeposit citeturn23view3
+- Docs (Verifiability): https://docs.altura.trade/verifiability citeturn19search2
+- Docs (Safety): https://docs.altura.trade/safety citeturn26view0
+- Docs (Audits): https://docs.altura.trade/audit citeturn23view1
+
+Public listings / context (secondary; use cautiously)
+- CryptoRank fundraising summary: https://cryptorank.io/ico/altura-defi citeturn22search13
+- CypherHunter fundraising entry: https://www.cypherhunter.com/en/e/altura-trade-raised-funding-2025-12-01/ citeturn22search11
+- News reposts citing Decrypt: citeturn22search10turn22search1
+
+END OF FILE
