@@ -1,0 +1,224 @@
+WALLCHAIN (wallchain.xyz) — Deep-Dive Research (multi-angle)
+Last refreshed: 2026-01-10 (Asia/Dhaka)
+
+===============================================================================
+0) Executive snapshot
+===============================================================================
+Wallchain presents itself as an “ecosystem” with (at least) two major active product
+tracks:
+  A) AttentionFi: an AI-driven growth + reputation system for Crypto Twitter (X)
+     that measures “mindshare” and rewards high-quality, consistent social
+     contributions (X Score + Quacks). The system is designed to resist bots,
+     farming, and “KOL cabal” self-engagement loops. [Sources: docs + website]
+  B) Wallet / infra: “Native Yield Abstraction (NYA)” for wallets/apps using
+     Account Abstraction (ERC-4337 via ZeroDev) + session keys to automatically
+     deposit idle assets into curated yield strategies and withdraw on demand.
+     [Sources: docs]
+
+Wallchain also highlights prior work on MEV value capture & redistribution and
+open-source “meta-intents”, positioning that track as part of their credibility
+and/or a parallel product line. [Sources: team page + GitHub + Binance program post]
+
+Core promise (in plain English):
+  - For creators + communities: earn recognition (and potentially rewards) by
+    being genuinely influential and consistently helpful—measured via algorithms,
+    not vanity metrics.
+  - For brands: run mindshare campaigns and discover authentic influencers.
+  - For wallets/apps: unlock a “savings-account-like” yield layer on idle assets
+    with minimal UX friction.
+
+===============================================================================
+1) What problem Wallchain targets
+===============================================================================
+1.1 AttentionFi (social layer)
+- Traditional “influence” and “analytics” tools often overfit to follower counts,
+  bot-driven engagement, and superficial virality.
+- Marketing spend in crypto is vulnerable to low-quality accounts, farming, and
+  misaligned incentives.
+Wallchain’s docs emphasize: quality-weighted attention (“mindshare”), loyalty,
+anti-gaming, and optionally onchain footprint.
+
+Key references:
+- AttentionFi intro: https://docs.wallchain.xyz/intro  citeturn11search5
+- “What makes different”: https://docs.wallchain.xyz/diff  citeturn10view2
+- Vocabulary (Mindshare, Quacks, etc.): https://docs.wallchain.xyz/vocabulary  citeturn12search12
+- Vision: https://docs.wallchain.xyz/vision  citeturn12search0
+
+1.2 Native Yield Abstraction (wallet layer)
+- Idle assets in wallets generally earn nothing; wallet providers have limited
+  monetization options beyond swaps and on/off-ramp fees.
+Wallchain frames NYA as a way to turn idle balances into passive yield without
+“locking” usability—deposit/withdraw happens automatically via AA.
+
+Key references:
+- NYA overview: https://docs.wallchain.xyz/general/overview  citeturn11search14
+- “Where do we lose billions” explainer: https://docs.wallchain.xyz/wallchain/losing-billions citeturn11search12
+
+1.3 MEV (execution layer — historical / parallel)
+- MEV extraction (sandwiching/frontrunning/backrunning) can worsen user execution
+  and siphon value.
+Wallchain has historically focused on capturing MEV and redistributing a portion
+as user cashback/rebate, integrated by DEXs such as PancakeSwap/QuickSwap (as
+claimed by Wallchain team docs).
+
+Key references:
+- Team + credibility claims: https://docs.wallchain.xyz/team citeturn9search6
+- Binance program post describing upgrade service: https://www.binance.com/en/square/post/126664 citeturn9search4
+
+===============================================================================
+2) Product pillars and components
+===============================================================================
+
+-------------------------------------------------------------------------------
+2A) AttentionFi ecosystem
+-------------------------------------------------------------------------------
+Wallchain’s docs describe two core components: X Score + Quacks. citeturn11search5turn9search3
+
+(1) Wallchain X Score
+- A Crypto Twitter (X) influence score from 0 to 1000.
+- Emphasizes follower quality + real/organic engagement (not just volume).
+- “No opt-in needed” per the Chrome Web Store listing; users can check scores via
+  the extension, but scoring exists regardless. citeturn13view0turn12search7
+
+Browser extension (Chrome)
+- Name: “Wallchain X Score”
+- Store shows: ~20,000 users, 4.9 rating (37 ratings), version 0.3.15,
+  updated 2026-01-08. Developer listed as “Yurii Yatsenko”. citeturn13view0
+Link: https://chromewebstore.google.com/detail/wallchain-x-score/hmkmpdakcjpihbpfolonciflbkjkojdb
+
+(2) Wallchain Quacks (points + app)
+- “Quacks” are points awarded for valuable content and engagement, evaluated
+  daily. Quacks and mindshare are related but not identical. citeturn10view3turn12search7turn12search12
+- The system claims strong anti-abuse checks and permanent bans for bots/farming
+  behavior. citeturn10view3turn10view2
+
+How Quacks works (from docs, simplified)
+- Step 1: Authorize with X at app.wallchain.xyz
+- Step 2: View profile: X Score, Quacks balance, referral tools
+- Step 3: Unlock personal mindshare leaderboard (top supporters)
+- Step 4: Explore Quacks rankings with time filters
+- Step 5: Explore project/partner leaderboards (mindshare ranking)
+Source page: https://docs.wallchain.xyz/guide citeturn10view3
+
+Referral program
+- Earn 10% of Quacks earned by referrals. citeturn11search1turn12search14
+Source: https://docs.wallchain.xyz/referral
+
+Mindshare + leaderboards
+- Mindshare: quality-weighted attention, quantifying influence/visibility in public
+  discourse (initially on X). citeturn12search12turn10view3
+- “Free Personal Mindshare Leaderboards” emphasized as a differentiator. citeturn10view2turn12search10
+
+Case studies (marketing outcomes)
+- HeyElsa: monthly impressions claimed from 500k to 106M; 2x daily new users and
+  ~3x daily transactions (up to 40k daily). citeturn10view0
+- Limitless and Avantis: cited as example campaigns; details linked to X threads. citeturn10view0turn10view1
+Source: https://docs.wallchain.xyz/studies
+
+Anti-gaming + AI/LLM usage
+- FAQ notes automated systems and anti-abuse checks; also mentions heavy use of
+  LLMs to eliminate low-quality content/spam/bots/automation. citeturn12search7
+Source: https://docs.wallchain.xyz/faq
+
+Algorithm transparency
+- Docs state XRank powers the scoring model and link to a technical paper in
+  GitHub PDF form. citeturn11search13turn10view9
+Source: https://docs.wallchain.xyz/algorithm
+
+-------------------------------------------------------------------------------
+2B) Native Yield Abstraction (NYA) + Account Abstraction infrastructure
+-------------------------------------------------------------------------------
+High-level proposition
+- Users earn yield “just by holding assets” in an integrated wallet; docs suggest
+  5–10% annually (presented as “potentially”). citeturn11search14turn11search12
+- Wallet providers monetize idle assets as a new revenue stream. citeturn11search14turn11search12
+
+Core architecture (as described)
+- Account Abstraction via ZeroDev (Kernel implementation mentioned). citeturn11search14turn9search12
+- Each user’s EOA maps 1-to-1 to an AA account, created “under the hood”. citeturn10view6
+- Session keys enable permissioned automation and can be revoked. citeturn11search14turn10view6turn9search12
+- SDK converts normal transactions into UserOperations (UserOps), supports batch
+  and simulation. citeturn10view6
+Source: https://docs.wallchain.xyz/infra/quickstart citeturn10view6
+
+Security posture / guarantees (as described)
+- Self-custodial; no access to private keys/seed phrases; user owns smart account. citeturn9search12
+- Auto-withdrawal / emergency withdrawal if onboarded protocol is compromised. citeturn9search8turn10view7
+- Proposal mentions “replacement guarantee” and “select insurance coverage”
+  (public excerpt doesn’t include full terms). citeturn10view7
+Source: https://docs.wallchain.xyz/wallchain-service-overview/proposal citeturn10view7
+
+Operational flow example (simplified)
+- Auto-withdraw for spending + auto re-deposit after transaction. citeturn11search12
+Source: https://docs.wallchain.xyz/wallchain/losing-billions citeturn11search12
+
+DeFi “strategy compression”
+- Example “single click” multi-step strategy shown in docs. citeturn12search15
+Source: https://docs.wallchain.xyz/wallchain/strategy-example citeturn12search15
+
+-------------------------------------------------------------------------------
+2C) MEV value capture + “meta-intents” (execution / value-redistribution layer)
+-------------------------------------------------------------------------------
+Credibility / historical work
+- Founders previously built an MEV protocol integrated by PancakeSwap and
+  QuickSwap with peak ~$2B monthly volume (claimed by Wallchain docs). citeturn9search6turn12search11
+
+BNB Chain / Binance highlight (transaction upgrade service)
+- Binance Square describes: send swap txn to Wallchain service API before wallet
+  confirmation; simulate “run-back” strategies; return an upgraded transaction if
+  profitable; otherwise return original txn. citeturn9search4turn9search1
+
+Open-source work (GitHub)
+- Wallchain GitHub org includes: XRank-Algo, meta-intents, savings-sdk, SDK, etc. citeturn12search8
+Source: https://github.com/Wallchain-xyz/ citeturn12search8
+
+Note: A Wallchain “SDK Integration” doc page about MEV appears in search results
+but returns 404 when opened; treat older integration details as potentially
+outdated. citeturn9search0turn10view8
+
+===============================================================================
+3) Audience segmentation: who is this for?
+===============================================================================
+Creators / KOLs / CT participants
+- Verify influence via X Score; earn Quacks by consistent high-quality posting and
+engagement; use referrals to grow. citeturn12search7turn11search1turn13view0
+
+Web3 brands / marketing teams
+- Discover authentic influencers, run campaigns, launch leaderboards (including
+gated leaderboards), and measure mindshare. citeturn11search0turn10view2turn10view0
+
+Wallet providers / apps / dApps
+- Integrate NYA + AA to auto-earn yield on idle assets, improve retention/UX, and
+create new monetization models (e.g., subsidize fees). citeturn11search12turn10view6turn11search14
+
+===============================================================================
+4) Team, backers, accelerators (from Wallchain sources)
+===============================================================================
+Founders
+- Yurii Kyparus and Max Bevza (former Google/Meta per docs). citeturn9search6turn12search11
+
+Backers (listed)
+- AllianceDAO, NGC, OrangeDAO, Woodstock, MH Ventures, Cypher Capital, Skyland,
+  LBank, and others. citeturn9search6turn12search11
+
+Programs
+- Y Combinator, Alliance DAO, Orange DAO, and BNB Chain accelerator programs are
+  referenced on the team page. citeturn9search6
+
+===============================================================================
+5) Security, privacy, and risk notes (important)
+===============================================================================
+- Self-custodial + AA approach: users keep control, but underlying smart-contract
+  risk remains. citeturn9search12turn10view7turn9search8
+- Quacks app blocks automated browsing (403). This report relies on official docs
+  for app behavior, not direct UI inspection.
+- Token / airdrop: official sources above emphasize “Quacks points”; treat
+  third-party token claims as unconfirmed unless posted by official Wallchain
+  channels.
+- Use official properties to avoid impersonation:
+  wallchain.xyz, docs.wallchain.xyz, github.com/Wallchain-xyz, Chrome Web Store
+  listing linking to wallchain.xyz. citeturn13view0turn12search8
+
+===============================================================================
+End of report.
+===============================================================================
