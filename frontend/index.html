@@ -166,6 +166,9 @@
           <div class="url-tools-row">
             <div class="url-health">
               <span id="urlHealthBadge" class="url-health-badge">No URLs yet</span>
+              <div class="url-health-meter" aria-hidden="true">
+                <div id="urlHealthMeterFill" class="url-health-meter-fill"></div>
+              </div>
             </div>
             <div class="url-tools-buttons">
               <button id="removeInvalidBtn" type="button" class="btn-secondary subtle btn-xs">Clean invalid</button>
@@ -174,6 +177,18 @@
             </div>
           </div>
           <!-- ===== PATCH-02 END ===== -->
+
+          <div class="lang-filter-row">
+            <span class="lang-filter-label">Languages</span>
+            <label class="lang-filter-pill" data-active="true">
+              <input type="checkbox" id="langEnToggle" checked />
+              EN
+            </label>
+            <label class="lang-filter-pill" data-active="true">
+              <input type="checkbox" id="langNativeToggle" checked />
+              Native
+            </label>
+          </div>
 
           <div class="controls">
             <button id="generateBtn" type="button" class="btn">
@@ -311,7 +326,14 @@
         <div>Built by <a href="https://x.com/_CrownDEX" target="_blank" rel="noopener noreferrer">CrownDEX</a></div>
       </footer>
     </div>
-    
+
+    <button type="button"
+            id="safeModeToggle"
+            class="ct-lowmotion-pill"
+            aria-pressed="false">
+      Low motion
+    </button>
+
 <div id="ctToasts" aria-live="polite" aria-atomic="true"></div>
 
     <!-- Your main app JS (contains the single-gate + app logic) -->
