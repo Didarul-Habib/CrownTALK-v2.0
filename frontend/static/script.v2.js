@@ -25,15 +25,32 @@
     return token || "";
   }
 
-   function isAuthorized() {
-      const token = getStoredToken();
+function isAuthorized() {
+    const token = getStoredToken();
 
-    // Old versions of CrownTALK stored the string "1" here.
-    // Treat that as "not authorized" so users see the new gate at least once.
-      if (!token || token === "1") return false;
+    // No token at all → definitely not authorized
+    if (!token) return false;
 
-      return true;
-  }
+    // Old versions stored "1" or the raw ACCESS_CODE string.
+    // Also, real tokens are SHA-256 hex (length 64), so anything shorter
+    // is considered legacy and must be re-issued via /verify_access.
+    const looksLegacy =
+      token === "1" ||
+      token === ACCESS_CODE ||
+      token.length < 40;
+
+    if (looksLegacy) {
+      // Wipe legacy data so the user sees the gate again
+      try { localStorage.removeItem(STORAGE_KEY); } catch {}
+      try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+      try {
+        document.cookie = `${COOKIE_KEY}=; max-age=0; path=/; samesite=lax`;
+      } catch {}
+      return false;
+    }
+
+    return true;
+}
 
 
   function markAuthorized(token) {
