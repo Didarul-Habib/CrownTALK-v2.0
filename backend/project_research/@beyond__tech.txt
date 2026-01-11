@@ -1,0 +1,221 @@
+Beyond (beyond.tech / docs.beyond.tech) — Deep-Dive Research Brief
+Last verified: January 11, 2026
+
+NOTE ON SCOPE & DATA QUALITY
+- This report is built from Beyond’s public website, official documentation, app UI pages, audit references, and public GitHub/org pages.
+- Several product sections indicate “coming soon”, “mock data mode”, or “maintenance mode”, suggesting the protocol/app is not yet live on mainnet at the time of verification (see “Current Status”).
+
+──────────────────────────────────────────────────────────────────────────────
+1) Project Snapshot
+──────────────────────────────────────────────────────────────────────────────
+Name / Branding
+- Name: Beyond (also stylized as ₿eyond)
+- Tagline: “Enabling the Bitcoin On-Chain Economy”
+- Positioning: “Bitcoin, Now Interoperable” (native Bitcoin L1 interoperability protocol)
+
+Core Idea (1 sentence)
+- Beyond is a Bitcoin L1 interoperability protocol that aims to bridge assets to/from Bitcoin L1 and also enable Bitcoin-to-Bitcoin transfers across multiple Bitcoin token standards (“tri-directional” bridging).
+
+Key Claims (from official materials)
+- Bridge major assets (e.g., USDT/ETH/SOL) to Bitcoin L1.
+- Move BTC, BRC-20s, and Runes to many external chains/L2s.
+- Switch between Bitcoin token standards (e.g., BRC-20 ↔ Runes) without leaving Bitcoin L1.
+- “80+ chains” and “500+ tokens” are mentioned on the website, while docs also reference 70+ supported chains (exact final list appears planned for post-mainnet).
+
+Core Interop Provider Mentioned
+- LayerZero is cited as a key interoperability/messaging layer powering Beyond.
+
+──────────────────────────────────────────────────────────────────────────────
+2) The Problem Beyond Targets
+──────────────────────────────────────────────────────────────────────────────
+Bitcoin Liquidity & Utility Gap
+- The project argues that Bitcoin is the largest/most secure base asset but historically lacked the infrastructure to support a full “on-chain economy” (DeFi-style utility), compared to more “composable” ecosystems.
+
+Fragmentation Inside Bitcoin
+- Beyond highlights that Bitcoin has many token standards/meta-protocols and layers (L2s), and that liquidity and users are fragmented across these sub-ecosystems.
+
+Cross-Ecosystem Liquidity Fragmentation
+- Beyond also frames a broader issue: liquidity is fragmented across many chains and protocols, creating friction for both users (seeking yield/features) and protocols (seeking users/liquidity).
+
+──────────────────────────────────────────────────────────────────────────────
+3) What Beyond Actually Provides (Capabilities)
+──────────────────────────────────────────────────────────────────────────────
+A) Cross-chain (non-Bitcoin → Bitcoin, and Bitcoin → non-Bitcoin)
+- “Bi-directional” bridging between Bitcoin L1 and other ecosystems.
+- Example intent: bring stablecoins/blue-chips as Bitcoin-native representations, and let Bitcoin-native assets move outward to other chains.
+
+B) Cross-standard (Bitcoin token standards within Bitcoin L1)
+- “Cross-standard conversion”: switching between Bitcoin token standards (e.g., BRC-20 ↔ Runes) in a single transaction without leaving Bitcoin L1.
+- This is positioned as Beyond’s differentiator beyond typical bridges.
+
+C) “Tri-directional” bridging (as marketed)
+- Beyond uses “tri-directional” to mean:
+  1) to Bitcoin L1
+  2) from Bitcoin L1
+  3) within Bitcoin L1 (across standards / Bitcoin layers)
+
+D) Program layer (community / growth mechanisms)
+- Leaderboard: a gamified activity ranking.
+- Airdrop/Rewards: the app page indicates Season One rewards denominated in $BYD.
+
+──────────────────────────────────────────────────────────────────────────────
+4) Architecture & How It Works (as described in docs)
+──────────────────────────────────────────────────────────────────────────────
+High-level model
+- Typical bridge pattern:
+  - Lock native tokens on the source chain
+  - Mint wrapped tokens on the destination chain
+- Beyond describes a mix of on-chain + off-chain components used to coordinate bridging and indexing.
+
+Main components (docs terminology)
+1) Node + Indexer
+   - Infrastructure that facilitates transactions and indexing across chains, supporting real-time data accuracy/access.
+2) Registry
+   - A database layer consolidating data from sources (like indexers) and applying extended business logic.
+3) Source (Smart Contract, non-Bitcoin chains)
+   - Contract that mints/burns tokens on non-Bitcoin-L1 chains.
+4) Forge (Bitcoin L1 custody + mint/burn)
+   - An MPC / multisig-controlled entity that locks/unlocks tokens on Bitcoin L1.
+
+Forge signer model (important operational detail)
+- Docs state: Forge secured by 11 signers with a 7-key threshold for authorization.
+- Beyond V1: Forge is permissioned.
+- Beyond V2: described as becoming permissionless “via staking”.
+
+User journey examples (docs)
+- Avalanche → Bitcoin:
+  1) User locks AVAX in Source contract on Avalanche; cross-chain event triggered.
+  2) Forge mints wrapped AVAX on Bitcoin; waits 6+ blocks for confirmation.
+  3) Indexer/Registry update.
+- Bitcoin → Avalanche:
+  1) User burns wrapped AVAX via Forge.
+  2) After 6+ blocks, event triggers cross-chain message; Indexer/Registry update.
+  3) AVAX unlocks in Source contract on Avalanche.
+- Bitcoin BRC-20 → Bitcoin Runes:
+  1) User locks ORDI (BRC-20) in Bitcoin Forge.
+  2) After 6+ blocks, Indexer/Registry update.
+  3) Forge mints ORDI as Runes representation and transfers to user.
+
+──────────────────────────────────────────────────────────────────────────────
+5) Product Surface Area (What a user/dev can interact with)
+──────────────────────────────────────────────────────────────────────────────
+A) App UI (app.beyond.tech)
+- Bridge: UI exists, but currently shows “Maintenance Mode – Service Not Live Yet”.
+- Analytics: dashboard exists and shows “Mock Data Mode – For Development & Testing” in the UI.
+- Leaderboard: shows “Mock Data Mode” and Season One; indicates “Airdrop amount 1,000,000 $BYD” and “30% of the $BYD supply allocated to protocol users”; also mentions referral volume bonus.
+
+B) Docs (docs.beyond.tech)
+- Protocol: overview + security posture.
+- Tutorials: “Coming soon!” (wallet + bridge guides).
+- Developers: “Technical Introduction” suggests an SDK will be published once live; provides example import and “bridge.toBitcoin” usage.
+- Community: socials, brand/media kit, glossary, airdrop link.
+
+C) “Beyond Intern” (intern.beyond.tech)
+- Docs describe a custom AI (GPT) assistant, accessible via the OpenAI mobile app for text/voice conversations.
+
+──────────────────────────────────────────────────────────────────────────────
+6) Security Model & Trust Assumptions
+──────────────────────────────────────────────────────────────────────────────
+Security principles listed in docs
+- Encryption (TLS for transit, AES for data at rest).
+- Key management with MPC + threshold signing (TSS), splitting control across signers.
+- Smart contract security emphasis (audits, pre-deploy review).
+- Node security (hardening, monitoring), secure APIs, access controls, intrusion detection, DDoS protection.
+- Logging/monitoring and incident response plan.
+- Continuous security assessment and penetration testing.
+
+Critical trust points (interpretation of the model)
+- Forge custody & signer set is a major trust surface:
+  - An MPC/multisig model reduces single points of failure but introduces governance/operational risks (signer integrity, key management procedures, incident response).
+- Reliance on cross-chain messaging layer:
+  - Beyond publicly ties part of its trust model to LayerZero-based messaging standards and security posture.
+
+Audits
+- Beyond’s docs list audits; one public reference is a Zokyo audit report dated Oct 30, 2024 (linked from Beyond docs and listed in Zokyo’s reports index).
+
+Bug bounty
+- Docs point to an Immunefi-based bug bounty program, but also state “once Beyond goes live on mainnet” it will launch with a significant, permanent program (i.e., it may not be fully live yet).
+
+──────────────────────────────────────────────────────────────────────────────
+7) Token / Incentives / Community Programs
+──────────────────────────────────────────────────────────────────────────────
+$BYD (as shown in the app UI)
+- Leaderboard “Season One”:
+  - “Airdrop amount 1,000,000 $BYD”
+  - App text claims “30% of the $BYD supply is allocated to protocol users”.
+  - Points driven by bridging volume “to/from/across Bitcoin L1”.
+  - Referral bonus: “extra 10% of the total volume bridged by your referrals” (toward scoring).
+
+IMPORTANT: No comprehensive tokenomics (total supply, vesting, allocations beyond the 30% claim, etc.) were found in the surfaced official pages during this verification. Treat app-level claims as provisional until a formal tokenomics document is published.
+
+──────────────────────────────────────────────────────────────────────────────
+8) Developers & Integration (What exists today)
+──────────────────────────────────────────────────────────────────────────────
+Developer messaging
+- “Once the protocol goes live on mainnet, a simple SDK will be published” (docs).
+
+SDK example (docs)
+- Demonstration code indicates a JS/TS package: @beyond/sdk
+- Example:
+  import { bridge } from '@beyond/sdk';
+  await bridge.toBitcoin({ from: 'ethereum', token: 'USDT', amount: 1000 });
+
+Deployments
+- Docs “Deployments” section says it will go live shortly after mainnet deployment.
+- No canonical list of deployed contracts was visible in the surfaced pages.
+
+──────────────────────────────────────────────────────────────────────────────
+9) Current Status (As Observed)
+──────────────────────────────────────────────────────────────────────────────
+Signals suggesting “not live yet”
+- App bridge: “Maintenance Mode – Service Not Live Yet”.
+- App analytics & leaderboard: “Mock Data Mode – For Development & Testing”.
+- Docs: multiple areas “coming soon”, and deployments/chains list described as post-mainnet.
+
+Practical implication
+- If you are evaluating Beyond today, treat it as a pre-mainnet (or pre-full-release) product with visible UI, documentation, and security posture statements, but limited live on-chain evidence from official dashboards at the time of verification.
+
+──────────────────────────────────────────────────────────────────────────────
+10) Due Diligence Checklist (What to verify next)
+──────────────────────────────────────────────────────────────────────────────
+Technical
+- Confirm mainnet launch status and supported chains/standards list once published.
+- Inspect contract addresses and verify code (once deployments are posted).
+- Validate bridging model for each route (non-BTC ↔ BTC, BTC standard ↔ BTC standard).
+- Confirm how LayerZero messaging is configured (endpoints, OFT usage, DVNs/relayers if applicable).
+
+Security
+- Read the full audit report(s) and check:
+  - scope
+  - findings severity
+  - remediation status
+  - whether audited code matches current deployments
+- Confirm bug bounty is live, scope, reward tiers, and response SLAs.
+
+Operations & Governance
+- Identify Forge signer set governance, rotation, geographic distribution, incident playbooks.
+- Confirm what “permissionless via staking” means in V2 (validators? challengers? slashing conditions?).
+
+Token / Incentives
+- Wait for official tokenomics: total supply, allocations, vesting, emissions, governance rights.
+- Verify that leaderboard/airdrop rules are finalized and not in “mock” mode.
+
+──────────────────────────────────────────────────────────────────────────────
+11) Official Links & References
+──────────────────────────────────────────────────────────────────────────────
+- Website: https://beyond.tech/
+- Docs: https://docs.beyond.tech/
+- App (Bridge): https://app.beyond.tech/
+- App (Leaderboard): https://app.beyond.tech/leaderboard
+- App (Analytics): https://app.beyond.tech/analytics
+- Docs (Protocol Overview): https://docs.beyond.tech/protocol/overview
+- Docs (Security): https://docs.beyond.tech/protocol/security
+- Docs (Audits): https://docs.beyond.tech/protocol/security/audits
+- Docs (Bug Bounty): https://docs.beyond.tech/protocol/security/bug-bounty
+- Docs (Developer Intro): https://docs.beyond.tech/dev/intro
+- Docs (Socials): https://docs.beyond.tech/community/socials
+- Docs (Brand/Media Kit): https://docs.beyond.tech/community/brand
+- Zokyo report index entry (Beyond, Oct 30 2024): https://zokyo.io/reports
+- GitHub org (as linked in docs): https://github.com/beyond-btc
+
+End of report.
