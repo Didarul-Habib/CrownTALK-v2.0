@@ -1,0 +1,273 @@
+LIMITLESS EXCHANGE (Limitless.Exchange / TryLimitless) — Deep Dive (Every Angle)
+
+Last updated: 2026-01-11
+Scope: Public-web research only (no private/internal data)
+
+================================================================================
+1) Executive snapshot
+================================================================================
+Limitless Exchange is a Base-native, on-chain prediction market focused on ultra-short
+duration price-outcome contracts (“minute / hourly / daily” style markets). Users trade
+binary outcome shares (YES/NO) via an orderbook (CLOB) interface. The project positions
+itself as a simpler alternative to mainstream derivatives/perps for retail, emphasizing:
+- instant settlement (short cycles)
+- no forced liquidations (bounded loss = premium paid)
+- no hidden fees (per its marketing/press positioning)
+
+Key product thesis (investor profile): “Bridging the gap between prediction markets and
+mainstream derivatives trading,” with markets like “BTC above X in 30/60 minutes,” but
+without liquidation risk. (See references.)
+
+================================================================================
+2) Quick facts (at a glance)
+================================================================================
+Name: Limitless Exchange
+Builder: Limitless Labs (brand site: https://limitless.network/)
+Primary app entry: https://limitless.exchange/pro  (front-end is heavily JS-rendered)
+Chain focus: Base (Ethereum L2)
+Market model: Central Limit Order Book (CLOB) for YES/NO shares
+Token: LMTS (Limitless Official Token) on Base
+- Contract: 0x9EadbE35F3Ee3bF3e28180070C429298a1b02F93
+- Decimals: 18
+- Max total supply shown on BaseScan: 1,000,000,000 LMTS
+
+================================================================================
+3) What the product is (plain-English)
+================================================================================
+A) “Prediction market” framing
+In a prediction market, you buy shares that pay $1 if the stated condition is true at
+resolution (and $0 if false). The price of a share often represents the market-implied
+probability. For example:
+- YES price $0.15 ≈ 15% implied probability
+- If YES resolves: each share pays $1
+- If NO resolves: each share pays $0
+
+B) “Short-term price markets” framing
+Limitless focuses on fast-expiring markets tied to price levels of crypto assets and
+major indices. This resembles the payoff intuition of ultra-short-dated options (“0DTE”),
+but uses a fully-paid share model instead of margin + liquidation mechanics.
+
+C) “No liquidation risk” (why they can claim that)
+In a fully-paid YES/NO share model, you can’t be “liquidated” the way a leveraged perp can,
+because you do not maintain an open leveraged debt position. Your maximum loss is what
+you paid for the shares. This is why the team and investors highlight “no liquidation
+risk.” (Still: smart contract/oracle risks exist—see diligence.)
+
+================================================================================
+4) User journey (what someone does in the app)
+================================================================================
+1) Connect wallet on Base
+2) Browse markets (crypto + stocks/indices price conditions; durations like 30/60 minutes)
+3) Choose YES or NO and place an order:
+   - Market-style execution or limit orders on the orderbook
+4) Optionally provide liquidity (resting limit orders / LP incentives)
+5) At resolution, winning shares settle to $1, losing shares to $0 (collateral payout)
+
+Some public descriptions mention a common conditional-token mechanic:
+- a YES share + NO share (same market) can be redeemed for 1 unit of collateral before
+  resolution (often USDC), enabling splitting/merging positions.
+
+================================================================================
+5) Market design & trading mechanics
+================================================================================
+A) CLOB (Central Limit Order Book)
+Limitless uses a traditional bid/ask orderbook model for YES/NO shares. Benefits:
+- transparent price discovery
+- tight spreads when liquidity is strong
+- limit orders for market makers
+
+B) Order types (developer docs / SDKs)
+Public SDK docs emphasize two core order types:
+- FOK (Fill-or-Kill): market-style; executes immediately at best price or cancels
+- GTC (Good-’Til-Cancelled): limit order; rests on book until filled/cancelled
+
+C) “Hybrid” architecture (off-chain matching, on-chain settlement)
+Limitless’ public GitHub includes a Conditional Tokens Framework (CTF) exchange component
+describing:
+- atomic swaps between CTF ERC1155 assets and ERC20 collateral
+- a hybrid model: an operator performs off-chain matching, while settlement happens
+  on-chain and non-custodially
+
+This architecture can improve speed/UX, but introduces operator-related considerations
+(e.g., sequencing, censorship, matching fairness), even if custody is not centralized.
+
+================================================================================
+6) Technology surface: API + SDKs
+================================================================================
+A) Trading API (REST + WebSocket) — https://api.limitless.exchange/api-v1
+Public API description states support for:
+- wallet authentication via message signing
+- market data (including venue contract addresses per market)
+- order creation + EIP-712 signing
+- order submission
+- WebSocket streaming (real-time updates)
+
+B) Python SDK (PyPI: limitless-sdk)
+Feature set includes:
+- async client (aiohttp), EIP-712 auth, markets/orderbooks/historical data
+- order management incl. GTC and FOK
+- positions + trading history
+- websockets for real-time orderbook
+- retries and session re-auth; venue/contract caching
+
+C) TypeScript SDK (GitHub: limitless-exchange-ts-sdk)
+Public repo positions a TS SDK for interacting with both CLOB and “NegRisk” markets,
+offering type-safe access to market data + trading actions.
+
+================================================================================
+7) Token: LMTS (Limitless Official Token)
+================================================================================
+A) On-chain facts (BaseScan)
+- Token: “Limitless Official Token (LMTS)”
+- Contract: 0x9EadbE35F3Ee3bF3e28180070C429298a1b02F93
+- Max total supply: 1,000,000,000 LMTS
+- Contract code visible on BaseScan indicates a straightforward ERC20 + ERC20Permit
+  contract with fixed TOTALSUPPLY, minted to a list of wallets at deployment.
+
+B) Stated use cases (press coverage)
+Coverage and announcements describe token purposes such as:
+- liquidity incentives/rewards
+- governance and ecosystem alignment
+- (sometimes) staking benefits or fee discounts (verify in official docs)
+
+C) Tokenomics gap
+BaseScan links to a “Whitepaper” (Notion), but that Notion document was not accessible
+in this environment (404). So this report does NOT claim specific allocations/vesting.
+
+================================================================================
+8) Incentives: Points program (Season-based)
+================================================================================
+Limitless has run multi-month “Points Seasons” intended to reward activity (trade, LP,
+referrals) and to bootstrap liquidity/engagement ahead of token events.
+
+From Limitless blog snippets:
+- Points Season 1: July 1 → Sept 22, 2025
+- Points Season 2: Sept 22, 2025 → Jan 26, 2026
+
+Press releases about the points program emphasize:
+- trading
+- providing liquidity
+- referrals (inviting new users)
+
+================================================================================
+9) Company, team & governance signals
+================================================================================
+Builder brand: Limitless Labs
+Public coverage identifies:
+- CEO: CJ Hetherington
+- Founding team referenced in coverage: CJ Hetherington, Roman Mogylnyi, Dmytro Horshkov,
+  Rev Miller
+
+Always verify current team roster on official channels (company site + official social).
+
+================================================================================
+10) Funding & investors (public disclosures)
+================================================================================
+A) July 2025 (strategic round press)
+- Reports $4M strategic funding
+- References earlier $3M pre-seed led by 1confirmation
+- Mentions Arthur Hayes as an advisor in that release context
+- Mentions rapid early volume (~$250M) and “0DTE-like” short-term markets
+
+B) Oct 2025 (seed round press / coverage)
+- Reports a $10M seed led by 1confirmation
+- Lists investors including Collider Ventures, F‑Prime Capital, DCG, Coinbase Ventures,
+  Node Capital, Arrington Capital, etc.
+- Highlights momentum ahead of LMTS token launch
+
+================================================================================
+11) Traction (reported) and interpretation
+================================================================================
+Reported metrics across disclosures/coverage include:
+- “Over $250M bet / volume soon after launch” (mid-2025 press)
+- “Surpassed ~$500M total trading volume” (late-2025 press/coverage)
+
+Interpretation (inference, not a fact claim):
+If these numbers reflect organic demand (vs incentive wash), Limitless has discovered a
+high-retention loop: frequent short-duration markets → repeat engagement → liquidity →
+better execution → more volume.
+
+================================================================================
+12) Security, integrity, and risk (diligence checklist)
+================================================================================
+A) Smart contract risk (critical)
+- Verify deployments, code, upgradeability, admin keys, pausing powers.
+- Confirm audits for the contracts actually in use on Base.
+
+B) “Hybrid operator” risk
+- Off-chain matching operator can affect fairness (sequencing, cancellations).
+- Ask for clarity on order matching rules and anti-manipulation controls.
+
+C) Oracle / resolution risk (most important in prediction markets)
+- What oracle or price source resolves markets?
+- How are outages, exchange halts, forks, or extreme volatility handled?
+- Is there a dispute process? Who controls it?
+
+D) Market manipulation risk
+- Short windows increase sensitivity to last-minute spikes and microstructure noise.
+- Understand the exact timestamp used for resolution price and how it’s sourced.
+
+E) Regulatory risk
+- Prediction markets/event contracts are regulated differently by jurisdiction.
+- Expect geo restrictions and compliance measures at the front-end layer.
+
+F) Incentive distortions
+- Points programs can encourage wash trading and artificial liquidity.
+- Token launch can introduce volatility + misalignment if incentives shift suddenly.
+
+================================================================================
+13) Competitive landscape (context)
+================================================================================
+Closest analogs:
+- Polymarket (CLOB/CTF style prediction markets)
+- Regulated event contract venues (e.g., Kalshi)
+- Other on-chain prediction markets (Omen, etc.)
+
+Limitless differentiators (as publicly positioned):
+- ultra-short-term price markets (minutes/hours)
+- “no liquidation risk” framing
+- Base-native UX and low fees
+- mobile-first approach
+
+================================================================================
+14) Gaps / what wasn’t verifiable here
+================================================================================
+Due to heavy JS rendering or inaccessible docs:
+- full official whitepaper/tokenomics
+- exact fee schedule, maker/taker model
+- detailed oracle/resolution process & governance for disputes
+- precise current product constraints/geo restrictions
+
+If you want, I can draft a “due diligence questionnaire” tailored to these gaps.
+
+================================================================================
+15) Source index (public URLs)
+================================================================================
+Core descriptions
+- F‑Prime company profile (product thesis, Base, short-term markets, no liquidation risk):
+  https://fprimecapital.com/company/limitless-exchange/
+- Limitless Labs site (high-level brand): https://limitless.network/
+
+Press / funding / traction
+- Chainwire press release (strategic round, points program, 0DTE-like framing, ~$250M):
+  https://chainwire.org/2025/07/01/limitless-raise-4m-strategic-funding-launch-points-ahead-of-tge/
+- Cointelegraph press release (seed round, LMTS token, volume claims):
+  https://cointelegraph.com/press-releases/limitless-prediction-market-closes-10m-seed-round-ahead-of-lmts-token-launch
+- Vestbee funding summary (seed round, founders list, plans for LMTS):
+  https://www.vestbee.com/insights/articles/limitless-labs-raises-10-m
+
+Token facts (Base)
+- BaseScan token page (LMTS supply, decimals, contract code):
+  https://basescan.org/token/0x9EadbE35F3Ee3bF3e28180070C429298a1b02F93
+
+Developer layer
+- API landing/snippet: https://api.limitless.exchange/api-v1
+- Python SDK: https://pypi.org/project/limitless-sdk/
+- TS SDK repo: https://github.com/limitless-labs-group/limitless-exchange-ts-sdk
+- CTF exchange repo (hybrid settlement notes): https://github.com/limitless-labs-group/limitless-ctf-exchange
+
+Points seasons (blog snippets; pages were not fetchable here)
+- Season 1 snippet: https://limitless.exchange/blog/points-announcement-season-1
+- Season 2 snippet: https://limitless.exchange/blog/points-announcement
+
+DISCLAIMER: This is informational research only, not financial advice.
