@@ -27,6 +27,61 @@ app = Flask(__name__)
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crowntalk")
 
+# Tiny in-memory metrics block so you can peek at what's going on
+# without needing Prometheus / Grafana. Intentionally simple.
+METRICS: dict[str, object] = {
+    "start_time": time.time(),
+    "total_requests": 0,
+    "total_comment_calls": 0,
+    "total_reroll_calls": 0,
+    "total_errors": 0,
+}
+
+
+def bump_metric(name: str, amount: int = 1) -> None:
+    try:
+        METRICS[name] = METRICS.get(name, 0) + int(amount)
+    except Exception:
+        # metrics are best-effort only; never break main flow
+        pass
+
+
+@app.before_request
+def _track_basic_metrics():
+    if request.method == "OPTIONS":
+        return  # CORS preflight – ignore
+    bump_metric("total_requests")
+    path = request.path
+    if path == "/comment":
+        bump_metric("total_comment_calls")
+    elif path == "/reroll":
+        bump_metric("total_reroll_calls")
+
+
+@app.errorhandler(Exception)
+def _handle_unexpected_error(exc: Exception):
+    bump_metric("total_errors")
+    METRICS["last_error"] = repr(exc)
+    logger.exception("Unhandled error in request", exc_info=exc)
+    return jsonify({"error": "internal_server_error"}), 500
+
+
+@app.route("/stats", methods=["GET"])
+def stats_endpoint():
+    # Super lightweight JSON 'dashboard' for local debugging.
+    now = time.time()
+    uptime = int(now - METRICS.get("start_time", now))
+    payload = {
+        "uptime_seconds": uptime,
+    }
+    # include other metrics but avoid mutating the original dict
+    for k, v in METRICS.items():
+        if k == "start_time":
+            continue
+        payload[k] = v
+    return jsonify(payload)
+
+
 PORT = int(os.environ.get("PORT", "10000"))
 DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
 BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onrender.com")
@@ -42,6 +97,7 @@ URL_LOCK_PATH = os.getenv("URL_LOCK_PATH", "/tmp/crowntalk_url.lock")
 
 CT_TIMEZONE = os.getenv("CT_TIMEZONE", "UTC")
 THREAD_PAIR_MODE = os.getenv("THREAD_PAIR_MODE", "0") == "1"
+REACTION_MODE = os.getenv("REACTION_MODE", "default").lower()
 
 
 @contextmanager
@@ -1700,6 +1756,68 @@ def build_reaction_plan(tweet_text: str, handle: Optional[str], lang_hint: Optio
         "lang_hint": lang_effective,
         "schedule_pressure": pressure,
     }
+
+
+# Small wrapper that lets us tweak how many reactions we actually surface
+# without touching the main planner logic. This is where the "reaction
+# modes" (chill / hype / silent / default) are applied.
+REACTION_MODE_SPECS = {
+    "default": {},
+    # softer, fewer reactions – good for low-noise sessions
+    "chill": {
+        "max_reactions": 1,
+    },
+    # more expressive / energetic
+    "hype": {
+        "max_reactions": 3,
+    },
+    # disable reactions entirely but still return the analysis fields
+    "silent": {
+        "max_reactions": 0,
+        "force_skip": True,
+    },
+}
+
+
+def apply_reaction_mode_to_plan(plan: dict, mode: str | None = None) -> dict:
+    # Post-process a reaction plan based on the configured mode.
+    # Modes just trim the `comment_reactions` list and optionally flip
+    # `skip_recommended`. They never raise or mutate required fields.
+    try:
+        effective_mode = (mode or REACTION_MODE or "default").lower()
+    except Exception:
+        # very defensive: if anything goes weird, just stay in default
+        effective_mode = "default"
+
+    spec = REACTION_MODE_SPECS.get(effective_mode)
+    if not spec:
+        # unknown mode: keep plan as-is but still expose what we saw
+        plan["reaction_mode"] = effective_mode
+        return plan
+
+    max_reactions = spec.get("max_reactions")
+    if max_reactions is not None and "comment_reactions" in plan:
+        try:
+            # comment_reactions is a simple list of reaction descriptors
+            plan["comment_reactions"] = list(plan.get("comment_reactions") or [])[: max(0, int(max_reactions))]
+        except Exception:
+            # absolutely do not let metrics knobs break core flow
+            pass
+
+    if spec.get("force_skip"):
+        plan["skip_recommended"] = True
+
+    plan["reaction_mode"] = effective_mode
+    return plan
+
+
+def build_reaction_plan_with_modes(tweet_text: str, handle: str, *, lang_hint: str | None = None, reaction_mode: str | None = None) -> dict:
+    # Thin wrapper around `build_reaction_plan` that applies modes.
+    # This keeps the legacy call-sites unchanged – they just point to this
+    # helper instead of the raw planner.
+    base_plan = build_reaction_plan(tweet_text, handle, lang_hint=lang_hint)
+    return apply_reaction_mode_to_plan(base_plan, reaction_mode)
+
 
 
 def extract_keywords(text: str) -> list[str]:
@@ -4307,7 +4425,7 @@ def generate_two_comments_with_providers(
 
     # --- Build + store reaction plan for this tweet ---------------------------
     try:
-        plan = build_reaction_plan(tweet_text, handle, lang_hint=lang)
+        plan = build_reaction_plan_with_modes(tweet_text, handle, lang_hint=lang)
     except Exception:
         plan = None
     try:
@@ -4613,6 +4731,105 @@ def reroll_endpoint():
     except Exception:
         logger.exception("Unhandled error during reroll for %s", url)
         return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
+
+
+
+# ------------------------------------------------------------------------------
+# Multi-voice storytelling / thread helper
+# ------------------------------------------------------------------------------
+
+@app.route("/thread_story", methods=["POST", "OPTIONS"])
+def thread_story_endpoint():
+    # Create a short multi-voice reply chain using Groq.
+    if request.method == "OPTIONS":
+        resp = make_response()
+        return add_cors_headers(resp)
+
+    data = request.get_json(force=True, silent=True) or {}
+
+    base_prompt = (data.get("prompt") or data.get("text") or "").strip()
+    if not base_prompt:
+        return jsonify({"error": "missing_prompt"}), 400
+
+    voices = data.get("voices") or ["A", "B"]
+    if not isinstance(voices, list) or len(voices) < 2:
+        voices = ["A", "B"]
+
+    try:
+        turns = int(data.get("turns") or 2)
+    except Exception:
+        turns = 2
+    turns = max(2, min(turns, 8))
+
+    lang = (data.get("lang") or "en").lower()
+
+    system_prompt = (
+        "You are a social media copywriter that writes short, high-signal "
+        "reply threads between multiple distinct voices. "
+        "Keep each reply punchy (max 45 words) and stay strictly in the "
+        f"language code '{lang}'. "
+        "Return ONLY valid JSON, no prose."
+    )
+
+    user_instruction = {
+        "prompt": base_prompt,
+        "voices": voices,
+        "turns": turns,
+    }
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {
+            "role": "user",
+            "content": (
+                "Generate a reply chain as JSON with the shape: "
+                "{\"thread\":[{\"speaker\":str,\"text\":str,\"reply_to\":int|null},...]}. "
+                "Voices must come from this ordered list and loop if needed: "
+                f"{voices}. "
+                "The first reply should have reply_to = null. "
+                "Here is the base context: "
+                + json.dumps(user_instruction, ensure_ascii=False)
+            ),
+        },
+    ]
+
+    try:
+        resp = groq_chat_limited(
+            messages,
+            # Thread stories are short; keep the budget tiny
+            model=GROQ_MODEL or "llama-3.1-70b-versatile",
+            max_tokens=512,
+        )
+    except Exception as exc:
+        logger.exception("thread_story Groq failure", exc_info=exc)
+        return jsonify({"error": "thread_story_failed", "detail": str(exc)}), 500
+
+    try:
+        content = resp.choices[0].message.content
+    except Exception:
+        content = None
+
+    parsed = None
+    if content:
+        try:
+            parsed = json.loads(content)
+        except Exception:
+            parsed = None
+
+    if isinstance(parsed, dict) and "thread" in parsed:
+        thread_payload = parsed["thread"]
+    elif isinstance(parsed, list):
+        thread_payload = parsed
+    else:
+        # fall back to raw text if JSON was messy
+        thread_payload = None
+
+    return jsonify(
+        {
+            "thread": thread_payload,
+            "raw": content,
+        }
+    )
 
 
 # ------------------------------------------------------------------------------
