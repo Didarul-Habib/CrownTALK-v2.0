@@ -52,38 +52,42 @@ def _compute_access_token(code: str) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-EXPECTED_ACCESS_TOKEN = ""  # computed per-request in _require_access_or_none
+EXPECTED_ACCESS_TOKEN = _compute_access_token(ACCESS_CODE_ENV) if ACCESS_CODE_ENV else None
 
+
+
+
+# --- Added by ChatGPT fix ---
+def _require_access_or_forbidden():
+    """Alias kept for compatibility with older endpoint code.
+
+    Uses the existing _require_access_or_none gate helper, returning either
+    a Flask Response (to deny access) or None (to allow).
+    """
+    return _require_access_or_none()
+# --- End ChatGPT fix ---
 
 def _require_access_or_none():
-    """
-    If the access gate is enabled, validate the per-session access token.
+    """Return a Flask response if access should be denied, otherwise None.
 
-    - When CT_ACCESS_CODE is *not* set, the gate is disabled and this
-      function always returns None.
-    - When CT_ACCESS_CODE *is* set, we recompute the expected token for
-      the current request's session and compare it against the token
-      provided in the `x-crowntalk-access` header.
+    The gate is intentionally soft: if no ACCESS_CODE_ENV is configured (or the
+    gate is disabled via CROWNTALK_DISABLE_GATE) the backend behaves as if
+    the gate is off.
     """
     if GATE_DISABLED:
-        # No gate configured -> always allow
         return None
 
-    # Recompute the expected token *for this request* so it uses the
-    # same session id that was used during /verify_access.
-    expected = _compute_access_token(ACCESS_CODE_ENV)
+    expected = EXPECTED_ACCESS_TOKEN
     if not expected:
-        # Misconfiguration; fail-open to avoid locking everyone out.
         return None
 
     token = (request.headers.get(ACCESS_HEADER_NAME) or "").strip()
     if not token:
         return jsonify({"error": "forbidden", "code": "missing_access"}), 403
-
     if token != expected:
         return jsonify({"error": "forbidden", "code": "bad_access"}), 403
-
     return None
+
 
 def bump_metric(name: str, amount: int = 1) -> None:
     try:
@@ -4966,3 +4970,4 @@ def weighted_sample(weight_map: dict[str, float]) -> str:
             return key
     # numerical safety fallback
     return items[-1][0]
+
