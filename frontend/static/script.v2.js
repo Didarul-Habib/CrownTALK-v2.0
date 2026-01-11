@@ -144,6 +144,7 @@
     input.placeholder = 'Wrong code — try again';
   }
 
+
   function bindGate() {
     const { gate, input } = els();
     if (!gate) return;
