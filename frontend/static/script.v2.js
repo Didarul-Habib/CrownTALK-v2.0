@@ -10,19 +10,42 @@
   const STORAGE_KEY = 'crowntalk_access_v1';    // local/session storage key
   const COOKIE_KEY  = 'crowntalk_access_v1';    // cookie fallback
 
-  function isAuthorized() {
-    try { if (localStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
-    try { if (sessionStorage.getItem(STORAGE_KEY) === '1') return true; } catch {}
-    try { if (document.cookie.includes(`${COOKIE_KEY}=1`)) return true; } catch {}
-    return false;
+  function getStoredToken() {
+    let token = "";
+    try { token = localStorage.getItem(STORAGE_KEY) || token; } catch {}
+    try { token = token || sessionStorage.getItem(STORAGE_KEY) || ""; } catch {}
+    if (!token) {
+      try {
+        const cookie = document.cookie.split(";").find((p) =>
+          p.trim().startsWith(COOKIE_KEY + "=")
+        );
+        if (cookie) token = cookie.split("=")[1];
+      } catch {}
+    }
+    return token || "";
   }
 
-  function markAuthorized() {
-    try { localStorage.setItem(STORAGE_KEY, '1'); } catch {}
-    try { sessionStorage.setItem(STORAGE_KEY, '1'); } catch {}
+  function isAuthorized() {
+    const token = getStoredToken();
+    return !!token;
+  }
+
+  function markAuthorized(token) {
+    if (!token) return;
+    try { localStorage.setItem(STORAGE_KEY, token); } catch {}
+    try { sessionStorage.setItem(STORAGE_KEY, token); } catch {}
     try {
-      document.cookie = `${COOKIE_KEY}=1; max-age=${365*24*3600}; path=/; samesite=lax`;
+      document.cookie = `${COOKIE_KEY}=${token}; max-age=${365*24*3600}; path=/; samesite=lax`;
     } catch {}
+    window.__CROWNTALK_AUTH_TOKEN = token;
+  }
+
+  function exposeTokenHelpers() {
+    const token = getStoredToken();
+    window.__CROWNTALK_AUTH_TOKEN = token;
+    window.CROWNTALK = window.CROWNTALK || {};
+    window.CROWNTALK.getAccessToken = getStoredToken;
+    window.CROWNTALK.TOKEN_HEADER = "X-Crowntalk-Token";
   }
 
   function els() {
@@ -58,8 +81,31 @@
     const val = (input.value || '').trim();
     if (!val) return;
 
+    // Prefer backend verification so the server can enforce the gate too.
+    try {
+      const res = await fetch(`${backendBase}/verify_access`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ code: val }),
+      });
+      let data = {};
+      try { data = await res.json(); } catch {}
+      if (res.ok && data && data.token) {
+        const token = String(data.token);
+        markAuthorized(token);
+        exposeTokenHelpers();
+        hideGate();
+        bootAppUI();
+        return;
+      }
+    } catch (err) {
+      console.warn('verify_access failed, falling back to local ACCESS_CODE', err);
+    }
+
+    // Fallback: allow the hard-coded ACCESS_CODE if backend is not reachable yet.
     if (val === ACCESS_CODE) {
-      markAuthorized();
+      markAuthorized(ACCESS_CODE);
+      exposeTokenHelpers();
       hideGate();
       bootAppUI();
       return;
@@ -75,21 +121,34 @@
     const { gate, input } = els();
     if (!gate) return;
 
-    input?.addEventListener('keydown', (e) => {
-      if (e.key === 'Enter') {
+    const form = gate.querySelector('form');
+    if (form) {
+      form.addEventListener('submit', (e) => {
         e.preventDefault();
         tryAuth();
-      }
-    });
+      });
+    }
 
-    const lockIcon = gate.querySelector('svg');
+    const button = gate.querySelector('[data-ct-auth-submit]');
+    if (button) button.addEventListener('click', tryAuth);
+
+    if (input) {
+      input.addEventListener('keydown', (event) => {
+        if (event.key === 'Enter') {
+          event.preventDefault();
+          tryAuth();
+        }
+      });
+    }
+
+    const lockIcon = document.getElementById('lockFloatingIcon');
     if (lockIcon) {
-      lockIcon.style.cursor = 'pointer';
       lockIcon.addEventListener('click', tryAuth);
     }
   }
 
   function init() {
+    exposeTokenHelpers();
     if (isAuthorized()) {
       hideGate();
       bootAppUI();
@@ -136,23 +195,28 @@ const yearEl          = document.getElementById("year");
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 
 /* ========= PATCH: premium DOM handles ========= */
-const sessionTabsEl     = document.getElementById("sessionTabs");
-const analyticsHudEl    = document.getElementById("analyticsHud");
-const urlHealthBadgeEl  = document.getElementById("urlHealthBadge");
-const sortUrlsBtn       = document.getElementById("sortUrlsBtn");
-const shuffleUrlsBtn    = document.getElementById("shuffleUrlsBtn");
-const removeInvalidBtn  = document.getElementById("removeInvalidBtn");
-const copyQueuePanel    = document.getElementById("copyQueuePanel");
-const copyQueueListEl   = document.getElementById("copyQueueList");
-const copyQueueEmptyEl  = document.getElementById("copyQueueEmpty");
-const copyQueueNextBtn  = document.getElementById("copyQueueNextBtn");
-const copyQueueClearBtn = document.getElementById("copyQueueClearBtn");
-const presetSelect      = document.getElementById("presetSelect");
-const keyboardHudEl     = document.getElementById("keyboardHud");
-const exportAllBtn      = document.getElementById("exportAllBtn");
-const exportEnBtn       = document.getElementById("exportEnBtn");
-const exportNativeBtn   = document.getElementById("exportNativeBtn");
-const downloadTxtBtn    = document.getElementById("downloadTxtBtn");
+const sessionTabsEl         = document.getElementById("sessionTabs");
+const analyticsHudEl        = document.getElementById("analyticsHud");
+const urlHealthBadgeEl      = document.getElementById("urlHealthBadge");
+const urlHealthMeterFillEl  = document.getElementById("urlHealthMeterFill");
+const sortUrlsBtn           = document.getElementById("sortUrlsBtn");
+const shuffleUrlsBtn        = document.getElementById("shuffleUrlsBtn");
+const removeInvalidBtn      = document.getElementById("removeInvalidBtn");
+const copyQueuePanel        = document.getElementById("copyQueuePanel");
+const copyQueueListEl       = document.getElementById("copyQueueList");
+const copyQueueEmptyEl      = document.getElementById("copyQueueEmpty");
+const copyQueueNextBtn      = document.getElementById("copyQueueNextBtn");
+const copyQueueClearBtn     = document.getElementById("copyQueueClearBtn");
+const presetSelect          = document.getElementById("presetSelect");
+const keyboardHudEl         = document.getElementById("keyboardHud");
+const exportAllBtn          = document.getElementById("exportAllBtn");
+const exportEnBtn           = document.getElementById("exportEnBtn");
+const exportNativeBtn       = document.getElementById("exportNativeBtn");
+const downloadTxtBtn        = document.getElementById("downloadTxtBtn");
+const langEnToggle          = document.getElementById("langEnToggle");
+const langNativeToggle      = document.getElementById("langNativeToggle");
+const runCountEl            = document.getElementById("runCount");
+const safeModeToggle        = document.getElementById("safeModeToggle");
 
 // ------------------------
 // State
@@ -168,7 +232,12 @@ let ctSessionCounter = 0;
 let ctCopyQueue = [];
 let ctCopyQueueIndex = 0;
 
-/* =========================================================
+// Language + safe mode + analytics prefs
+let langPrefs = { useEn: true, useNative: true };
+let safeModeOn = false;
+let runCounter = 0;
+
+ /* =========================================================
    === PATCH: Mini Toast + Snack (used by multiple bits) ===
    ========================================================= */
 (function mountToast(){
@@ -368,13 +437,35 @@ function analyzeUrlLines(raw) {
 function updateUrlHealth() {
   if (!urlInput || !urlHealthBadgeEl) return;
   const info = analyzeUrlLines(urlInput.value || "");
+  const badge = urlHealthBadgeEl;
+  const meterFill = urlHealthMeterFillEl;
+  const meter = meterFill ? meterFill.parentElement : null;
+
   if (!info.total) {
-    urlHealthBadgeEl.textContent = "No URLs yet";
-    urlHealthBadgeEl.dataset.status = "empty";
+    badge.textContent = "No URLs yet";
+    badge.dataset.status = "empty";
+    if (meter) {
+      meter.dataset.status = "empty";
+      if (meterFill) meterFill.style.width = "0%";
+    }
     return;
   }
-  urlHealthBadgeEl.textContent = `${info.valid} valid · ${info.invalid} invalid · ${info.duplicates} dupes`;
-  urlHealthBadgeEl.dataset.status = info.invalid ? "warn" : "ok";
+
+  badge.textContent = `${info.valid} valid · ${info.invalid} invalid · ${info.duplicates} dupes`;
+
+  let status = "ok";
+  if (info.invalid || info.duplicates) status = "warn";
+  if (info.invalid >= info.valid && info.total > 0) status = "bad";
+  badge.dataset.status = status;
+
+  if (meter) {
+    const ratio = info.total ? info.valid / info.total : 0;
+    const clamped = Math.max(0, Math.min(1, ratio));
+    meter.dataset.status = status;
+    if (meterFill) {
+      meterFill.style.width = `${Math.round(clamped * 100)}%`;
+    }
+  }
 }
 function sortUrlsAscending() {
   if (!urlInput) return;
@@ -528,6 +619,149 @@ function updateAnalytics(meta) {
   analyticsHudEl.style.opacity = "1";
   analyticsHudEl.setAttribute("aria-hidden", "false");
 }
+
+// ------------------------
+// Language filter helpers
+// ------------------------
+function languageFilterAllows(lang) {
+  const code = lang || "native";
+  if (!langPrefs) return true;
+  if (code === "en") return !!langPrefs.useEn;
+  return !!langPrefs.useNative;
+}
+
+function applyLangFilterToDom() {
+  if (!resultsEl) return;
+  const nodes = resultsEl.querySelectorAll(".comment-line");
+  nodes.forEach((line) => {
+    const lang = line.dataset.lang || "native";
+    const show = languageFilterAllows(lang);
+    line.style.display = show ? "" : "none";
+  });
+}
+
+function loadLangPrefsFromStorage() {
+  try {
+    const en = localStorage.getItem("ct_lang_en_v1");
+    const native = localStorage.getItem("ct_lang_native_v1");
+    if (en === "0") langPrefs.useEn = false;
+    if (native === "0") langPrefs.useNative = false;
+  } catch {}
+}
+
+function persistLangPrefs() {
+  try {
+    localStorage.setItem("ct_lang_en_v1", langPrefs.useEn ? "1" : "0");
+    localStorage.setItem("ct_lang_native_v1", langPrefs.useNative ? "1" : "0");
+  } catch {}
+}
+
+function syncLangUIFromPrefs() {
+  if (langEnToggle && langEnToggle.parentElement) {
+    langEnToggle.checked = !!langPrefs.useEn;
+    langEnToggle.parentElement.setAttribute("data-active", langPrefs.useEn ? "true" : "false");
+  }
+  if (langNativeToggle && langNativeToggle.parentElement) {
+    langNativeToggle.checked = !!langPrefs.useNative;
+    langNativeToggle.parentElement.setAttribute("data-active", langPrefs.useNative ? "true" : "false");
+  }
+}
+
+function syncLangPrefsFromUI() {
+  if (langEnToggle) langPrefs.useEn = !!langEnToggle.checked;
+  if (langNativeToggle) langPrefs.useNative = !!langNativeToggle.checked;
+  syncLangUIFromPrefs();
+  persistLangPrefs();
+  applyLangFilterToDom();
+}
+
+function getLanguagePreferenceArray() {
+  const langs = [];
+  if (langPrefs.useEn) langs.push("en");
+  if (langPrefs.useNative) langs.push("native");
+  if (!langs.length) langs.push("en");
+  return langs;
+}
+
+function initLanguageToggles() {
+  loadLangPrefsFromStorage();
+  syncLangUIFromPrefs();
+  applyLangFilterToDom();
+  if (langEnToggle) langEnToggle.addEventListener("change", syncLangPrefsFromUI);
+  if (langNativeToggle) langNativeToggle.addEventListener("change", syncLangPrefsFromUI);
+}
+
+
+/* ------------------------
+   Run counter + Safe mode
+   ------------------------ */
+function initRunCounter() {
+  try {
+    const raw = localStorage.getItem("ct_run_counter_v1");
+    const n = raw ? parseInt(raw, 10) : 0;
+    if (!Number.isNaN(n) && n >= 0) runCounter = n;
+  } catch {}
+  if (runCountEl) {
+    const initial = runCounter && runCounter > 0 ? runCounter : 1;
+    runCountEl.textContent = String(initial);
+  }
+}
+
+function bumpRunCounter() {
+  runCounter = (runCounter || 0) + 1;
+  if (runCountEl) {
+    runCountEl.textContent = String(runCounter);
+  }
+  try {
+    localStorage.setItem("ct_run_counter_v1", String(runCounter));
+  } catch {}
+}
+
+function loadSafeModeFromStorage() {
+  try {
+    const val = localStorage.getItem("ct_safe_mode_v1");
+    safeModeOn = val === "1";
+  } catch {}
+}
+
+function persistSafeMode() {
+  try {
+    localStorage.setItem("ct_safe_mode_v1", safeModeOn ? "1" : "0");
+  } catch {}
+}
+
+function applySafeMode() {
+  const html = document.documentElement;
+  const body = document.body;
+  if (!html || !body) return;
+
+  if (safeModeOn) {
+    html.classList.add("ct-safe");
+    body.classList.add("low-motion");
+  } else {
+    html.classList.remove("ct-safe");
+    body.classList.remove("low-motion");
+  }
+
+  if (safeModeToggle) {
+    safeModeToggle.setAttribute("aria-pressed", safeModeOn ? "true" : "false");
+    safeModeToggle.textContent = safeModeOn ? "Low motion: ON" : "Low motion: OFF";
+    safeModeToggle.style.display = "inline-block";
+  }
+}
+
+function initSafeModeToggle() {
+  loadSafeModeFromStorage();
+  applySafeMode();
+  if (safeModeToggle) {
+    safeModeToggle.addEventListener("click", () => {
+      safeModeOn = !safeModeOn;
+      persistSafeMode();
+      applySafeMode();
+      ctToast(safeModeOn ? "Low-motion mode enabled" : "Low-motion mode disabled", "ok");
+    });
+  }
+}
 async function exportComments(mode) {
   if (!resultsEl) return;
   const lines = [];
@@ -537,9 +771,10 @@ async function exportComments(mode) {
     if (!bubble) return;
     const text = bubble.textContent.trim();
     if (!text) return;
-    const lang = line.dataset.lang || "en";
+    const lang = line.dataset.lang || "native";
     if (mode === "en" && lang !== "en") return;
     if (mode === "native" && lang === "en") return;
+    if ((mode === "all" || mode === "download") && !languageFilterAllows(lang)) return;
     lines.push(text);
   });
   if (!lines.length) {
@@ -769,14 +1004,19 @@ function buildTweetBlock(result) {
   comments.forEach((comment, idx) => {
     if (!comment || !comment.text) return;
 
+    const lang = comment.lang || "native";
+
     const line = document.createElement("div");
     line.className = "comment-line";
-    if (comment.lang) line.dataset.lang = comment.lang;
+    line.dataset.lang = lang;
+    if (!languageFilterAllows(lang)) {
+      line.style.display = "none";
+    }
 
     const tag = document.createElement("span");
     tag.className = "comment-tag";
     tag.textContent = multilingual
-      ? (comment.lang === "en" ? "EN" : (comment.lang || "native").toUpperCase())
+      ? (lang === "en" ? "EN" : lang.toUpperCase())
       : `EN #${idx + 1}`;
 
     const bubble = document.createElement("span");
@@ -971,10 +1211,27 @@ async function handleGenerate() {
     setProgressText(`Processing ${i + 1}/${urls.length}…`);
     setProgressRatio(Math.max(0.03, i / Math.max(1, urls.length)));
 
+    const headers = { "Content-Type": "application/json" };
+    try {
+      const token = (window.CROWNTALK && typeof window.CROWNTALK.getAccessToken === "function"
+        ? window.CROWNTALK.getAccessToken()
+        : (window.__CROWNTALK_AUTH_TOKEN || ""));
+      if (token) {
+        const headerName = (window.CROWNTALK && window.CROWNTALK.TOKEN_HEADER) || "X-Crowntalk-Token";
+        headers[headerName] = token;
+      }
+    } catch {}
+    const payload = { urls: [oneUrl] };
+    try {
+      const langs = getLanguagePreferenceArray();
+      if (Array.isArray(langs) && langs.length) {
+        payload.languages = langs;
+      }
+    } catch {}
     const requestOptions = {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ urls: [oneUrl] }),
+      headers,
+      body: JSON.stringify(payload),
     };
 
     try {
@@ -1073,6 +1330,8 @@ async function handleGenerate() {
     setProgressRatio(1);
   }
 
+  applyLangFilterToDom();
+  bumpRunCounter();
   const durationSec = Math.max(1, Math.round((performance.now() - runStartedAt) / 1000));
   updateAnalytics({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
   addSessionSnapshot({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
@@ -1151,10 +1410,27 @@ async function handleReroll(tweetEl) {
     commentsWrap.appendChild(sk1); commentsWrap.appendChild(sk2);
   }
   try {
+    const headers = { "Content-Type": "application/json" };
+    try {
+      const token = (window.CROWNTALK && typeof window.CROWNTALK.getAccessToken === "function"
+        ? window.CROWNTALK.getAccessToken()
+        : (window.__CROWNTALK_AUTH_TOKEN || ""));
+      if (token) {
+        const headerName = (window.CROWNTALK && window.CROWNTALK.TOKEN_HEADER) || "X-Crowntalk-Token";
+        headers[headerName] = token;
+      }
+    } catch {}
+    const payload = { url };
+    try {
+      const langs = getLanguagePreferenceArray();
+      if (Array.isArray(langs) && langs.length) {
+        payload.languages = langs;
+      }
+    } catch {}
     const res = await fetch(rerollURL, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ url }),
+      headers,
+      body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
     const data = await res.json();
@@ -1255,6 +1531,9 @@ function bootAppUI() {
   renderHistory();
   autoResizeTextarea();
   updateUrlHealth();
+  initLanguageToggles();
+  initRunCounter();
+  initSafeModeToggle();
   initPresetFromStorage();
   initKeyboardHud();
   renderCopyQueue();
@@ -1480,6 +1759,26 @@ function bootAppUI() {
 /* =========================================================
    =============  Crash Guard restore banner ===============
    ========================================================= */
+(function crashGuardSave(){
+  try {
+    window.addEventListener('beforeunload', ()=>{
+      try {
+        if (!urlInput) return;
+        const snap = {
+          input: urlInput.value || "",
+          resultsHTML: resultsEl ? resultsEl.innerHTML : "",
+          failedHTML: failedEl ? failedEl.innerHTML : "",
+        };
+        if (!snap.input && !snap.resultsHTML && !snap.failedHTML) {
+          localStorage.removeItem('ct_crash_snapshot_v1');
+          return;
+        }
+        localStorage.setItem('ct_crash_snapshot_v1', JSON.stringify(snap));
+      } catch {}
+    });
+  } catch {}
+})();
+
 (function crashGuardRestore(){
   try {
     const raw = localStorage.getItem('ct_crash_snapshot_v1');
