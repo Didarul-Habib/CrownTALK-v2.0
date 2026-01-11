@@ -52,30 +52,38 @@ def _compute_access_token(code: str) -> str:
     return hashlib.sha256(raw).hexdigest()
 
 
-EXPECTED_ACCESS_TOKEN = _compute_access_token(ACCESS_CODE_ENV) if ACCESS_CODE_ENV else None
+EXPECTED_ACCESS_TOKEN = ""  # computed per-request in _require_access_or_none
 
 
 def _require_access_or_none():
-    """Return a Flask response if access should be denied, otherwise None.
+    """
+    If the access gate is enabled, validate the per-session access token.
 
-    The gate is intentionally soft: if no ACCESS_CODE_ENV is configured (or the
-    gate is disabled via CROWNTALK_DISABLE_GATE) the backend behaves as if
-    the gate is off.
+    - When CT_ACCESS_CODE is *not* set, the gate is disabled and this
+      function always returns None.
+    - When CT_ACCESS_CODE *is* set, we recompute the expected token for
+      the current request's session and compare it against the token
+      provided in the `x-crowntalk-access` header.
     """
     if GATE_DISABLED:
+        # No gate configured -> always allow
         return None
 
-    expected = EXPECTED_ACCESS_TOKEN
+    # Recompute the expected token *for this request* so it uses the
+    # same session id that was used during /verify_access.
+    expected = _compute_access_token(ACCESS_CODE_ENV)
     if not expected:
+        # Misconfiguration; fail-open to avoid locking everyone out.
         return None
 
     token = (request.headers.get(ACCESS_HEADER_NAME) or "").strip()
     if not token:
         return jsonify({"error": "forbidden", "code": "missing_access"}), 403
+
     if token != expected:
         return jsonify({"error": "forbidden", "code": "bad_access"}), 403
-    return None
 
+    return None
 
 def bump_metric(name: str, amount: int = 1) -> None:
     try:
@@ -4958,4 +4966,3 @@ def weighted_sample(weight_map: dict[str, float]) -> str:
             return key
     # numerical safety fallback
     return items[-1][0]
-
