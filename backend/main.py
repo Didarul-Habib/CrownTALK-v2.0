@@ -38,6 +38,44 @@ METRICS: dict[str, object] = {
 }
 
 
+
+# --------- Access gate configuration ---------
+ACCESS_CODE_ENV = os.getenv("CROWNTALK_ACCESS_CODE", "@CrownTALK@2026@CrownDEX")
+ACCESS_SECRET = os.getenv("CROWNTALK_ACCESS_SECRET", "change-me")
+ACCESS_HEADER_NAME = "X-Crowntalk-Token"
+GATE_DISABLED = os.getenv("CROWNTALK_DISABLE_GATE", "").lower() in ("1", "true", "yes")
+
+
+def _compute_access_token(code: str) -> str:
+    raw = f"{(code or '').strip()}|{ACCESS_SECRET}".encode("utf-8")
+    return hashlib.sha256(raw).hexdigest()
+
+
+EXPECTED_ACCESS_TOKEN = _compute_access_token(ACCESS_CODE_ENV) if ACCESS_CODE_ENV else None
+
+
+def _require_access_or_none():
+    """Return a Flask response if access should be denied, otherwise None.
+
+    The gate is intentionally soft: if no ACCESS_CODE_ENV is configured (or the
+    gate is disabled via CROWNTALK_DISABLE_GATE) the backend behaves as if
+    the gate is off.
+    """
+    if GATE_DISABLED:
+        return None
+
+    expected = EXPECTED_ACCESS_TOKEN
+    if not expected:
+        return None
+
+    token = (request.headers.get(ACCESS_HEADER_NAME) or "").strip()
+    if not token:
+        return jsonify({"error": "forbidden", "code": "missing_access"}), 403
+    if token != expected:
+        return jsonify({"error": "forbidden", "code": "bad_access"}), 403
+    return None
+
+
 def bump_metric(name: str, amount: int = 1) -> None:
     try:
         METRICS[name] = METRICS.get(name, 0) + int(amount)
@@ -65,6 +103,39 @@ def _handle_unexpected_error(exc: Exception):
     logger.exception("Unhandled error in request", exc_info=exc)
     return jsonify({"error": "internal_server_error"}), 500
 
+
+
+@app.route("/verify_access", methods=["POST", "OPTIONS"])
+def verify_access():
+    if request.method == "OPTIONS":
+        resp = make_response("", 204)
+        return add_cors_headers(resp)
+
+    if GATE_DISABLED:
+        # Gate is effectively off; let the frontend proceed without a token.
+        return jsonify({"ok": True, "token": ""})
+
+    try:
+        payload = request.get_json(silent=True) or {}
+    except Exception:
+        payload = {}
+
+    code = (payload.get("code") or "").strip()
+
+    if not ACCESS_CODE_ENV:
+        # No configured access code -> accept any code but return empty token.
+        return jsonify({"ok": True, "token": ""})
+
+    if not code:
+        return jsonify({"error": "missing_code"}), 400
+
+    if code != ACCESS_CODE_ENV:
+        # Small delay to make brute forcing a bit less pleasant.
+        time.sleep(0.8)
+        return jsonify({"error": "invalid_code"}), 401
+
+    token = _compute_access_token(code)
+    return jsonify({"ok": True, "token": token})
 
 @app.route("/stats", methods=["GET"])
 def stats_endpoint():
@@ -1157,7 +1228,7 @@ def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token"
     return response
 
 @app.route("/", methods=["GET"])
@@ -4594,6 +4665,10 @@ def comment_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
 
+    gate_resp = _require_access_or_none()
+    if gate_resp is not None:
+        return gate_resp
+
     try:
         payload = request.get_json(force=True, silent=True) or {}
     except Exception:
@@ -4688,6 +4763,10 @@ def reroll_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
 
+    gate_resp = _require_access_or_none()
+    if gate_resp is not None:
+        return gate_resp
+
     url = ""
     try:
         data = request.get_json(force=True, silent=True) or {}
@@ -4744,6 +4823,10 @@ def thread_story_endpoint():
     if request.method == "OPTIONS":
         resp = make_response()
         return add_cors_headers(resp)
+
+    gate_resp = _require_access_or_none()
+    if gate_resp is not None:
+        return gate_resp
 
     data = request.get_json(force=True, silent=True) or {}
 
