@@ -257,7 +257,7 @@ def current_ct_vibe(now: datetime | None = None) -> str:
     return "day"
 
 
-def build_reaction_plan(tweet, author_fam, *, debug: bool = False):
+def _build_reaction_plan_legacy(tweet, author_fam, *, debug: bool = False):
     plan: dict[str, object] = {}
 
     # ... your existing logic (topics, sentiment, etc.)
@@ -1120,7 +1120,7 @@ TOKEN_RE = re.compile(
     r"(?:\$\w{2,15}|\d+(?:\.\d+)?|[A-Za-z0-9’']+(?:-[A-Za-z0-9’']+)*)"
 )
 
-def words(text: str) -> list[str]:
+def _words_basic(text: str) -> list[str]:
     return TOKEN_RE.findall(text or "")
 
 def sanitize_comment(raw: str) -> str:
@@ -1820,7 +1820,7 @@ def pro_kol_score(text: str) -> int:
 
     return score
 
-def pro_kol_ok(text: str, min_score: int = 1) -> bool:
+def _pro_kol_ok_simple(text: str, min_score: int = 1) -> bool:
     return pro_kol_score(text) >= min_score
 
 PRO_POLISH_REPLACEMENTS = [
@@ -2814,7 +2814,7 @@ def _ensure_question_punctuation(text: str) -> str:
         return t + "?"
     return t
 
-def enforce_word_count_natural(raw: str, min_w: int = 6, max_w: int = 13) -> str:
+def _enforce_word_count_natural_basic(raw: str, min_w: int = 6, max_w: int = 13) -> str:
     """
     Shared final cleaner for ALL comments (offline + Groq + OpenAI + Gemini).
     - strips links/handles/emojis
@@ -3054,7 +3054,7 @@ def maybe_inject_ct_slang(
     maybe_inject_ct_slang._last_token = token
     return new_text
 
-def _pick_voice_card(tweet_text: str) -> dict:
+def _pick_voice_card(tweet_text: str, plan: dict | None = None) -> dict:
     topic = detect_topic(tweet_text or "")
     if topic not in {"greeting","giveaway","chart","complaint","announcement","meme","thread","one_liner","generic"}:
         topic = "generic"
@@ -3090,7 +3090,7 @@ def _pick_voice_card(tweet_text: str) -> dict:
         _RECENT_VOICES.pop(0)
     return chosen
 
-def _pick_voice_card(plan: dict) -> str:
+def _pick_voice_id_from_plan(plan: dict) -> str:
     ct_vibe = plan.get("ct_vibe", "day")
 
     # Example starting weights
