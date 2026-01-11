@@ -1,0 +1,284 @@
+XO MARKET (xo.market) — Deep-Dive Research (Public Sources)
+Generated: 2026-01-11 (Asia/Dhaka)
+
+DISCLAIMER
+- This is research based on public information (project website, docs, blog posts, third‑party analyses).
+- It is NOT financial advice. Always verify details directly with official sources before taking action.
+- “XO Market”, “XO”, “xodotmarket”, and various “XO”-named tokens on explorers/aggregators can be confused with unrelated assets. Treat any token/contract claims as unverified unless explicitly confirmed by XO Market’s official channels.
+
+──────────────────────────────────────────────────────────────────────────────
+1) PROJECT IDENTITY (WHAT IT IS)
+──────────────────────────────────────────────────────────────────────────────
+Name(s)
+- XO Market (brand); X handle commonly referenced as @xodotmarket (also mirrored by third‑party viewers).
+
+One‑line description
+- A permissionless “conviction market” platform: users create and trade markets about real‑world outcomes; creators can earn fees; outcomes resolve using a hybrid AI + human dispute layer (MODRA). (XO website + Terms + Blockworks + project blog)
+
+Core promise
+- “Trade your convictions” and let markets price beliefs in real time (social + trading feed). (xo.market)
+
+Status
+- Mainnet Beta launched Nov 10, 2025 (per XO blog). Alpha was testnet; Beta uses real USDC settlement. (XO blog; third‑party walkthrough)
+
+High-level differentiation (what they claim is different)
+- Open market creation (permissionless listings, with guardrails).
+- Adaptive liquidity via LS‑LMSR (designed to keep long‑tail markets tradable).
+- A bespoke resolution system (MODRA) intended to reduce oracle capture.
+- Social/feed UX + gamified reputation/points.
+
+──────────────────────────────────────────────────────────────────────────────
+2) THE PROBLEM THEY’RE SOLVING
+──────────────────────────────────────────────────────────────────────────────
+Traditional prediction markets tend to run into:
+A) Market-listing gatekeepers
+- Many large platforms restrict what markets can list, limiting long-tail/community markets.
+B) Liquidity fragmentation
+- Long-tail markets often become thin/illiquid; multi-outcome “bundles of binaries” fragment liquidity.
+C) Resolver / oracle capture risks
+- Token-vote dispute systems can be dominated by large holders; contentious resolutions degrade trust.
+D) UX barriers
+- “Crypto-native” tooling and complex flows limit mainstream adoption.
+
+XO’s stated approach is to make “any conviction tradable” by pairing permissionless creation + adaptive liquidity + “AI-first” resolution, wrapped in a social feed UX. (Blockworks; cyber•Fund)
+
+──────────────────────────────────────────────────────────────────────────────
+3) PRODUCT OVERVIEW (HOW IT WORKS)
+──────────────────────────────────────────────────────────────────────────────
+3.1 The “Conviction Market” object
+A typical market includes:
+- Question / statement (must be objectively resolvable)
+- Outcome set:
+  - Binary (Yes/No), and now Multi-outcome (Nov 2025 update)
+- Expiry/trading close + resolution criteria
+- Collateral token (USDC in mainnet beta; more planned)
+- Creator fee tier (0%–1% depending on requirements)
+- Liquidity parameters (seeded initially; curve adapts as volume grows)
+
+3.2 User journeys
+A) Join / onboarding
+- Login via email/social auth or connect wallet; XO uses Privy for embedded wallet + social login flows. (Terms; Privacy Policy; third‑party walkthrough)
+- Beta access can require an invite/referral code (described in XO blog + third‑party walkthrough).
+
+B) Deposit / bridge
+- In Beta, users bridge in USDC to trade; blog describes choosing a chain to bridge from.
+- A third‑party walkthrough states USDC on Base, Ethereum, and BNB Chain are supported in the deposit flow (verify in-app). (XO blog; blocmates)
+
+C) Trade / positions
+- Users buy/sell outcome tokens; pricing comes from LS‑LMSR AMM curve.
+- Beta phase started “fee-free” at the protocol level (creator fees still apply) per the Nov 10, 2025 blog post. (XO blog)
+
+D) Create markets (permissionless, but with requirements)
+- XO blog: Mainnet Beta creation requires seeding at least 500 USDC; 500 USDC unlocks up to 0.5% creator fee; 1,000+ unlocks 1% creator fee. (XO blog)
+- Third‑party: open market creation also ties to a “Catalyst badge” earned via Conviction Points (CP) (500 CP threshold), with an issuance window (e.g., one market per rolling window) — verify as it can change. (blocmates)
+
+E) Earn / incentives
+- Creator fees: creators set a fee tier (0–1%) and earn on trading volume in their markets. (XO blog; multi‑outcome post; blocmates)
+- Conviction Points (CP): gamified points; higher CP from trades in Beta; caps per market to balance. (XO blog; blocmates)
+- Referrals: verified users get referral codes; earn CP based on invitees’ activity; revenue sharing “coming soon.” (XO blog)
+- Peck-ins: daily check-in mechanic that carries over from Alpha → Beta. (XO blog; blocmates)
+
+──────────────────────────────────────────────────────────────────────────────
+4) KEY MECHANISMS (THE “ENGINE”)
+──────────────────────────────────────────────────────────────────────────────
+4.1 Liquidity: LS‑LMSR (Liquidity-Sensitive Logarithmic Market Scoring Rule)
+What XO says it uses
+- XO Terms explicitly state the platform uses LS‑LMSR as its AMM model.
+- Blockworks highlights LS‑LMSR as a way to bootstrap liquidity for niche markets.
+
+Why it matters
+- Traditional designs often require market makers or deep capital to keep markets liquid.
+- LS‑LMSR is intended to adapt liquidity/depth as activity grows, making long-tail markets more usable.
+
+Multi‑outcome implementation (Nov 24, 2025)
+- XO introduced true multi‑outcome markets: one shared pool/curve across all outcomes.
+- When one outcome’s price moves, all others adjust to keep the total coherent (summing to 100%).
+- Benefits claimed: less fragmentation; smaller outcomes stay tradable; easier creator seeding. (XO multi‑outcome post)
+
+4.2 Resolution & disputes: MODRA (Market Outcome & Dispute Resolution Agent)
+What it is (as described publicly)
+- Terms: “hybrid AI-and-juror dispute resolution system called MODRA.”
+- Blockworks: “AI-first” oracle that queries trusted APIs and uses ML; disputes escalate to staked token-holder jury with quadratic voting; minority can be slashed.
+- cyber•Fund: MODRA is built to avoid external-oracle manipulation; hybrid approach.
+
+A likely conceptual pipeline (derived from sources)
+1) Automatic resolution for “easy” outcomes
+   - AI agent fetches from trusted sources/APIs and proposes result.
+2) Dispute window / challenge
+   - If contested or low-confidence, enters dispute phase.
+3) Human juror layer (“High Court” in some descriptions)
+   - Jurors selected pseudo-randomly; influence weighted by stake and reputation.
+   - Quadratic voting used to reduce whale dominance. (blocmates; Blockworks)
+4) Final settlement on-chain
+   - Smart contracts distribute payouts based on final resolution.
+
+4.3 MEV / fairness protections (Dec 24, 2025 post)
+- XO published “The MEV Problem,” arguing that visible orders in AMMs can be exploited (e.g., sandwiching),
+  and that this can be extra harmful in fast-moving “feed-style” markets.
+- They frame “Protecting the Feed” as a priority (exact mitigation details may evolve; check latest posts). (XO blog)
+
+──────────────────────────────────────────────────────────────────────────────
+5) ARCHITECTURE & INFRASTRUCTURE (WHAT’S KNOWN PUBLICLY)
+──────────────────────────────────────────────────────────────────────────────
+There are multiple public descriptions; treat this section as “best-effort” from sources.
+
+5.1 “Sovereign appchain / Celestia DA” narrative
+- Blockworks calls XO an “upcoming prediction market built as a sovereign appchain using Celestia for data availability.”
+- cyber•Fund also describes XO as built on a sovereign rollup/appchain with Celestia DA. (Blockworks; cyber•Fund)
+
+5.2 “BNB Liquidity Hub” narrative (XO’s GitHub readme)
+- XO Market published a “BNB Liquidity Hub Overview” stating:
+  - the “liquidity hub lives on BNB Chain”
+  - a “hybrid engine for instant trades and on-chain verification”
+  - “settlement contracts deployed on BNB Chain”
+  - front-end “CrowdFeed” social UI
+  - gamification via Conviction Points
+(From xo-market/bnb-readme on GitHub)
+
+Reconciling the two
+- It’s plausible XO uses a multi-layer architecture (e.g., a settlement/liquidity hub on BNB Chain, with additional components or data availability on Celestia).
+- Public sources do not provide a single canonical architecture diagram that can be independently verified here.
+- For “source of truth,” verify the latest official technical docs/whitepaper when available.
+
+5.3 Wallet/authentication
+- Privacy Policy and Terms state XO uses Privy for social login + embedded (self-custodial) wallet; XO claims it does not store user private keys. (Terms; Privacy Policy)
+
+5.4 Non-custodial claims
+- Terms: XO is “non-custodial interface to blockchain-based smart contracts” and does not hold user funds. (Terms)
+
+──────────────────────────────────────────────────────────────────────────────
+6) TOKEN, POINTS, AND ECONOMICS
+──────────────────────────────────────────────────────────────────────────────
+6.1 What exists today (confirmed by primary sources)
+- USDC settlement in mainnet beta (trades/payouts/leaderboard activity settle in USDC). (XO blog)
+- Creator fees on markets (0–1%), with creation seed tiers. (XO blog; multi‑outcome post)
+- CP (Conviction Points) as gamified incentive; higher CP during Beta; caps; referrals; daily check-ins (“peck-ins”). (XO blog; blocmates)
+
+6.2 XO token (future / partially referenced)
+- Blockworks describes “staked XO token holders” in the dispute layer and slashing for minority voters.
+- Third‑party viewers show campaigns implying “future XO Market token supply” rewards.
+- Some third‑party sites speculate about token sales/airdrops; treat as unconfirmed unless XO publishes official tokenomics docs.
+
+6.3 Beware “lookalike tokens”
+- There are tokens named similarly (“xodotmarket”, “XO Market”, etc.) on various chains and aggregators.
+- Unless XO’s official website/docs explicitly publish a contract address and chain, assume these may be unrelated.
+
+6.4 Revenue model (publicly described)
+- Creator fees on trades.
+- Potential future “revenue sharing” linked to referrals (per XO blog).
+- Protocol fees were stated as “none” at Beta phase start (Nov 2025); may change later. (XO blog)
+
+──────────────────────────────────────────────────────────────────────────────
+7) TEAM, ORIGIN, BACKERS
+──────────────────────────────────────────────────────────────────────────────
+7.1 Origin story
+- XO blog: “grew from an idea at a hackathon” into a platform; Blockworks notes Celestia Mammothon hackathon context. (XO blog; Blockworks)
+
+7.2 Fundraising
+- Blockworks (Jul 1, 2025): XO Market raised a $500K pre-seed round led by cyber•Fund and Delphi Ventures. (Blockworks)
+- XO website “Our backers” section also references Delphi Ventures and cyber•Fund (verify page). (xo.market)
+
+7.3 Team (publicly available)
+- XO’s own site does not prominently list team bios on the main landing page (at least in the fetched view).
+- Some third‑party sites list names (often without primary sourcing). Treat as unverified unless confirmed by XO.
+
+──────────────────────────────────────────────────────────────────────────────
+8) COMMUNITY, ACCESS, AND GROWTH LOOPS
+──────────────────────────────────────────────────────────────────────────────
+Community touchpoints
+- Website links to Blog, Docs, and X; GitHub readme lists Discord and founders@xo.market email. (xo.market; GitHub readme)
+
+Access mechanics
+- Invite / referral codes (5 per verified user per XO blog).
+- Waitlist option when no code is available. (XO blog)
+
+Gamification loops
+- CP (Conviction Points)
+- Badges (e.g., “Catalyst badge” in third‑party walkthrough; verify inside app)
+- Daily check-ins (“peck-ins”)
+- Leaderboards and potentially seasonal campaigns
+
+Integrations (reported by third parties)
+- Bitget Wallet integration + access code campaign reported by an outposts post (verify current availability). (Outposts)
+
+──────────────────────────────────────────────────────────────────────────────
+9) LEGAL, COMPLIANCE, AND USER SAFETY (FROM XO DOCS)
+──────────────────────────────────────────────────────────────────────────────
+Terms highlights
+- Age: 18+ required. (Terms)
+- Restricted regions list includes (explicitly mentioned): US, UK, France, Singapore, Ontario (Canada), plus sanctioned jurisdictions; also prohibits bypassing via VPN/proxy. (Terms)
+- Prohibited markets: illegal activity, violence/personal harm, privacy violations, defamatory/harassing content, etc. (Terms)
+- Non-custodial: XO says it does not custody user funds and cannot recover wallets. (Terms)
+- Outcome finality: users agree MODRA outcomes are final/binding; limited recourse. (Terms)
+
+Privacy highlights (Last updated June 5, 2025)
+- “Privacy-preserving” with minimal personal data collection.
+- Privy handles authentication; XO may receive limited account identifiers and possibly email.
+- Optional X (Twitter) verification to link profile; warns this makes a public link between X identity and XO activity. (Privacy Policy)
+
+──────────────────────────────────────────────────────────────────────────────
+10) COMPETITIVE LANDSCAPE (WHERE IT SITS)
+──────────────────────────────────────────────────────────────────────────────
+Direct comparables
+- Polymarket / Kalshi: curated listings, heavy attention, large-volume flagship markets.
+- UMA-based dispute systems (oracle capture debates referenced by Blockworks).
+
+XO’s positioning (publicly described)
+- “pump.fun of prediction markets” (Blockworks framing): permissionless market creation + creator economy.
+- Focus on long-tail, social/discoverability feed (“CrowdFeed”), and resolution trust. (XO site; GitHub readme; Blockworks)
+
+Potential differentiation risks
+- Permissionless creation raises moderation/compliance burdens.
+- Hybrid AI resolution must maintain credibility and transparency to avoid “black box” concerns.
+- Liquidity model performance under adversarial conditions is key.
+
+──────────────────────────────────────────────────────────────────────────────
+11) RISKS & OPEN QUESTIONS (DUE DILIGENCE CHECKLIST)
+──────────────────────────────────────────────────────────────────────────────
+Technical
+- Confirm what chain(s) the settlement contracts actually live on (BNB hub vs Celestia-based components).
+- Verify contract audits, bug bounty, and security posture (not found clearly in fetched sources).
+- Understand bridging/settlement custody assumptions (who controls bridge, how USDC is held/represented).
+
+Market integrity
+- How does XO prevent low-quality, unresolvable, or manipulative markets at scale?
+- What’s the exact dispute procedure, timing, and evidence standard for MODRA?
+- How transparent are AI decisions and what are the override rules?
+
+Economics
+- What are the final fee schedules once protocol fees turn on?
+- Token issuance/utility (if any) and governance assumptions.
+- Sustainability of incentives (CP, referrals, campaigns).
+
+Regulatory & compliance
+- Jurisdictional restrictions are broad; users must confirm local legality.
+- Prediction markets are heavily regulated in many jurisdictions.
+
+──────────────────────────────────────────────────────────────────────────────
+12) IMPORTANT LINKS (OFFICIAL + HIGH-QUALITY THIRD-PARTY)
+──────────────────────────────────────────────────────────────────────────────
+Official
+- Website: https://xo.market/
+- Docs hub: https://xo.market/docs
+- Terms of Service: https://xo.market/terms-of-service
+- Privacy Policy: https://xo.market/privacy-policy
+- Blog (Medium): https://medium.com/@xomarket
+- GitHub (BNB liquidity hub overview): https://github.com/xo-market/bnb-readme
+
+Key official posts (blog)
+- “XO Market Mainnet Beta is Live” (Nov 10, 2025): https://medium.com/@xomarket/xo-market-mainnet-beta-is-live-e9d0727821b0
+- “Introducing Multi-Outcome Markets” (Nov 24, 2025): https://medium.com/@xomarket/introducing-multi-outcome-markets-a6c0d2edddcd
+- “The MEV Problem” (Dec 24, 2025): (find via XO Medium profile; URL may vary)
+
+Independent / analysis
+- Blockworks: pre-seed raise + architecture + oracle/dispute framing (Jul 1, 2025)
+  https://blockworks.co/news/prediction-market-xo-market-raise-500k
+- cyber•Fund research (Sep 4, 2025)
+  https://cyber.fund/content/xo-market-making-any-conviction-tradable
+- Blocmates walkthrough / feature analysis (Nov 11, 2025)
+  https://www.blocmates.com/articles/xo-market-transforming-predictions-into-conviction-backed-markets
+- Bitget Wallet integration mention (Nov 13, 2025)
+  https://outposts.io/article/xo-market-beta-launches-inside-bitget-wallet-f5042731-3d62-4233-84ab-005e96fcab01
+
+──────────────────────────────────────────────────────────────────────────────
+END
