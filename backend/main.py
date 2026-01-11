@@ -4930,3 +4930,32 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
+
+
+# ---- injected helper(s) by ChatGPT fix ----
+
+def weighted_sample(weight_map: dict[str, float]) -> str:
+    """Sample a key from a weight map.
+
+    Weights may be any non-negative numbers. Falls back to uniform
+    if the total weight is <= 0.
+    """
+    items = list(weight_map.items())
+    if not items:
+        raise ValueError("weight_map must not be empty")
+
+    total = sum(max(float(w), 0.0) for _, w in items)
+    if total <= 0:
+        # uniform fallback
+        return random.choice(items)[0]
+
+    r = random.random() * total
+    upto = 0.0
+    for key, w in items:
+        w = max(float(w), 0.0)
+        upto += w
+        if upto >= r:
+            return key
+    # numerical safety fallback
+    return items[-1][0]
+
