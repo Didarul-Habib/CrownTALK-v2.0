@@ -1,0 +1,339 @@
+TRIA (tria.so / app.tria.so) — Deep Dive (every angle)
+Last updated: 2026-01-11
+Scope: Public information only. Some items (especially metrics) are “project claims”
+       from marketing pages or paid press releases; treat them as unverified unless
+       independently validated.
+
+================================================================================
+0) QUICK FACTS (at a glance)
+================================================================================
+Brand: Tria (also shown as “useTria” on X)
+Positioning (consumer): “self‑custodial neobank” that unifies spend, trade, and earn
+                         across chains without users thinking about gas/bridges/seeds.
+Positioning (developer): chain abstraction SDKs to build chain-abstracted apps/rollups
+                         that “harness users and liquidity from all VMs”.
+Key tech pillar: BestPath AVS (intents marketplace + routing/settlement layer).
+Underlying network concept: “Unchained” (an AVS L2 described as Arbitrum Orbit + MoveVM).
+Company name shown in docs footer & App Stores: Threely Dimensions Inc.
+
+Primary URLs
+- Website: https://www.tria.so/en
+- Web app (beta landing): https://app.tria.so/
+- Docs: https://docs.tria.so/
+- X: https://x.com/useTria
+
+================================================================================
+1) WHAT TRIA IS (plain-English)
+================================================================================
+Tria is best understood as two tightly-coupled products:
+
+(1) A consumer “wallet + neobank” interface:
+    - a self-custodial wallet experience
+    - spending via Tria Cards (Visa-branded in some comms) with broad token top-ups
+    - yield/earn features (on-chain strategies)
+    - trading features (swap, perps, cross-chain routing)
+    - optional bank-account rails (“US bank account” is listed on the website)
+
+(2) A chain-abstraction infrastructure stack for developers:
+    - embedded/shared wallets + onboarding
+    - cross-VM composability (EVM, Solana VM, Cosmos/IBC, Bitcoin, MoveVM)
+    - intents-based routing (BestPath AVS) for swaps, payments, and multi-step actions
+    - decentralized identity primitives (@tria DIDs) to unify reputation and accounts
+
+In short: Tria wants “crypto UX like Revolut/Monzo” while keeping user self-custody,
+and it aims to do that by abstracting chain differences (VMs), liquidity fragmentation,
+and gas friction behind an intents + routing + wallet infrastructure.
+
+================================================================================
+2) THE PROBLEMS TRIA TARGETS
+================================================================================
+A) User continuity & onboarding friction
+- New users struggle with seed phrases, multiple wallet types, and chain switching.
+
+B) Asset fragmentation
+- Assets and liquidity spread across chains and VMs create “bridge/swap/gas” burdens.
+
+C) Multi-VM interoperability is hard for developers
+- Building a dApp for one VM can leave out users from other ecosystems.
+
+Tria’s docs explicitly frame the rise of appchains and ecosystems as creating
+fragmentation and inconsistent UX across chains/VMs, motivating chain abstraction.
+
+================================================================================
+3) PRODUCT SURFACE AREA — CONSUMER SIDE
+================================================================================
+Based on the public website + web app landing + app store listings, Tria markets
+the following consumer capabilities:
+
+A) Wallet (self-custodial, “seedless” onboarding)
+- “seedless, self‑custodial, gasless platform” messaging appears on the web-app landing.
+- Supports advanced vs simplified modes: docs describe an interface where users can
+  toggle between a “high-frequency trading terminal” and a simpler everyday wallet.
+
+B) Swap / cross-chain trading
+- Website markets “smart, automatic, cross-chain swaps” and “gas-free” routing,
+  and ties this to BestPath.
+
+C) Perps / leverage trading
+- Website includes “PERPS” as a core feature, framed as “cross-chain leverage trading”
+  with “unified routing” via BestPath.
+
+D) Earn / yield
+- Website markets “transparent yield from self-custodial onchain strategies”.
+- Web app landing mentions “earn yields up to 15%” (claim).
+
+E) Cards (spend crypto in the real world)
+- Website claims spending in 150+ countries and topping up with 1,000+ tokens.
+- Website lists card types and highlights Apple Pay / Google Pay, cashback, large limits,
+  and access to yield products.
+
+F) Rewards / points program
+- Website highlights “Tria Points: Season 1 Live” and “Earn XP every time you use and
+  share Tria… Real usage. Real rewards.”
+
+G) “US Bank Account”
+- Website lists “Open a US bank account from anywhere” among core features. Details
+  and availability should be verified in legal docs / product UI.
+
+Practical note:
+- Consumer-facing claims (APY, card coverage, limits) can vary by region, compliance,
+  and partner rails. Always verify in the app + terms.
+
+================================================================================
+4) PRODUCT SURFACE AREA — DEVELOPER SIDE (SDKs)
+================================================================================
+Tria’s docs position “front-end, plug-and-play SDKs” to build chain-abstracted
+applications and rollups.
+
+CoreSDK = Inception SDK + Mazerunner SDK
+- Inception SDK: onboarding + shared embedded wallet infrastructure (SSO / passkeys).
+- Mazerunner SDK: chain abstraction for dApps so users from other chains/VMs can
+  interface “without bridging” or “paying gas” on the dApp chain.
+
+CoreSDK capabilities enumerated in docs include:
+- Shared wallet and assets across dApps and chains/VMs
+- Multi-chain coverage: EVM, SVM, IBC, BTC, MoveVM
+- Onboard with SSO + EOA wallets
+- Commerce automation + onramp in “190+ countries” (claim in docs list)
+- Seedless + non-custodial
+- Gas abstraction + aggregated assets across chains
+- Multi-platform support: JS/React/Next/Flutter/Unity/Unreal (availability varies)
+
+Login methods (from docs)
+- Social logins (Google, X, Facebook, Discord, Apple, etc.)
+- Magic links / mobile
+- @tria DIDs
+- External wallets (MetaMask, Phantom, Keplr, WalletConnect, etc.)
+
+Integration options referenced
+- Getting started + React SDK + React Native SDK + multi-platform SDK
+- Headless integration patterns + recipe pages (authentication, wallet interactions, UI)
+
+================================================================================
+5) TRIA’S “CHAIN ABSTRACTION” THESIS
+================================================================================
+Tria frames chain abstraction as:
+- letting users use assets from one chain/VM to interact in another chain/VM
+- without the legacy user flows (manual bridge → swap → gas management)
+- while keeping the developer’s app deployed on a chain of their choice
+
+A simple way to visualize Tria’s approach:
+User intent (e.g., “swap and pay”, “open/close position”, “purchase item”)
+   → Tria resolves identity + permissions + wallet state
+   → BestPath marketplace computes optimal execution path
+   → Multi-step transactions are automatically constructed and executed across VMs
+   → Users experience a “one click” flow
+
+================================================================================
+6) ARCHITECTURE (what the docs describe)
+================================================================================
+The docs describe a set of interacting components:
+
+A) Unchained (restaked L2 concept)
+- Described as an AVS Layer 2 built on Arbitrum Orbit and MoveVM, with BestPath operating
+  in shared state with Unchained.
+- A “tripartite architecture” is described for chain abstraction operations.
+
+B) TSS Network (Threshold Signature Scheme)
+- Tria describes using a TSS network for verifiable, distributed signing rather than
+  centralized key custody, aiming to avoid PKI-style single points of failure.
+
+C) BestPath AVS (intents marketplace)
+- A permissionless chain abstraction & intents marketplace AVS where “PathFinders”
+  run strategies/simulations across VMs/wallet types and compete to provide execution
+  paths. Incentives are tied to verifiably efficient execution (Pareto-optimal scheme).
+
+D) CoreSDK security model
+- Docs state a separation between authentication interface and wallet interface to
+  protect auth layers from frontend interference.
+- Post-auth tokens stored securely within an iFrame, coupled to the session context.
+- Use of hardware-based TEEs / secure enclaves on supported devices; rotating key pairs
+  and access tokens are isolated so transaction-related tokens remain in enclave memory.
+
+E) Reference transaction flow (step-by-step)
+Docs describe a reference flow that includes:
+1) Initiation: user tx via CoreSDK/consumer interface or programmable trigger.
+2) DID lookup (if applicable) via DID registry on Unchained using a TheGraph resolver.
+3) Permissioning + tx object creation: read Access Control Conditions and use a
+   Programmable Key Pair (PKP) state for automation approvals.
+4) Intent sent to PathFinders in BestPath; PathFinders propose best execution paths.
+5) Construct transaction; TSS nodes sign automations; broadcast to destination chain;
+   fee rewards to winning PathFinder; DA commitments to Ethereum mainnet are described.
+
+================================================================================
+7) DECENTRALIZED IDENTITIES (DIDs) — “@tria”
+================================================================================
+Tria positions identities as the “atomic natural entity” for onboarding and wallet
+management across chains.
+
+Key DID features (from docs):
+- A blockchain-agnostic identity framework formatted like name@root (e.g., joe@tria).
+- Mapping service that associates a human-readable alias with wallet addresses across
+  blockchains (forward + reverse resolution inside dApps).
+- Non-EVM address association supported (multi-chain DID service).
+- DIDs as NFTs: docs say @tria DIDs are NFTs minted on Unchained; minting triggers an
+  on-chain NFT mint and can enable a marketplace for identities.
+- Mentions CAIP-275 “login with name” initiative and domain-based authentication.
+- Positions DIDs as an “enclave for zk credentials” (reputation graphs, zk-KYC), enabling
+  selective disclosure via zk-proofs.
+
+================================================================================
+8) SUPPORTED NETWORKS (SDK) — what’s listed publicly
+================================================================================
+Tria publishes a “Supported Networks” list (last updated April 25, 2024) with a
+notation for “GA” (gas abstraction support).
+
+Mainnet networks listed include (selection):
+- Ethereum, Polygon, Optimism, Arbitrum, Avalanche, BSC, Solana (noted as “In Prod”)
+- Several “In Staging” / “In Prod” networks like ZkLink Nova, Bitlayer, Injective, TON
+- Cosmos shown as “In Dev”
+
+Testnets include:
+- Sepolia, Amoy, and multiple others (some in staging/prod) including Solana devnet,
+  Injective testnet, etc.
+
+Note: Since the list is dated 2024, you should verify current coverage in the latest
+docs/UI or by contacting Tria’s team.
+
+================================================================================
+9) BUSINESS MODEL (how Tria likely makes money)
+================================================================================
+Tria doesn’t publish a complete revenue breakdown on the surfaced pages, but typical
+models for this product category include:
+
+Consumer revenue levers
+- interchange / card program revenue share
+- spreads or fees on swaps and perps routing (via BestPath or partners)
+- yield product fees (performance/management) depending on strategies
+- premium membership tiers (if offered; some secondary sources mention tiers)
+
+Infrastructure revenue levers (B2B / dev)
+- SDK / embedded wallet infra fees (per MAU, per tx, or SaaS-like)
+- intents marketplace fees / solver fees / routing margins
+- “paymaster” services for gas abstraction (sponsor txs and recover fees)
+
+================================================================================
+10) FUNDING & TRACTION SIGNALS (public claims)
+================================================================================
+A) Funding (press release claim)
+A Cointelegraph-hosted paid press release (Chainwire) states Tria raised $12M in
+pre-seed and strategic funding and lists several participants and advisors. This is
+marketing content, not independent reporting.
+
+B) Traction (press release claims)
+The same release claims:
+- Tria Cards function in 150+ countries and support 1,000+ tokens
+- BestPath routes payments and trades for “over 250K users” and is “used by 70+ protocols”
+Treat these as claims until corroborated elsewhere.
+
+================================================================================
+11) SECURITY, PRIVACY, AND COMPLIANCE CONSIDERATIONS
+================================================================================
+A) Custody & key management
+- Tria positions itself as self-custodial; still, embedded wallets introduce
+  implementation details you must review (key shares, recovery flows, device binding,
+  TEE assumptions, iFrame isolation boundaries).
+
+B) Threshold cryptography & AVS security
+- BestPath is framed as an AVS (EigenLayer model) and uses staking/slashing logic.
+  You should verify which parts are live today vs conceptual or “redacted” in docs.
+
+C) Card + bank rails = regulated surface
+- Cards and bank accounts require partners, KYC/AML, and jurisdiction restrictions.
+  Read Tria’s legal pages and card terms for your region.
+
+D) App data collection
+- Google Play lists the app as collecting/sharing certain data categories.
+- Apple App Store lists tracking and linked/not-linked data categories and points to
+  a privacy policy (Notion link).
+
+================================================================================
+12) COMPETITIVE LANDSCAPE (context)
+================================================================================
+Closest product categories:
+- Self-custodial “neobank” wallets with cards (e.g., other crypto card + wallet stacks)
+- Embedded wallet providers (privy-like), account abstraction wallets, and paymaster infra
+- Cross-chain “intents” / routing networks (solver marketplaces)
+- Chain-abstraction SDK platforms targeting multi-VM onboarding
+
+Tria’s differentiation, as positioned:
+- Multi-VM scope (EVM + SVM + IBC + BTC + MoveVM)
+- BestPath AVS marketplace framing (permissionless pathfinders + incentives)
+- Identity-first onboarding via @tria DIDs + zk credentials narrative
+
+================================================================================
+13) RED FLAGS / RISKS (what to check before trusting it)
+================================================================================
+- Are “redacted” sections hiding critical trust assumptions?
+- What is live today vs roadmap? (Docs mention private circulation and redacted details.)
+- How decentralized is BestPath in practice (operator set, slashing conditions, DA layer)?
+- How are “gasless” transactions funded and priced?
+- What partners power card/banking rails, and what are the terms?
+- What happens on failure: dispute resolution, refunds, chargebacks, failed routes?
+- How does Tria mitigate MEV or solver manipulation in routing?
+
+================================================================================
+14) WHAT TO DO NEXT (practical evaluation plan)
+================================================================================
+If you’re doing diligence, here’s a high-signal sequence:
+
+1) Product test (consumer)
+   - Create an account, test onboarding, recovery, and small transactions.
+   - Validate cross-chain swaps and gas abstraction behavior (who pays fees and how).
+   - Check card availability, limits, fees, and KYC requirements.
+
+2) Technical review (developer)
+   - Read CoreSDK docs and try a sandbox integration.
+   - Check supported networks + whether your target chain has GA support.
+   - Validate key custody model: where are key shares stored; recovery and rotation.
+
+3) Trust & security
+   - Look for audits (not surfaced in this crawl), bug bounty, and incident history.
+   - Understand which components are “permissionless” today.
+
+================================================================================
+15) OFFICIAL LINKS & HIGH-SIGNAL REFERENCES
+================================================================================
+Official
+- Website: https://www.tria.so/en
+- Web app: https://app.tria.so/
+- Documentation: https://docs.tria.so/
+- X: https://x.com/useTria
+
+Docs pages used heavily in this report
+- Docs home: https://docs.tria.so/
+- Introduction: https://docs.tria.so/introduction
+- CoreSDK: https://docs.tria.so/coresdk
+- BestPath AVS: https://docs.tria.so/bestpath
+- Protocol construct: https://docs.tria.so/network-construct
+- Security / TSS: https://docs.tria.so/security-tss
+- DIDs: https://docs.tria.so/did
+- Reference tx flow: https://docs.tria.so/tx-flow
+- Supported networks: https://docs.tria.so/supported-networks
+
+External references (high signal)
+- Funding press release (paid): https://cointelegraph.com/press-releases/tria-raises-12m-to-be-the-leading-self-custodial-neobank-and-payments-infrastructure-for-humans-and-ai
+- Google Play listing (data safety + update date): https://play.google.com/store/apps/details?hl=en-US&id=com.tria.v2
+- Apple App Store listing (privacy labels): https://apps.apple.com/us/app/tria-crypto-cards/id6745908653
+
+END OF REPORT
