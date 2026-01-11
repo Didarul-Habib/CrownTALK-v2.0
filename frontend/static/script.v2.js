@@ -25,10 +25,16 @@
     return token || "";
   }
 
-  function isAuthorized() {
-    const token = getStoredToken();
-    return !!token;
+   function isAuthorized() {
+      const token = getStoredToken();
+
+    // Old versions of CrownTALK stored the string "1" here.
+    // Treat that as "not authorized" so users see the new gate at least once.
+      if (!token || token === "1") return false;
+
+      return true;
   }
+
 
   function markAuthorized(token) {
     if (!token) return;
@@ -83,7 +89,7 @@
 
     // Prefer backend verification so the server can enforce the gate too.
     try {
-      const res = await fetch(`${backendBase}/verify_access`, {
+       const res = await fetch("https://crowntalk.onrender.com/verify_access", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: val }),
