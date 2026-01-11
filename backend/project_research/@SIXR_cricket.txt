@@ -1,0 +1,201 @@
+SIXR Cricket (sixrcricket.com) — Deep Dive (Web3 Cricket / SportsFi)
+
+Prepared: 2026-01-11 (Asia/Dhaka)
+
+======================================================================
+0) Quick Snapshot
+======================================================================
+Project: SIXR Cricket
+Tagline/positioning: “The home of cricket fans – play, compete, and connect with legends, all inside Telegram.”
+Core idea: A cricket game + fan ecosystem that blends gameplay, challenges, collectibles (NFTs), and rewards.
+Claimed chain focus: TON (The Open Network), with mentions of “multi-chain access” in community surfaces.
+
+Key official / primary links (as provided & discovered):
+- Website: https://sixrcricket.com/
+- X (Twitter): https://x.com/SIXR_cricket  (linked from multiple official pages)
+- Telegram channel: https://t.me/sixrcricket
+- Discord: (linked from Linktree)
+- Token site: https://www.sixrtoken.com/  (content is highly script-driven)
+- Tokenomics dashboard domain: https://sixr-cricket.com/  (script-driven; limited text extraction)
+
+======================================================================
+1) What SIXR Cricket Says It Is
+======================================================================
+From the website, SIXR frames itself as a reimagined cricket experience with:
+- Multiple play modes: Quick Play, PvP, Tournaments, and a dedicated “SIXR Mode”
+- “Fan battles” and competition for leaderboard/bragging rights
+- In-game “Gems” earned via skill-based gameplay/participation
+- Gear progression: bats, boosts, cosmetics
+- “True digital ownership” via NFT cricket bats and other in-game assets
+- Secondary-market trading “using your TON wallet”
+- A “decentralized lending and borrowing” concept using “gems as collateral for cash”
+- A “no downloads, no setup” message: “all inside Telegram”
+Sources: sixrcricket.com landing page and copy blocks.
+
+======================================================================
+2) Product & UX — How It Likely Works (Based on Public Signals)
+======================================================================
+2.1 Telegram-native distribution
+- Linktree and Telegram both describe SIXR as a Web3 cricket ecosystem on TON and position it as accessible inside Telegram.
+- This implies a Telegram bot / mini-app flow (common for TON ecosystem): users connect a TON wallet, complete quests, and interact via Telegram UI.
+
+2.2 “First Innings” campaign (tasks + referrals)
+- There is a dedicated “First Innings” experience (firstinnings.sixrcricket.com) that describes earning rewards by completing tasks, referring friends, and climbing a leaderboard.
+- This looks like a pre-launch growth funnel: quests + referrals + points/rewards.
+
+2.3 Gameplay loop (as described on the site)
+- Match types: Quick, PvP, tournaments, and the “SIXR Mode”.
+- Progression: earn Gems → unlock upgrades/cosmetics/bats → compete → earn more.
+- “Battle against the stars” language suggests licensed/partnered “icon” content, or at minimum star-themed avatars and themed challenges.
+
+======================================================================
+3) Collectibles / NFTs
+======================================================================
+3.1 Chris Gayle partnership (press release)
+A press release (ACCESS Newswire, Sep 17, 2025) states:
+- Chris Gayle joined as an “Icon Player”
+- SIXR will roll out time-boxed Chris Gayle digital collectibles, sticker packs, and community challenges
+- Prizes include “exclusive Chris Gayle NFTs”
+- CEO quoted: “Ahad Bhai, CEO of SIXR Cricket”
+This is one of the clearest sources naming an executive and describing near-term drops.
+
+3.2 TON collectibles on Getgems
+A Getgems collection listing (“The Legends Collection by SIXR Cricket”) describes:
+- 666-supply digital collectible launching on TON
+- Featuring cricket icons: Chris Gayle, Shahid Afridi, and Eoin Morgan
+Note: The collection page itself is heavily script-driven in the crawler, but the listing snippet contains the key descriptors.
+
+======================================================================
+4) Token ($SIXR) — Utility, Supply, and On-chain Traces
+======================================================================
+4.1 Claimed utility (from token site snippet)
+The SIXR token site states that “$SIXR fuels everything inside the SIXR world — from in-game upgrades to fan rewards and exclusive player experiences.”
+(Full token-site content is not easily extractable via crawler due to heavy scripting; treat as partial.)
+
+4.2 Tokenomics dashboard (limited extraction)
+A separate tokenomics dashboard domain (sixr-cricket.com) includes text indicating:
+- “Tokeneconomy v 1.2” dated “August 1st 2025”
+- Total supply: 1,000,000,000 $SIXR
+However, the full allocation breakdown/graphs are not extractable via the crawler (site appears JS-rendered). Treat this as a “directional” signal unless you can manually verify the charts.
+
+4.3 Solana explorer traces (important nuance)
+Public Solscan snippets show one or more SPL tokens labeled “SIXR Cricket (SIXR)” with:
+- Current supply: 1,000,000,000
+- Decimals: 6
+- First mint: Dec 22, 2025 (UTC) on at least one token address
+These entries are tagged as “# Meme” in the Solscan snippet and appear on Solana.
+
+Why this matters:
+- Official messaging focuses on TON (Telegram + Linktree + TON wallet on the site), but there are also Solana tokens using the same name/ticker.
+- Without an official, explicit statement mapping “the” official token contract addresses across chains, there is a non-trivial risk of confusing official tokens with imitators or unofficial “community/meme” deployments.
+
+Practical due diligence:
+- Verify the official contract addresses in an official announcement (website, verified social, pinned Telegram/X posts).
+- Be cautious of multiple tokens with similar names/tickers and “meme” tags.
+
+======================================================================
+5) Company / Legal / Operations Signals
+======================================================================
+5.1 Corporate operator and jurisdiction (privacy policy PDF)
+SIXR’s Privacy Policy PDF states:
+- Host/Operator: “Liberty Gaming- FZCO”
+- Incorporated under UAE laws; principal place of business: Dubai Silicon Oasis, Dubai, UAE
+The policy also describes:
+- Data collected (contact info, credentials/profile, payment info via processors, device/IP data, cookies/local storage)
+- Purposes (operate service, account management, security/fraud, payments, marketing where permitted)
+- Sharing with service providers; disclosures required by law; business transfers
+- International transfers and use of safeguards aligned with GDPR concepts
+- Contact: info@sixrcricket.com
+
+This provides higher-confidence signals that there is a formal operator behind the website.
+
+======================================================================
+6) Community & Go-To-Market
+======================================================================
+6.1 Core channels
+- Telegram channel: positions SIXR as a Web3 cricket ecosystem on TON; links to community chat @sixrcommunity.
+- Linktree: highlights TON positioning and points to Discord and other social accounts.
+- Website: push to a waitlist (country selection, 18+ confirmation, interest selection).
+
+6.2 Growth mechanics
+- “First Innings” tasks + referrals + leaderboard strongly resemble an airdrop/quest-based acquisition funnel.
+- Press release challenges (#SIXRChallenge) and time-boxed collectibles suggest periodic engagement “drops”.
+
+======================================================================
+7) Competitive Landscape (high-level)
+SIXR sits at the intersection of:
+- Mobile/social cricket games (traditional)
+- Telegram distribution + play-to-earn (Web3)
+- Sports collectibles/NFT drops
+- “SportsFi” messaging (ownership + token incentives)
+
+Key differentiator claim: “play, compete, connect with legends inside Telegram” + tokenized ownership (TON wallet marketplace).
+
+======================================================================
+8) Risks, Unknowns, and Red Flags to Watch
+======================================================================
+8.1 Token identity ambiguity (TON vs Solana tokens)
+- Official channels emphasize TON, but Solscan shows multiple Solana tokens using the SIXR Cricket name/ticker.
+- Until SIXR publishes contract addresses clearly, assume there is a meaningful spoofing/confusion risk.
+
+8.2 Limited technical documentation publicly
+- The main site is marketing/feature-focused.
+- No public audits, smart-contract docs, or technical whitepaper were found in the primary sources surfaced here.
+
+8.3 Financial mechanics claims (“lending/borrowing” with Gems collateral)
+- The site mentions decentralized lending/borrowing using gems as collateral for cash.
+- This is high-risk if implemented on-chain without clear audit/terms; it can also introduce regulatory exposure depending on jurisdictions.
+
+8.4 Reliance on campaigns / airdrop-style onboarding
+- If the product’s traction is driven mainly by quests/airdrops, user retention may drop post-campaign unless the core game is strong.
+
+======================================================================
+9) What to Verify Next (Checklist)
+======================================================================
+A) Product reality
+- Is the “game” already playable as a Telegram mini-app, or still pre-launch?
+- What are the exact gameplay mechanics and fairness/security controls?
+
+B) Token & assets
+- Official $SIXR contract addresses (TON jetton, Solana SPL, or others)
+- Token distribution schedule and unlocks (from the dashboard, verified directly)
+- Marketplace(s) for NFTs and in-game assets; royalty structure; custody model
+
+C) Team & entity
+- Full team roster beyond the CEO quote (Ahad Bhai)
+- Corporate registration and brand ownership (Liberty Gaming-FZCO)
+
+D) Security / compliance
+- Smart-contract audits (if any)
+- Terms of service / disclaimers beyond the privacy policy
+- KYC/AML stance if “cash” or fiat on/off ramps are involved
+
+======================================================================
+10) Sources (most relevant)
+======================================================================
+Primary / official:
+- sixrcricket.com (website copy / features / TON wallet mention)
+- SIXR Privacy Policy PDF (Liberty Gaming-FZCO, UAE)
+- Linktree + Telegram channel descriptors (TON positioning, community links)
+
+Secondary:
+- ACCESS Newswire press release (Chris Gayle partnership; CEO quote)
+- Solscan snippets (token supply/mint timing for Solana-labeled SIXR Cricket tokens)
+- Getgems listing snippet (666-supply TON collectible with named cricket icons)
+
+======================================================================
+NOT INVESTMENT ADVICE
+This document is an informational research summary based on publicly accessible pages and snippets. Verify all critical details (especially token contracts) in official, signed announcements before acting.
+
+
+APPENDIX: Direct Links Referenced
+1) Main site: https://sixrcricket.com/
+2) Privacy Policy PDF (operator details): https://sixrcricket.com/wp-content/uploads/2025/09/CA.003a-SIXR-Website_Privacy-Policy_20250922.pdf
+3) Press release (Chris Gayle / #SIXRChallenge): https://www.accessnewswire.com/newsroom/en/blockchain-and-cryptocurrency/chris-gayle-signs-as-sixr-cricket-icon-player-kicks-off-global-%23sixrc-1074629
+4) Telegram channel: https://t.me/sixrcricket
+5) Linktree hub: https://linktr.ee/sixrcricket
+6) “First Innings” quest portal: https://firstinnings.sixrcricket.com/firstinnings/auth
+7) Tokenomics dashboard domain (JS-rendered): https://sixr-cricket.com/
+8) Example Solana token page (verify officialness): https://solscan.io/token/G91o9PUonqTMf3QajvTpgz54Fzg4CysLMSGRvrG1tSrk
+9) Token site (JS-rendered): https://www.sixrtoken.com/
+10) TON NFT marketplace (Getgems, JS-rendered): https://getgems.io/collection/EQAamNqOc6H-wkSlBKnJ_fD5g3gDeqppkVd-nh3EiVlyDYbb
