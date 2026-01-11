@@ -4823,3 +4823,58 @@ body.ct-progress-done .progress-bar-inner{
   pointer-events:auto;
   transform:translateY(0);
 }
+
+
+/* ---------- [URL health meter] ---------- */
+.url-health-meter{
+  position:relative;
+  flex:0 0 96px;
+  max-width:160px;
+  height:4px;
+  border-radius:999px;
+  background:rgba(15,23,42,.9);
+  overflow:hidden;
+  box-shadow:0 0 0 1px rgba(148,163,184,.5);
+}
+.url-health-meter-fill{
+  width:0%;
+  height:100%;
+  background:linear-gradient(90deg,#22c55e,#eab308,#ef4444);
+  transition:width .25s ease-out;
+}
+.url-health-meter[data-status="empty"] .url-health-meter-fill{
+  width:0%;
+}
+.url-health-meter[data-status="bad"] .url-health-meter-fill{
+  background:linear-gradient(90deg,#fb923c,#ef4444);
+}
+
+/* ---------- [Language filter pills] ---------- */
+.lang-filter-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:6px;
+  font-size:11px;
+  color:rgba(148,163,184,.9);
+}
+.lang-filter-label{
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.lang-filter-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.5);
+  background:rgba(15,23,42,.9);
+  cursor:pointer;
+}
+.lang-filter-pill input{
+  accent-color:#22c55e;
+}
+.lang-filter-pill[data-active="false"]{
+  opacity:.55;
+}
