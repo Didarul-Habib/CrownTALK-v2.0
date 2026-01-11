@@ -1,0 +1,287 @@
+SPAACE.IO — DEEP DIVE RESEARCH (Well-organized, “every angle”)
+Generated: 2026-01-11
+
+IMPORTANT NOTES / LIMITATIONS
+- Some parts of spaace.io (especially app pages) are heavily JavaScript-rendered; I relied on Spaace’s Litepaper (GitBook), Spaace Blog, and Spaace Support Hub for verifiable details.
+- I could not directly read content from X (Twitter) in this environment. Social metrics in this report are therefore taken from Spaace’s own litepaper sections (where present), and not from the X profile timeline itself.
+- Some legal documents linked from vision.spaace.io were hosted on DocSend and returned “403 Forbidden” from the research tool, so they could not be reviewed directly.
+
+──────────────────────────────────────────────────────────────────────────────
+1) QUICK SNAPSHOT
+──────────────────────────────────────────────────────────────────────────────
+Project name: Spaace (spaace.io)
+Category: NFT marketplace + gamification layer (Battle Pass) + planned creator tools
+Primary chain focus today: Ethereum (ETH); roadmap mentions expansion to other EVMs + some non‑EVMs (Solana, Ordinals)
+
+Core claim / positioning:
+- “The most rewarding NFT marketplace” with “100% revenue sharing” (redistributing marketplace fee revenue to token stakers in ETH).
+- Gamifies NFT trading and engagement via a Battle Pass (XP, ranks, quests, leaderboards, chapter rewards).
+
+Key product surfaces:
+- Marketplace (trading)
+- Battle Pass (gamification)
+- Support hub (help center)
+- Blog (platform updates + educational content)
+- Litepaper (vision, mechanics, token utility, incentives)
+
+──────────────────────────────────────────────────────────────────────────────
+2) WHAT SPAACE IS BUILDING (ELEVATOR PITCH)
+──────────────────────────────────────────────────────────────────────────────
+Spaace aims to be an “all‑in‑one NFT hub” where:
+- users trade NFTs in a gamified environment (Battle Pass),
+- the community earns rewards (XP, chests, seasonal airdrops, referrals),
+- and (planned) anyone can create NFT collections quickly using creator tooling.
+
+The system’s “hook” is the Battle Pass: actions on the marketplace (listings, offers, volume, royalties, referrals, etc.) generate XP and progression, which then influences rewards including seasonal $SPAACE airdrops and in‑platform perks.
+
+──────────────────────────────────────────────────────────────────────────────
+3) PRODUCT & USER EXPERIENCE (HOW IT WORKS)
+──────────────────────────────────────────────────────────────────────────────
+
+3.1 Marketplace basics
+- Spaace is described as a community-driven NFT marketplace on Ethereum.
+- Fee model:
+  - Support Hub states Spaace charges a 0.75% trading fee on sales and only the seller pays it.
+  - A November platform update explains the platform ran “several months at 0% fees” and then introduced the 0.75% fee to enable sustainable revenue sharing and operations.
+  - Note: Spaace’s litepaper “USPs” page contains a comparative table listing 0.5% trading fees—this appears to be older/outdated relative to the Support Hub and later platform update.
+
+Gas fees:
+- Spaace does not receive gas fees; gas is paid to Ethereum validators for on-chain transactions. Some actions (after approvals) can be “gas-free” in the sense of not requiring a new gas payment (e.g., listing after approving a collection).
+
+3.2 Battle Pass (Gamification engine)
+Battle Pass overview:
+- Converts NFT traders/collectors into “players” competing for XP and leaderboard positions.
+- Designed with gamification consultants (Yu‑kai Chou / Octalysis Group) per Spaace litepaper.
+
+Seasons & Chapters:
+- Spaace runs “Seasons” composed of “Chapters”.
+- Chapters bring new quests, features, and chapter rewards (example: “Mystery Chests”).
+- End-of-season: a $SPAACE token airdrop is conducted, where leaderboard ranking influences allocation.
+
+Ranks:
+- Users start at Bronze 5 and can progress through 25 ranks up to Diamond 1.
+
+Quests (XP sources):
+Litepaper lists 4 major quest types:
+- Prime Quests (highest XP):
+  - Prime Listings: list Prime-Collection NFTs to earn hourly XP
+  - Prime Bidding: bid on Prime-Collection NFTs to earn hourly XP
+  - Prime Referral: invite friends and earn 10% of their XP
+- Daily Quests (reset every 24 hours)
+- Genesis Quests (intro quests, once per season)
+- Progressive Quests (completed gradually over time)
+
+Prime Collections:
+- Special set of collections that earn more XP for listing/trading/bidding.
+- Prime Collections appear directly on the marketplace.
+
+Leaderboard & boosts:
+- Global leaderboard ranks users.
+- Higher ranks can earn daily XP boosts and larger seasonal airdrop allocations.
+
+Spaace Score (loyalty metric):
+- Litepaper + Support Hub describe a “Spaace Score” measuring loyalty via listings.
+- It increases when users list owned NFTs on Spaace and avoid listing on other marketplaces.
+- Support Hub notes higher Spaace Scores increase odds of receiving rare “Quantum Chests” in Chapter 2 rewards, which can increase the $SPAACE airdrop at TGE.
+
+Anti-abuse / fairness changes:
+- A Chapter 2 update states that some users tried to farm XP with repeated low-value trades; Chapter 2 changes “reward actual trading volume, not just transaction count,” including progressive volume quests.
+
+3.3 Newer gameplay layers (late 2025 updates)
+- Spaace Pro Mode (Beta): a more advanced trading layout aimed at power users.
+- Dark Mode introduced.
+- “Tournaments” (limited-time events) reward top traders with large XP bonuses based on BUY volume and leaderboard ranks. (Example: first tournament distributes >10,000,000 XP across the top 100 traders; top tier requires 100 ETH BUY volume.)
+
+Activity gating (anti-sybil + reward integrity):
+- December update describes “Activity Gating”: inactive users only see Genesis quests; a $20 transaction unlocks the full Battle Pass.
+
+3.4 Security & user protection
+- Support Hub notes Spaace is a non-custodial marketplace; scams can exist because anyone can deploy contracts.
+- December update: unverified collections no longer displayed after scam rise; warnings for non-verified collections; backend security upgrades and “cheater detection” reinforced.
+- Support Hub provides user-facing due diligence guidance (verification badges, Prime status, supply/holders, suspiciously low prices, etc.) and notes Spaace cannot reverse on-chain transactions or refund scam purchases.
+
+3.5 Customer support (scaling operations)
+- December update: live chat support system added to website.
+- Help Center launched (support.spaace.io) plus “Astro” AI support agent (24/7 for common questions).
+
+──────────────────────────────────────────────────────────────────────────────
+4) REWARDS, INCENTIVES & ECONOMIC DESIGN
+──────────────────────────────────────────────────────────────────────────────
+
+4.1 “Giving back” (reward philosophy)
+- Spaace positions rewards as a core retention/incentive engine, intended to:
+  - give back to community,
+  - increase retention,
+  - boost NFT collection activity,
+  - support creators.
+- Rewards system is described as using “proprietary algorithms and AI frameworks” to distribute rewards sustainably.
+
+4.2 Reward types (from litepaper USPs)
+Spaace describes multiple reward categories, including:
+- Cashback rewards (daily $SPAACE rewards proportional to trading volume)
+- Staking for 100% revenue sharing (fees redistributed to stakers as ETH + additional $SPAACE)
+- Airdrops (seasonal airdrops based on Battle Pass progression/leaderboard)
+- Referral program (sponsors earn a percentage of referred users’ rewards + fee revenue)
+- Ambassador / KOL program (higher referral commissions)
+- Liquidity provider rewards (provide ETH<>$SPAACE liquidity on DEXs for daily rewards)
+
+4.3 Airdrops (eligibility & optimization)
+Litepaper outlines:
+- Airdrops occur at end of every season.
+- Allocation based on XP (relative to other players) and final leaderboard rank.
+- Ways to maximize XP for airdrops: list top NFTs near floor, place offers, invite friends, claim chapter rewards, participate in Discord.
+- Eligibility may include: Battle Pass XP, past Spaace Arena XP, active Discord membership; plus future categories like “Gold” and “Partnerships”.
+
+4.4 Referral program details (litepaper)
+Two layers described:
+- Standard Program:
+  - Up to 30% of referred users’ trading fees (in ETH)
+  - 10% of referred users’ XP
+  - Up to 50% of referred users’ cashback + staking rewards in $SPAACE
+- Ambassador Program (for influencers/KOLs):
+  - Commissions 20% to 50% of referred users’ ETH trading fees (vs 10% to 30% standard)
+  - Commission increases tied to Battle Pass rank
+
+4.5 Revenue sharing model (high-level)
+- Spaace’s long-term narrative: earn marketplace revenue back as a community.
+- Implementation depends on token staking (details depend on $SPAACE launch / TGE and staking contracts).
+
+──────────────────────────────────────────────────────────────────────────────
+5) TOKEN: $SPAACE (ERC20) — WHAT’S PUBLISHED
+──────────────────────────────────────────────────────────────────────────────
+Token type & chain:
+- Spaace litepaper describes $SPAACE as an ERC20 token on Ethereum.
+
+Stated utilities (litepaper token page):
+- Staking for daily APY in $SPAACE
+- Staking for ETH (100% revenue sharing of marketplace fees in ETH)
+- Referral/Affiliation benefits for holders/stakers
+- Staking for XP rewards (more tokens + longer stake → more XP)
+- “Token Score” / “Token Score improves rewards” (buying/holding increases user score)
+- Liquidity farming (provide $SPAACE and ETH liquidity)
+
+Buyback concept:
+- Litepaper says a portion of marketplace fees (in ETH) may be used for daily buybacks:
+  - Manual buybacks by team/market makers using fee revenue
+  - Automatic swaps: “Prime Staking” swaps ETH into $SPAACE multiple times/day, creating continuous buy pressure
+
+Token supply / allocation / contract address:
+- I did NOT find a publicly indexed section in accessible sources that provides total supply, vesting schedules, allocation breakdown, or official contract address.
+- Recommendation: verify token contract only via official Spaace channels at token launch (TGE) and beware of lookalike tokens.
+
+Disclaimer language (important):
+- Litepaper disclaimer states the litepaper is informational, not a solicitation, and that information is subject to change.
+- It names “SDF Limited” as the token issuer and emphasizes investment risks and need for independent due diligence.
+
+──────────────────────────────────────────────────────────────────────────────
+6) ECOSYSTEM COMPONENTS (WHAT EXISTS / WHAT’S PLANNED)
+──────────────────────────────────────────────────────────────────────────────
+
+6.1 Spaace Arena (ended)
+- Litepaper: “Spaace Arena has officially ended.”
+- Arena XP is planned to be converted into exclusive rewards; Arena users get a dedicated airdrop allocation at TGE.
+- Litepaper lists historical metrics (Arena users, posts, XP collected, etc.)—treat these as project-claimed metrics.
+
+6.2 “Flip Launchpad” (soon)
+- Listed as “soon” in litepaper navigation (no detailed accessible content in current retrieval).
+
+6.3 Creator Program (soon)
+- Litepaper indicates a “Creator Program (soon).”
+- USPs mention an NFT creation tool that would allow anyone to create collections “without the need for an artist, developers and a marketing budget” (positioned as a “PumpFun + Midjourney combined” concept).
+
+6.4 Expansion roadmap
+- Litepaper and Support Hub say launch on ETH first, then diversify into other EVMs; and plans to integrate non‑EVMs like Solana and Ordinals.
+
+──────────────────────────────────────────────────────────────────────────────
+7) BUSINESS MODEL & GO-TO-MARKET
+──────────────────────────────────────────────────────────────────────────────
+
+Revenue model:
+- Marketplace fee on sales (currently documented as 0.75%).
+- Future token-driven flywheel:
+  - Collect fees → (share to stakers / buybacks / incentives) → attract traders → more fees.
+- Referral program tied to fee revenue is marketed as a differentiator.
+
+Marketing/community:
+- Messaging focuses heavily on a community movement (“#NFTARMY”) and incentives for early adopters.
+- Battle Pass seasons/chapters create recurring engagement loops (quests → XP → leaderboard → airdrops).
+
+──────────────────────────────────────────────────────────────────────────────
+8) FUNDING, OWNERSHIP, TEAM
+──────────────────────────────────────────────────────────────────────────────
+Funding (project-claimed):
+- Litepaper claims Spaace “raised over $6M” during a bear market.
+- It says 400+ individual investors from 50+ countries participated; and a significant portion came via community groups.
+- It also claims founders allocated “several millions” of personal funds.
+
+Team:
+- Public documentation in the sources reviewed does not list individual team member names.
+- Messaging frames the team as “builders, collectors, and full-time explorers of the NFT frontier.”
+
+Entity:
+- Litepaper disclaimer references “SDF Limited” as token issuer.
+
+──────────────────────────────────────────────────────────────────────────────
+9) COMPETITIVE POSITIONING
+──────────────────────────────────────────────────────────────────────────────
+Spaace explicitly compares itself vs OpenSea, Blur, Magic Eden, etc. (litepaper USPs table). Claimed differentiators:
+- Gamification (Battle Pass)
+- 100% revenue sharing (via staking)
+- Cashback, staking, referral rewards
+- Creator tool / launchpad (planned)
+- Aggregation (claimed)
+
+Note:
+- Some values in comparative table (e.g., “Trading Fees 0.5%”) appear inconsistent with later support/blog updates that specify 0.75%. Treat the table as potentially outdated.
+
+──────────────────────────────────────────────────────────────────────────────
+10) RISKS, RED FLAGS & DUE DILIGENCE CHECKLIST
+──────────────────────────────────────────────────────────────────────────────
+A) Token-launch risk:
+- Token is described as “soon” (and some token pages show “Last updated 1 year ago”).
+- Verify launch status, contract address, audits, and token distribution only via official channels at TGE.
+
+B) Incentive sustainability:
+- High incentives (cashback, airdrops, revenue sharing) require sustained fee revenue and careful emissions control.
+- Spaace states they use algorithms/AI for emissions; however, the exact parameters are not public in sources reviewed.
+
+C) Marketplace integrity:
+- Scam collections are a known ecosystem risk; Spaace introduced gating, verification filtering, and warnings. Still, non-custodial design means users must DYOR.
+
+D) Metrics & claims:
+- Some traction metrics and “rank” claims appear in Spaace’s own materials. Treat as self-reported unless independently verified.
+
+Practical checklist:
+1) Confirm the official $SPAACE contract address (when announced) from multiple official Spaace channels (website + litepaper + Discord announcements).
+2) Review staking contract audits (if any), and on-chain permissions/upgradeability.
+3) Validate fee structure & revenue-sharing mechanics (how fees are distributed, cadence, eligibility, and exclusions).
+4) Understand XP/quest anti-abuse rules (gating, minimum transaction, volume calculations).
+5) For creators: confirm whether the “collection creator tool” is live, and what standards (ERC-721/1155, royalties, verification) apply.
+6) For traders: check which collections are “Prime” and the implications for XP/rewards.
+
+──────────────────────────────────────────────────────────────────────────────
+11) SOURCE LINKS (PRIMARY)
+──────────────────────────────────────────────────────────────────────────────
+Core:
+- Spaace website: https://spaace.io/
+- Spaace Litepaper (GitBook): https://litepaper.spaace.io/
+- Battle Pass (litepaper): https://litepaper.spaace.io/gamification/battle-pass
+- USPs (litepaper): https://litepaper.spaace.io/spaace/usps
+- $SPAACE token utility page (litepaper): https://litepaper.spaace.io/usdspaace-token-soon/usdspaace-token
+- Referral details (litepaper): https://litepaper.spaace.io/rewards/invite-friends-earn-passive-eth-and-xp-referral
+- Airdrops (litepaper): https://litepaper.spaace.io/rewards/usdspaace-airdrops
+- Disclaimer (litepaper): https://litepaper.spaace.io/more/disclaimer
+
+Operations & Support:
+- Support Hub: https://support.spaace.io/en/
+- Trading fees article: https://support.spaace.io/en/articles/13002513-trading-fees-and-gas-fees
+- Spaace Score article: https://support.spaace.io/en/articles/13002510-spaace-score
+- Fraud/scam collections article: https://support.spaace.io/en/articles/13159937-fraudulent-or-impersonating-nft-collections
+
+Recent platform updates (Blog):
+- Chapter 2 features / 0.75% fee + referral intro: https://spaace.io/blog/chapter-2-features/
+- December update: https://spaace.io/blog/update-december-2025/
+- XP tournaments: https://spaace.io/blog/xp-tournaments/
+- Spaace Battle Pass launch article: https://spaace.io/blog/battle-pass-launch/
+
+END
