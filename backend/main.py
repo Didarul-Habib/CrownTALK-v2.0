@@ -157,6 +157,42 @@ PORT = int(os.environ.get("PORT", "10000"))
 DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
 BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onrender.com")
 
+# --- CrownTALK access gate (server-side) ----------------------------
+# If you want a different code, set CROWNTALK_ACCESS_CODE in Render,
+# or change the default string *and* update it in your frontend script.
+ACCESS_CODE = os.environ.get("CROWNTALK_ACCESS_CODE") or "@CrownTALK@2026@CrownDEX"
+ACCESS_HEADER_NAME = os.environ.get("CROWNTALK_TOKEN_HEADER", "X-Crowntalk-Token")
+GATE_DISABLED = os.environ.get("CROWNTALK_DISABLE_GATE", "").lower() in ("1", "true", "yes")
+
+
+def _require_access_or_forbidden():
+    """
+    Returns None if access is allowed.
+    Returns (json, status_code) if access is denied.
+    """
+    # If gate is disabled or no code is configured, allow everything.
+    if GATE_DISABLED or not ACCESS_CODE:
+        return None
+
+    # Allow health endpoints without auth, so Render can ping.
+    if request.path in ("/", "/ping", "/stats"):
+        return None
+
+    token = (request.headers.get(ACCESS_HEADER_NAME) or "").strip()
+    if not token:
+        return jsonify({"error": "forbidden", "code": "forbidden"}), 403
+
+    # We keep it simple: token must equal the access code.
+    if token != ACCESS_CODE:
+        return jsonify({"error": "forbidden", "code": "forbidden"}), 403
+
+    return None
+
+# --------------------------------------------------------------------
+# Batch & pacing (env-tunable)
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
+
+
 # Batch & pacing (env-tunable)
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))                 # ← process N at a time
 PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "2.5"))  # ← sleep after every URL
@@ -4646,7 +4682,7 @@ def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
 def add_cors_headers_v2(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token"
     return response
 
 
@@ -4660,15 +4696,44 @@ def ping():
     }), 200
 
 
+@app.route("/verify_access", methods=["POST", "OPTIONS"])
+def verify_access():
+    """
+    Frontend calls this once when you type the access code.
+    If the code is correct, we return a token the frontend will
+    attach to all /comment and /reroll calls.
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    # If gate is disabled, just say "ok".
+    if GATE_DISABLED or not ACCESS_CODE:
+        return jsonify({"ok": True, "token": ACCESS_CODE}), 200
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        return jsonify({"error": "invalid_json", "code": "invalid_json"}), 400
+
+    code = (data.get("code") or "").strip()
+    if not code:
+        return jsonify({"error": "missing_code", "code": "missing_code"}), 400
+
+    if code != ACCESS_CODE:
+        # Wrong password → 403 (frontend shows "Wrong code — try again")
+        return jsonify({"error": "invalid_code", "code": "invalid_code"}), 403
+
+    # Correct password → frontend stores this token and uses it later.
+    return jsonify({"ok": True, "token": ACCESS_CODE}), 200
+
+
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
-
-    gate_resp = _require_access_or_none()
-    if gate_resp is not None:
-        return gate_resp
-
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
     try:
         payload = request.get_json(force=True, silent=True) or {}
     except Exception:
@@ -4763,9 +4828,9 @@ def reroll_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
 
-    gate_resp = _require_access_or_none()
-    if gate_resp is not None:
-        return gate_resp
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
 
     url = ""
     try:
