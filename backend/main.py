@@ -15,7 +15,8 @@ from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 
 import requests
-from flask import Flask, request, jsonify
+from flask import Flask, request, jsonify, make_response
+
 
 # Helpers from utils.py (already deployed)
 from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
@@ -156,37 +157,6 @@ def stats_endpoint():
 PORT = int(os.environ.get("PORT", "10000"))
 DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
 BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onrender.com")
-
-# --- CrownTALK access gate (server-side) ----------------------------
-# If you want a different code, set CROWNTALK_ACCESS_CODE in Render,
-# or change the default string *and* update it in your frontend script.
-ACCESS_CODE = os.environ.get("CROWNTALK_ACCESS_CODE") or "@CrownTALK@2026@CrownDEX"
-ACCESS_HEADER_NAME = os.environ.get("CROWNTALK_TOKEN_HEADER", "X-Crowntalk-Token")
-GATE_DISABLED = os.environ.get("CROWNTALK_DISABLE_GATE", "").lower() in ("1", "true", "yes")
-
-
-def _require_access_or_forbidden():
-    """
-    Returns None if access is allowed.
-    Returns (json, status_code) if access is denied.
-    """
-    # If gate is disabled or no code is configured, allow everything.
-    if GATE_DISABLED or not ACCESS_CODE:
-        return None
-
-    # Allow health endpoints without auth, so Render can ping.
-    if request.path in ("/", "/ping", "/stats"):
-        return None
-
-    token = (request.headers.get(ACCESS_HEADER_NAME) or "").strip()
-    if not token:
-        return jsonify({"error": "forbidden", "code": "forbidden"}), 403
-
-    # We keep it simple: token must equal the access code.
-    if token != ACCESS_CODE:
-        return jsonify({"error": "forbidden", "code": "forbidden"}), 403
-
-    return None
 
 # --------------------------------------------------------------------
 # Batch & pacing (env-tunable)
@@ -4694,38 +4664,6 @@ def ping():
         "groq": bool(USE_GROQ),
         "ts": int(time.time()),
     }), 200
-
-
-@app.route("/verify_access", methods=["POST", "OPTIONS"])
-def verify_access():
-    """
-    Frontend calls this once when you type the access code.
-    If the code is correct, we return a token the frontend will
-    attach to all /comment and /reroll calls.
-    """
-    if request.method == "OPTIONS":
-        return ("", 204)
-
-    # If gate is disabled, just say "ok".
-    if GATE_DISABLED or not ACCESS_CODE:
-        return jsonify({"ok": True, "token": ACCESS_CODE}), 200
-
-    try:
-        data = request.get_json(force=True, silent=True) or {}
-    except Exception:
-        return jsonify({"error": "invalid_json", "code": "invalid_json"}), 400
-
-    code = (data.get("code") or "").strip()
-    if not code:
-        return jsonify({"error": "missing_code", "code": "missing_code"}), 400
-
-    if code != ACCESS_CODE:
-        # Wrong password → 403 (frontend shows "Wrong code — try again")
-        return jsonify({"error": "invalid_code", "code": "invalid_code"}), 403
-
-    # Correct password → frontend stores this token and uses it later.
-    return jsonify({"ok": True, "token": ACCESS_CODE}), 200
-
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
