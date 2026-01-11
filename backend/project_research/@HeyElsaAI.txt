@@ -1,0 +1,312 @@
+HEYELSA (HeyElsa / Elsa AI) — Deep-Dive Research (January 2026)
+==============================================================
+
+Scope & method
+--------------
+This report compiles a “from-the-ground-up” view of HeyElsa / Elsa AI from:
+- Official website + docs + legal pages
+- Official blog posts (notably funding announcement)
+- Third-party technical/usage writeups (e.g., Zerion)
+- Public developer materials (GitBook docs, GitHub repos)
+
+Important note on freshness:
+- Several GitBook docs sections show “Last updated 1 year ago”, so treat those parts as architectural intent rather than guaranteed current implementation.
+- The project’s blog and some developer pages are more recent and include newer metrics.
+
+Quick identity card
+-------------------
+Project name(s): HeyElsa, Elsa, Elsa AI, “AI Crypto Copilot”
+Core idea: Natural-language + voice interface that turns user intent into on-chain actions (swaps, bridges, perps, yield, etc.) and also offers B2B components (widget + APIs) for other dApps to embed AI-native UX.
+Primary surfaces:
+- Consumer app: https://app.heyelsa.ai/
+- Marketing site: https://www.heyelsa.ai/
+- Docs: https://docs.heyelsa.ai/
+- X402 DeFi APIs: https://x402.heyelsa.ai/
+Social: https://x.com/HeyElsaAI (not reliably accessible via this environment; see official site + docs for confirmed details)
+
+Legal entity & locations (as stated by the project)
+---------------------------------------------------
+- “Elsa AI Ltd.” is stated as a BVI-incorporated company in the Terms of Service.
+- The public site lists locations: Bangalore, India and Toronto, Canada.
+Sources:
+- Terms of Service: https://app.heyelsa.ai/terms-of-service
+- Disclaimer page: https://www.heyelsa.ai/disclaimer.html
+
+What problem are they solving?
+------------------------------
+HeyElsa’s positioning is essentially: “DeFi is powerful but the UX is too hard.”
+Their docs list challenges like:
+- Complex, technical interfaces and jargon
+- Knowledge gap for newcomers
+- Risk/scams/fraud and lack of reliable guidance
+Source: https://docs.heyelsa.ai/overview/challenges
+
+Their solution framing:
+- NLP interface to streamline actions
+- Educational + guidance layer
+- Security measures and risk evaluation
+Source: https://docs.heyelsa.ai/overview/solutions
+
+What the product does (user capabilities)
+-----------------------------------------
+1) Consumer “AI crypto copilot” app
+- Market + portfolio Q&A: ask questions and get portfolio views and analysis
+- Execute on-chain actions via chat/voice: swap, bridge, send, stake, yield strategies, limit orders, perps, etc.
+- Built-in wallet(s): the docs state that signup automatically generates an EVM-compatible wallet and a Solana wallet (“Elsa Smart Wallet”), while also allowing users to connect an external EOA wallet.
+Sources:
+- Field guide + smart wallet description: https://docs.heyelsa.ai/a-field-guide-to-heyelsa
+- Official site positioning: https://www.heyelsa.ai/
+
+2) “Intent-based flows”
+The marketing site highlights intent-driven workflows such as:
+- “Buy an NFT under a target price” and have Elsa monitor/execute
+- Build a “memecoin basket” with a budget and a number of coins
+Source: https://www.heyelsa.ai/
+
+3) Supported chains (reported in official docs + third party)
+- Official field guide lists: Base, Arbitrum, BSC, Optimism, Polygon, Hyperliquid, Ink, Soneium, Solana.
+Source: https://docs.heyelsa.ai/a-field-guide-to-heyelsa
+
+- Zerion’s guide echoes broad Base-heavy usage and lists similar coverage.
+Source: https://zerion.io/blog/guide-to-heyelsa-what-it-is-how-it-works-and-more/
+
+Major feature areas (from Field Guide examples)
+-----------------------------------------------
+The official field guide includes example prompts/features in these buckets:
+- Portfolio management (balances, holdings, portfolio value)
+- Trading/swaps (e.g., “Swap 100 USDC on Base for AERO”)
+- Transfers & bridging (cross-chain transfer prompts)
+- Staking + yield farming prompts
+- Automated yield optimizer prompts
+- Limit orders
+- Memecoin/trending tokens discovery and buying
+- “Create a token on Zora” (ERC-20 / NFT-related workflows)
+- Perp trading: Hyperliquid; and also “Avantis” for crypto/forex/commodities per the doc
+Source: https://docs.heyelsa.ai/a-field-guide-to-heyelsa
+
+Developer/infra products (B2B angle)
+------------------------------------
+HeyElsa explicitly positions itself as more than an end-user app: it also sells/ships building blocks for others.
+
+A) Elsa Widget (embed AI into your dApp)
+- Described as a React component that provides AI-powered DeFi assistance and communicates with a host dApp via MessagePort.
+- The widget “does not directly access wallets”; instead, it sends generic wallet requests to the dApp, and the dApp executes via its wallet provider logic (EVM, Solana, Bitcoin, Aptos, etc).
+- Security advantages described: same-origin isolation, no global namespace pollution (vs window.postMessage), direct port-to-port communication, structured cloning, typed interfaces.
+Sources:
+- Widget integration guide: https://docs.heyelsa.ai/elsa-widget/widget-integration-guide
+- Event-based comms + security benefits: https://docs.heyelsa.ai/elsa-widget/event-based-communication-between-dapp-and-the-elsa-widget.
+
+Packaging & access model:
+- The docs point to an npm package: @heyelsa/chat-widget
+- The integration guide states the package requires an npm token (private npm access).
+Sources:
+- Package page: https://docs.heyelsa.ai/elsa-widget/package
+- Integration guide “npm token required”: https://docs.heyelsa.ai/elsa-widget/widget-integration-guide
+
+Sample code:
+- The docs link a public example repo: HeyElsa/elsa-widget-testdapp.
+- The docs state the example implements: (1) knowledge base querying, (2) send and swap transactions.
+- The docs list supported chains for the widget sample: Ethereum, Base, Soneium, Polygon.
+Sources:
+- Sample implementation page: https://docs.heyelsa.ai/elsa-widget/sample-implementation
+- Repo: https://github.com/HeyElsa/elsa-widget-testdapp
+
+Widget “tech stack” (as documented)
+The widget tech stack page describes a multi-tenant backend for “AI-driven document Q&A and contextual conversation” with:
+- RAG + session memory
+- RBAC (roles like admin / dapp_admin)
+- Vector search (ChromaDB)
+- Isolated environments per dApp
+It also lists concrete technologies (Node/TS, Express, MySQL, ChromaDB, JWT, bcrypt, LangChain, and use of OpenAI models).
+Source: https://docs.heyelsa.ai/elsa-widget/widget-tech-stack
+
+Note: This page explicitly names model versions (e.g., GPT-4.1) and embedding models; those may change over time.
+
+B) Elsa X402 API — pay-per-call DeFi endpoints
+HeyElsa also runs an “x402” API product that sells DeFi endpoints billed per request in USDC:
+- “Production DeFi endpoints that charge per request in USDC”
+- Positioned for direct REST usage or integration with Claude via MCP.
+- Lists use cases and per-call costs (examples: portfolio dashboard refresh ~$0.03; trade execution flows ~$0.032).
+- Mentions an “X402 Facilitator” and references generating payment tokens via a CDP facilitator; suggests wallet with USDC on Base for payments.
+Sources:
+- Landing: https://x402.heyelsa.ai/
+- Docs excerpt with MCP integration: https://x402.heyelsa.ai/docs
+(If the docs URL changes, use the site’s “DOCS” navigation.)
+
+The MCP angle:
+- The docs include an “MCP Integration (Claude Desktop)” walkthrough, including environment variable configuration and a tool name “elsa-x402”.
+Source: https://x402.heyelsa.ai/docs
+
+Architecture (conceptual system view)
+-------------------------------------
+The GitBook architecture pages describe “Elsa AI Automata” + “Elsa AI Layer” as a multi-agent architecture.
+
+Elsa AI Automata (high level, as documented)
+- Agents/components described include:
+  - User Profile Agent (preferences/risk)
+  - Chain Analyzer Agent (scans chain data and triggers notifications)
+  - Intent Agent (turn outcome into execution steps)
+  - Data Engine (pipelines + storage for training/inference)
+  - Risk Management Engine (portfolio risk / stop-loss)
+  - Onchain Script Engine (automates DAO-approved scripts)
+- External dependencies listed for data: Token Terminal, Dune, Nansen, Arkham, CoinGecko, DeFiLlama; and oracle data: Chainlink, Pyth, DIA; plus social sources like Twitter/Discord/Telegram.
+Source: https://docs.heyelsa.ai/architecture/elsa-ai-automata
+
+Elsa AI Layer
+- Described as orchestrating automata, using AI agents with LLM support and RAG for more accurate contextual responses.
+Source: https://docs.heyelsa.ai/architecture/elsa-ai-layer
+
+Important caveat:
+These architecture pages show “Last updated 1 year ago” in the docs UI; treat as conceptual architecture that may have evolved.
+
+Wallet / security model (what they claim publicly)
+---------------------------------------------------
+Non-custodial stance:
+- The disclaimer and terms emphasize “non-custodial” and that the platform does not hold/manage private keys.
+Sources:
+- Disclaimer: https://www.heyelsa.ai/disclaimer.html
+- Terms: https://app.heyelsa.ai/terms-of-service
+
+MPC + onboarding:
+- In the June 2025 funding announcement, HeyElsa claims each user is provisioned a Multi-Party Computation (MPC) wallet upon signup, splitting key shares so no single party holds the full key.
+- The same post claims a partnership with Coinbase Developer Platform enabling “one-click onboarding, fiat-to-crypto access, and gasless transactions powered by Paymaster contracts.”
+Source: https://blog.heyelsa.ai/heyelsa-raises-3m-to-build-ai-stack-for-crypto/
+
+Widget-level wallet isolation:
+- The widget comms doc emphasizes the widget does not access wallets directly; wallet actions remain in the host dApp.
+Source: https://docs.heyelsa.ai/elsa-widget/event-based-communication-between-dapp-and-the-elsa-widget.
+
+Funding, backers, and traction claims
+-------------------------------------
+Funding:
+- HeyElsa’s official blog states it raised $3M (combined pre-seed + seed), led by M31 Capital, with participation including Coinbase Ventures’ Base Ecosystem Fund and others.
+- Founder quote is attributed to Dhawal Shah (founder).
+Source: https://blog.heyelsa.ai/heyelsa-raises-3m-to-build-ai-stack-for-crypto/
+
+Traction metrics (note: different sources cite different numbers)
+- Official blog (Jun 5, 2025): claims “Since launch, Elsa agents have processed over $20 million in onchain volume.”
+Source: https://blog.heyelsa.ai/heyelsa-raises-3m-to-build-ai-stack-for-crypto/
+
+- Zerion guide (Dec 5, 2025): claims “Since launch, HeyElsa has processed transactions with a total volume of over $168 million” and notes Base as the majority chain.
+Source: https://zerion.io/blog/guide-to-heyelsa-what-it-is-how-it-works-and-more/
+
+Interpretation:
+The difference is plausibly time-based growth (Jun 2025 vs Dec 2025), but these numbers are still self/partner-reported rather than independently audited.
+
+Partners & ecosystem integration
+--------------------------------
+Confirmed public references:
+- Zerion states HeyElsa uses Zerion API as a “single source of truth” for portfolio data, and explains why balances/positions are fast/consistent.
+Sources:
+- Zerion guide: https://zerion.io/blog/guide-to-heyelsa-what-it-is-how-it-works-and-more/
+- Zerion “Powering agentic apps” page naming HeyElsa: https://zerion.io/api-clients-ai-agents
+
+- HeyElsa’s own blog explicitly cites Coinbase Developer Platform partnership with onboarding, fiat rails, and gasless transactions.
+Source: https://blog.heyelsa.ai/heyelsa-raises-3m-to-build-ai-stack-for-crypto/
+
+Community NFTs / collectibles
+-----------------------------
+- The official field guide references an “Elsa PEP NFT Collection”:
+  - Total supply: 20,000
+  - Chain: Base
+  - Mint status: completed
+  - Intended for early users (OG recognition + future perks)
+Source: https://docs.heyelsa.ai/a-field-guide-to-heyelsa
+
+- Zerion also hosts an NFT collection page titled “The Elsians by HeyElsa” (described as “Elsa Genesis NFT collection”).
+Source: https://app.zerion.io/collections/1767989328
+
+Legal, compliance & user safety posture
+---------------------------------------
+Key points from the Disclaimer + Terms:
+- Non-custodial tool-based platform; does not provide financial/investment/legal/tax advice.
+- No fiduciary relationship; “as is” service.
+- Liability cap stated in Terms (US$100 or amount paid in last 12 months).
+- Arbitration / governing law specified as British Virgin Islands.
+Sources:
+- Disclaimer: https://www.heyelsa.ai/disclaimer.html
+- Terms: https://app.heyelsa.ai/terms-of-service
+
+Privacy posture (high-level)
+- The privacy policy states they collect information provided directly (account info), wallet/transaction information, and automatically collected usage data.
+- Mentions use of LLMs to improve/personalize services.
+- Provides account deletion request flow (Google form) and says requests processed within 30 business days.
+Source: https://app.heyelsa.ai/privacy-policy
+
+Business model hypotheses (grounded in public product surfaces)
+---------------------------------------------------------------
+Confirmed:
+- X402 API is explicitly “pay per call” in USDC (usage-based revenue).
+Source: https://x402.heyelsa.ai/
+
+Strongly suggested:
+- The consumer app could monetize via spread/fees, protocol integrations, premium features, or partner fees (not explicitly confirmed in sources).
+- The widget is gated behind an npm token (suggests B2B licensing/partner distribution), but pricing details are not publicly listed in the docs pages we could access.
+Sources for “gated distribution” evidence:
+- Widget integration guide requiring npm token: https://docs.heyelsa.ai/elsa-widget/widget-integration-guide
+
+Competitive landscape (who they compare themselves to)
+------------------------------------------------------
+The docs include a comparison table listing:
+- Elsa AI Automata
+- “Brian” (likely the project Brian AI)
+- Traditional blockchain interfaces
+- GM.ai
+This is not exhaustive and may be dated, but indicates their framing: natural-language UI + intent automation + guidance + security.
+Source: https://docs.heyelsa.ai/overview/comparison
+
+Technical & product risks (analyst view)
+----------------------------------------
+1) Safety and transaction correctness
+- Any “natural-language to transaction” system risks incorrect intent interpretation, malicious prompt injection, and user misunderstanding.
+- HeyElsa claims to run risk checks and keep users in control (non-custodial framing), but the exact safeguards and UX confirmation steps aren’t fully documented publicly.
+
+2) Key management claims vs reality
+- They claim MPC wallets and key-splitting; implementation details aren’t independently auditable via sources here.
+- Non-custodial claims are consistent across legal pages, but users should still evaluate security posture, audits, and smart wallet contracts.
+
+3) Dependency risk
+- Their architecture docs list many external data providers and oracles; outages or data quality issues could impact agent decisions.
+
+4) Regulatory risk
+- Even as “tool-based” and “not advice,” automated trade execution + fiat onboarding often sits near regulated surfaces; they incorporate BVI legal framing.
+Source for their explicit regulatory stance:
+- Terms + Disclaimer pages cited above.
+
+Developer diligence checklist (practical)
+-----------------------------------------
+If you are evaluating HeyElsa to use or integrate:
+- Read the legal pages (Terms/Privacy/Disclaimer) and confirm your jurisdiction compatibility.
+- For the widget:
+  - Request access to @heyelsa/chat-widget (npm token) and confirm the integration contract.
+  - Validate wallet-request events and ensure the host dApp enforces allowlists, simulation, and UI confirmations.
+  - Review sample repo patterns: https://github.com/HeyElsa/elsa-widget-testdapp
+- For X402 API:
+  - Confirm Base USDC payment setup and how x402 “payment tokens” are generated.
+  - Evaluate endpoint pricing, rate limits, and error handling in the docs: https://x402.heyelsa.ai/docs
+
+Known documentation issues encountered during this research
+----------------------------------------------------------
+The GitBook “Elsa Dashboard” page links to:
+- A GitHub repo “elsa-widget-dashboard”
+- A Notion “USER GUIDE”
+At the time of access, both returned 404 (not found), suggesting the resources are private, moved, or temporarily unavailable.
+Sources (error captures):
+- Notion link error: https://heyelsa.notion.site/USER-GUIDE-27e40f5de355812abe9fe8cdaf6a02f8?pvs=25
+- GitHub dashboard repo error: https://github.com/HeyElsa/elsa-widget-dashboard
+
+Primary sources list (for quick reference)
+------------------------------------------
+- Main site: https://www.heyelsa.ai/
+- Docs home: https://docs.heyelsa.ai/
+- Field guide: https://docs.heyelsa.ai/a-field-guide-to-heyelsa
+- Architecture: https://docs.heyelsa.ai/architecture/elsa-ai-automata ; https://docs.heyelsa.ai/architecture/elsa-ai-layer
+- Widget docs: https://docs.heyelsa.ai/elsa-widget/widget-integration-guide ; https://docs.heyelsa.ai/elsa-widget/widget-tech-stack ; https://docs.heyelsa.ai/elsa-widget/event-based-communication-between-dapp-and-the-elsa-widget. ; https://docs.heyelsa.ai/elsa-widget/sample-implementation
+- X402 API: https://x402.heyelsa.ai/ ; docs: https://x402.heyelsa.ai/docs
+- Fundraise announcement (Jun 5, 2025): https://blog.heyelsa.ai/heyelsa-raises-3m-to-build-ai-stack-for-crypto/
+- Legal: https://www.heyelsa.ai/disclaimer.html ; https://app.heyelsa.ai/terms-of-service ; https://app.heyelsa.ai/privacy-policy
+- Third-party: Zerion guide (Dec 5, 2025): https://zerion.io/blog/guide-to-heyelsa-what-it-is-how-it-works-and-more/
+- Zerion: “Powering agentic apps” page naming HeyElsa: https://zerion.io/api-clients-ai-agents
+- Zerion NFT collection page: https://app.zerion.io/collections/1767989328
+
+End of report.
