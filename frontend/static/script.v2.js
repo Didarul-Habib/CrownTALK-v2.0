@@ -25,22 +25,25 @@
     return token || "";
   }
 
-function isAuthorized() {
+  function isAuthorized() {
     const token = getStoredToken();
 
-    // No token at all → definitely not authorized
+    // No token at all → not authorized
     if (!token) return false;
 
-    // Old versions stored "1" or the raw ACCESS_CODE string.
-    // Also, real tokens are SHA-256 hex (length 64), so anything shorter
-    // is considered legacy and must be re-issued via /verify_access.
+    // Old versions stored:
+    // - "1"
+    // - the raw ACCESS_CODE string
+    // - or other short values
+    //
+    // Real tokens we issue from the backend are SHA-256 hex strings (length 64).
     const looksLegacy =
       token === "1" ||
       token === ACCESS_CODE ||
       token.length < 40;
 
     if (looksLegacy) {
-      // Wipe legacy data so the user sees the gate again
+      // Wipe out legacy tokens so user is forced through the new flow once
       try { localStorage.removeItem(STORAGE_KEY); } catch {}
       try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
       try {
@@ -49,8 +52,9 @@ function isAuthorized() {
       return false;
     }
 
+    // Looks like a real backend-issued token
     return true;
-}
+  }
 
 
   function markAuthorized(token) {
