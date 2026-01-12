@@ -4757,7 +4757,12 @@ def comment_endpoint():
                 )
 
                 display_url = _canonical_x_url_from_tweet(url, t)
-                results.append({"url": display_url, "comments": two})
+                used_research = bool(research_ctx and research_ctx.get("status") == "ok")
+                results.append({
+                    "url": display_url,
+                    "comments": two,
+                    "used_research": used_research,
+                })
 
             except CrownTALKError as e:
                 failed.append({"url": url, "reason": str(e), "code": e.code})
@@ -4817,8 +4822,13 @@ def reroll_endpoint():
         )
 
         display_url = _canonical_x_url_from_tweet(url, t)
+        used_research = bool(research_ctx and research_ctx.get("status") == "ok")
 
-        return jsonify({"url": display_url, "comments": two}), 200
+        return jsonify({
+            "url": display_url,
+            "comments": two,
+            "used_research": used_research,
+        }), 200
 
     except CrownTALKError as e:
         return jsonify({"url": url, "error": str(e), "comments": [], "code": e.code}), 502
