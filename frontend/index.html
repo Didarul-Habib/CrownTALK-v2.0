@@ -302,11 +302,24 @@
         <!-- FAILED -->
         <section class="card">
           <div class="card-head">
-            <h2>Failed <span id="failedCount" class="chip">0</span></h2>
-            <p class="muted">Errors while processing your URLs (Maybe url is broken or tweet is private/broken)</p>
+            <div class="card-head-main">
+              <h2>Failed <span id="failedCount" class="chip">0</span></h2>
+              <p class="muted">
+                Errors while processing your URLs (Maybe url is broken or tweet is private/broken)
+              </p>
+            </div>
+
+            <!-- retry button for failed URLs -->
+            <div class="chip-row">
+              <button id="retryFailedBtn" class="btn-secondary subtle" type="button">
+                Retry failed
+              </button>
+            </div>
           </div>
+
           <div id="failed" class="failed-list"></div>
         </section>
+
 
         <!-- HISTORY -->
         <section class="card">
