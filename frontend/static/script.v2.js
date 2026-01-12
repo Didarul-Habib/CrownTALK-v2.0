@@ -31,28 +31,23 @@
     // No token at all → not authorized
     if (!token) return false;
 
-    // Old versions stored:
-    // - "1"
-    // - the raw ACCESS_CODE string
-    // - or other short values
-    //
-    // Real tokens we issue from the backend are SHA-256 hex strings (length 64).
-    const looksLegacy =
-    token === "1" ||
-    token === ACCESS_CODE ||
-    !/^[a-f0-9]{64}$/i.test(token);
-    if (looksLegacy) {
-      // Wipe out legacy tokens so user is forced through the new flow once
-      try { localStorage.removeItem(STORAGE_KEY); } catch {}
-      try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
-      try {
-        document.cookie = `${COOKIE_KEY}=; max-age=0; path=/; samesite=lax`;
-      } catch {}
-      return false;
+    const isHashToken = /^[a-f0-9]{64}$/i.test(token);
+    const isAccessCodeToken = token === ACCESS_CODE;
+
+    // Accept either a real backend-issued hash token
+    // OR the raw access code we store as a fallback.
+    if (isHashToken || isAccessCodeToken) {
+      return true;
     }
 
-    // Looks like a real backend-issued token
-    return true;
+    // Anything else is a legacy / bad token → wipe it.
+    try { localStorage.removeItem(STORAGE_KEY); } catch {}
+    try { sessionStorage.removeItem(STORAGE_KEY); } catch {}
+    try {
+      document.cookie = `${COOKIE_KEY}=; max-age=0; path=/; samesite=lax`;
+    } catch {}
+
+    return false;
   }
 
 
