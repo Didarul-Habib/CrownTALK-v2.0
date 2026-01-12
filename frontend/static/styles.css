@@ -5844,3 +5844,32 @@ html.ct-engine-on .card.card-holo .holo-system{
 .main > .card:first-of-type{
   padding-bottom: 16px !important;
 }
+
+/* ===========================
+   PATCH v4 – Remove extra empty space under progress bar (Tweet URLs card)
+   - Some external CSS (inputbox.css) forces a fixed/min height on the first card.
+   - We explicitly reset it so the card wraps content naturally.
+   =========================== */
+
+/* Make the Tweet URLs card size to its content (no forced tall panel) */
+.main > .card:first-of-type{
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Ensure no inner wrapper is forcing an extra height */
+.main > .card:first-of-type .ai-chat-input,
+.main > .card:first-of-type .chat-container,
+.main > .card:first-of-type .input-section{
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+/* Keep the footer rows in normal flow and remove any extra bottom reserve */
+.main > .card:first-of-type .progress-row,
+.main > .card:first-of-type #analyticsHud{
+  margin-bottom: 0 !important;
+}
+
+.main > .card:first-of-type{ padding-bottom: 10px !important; }
