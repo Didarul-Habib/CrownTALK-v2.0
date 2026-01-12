@@ -218,6 +218,8 @@ const failedCountEl   = document.getElementById("failedCount");
 const historyEl       = document.getElementById("history");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 const yearEl          = document.getElementById("year");
+const welcomeOverlayEl  = document.getElementById("welcomeOverlay");
+const welcomeDismissBtn = document.getElementById("welcomeDismissBtn");
 const retryFailedBtn  = document.getElementById("retryFailedBtn");
 
 // theme dots (live node list -> array)
@@ -635,24 +637,36 @@ function clearCopyQueue() {
    === PATCH: Analytics HUD + export helpers ===============
    ========================================================= */
 function updateAnalytics(meta) {
-  if (!analyticsHudEl) return;
-  const summaryEl = document.getElementById("analyticsSummary");
-  const tweetsEl = document.getElementById("analyticsTweets");
-  const failedElMetric = document.getElementById("analyticsFailed");
-  const timeEl = document.getElementById("analyticsTime");
-  const m = meta || {};
-  const tweets = m.tweets || 0;
-  const totalUrls = m.totalUrls || tweets;
-  const failed = m.failed || 0;
-  const durationSec = m.durationSec || 0;
-  if (summaryEl) summaryEl.textContent = `${tweets}/${totalUrls} tweets · ${failed} failed`;
-  if (tweetsEl) tweetsEl.textContent = String(tweets);
-  if (failedElMetric) failedElMetric.textContent = String(failed);
-  if (timeEl) timeEl.textContent = `${durationSec}s`;
-  analyticsHudEl.style.opacity = "1";
-  analyticsHudEl.setAttribute("aria-hidden", "false");
-}
+  const summaryEl       = document.getElementById("analyticsSummary");
+  const tweetsEl        = document.getElementById("analyticsTweets");
+  const failedElMetric  = document.getElementById("analyticsFailed");
+  const timeEl          = document.getElementById("analyticsTime");
+  const sessionSummaryEl = document.getElementById("sessionSummary");
 
+  const m          = meta || {};
+  const tweets     = m.tweets || 0;
+  const totalUrls  = m.totalUrls || tweets;
+  const failed     = m.failed || 0;
+  const durationSec = m.durationSec || 0;
+  const comments   = m.comments || (tweets * 2); // fallback guess
+
+  if (summaryEl)      summaryEl.textContent = `${tweets}/${totalUrls} tweets · ${failed} failed`;
+  if (tweetsEl)       tweetsEl.textContent = String(tweets);
+  if (failedElMetric) failedElMetric.textContent = String(failed);
+  if (timeEl)         timeEl.textContent = `${durationSec}s`;
+
+  if (sessionSummaryEl) {
+    const tLabel = `${tweets} tweet${tweets === 1 ? "" : "s"}`;
+    const cLabel = `${comments} comment${comments === 1 ? "" : "s"}`;
+    const fLabel = `${failed} failed`;
+    sessionSummaryEl.textContent = `${tLabel} • ${cLabel} • ${fLabel}`;
+  }
+
+  if (analyticsHudEl) {
+    analyticsHudEl.style.opacity = "1";
+    analyticsHudEl.setAttribute("aria-hidden", "false");
+  }
+}
 // ------------------------
 // Language filter helpers
 // ------------------------
@@ -972,15 +986,16 @@ function renderHistory() {
                     Rendering helpers
    ========================================================= */
 function buildTweetBlock(result) {
-  const url = result.url || "";
-  const comments = Array.isArray(result.comments) ? result.comments : [];
-
   const tweet = document.createElement("div");
   tweet.className = "tweet";
   tweet.dataset.url = url;
 
   const header = document.createElement("div");
   header.className = "tweet-header";
+
+  // left side: link + optional “research assisted” badge
+  const headerLeft = document.createElement("div");
+  headerLeft.className = "tweet-header-left";
 
   const link = document.createElement("a");
   link.className = "tweet-link";
@@ -989,6 +1004,16 @@ function buildTweetBlock(result) {
   link.rel = "noopener noreferrer";
   link.textContent = url || "(no url)";
   link.title = "Open tweet (tap to open)";
+
+  headerLeft.appendChild(link);
+
+  // NEW: research-assisted badge if backend says so
+  if (result && result.used_research) {
+    const badge = document.createElement("span");
+    badge.className = "tweet-badge";
+    badge.textContent = "Research assisted";
+    headerLeft.appendChild(badge);
+  }
 
   const actions = document.createElement("div");
   actions.className = "tweet-actions";
@@ -1013,18 +1038,9 @@ function buildTweetBlock(result) {
   actions.appendChild(collapseBtn);
   actions.appendChild(pinBtn);
 
-  header.appendChild(link);
+  header.appendChild(headerLeft);
   header.appendChild(actions);
   tweet.appendChild(header);
-
-  // collapse & pin behaviour
-  collapseBtn.addEventListener("click", () => {
-    tweet.classList.toggle("is-collapsed");
-  });
-  pinBtn.addEventListener("click", () => {
-    tweet.classList.toggle("is-pinned");
-    if (resultsEl && tweet.parentElement === resultsEl) {
-      resultsEl.insertBefore(tweet, resultsEl.firstChild);
     }
   });
 
@@ -1229,6 +1245,7 @@ async function handleGenerate() {
   let totalResults   = 0;
   let totalFailed    = 0;
   let processedUrls  = 0;
+  let totalComments = 0;
   let clearedSkeletons = false;
 
   showSkeletons(Math.min(urls.length, 4));
@@ -1311,6 +1328,9 @@ async function handleGenerate() {
         for (const item of results) {
           appendResultBlock(item);
           totalResults += 1;
+          if (item && Array.isArray(item.comments)) {
+            totalComments += item.comments.length;
+          }
         }
         for (const f of failed) {
           appendFailedItem(f);
@@ -1379,8 +1399,15 @@ async function handleGenerate() {
   applyLangFilterToDom();
   bumpRunCounter();
   const durationSec = Math.max(1, Math.round((performance.now() - runStartedAt) / 1000));
-  updateAnalytics({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
-  addSessionSnapshot({ tweets: totalResults, failed: totalFailed, totalUrls: urls.length, durationSec });
+  const meta = {
+    tweets: totalResults,
+    failed: totalFailed,
+    totalUrls: urls.length,
+    durationSec,
+    comments: totalComments,
+  };
+  updateAnalytics(meta);
+  addSessionSnapshot(meta);
 }
 
 // ------------------------
@@ -1611,7 +1638,75 @@ function initResultsMenu() {
     menu.classList.toggle("is-open");
   });
 }
+// ------------------------
+// Daily welcome card (Bangladesh day, reset 6AM)
+// ------------------------
+const WELCOME_DAY_KEY = "crowntalk_welcome_seen_v1";
 
+function getBangladeshNow() {
+  const now = new Date();
+  const utcMs = now.getTime() + now.getTimezoneOffset() * 60000;
+  const BD_OFFSET_HOURS = 6; // Asia/Dhaka, UTC+6, no DST
+  return new Date(utcMs + BD_OFFSET_HOURS * 60 * 60 * 1000);
+}
+
+function getBangladeshDayKey() {
+  const bd = getBangladeshNow();
+  let y = bd.getFullYear();
+  let m = bd.getMonth();
+  let d = bd.getDate();
+
+  // Treat 00:00–05:59 as "previous day" so reset happens at 6AM
+  if (bd.getHours() < 6) {
+    const prev = new Date(bd.getTime() - 24 * 60 * 60 * 1000);
+    y = prev.getFullYear();
+    m = prev.getMonth();
+    d = prev.getDate();
+  }
+
+  return `${y}-${String(m + 1).padStart(2, "0")}-${String(d).padStart(2, "0")}`;
+}
+
+function shouldShowWelcomeCard() {
+  const key = getBangladeshDayKey();
+  try {
+    const stored = localStorage.getItem(WELCOME_DAY_KEY) || sessionStorage.getItem(WELCOME_DAY_KEY);
+    return stored !== key;
+  } catch (e) {
+    // if storage is blocked, just show it
+    return true;
+  }
+}
+
+function markWelcomeSeen() {
+  const key = getBangladeshDayKey();
+  try { localStorage.setItem(WELCOME_DAY_KEY, key); } catch (e) {}
+  try { sessionStorage.setItem(WELCOME_DAY_KEY, key); } catch (e) {}
+}
+
+function initWelcomeCard() {
+  if (!welcomeOverlayEl || !welcomeDismissBtn) return;
+
+  if (!shouldShowWelcomeCard()) {
+    welcomeOverlayEl.classList.remove("is-visible");
+    return;
+  }
+
+  welcomeOverlayEl.classList.add("is-visible");
+
+  welcomeDismissBtn.addEventListener("click", () => {
+    welcomeOverlayEl.classList.remove("is-visible");
+    markWelcomeSeen();
+  });
+
+  // Click on dark background also dismisses
+  welcomeOverlayEl.addEventListener("click", (e) => {
+    if (e.target === welcomeOverlayEl) {
+      welcomeOverlayEl.classList.remove("is-visible");
+      markWelcomeSeen();
+    }
+  });
+}
 
 /* ---------- Boot UI once unlocked ---------- */
 function bootAppUI() {
@@ -1628,6 +1723,11 @@ function bootAppUI() {
   renderCopyQueue();
   initResultsMenu();
   initShortcutFab();
+  renderCopyQueue();
+  initResultsMenu();
+  initShortcutFab();
+  initWelcomeCard();
+
 
   setTimeout(() => { maybeWarmBackend(); }, 4000);
 
