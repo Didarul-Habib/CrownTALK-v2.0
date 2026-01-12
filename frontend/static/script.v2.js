@@ -129,15 +129,34 @@
       console.warn('verify_access failed, falling back to local ACCESS_CODE', err);
     }
 
-    // Fallback: allow the hard-coded ACCESS_CODE if backend is not reachable yet.
-    if (val === ACCESS_CODE) {
-      markAuthorized(ACCESS_CODE);
-      exposeTokenHelpers();
-      hideGate();
-      bootAppUI();
-      return;
+// Fallback: allow the hard-coded ACCESS_CODE if backend is not reachable yet.
+// Hash and store a SHA-256 hex so the token looks like a backend token.
+if (val === ACCESS_CODE) {
+  function sha256Hex(str) {
+    if (typeof crypto !== 'undefined' && crypto.subtle && typeof TextEncoder !== 'undefined') {
+      const enc = new TextEncoder().encode(str);
+      return crypto.subtle.digest('SHA-256', enc)
+        .then(hash => Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join(''));
+    } else {
+      return Promise.resolve(null);
     }
+  }
 
+  sha256Hex(ACCESS_CODE).then(hashed => {
+    if (hashed) {
+      markAuthorized(hashed);
+    } else {
+      // Environment doesn't support SubtleCrypto — store raw code temporarily.
+      markAuthorized(ACCESS_CODE);
+      console.warn('SubtleCrypto not available — stored raw ACCESS_CODE temporarily.');
+    }
+    exposeTokenHelpers();
+    hideGate();
+    bootAppUI();
+  });
+
+  return;
+}
     input.classList.add('ct-shake');
     setTimeout(() => input.classList.remove('ct-shake'), 350);
     input.value = '';
