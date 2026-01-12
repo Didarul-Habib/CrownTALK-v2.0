@@ -4878,3 +4878,186 @@ body.ct-progress-done .progress-bar-inner{
 .lang-filter-pill[data-active="false"]{
   opacity:.55;
 }
+
+/* Tweet header extras: research-assisted badge */
+.tweet-header-left{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+
+.tweet-badge{
+  padding:2px 7px;
+  border-radius:999px;
+  border:1px solid rgba(45,212,191,.65);
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  background:radial-gradient(circle at 0 0,rgba(45,212,191,.25),transparent 55%), rgba(15,23,42,.96);
+  color:#99f6e4;
+  white-space:nowrap;
+}
+
+/* Session summary chip (desktop toolbar) */
+.badge-summary{
+  margin-left:8px;
+  padding:3px 10px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.7);
+  font-size:11px;
+  opacity:.85;
+}
+
+/* === Daily welcome overlay (Bangladesh day) === */
+.welcome-overlay{
+  position:fixed;
+  inset:0;
+  z-index:40;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  background:radial-gradient(circle at 0 0,rgba(15,23,42,.95),rgba(0,0,0,.98));
+  backdrop-filter:blur(14px);
+}
+
+.welcome-overlay.is-visible{
+  display:flex;
+}
+
+.welcome-card-shell{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
+}
+
+/* Glass card inspired by your design */
+.welcome-outer{
+  width:300px;
+  height:250px;
+  border-radius:10px;
+  padding:1px;
+  background:radial-gradient(circle 230px at 0% 0%, #ffffff, #0c0d0d);
+  position:relative;
+}
+
+.welcome-dot{
+  width:5px;
+  aspect-ratio:1;
+  position:absolute;
+  background-color:#fff;
+  box-shadow:0 0 10px #ffffff;
+  border-radius:999px;
+  z-index:2;
+  right:10%;
+  top:10%;
+  animation:welcomeMoveDot 6s linear infinite;
+}
+
+@keyframes welcomeMoveDot{
+  0%,100%{ top:10%; right:10%; }
+  25%{ top:10%; right:calc(100% - 35px); }
+  50%{ top:calc(100% - 30px); right:calc(100% - 35px); }
+  75%{ top:calc(100% - 30px); right:10%; }
+}
+
+.welcome-card{
+  z-index:1;
+  width:100%;
+  height:100%;
+  border-radius:9px;
+  border:1px solid #202222;
+  background:radial-gradient(circle 280px at 0% 0%, #444444, #0c0d0d);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+  flex-direction:column;
+  color:#fff;
+}
+
+.welcome-ray{
+  width:220px;
+  height:45px;
+  border-radius:100px;
+  position:absolute;
+  background-color:#c7c7c7;
+  opacity:0.4;
+  box-shadow:0 0 50px #fff;
+  filter:blur(10px);
+  transform-origin:10%;
+  top:0%;
+  left:0;
+  transform:rotate(40deg);
+}
+
+.welcome-main-text{
+  font-weight:800;
+  font-size:2.8rem;
+  letter-spacing:.03em;
+  background:linear-gradient(45deg,#000000 4%,#ffffff,#000000);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+
+.welcome-subtext{
+  margin-top:.35rem;
+  font-size:.9rem;
+  opacity:.85;
+}
+
+.welcome-line{
+  width:100%;
+  height:1px;
+  position:absolute;
+  background-color:#2c2c2c;
+}
+
+.welcome-line.topl{
+  top:10%;
+  background:linear-gradient(90deg,#888888 30%,#1d1f1f 70%);
+}
+
+.welcome-line.bottoml{
+  bottom:10%;
+}
+
+.welcome-line.leftl{
+  left:10%;
+  width:1px;
+  height:100%;
+  background:linear-gradient(180deg,#747474 30%,#222424 70%);
+}
+
+.welcome-line.rightl{
+  right:10%;
+  width:1px;
+  height:100%;
+}
+
+.welcome-dismiss-btn{
+  padding:0.5rem 1.1rem;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.9);
+  background:radial-gradient(circle at 0 0,rgba(251,191,36,.22),transparent 55%), rgba(15,23,42,.98);
+  color:#e5e7eb;
+  font-size:.85rem;
+  cursor:pointer;
+  box-shadow:0 12px 30px rgba(0,0,0,.7);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+
+.welcome-dismiss-btn:hover{
+  border-color:var(--accent);
+}
+
+/* small screens: shrink card a bit */
+@media (max-width:480px){
+  .welcome-outer{ width:260px; height:220px; }
+  .welcome-main-text{ font-size:2.3rem; }
+}
+
