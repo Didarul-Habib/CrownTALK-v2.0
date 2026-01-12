@@ -38,10 +38,9 @@
     //
     // Real tokens we issue from the backend are SHA-256 hex strings (length 64).
     const looksLegacy =
-      token === "1" ||
-      token === ACCESS_CODE ||
-      token.length < 40;
-
+    token === "1" ||
+    token === ACCESS_CODE ||
+    !/^[a-f0-9]{64}$/i.test(token);
     if (looksLegacy) {
       // Wipe out legacy tokens so user is forced through the new flow once
       try { localStorage.removeItem(STORAGE_KEY); } catch {}
