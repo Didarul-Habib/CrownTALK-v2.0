@@ -1252,7 +1252,7 @@ async function handleGenerate() {
     }
 
     const payload = {
-      url: oneUrl,
+      urls: oneUrl,
       lang_en: !!(langEnToggle && langEnToggle.checked),
       lang_native: !!(langNativeToggle && langNativeToggle.checked),
       safe_mode: !!(safeModeToggle && safeModeToggle.checked),
