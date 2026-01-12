@@ -222,10 +222,8 @@ const welcomeOverlayEl  = document.getElementById("welcomeOverlay");
 const welcomeDismissBtn = document.getElementById("welcomeDismissBtn");
 const retryFailedBtn  = document.getElementById("retryFailedBtn");
 
-// theme dots (live node list -> array)
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
 
-/* ========= PATCH: premium DOM handles ========= */
 const sessionTabsEl         = document.getElementById("sessionTabs");
 const analyticsHudEl        = document.getElementById("analyticsHud");
 const urlHealthBadgeEl      = document.getElementById("urlHealthBadge");
@@ -248,6 +246,9 @@ const langEnToggle          = document.getElementById("langEnToggle");
 const langNativeToggle      = document.getElementById("langNativeToggle");
 const runCountEl            = document.getElementById("runCount");
 const safeModeToggle        = document.getElementById("safeModeToggle");
+const holoCheckEl = document.getElementById("holo-check");
+const holoCardEl  = document.querySelector(".card-holo");
+
 
 // ------------------------
 // State
@@ -1210,6 +1211,21 @@ setProgressText = function patchedSetProgressText(t){
 };
 
 /* =========================================================
+   Hologram engine state helper
+   ========================================================= */
+function setEngineStatus(state) {
+  // state: "idle" | "running" | "error"
+  if (!holoCardEl || !holoCheckEl) return;
+
+  // Remember state for CSS tweaks
+  holoCardEl.setAttribute("data-state", state);
+
+  // Use checkbox as the main ON/OFF switch for the animation
+  holoCheckEl.checked = state === "running";
+}
+
+
+/* =========================================================
                          Generate flow
    ========================================================= */
 async function handleGenerate() {
@@ -1231,6 +1247,7 @@ async function handleGenerate() {
 
   cancelled = false;
   document.body.classList.add("is-generating");
+  setEngineStatus("running");
 
   // Ultra-Lite mode if phone/low-motion
   if (matchMedia('(pointer:coarse)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) {
@@ -1398,6 +1415,13 @@ async function handleGenerate() {
     setProgressText(`Processed ${processedUrls} tweet${processedUrls === 1 ? "" : "s"}.`);
     setProgressRatio(1);
   }
+   
+  if (!totalResults && totalFailed) {
+    setEngineStatus("error");
+  } else {
+    // normal finish
+    setEngineStatus("idle");
+  }
 
   applyLangFilterToDom();
   bumpRunCounter();
@@ -1428,6 +1452,7 @@ function handleCancel() {
   cancelBtn.disabled   = true;
   setProgressText("Cancelled.");
   setProgressRatio(0);
+  setEngineStatus("idle");
 }
 function handleClear() {
   __lastClear = {
@@ -1730,7 +1755,7 @@ function bootAppUI() {
   initResultsMenu();
   initShortcutFab();
   initWelcomeCard();
-
+  setEngineStatus("idle");
 
   setTimeout(() => { maybeWarmBackend(); }, 4000);
 
