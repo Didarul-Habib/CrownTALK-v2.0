@@ -91,6 +91,28 @@
     </div>
     <!-- ===== /ACCESS GATE ===== -->
 
+        <!-- ===== DAILY WELCOME CARD ===== -->
+    <div id="welcomeOverlay" class="welcome-overlay">
+      <div class="welcome-card-shell">
+        <div class="welcome-outer">
+          <div class="welcome-dot"></div>
+          <div class="welcome-card">
+            <div class="welcome-ray"></div>
+            <div class="welcome-main-text">GM, operator</div>
+            <div class="welcome-subtext">Let’s farm smarter CT replies today.</div>
+            <div class="welcome-line topl"></div>
+            <div class="welcome-line leftl"></div>
+            <div class="welcome-line bottoml"></div>
+            <div class="welcome-line rightl"></div>
+          </div>
+        </div>
+        <button type="button" id="welcomeDismissBtn" class="welcome-dismiss-btn">
+          Start session
+        </button>
+      </div>
+    </div>
+    <!-- ===== /DAILY WELCOME CARD ===== -->
+
     <div class="app-shell">
       <!-- ===== HERO / HEADER ===== -->
       <header class="hero">
@@ -260,7 +282,12 @@
     <!-- right side: run badge + dropdown menu (desktop only) -->
     <div class="results-toolbar">
       <span class="badge badge-run">Run <span id="runCount">1</span></span>
-
+      
+        <!-- NEW: session summary chip -->
+  <span class="badge badge-summary" id="sessionSummary">
+    0 tweets • 0 comments • 0 failed
+  </span>
+      
       <div class="results-menu" id="resultsMenu">
         <button type="button"
                 id="resultsMenuToggle"
