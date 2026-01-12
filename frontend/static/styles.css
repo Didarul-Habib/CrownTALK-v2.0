@@ -5873,3 +5873,214 @@ html.ct-engine-on .card.card-holo .holo-system{
 }
 
 .main > .card:first-of-type{ padding-bottom: 10px !important; }
+
+/* === Cyber theme radio buttons === */
+
+.ct-theme-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+
+.ct-theme-radio {
+  position: relative;
+  height: 26px;
+  width: 70px; /* keep small */
+  margin: 2px;
+}
+
+/* the real clickable target – JS uses .theme-dot */
+.ct-theme-input.theme-dot {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+}
+
+/* main button body */
+.ct-theme-btn {
+  --primary: #f5434f;
+  --shadow-primary: #631e29;
+  --color: #ffffff;
+  --font-size: 9px;
+  --shadow-secondary: #000000;
+  --clip: polygon(
+    11% 0,
+    95% 0,
+    100% 25%,
+    90% 90%,
+    95% 90%,
+    85% 90%,
+    85% 100%,
+    7% 100%,
+    0 80%
+  );
+  --border: 4px;
+  --shimmy-distance: 5;
+
+  color: var(--color);
+  text-transform: uppercase;
+  font-size: var(--font-size);
+  letter-spacing: 2px;
+  position: relative;
+  font-weight: 900;
+  width: 100%;
+  height: 100%;
+  line-height: 26px;
+  text-align: center;
+  transition: background 0.2s, transform 0.2s, font-size 0.2s, box-shadow 0.2s;
+  font-family: "Orbitron", system-ui, sans-serif;
+}
+
+/* base shape + shadow layers */
+.ct-theme-btn::before,
+.ct-theme-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: var(--clip);
+  z-index: -1;
+}
+
+.ct-theme-btn::before {
+  background: var(--shadow-primary);
+  transform: translate(var(--border), 0);
+}
+
+.ct-theme-btn::after {
+  background: var(--primary);
+}
+
+/* hover state – keep theme color, just lift/glow a bit */
+.ct-theme-input.theme-dot:hover + .ct-theme-btn {
+  font-size: 10px;
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18),
+              0 0 10px rgba(0, 0, 0, 0.4);
+}
+
+/* active / selected state – stronger lift/glow, no color override */
+.ct-theme-input.theme-dot:checked + .ct-theme-btn,
+.ct-theme-input.theme-dot.is-active + .ct-theme-btn {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22),
+              0 0 14px rgba(255, 255, 255, 0.18);
+}
+
+/* tiny tag area like r1/r2 in the example */
+.ct-theme-number {
+  background: var(--shadow-primary);
+  color: #111827;
+  font-size: 6px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  position: absolute;
+  width: 16px;
+  height: 8px;
+  top: 0;
+  right: 8%;
+  line-height: 8px;
+}
+
+/* glitch overlay */
+.ct-theme-glitch {
+  position: absolute;
+  top: calc(var(--border) * -1);
+  left: calc(var(--border) * -1);
+  right: calc(var(--border) * -1);
+  bottom: calc(var(--border) * -1);
+  background: var(--shadow-primary);
+  text-shadow: 2px 2px var(--shadow-primary),
+    -2px -2px var(--shadow-secondary);
+  clip-path: var(--clip);
+  animation: ct-theme-glitch 2s infinite;
+  display: none;
+  overflow: hidden;
+}
+
+.ct-theme-glitch::before {
+  content: "";
+  position: absolute;
+  top: var(--border);
+  right: var(--border);
+  bottom: var(--border);
+  left: var(--border);
+  clip-path: var(--clip);
+  background: var(--primary);
+  z-index: -1;
+}
+
+/* show glitch on hover / active */
+.ct-theme-input.theme-dot:hover + .ct-theme-btn .ct-theme-glitch,
+.ct-theme-input.theme-dot:checked + .ct-theme-btn .ct-theme-glitch,
+.ct-theme-input.theme-dot.is-active + .ct-theme-btn .ct-theme-glitch {
+  display: block;
+  animation: ct-theme-glitch 5s infinite;
+}
+
+/* glitch keyframes (trimmed from your snippet) */
+@keyframes ct-theme-glitch {
+  0% {
+    clip-path: polygon(0 2%, 100% 2%, 100% 95%, 95% 95%, 95% 90%,
+        85% 90%, 85% 95%, 8% 95%, 0 70%);
+  }
+  20% {
+    clip-path: polygon(0 44%, 100% 44%, 100% 54%, 95% 54%, 95% 54%,
+        85% 54%, 85% 54%, 8% 54%, 0 54%);
+    transform: translate(1%, 0);
+  }
+  40% {
+    clip-path: polygon(0 78%, 100% 78%, 100% 100%, 95% 100%, 95% 90%,
+        85% 90%, 85% 100%, 8% 100%, 0 78%);
+    transform: translate(-1%, 0);
+  }
+  60% {
+    clip-path: polygon(0 63%, 100% 63%, 100% 80%, 95% 80%, 95% 80%,
+        85% 80%, 85% 80%, 8% 80%, 0 70%);
+    transform: translate(0, 0);
+  }
+  100% {
+    clip-path: polygon(0 0, 100% 0, 100% 0, 95% 0, 95% 0,
+        85% 0, 85% 0, 8% 0, 0 0);
+  }
+}
+
+/* === Per-theme color for each cyber tab === */
+/* Uses the data-theme on the input, so each tab always shows its own palette */
+
+.ct-theme-input.theme-dot[data-theme="white"] + .ct-theme-btn {
+  --primary: #2563eb;      /* bright royal blue */
+  --shadow-primary: #0f172a;
+}
+
+.ct-theme-input.theme-dot[data-theme="dark-purple"] + .ct-theme-btn {
+  --primary: #a855f7;      /* cygnus magenta */
+  --shadow-primary: #4c1d95;
+}
+
+.ct-theme-input.theme-dot[data-theme="gold"] + .ct-theme-btn {
+  --primary: #fbbf24;      /* solar gold */
+  --shadow-primary: #92400e;
+}
+
+.ct-theme-input.theme-dot[data-theme="blue"] + .ct-theme-btn {
+  --primary: #3b82f6;      /* helios blue */
+  --shadow-primary: #1d4ed8;
+}
+
+.ct-theme-input.theme-dot[data-theme="black"] + .ct-theme-btn {
+  --primary: #0f172a;      /* nebula black */
+  --shadow-primary: #e5e7eb;
+}
+
+.ct-theme-input.theme-dot[data-theme="emerald"] + .ct-theme-btn {
+  --primary: #10b981;      /* orion lime */
+  --shadow-primary: #047857;
+}
+
+.ct-theme-input.theme-dot[data-theme="crimson"] + .ct-theme-btn {
+  --primary: #f43f5e;      /* crimson nova */
+  --shadow-primary: #9f1239;
+}
