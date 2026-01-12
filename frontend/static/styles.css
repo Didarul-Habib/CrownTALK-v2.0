@@ -5648,3 +5648,101 @@ body.ct-progress-done .progress-bar-inner{
     height:240px;
   }
 }
+
+/* ===========================
+   Engine status card overrides
+   =========================== */
+
+/* Kill the default card gradient only for the holo card */
+.card.card-holo {
+  background: transparent;
+}
+
+/* Remove extra padding so the holo system can occupy the whole body */
+.card.card-holo .card-body {
+  padding: 0;
+}
+
+/* Make the holo system fill the card nicely */
+.card.card-holo .holo-system {
+  position: relative;
+  width: 100%;
+  min-height: 220px;
+  border-radius: inherit;
+  overflow: hidden;
+
+  /* Full-card background for the holo scene */
+  background:
+    radial-gradient(circle at 50% 0%, rgba(59,130,246,0.45), transparent 60%),
+    radial-gradient(circle at 50% 130%, rgba(16,185,129,0.6), transparent 55%),
+    #020617;
+  box-shadow:
+    inset 0 0 0 1px rgba(56,189,248,0.4),
+    0 24px 60px rgba(15,23,42,0.9);
+}
+
+/* Ensure all layers stretch to fill the holo card */
+.card.card-holo .grid-plane,
+.card.card-holo .nebula,
+.card.card-holo .stars-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Center the checkbox “cube” in the scene */
+.card.card-holo .checkbox-container {
+  position: relative;
+  width: 100%;
+  height: 100%;
+}
+/* ===========================
+   Desktop compaction (optional)
+   =========================== */
+@media (min-width: 1200px) {
+  /* Slightly tighter vertical rhythm between cards */
+  .main {
+    gap: 18px;
+  }
+
+  /* First card = Tweet URLs */
+  .main > .card:first-of-type {
+    padding-top: 18px;
+    padding-bottom: 18px;
+  }
+
+  .main > .card:first-of-type .ai-chat-input {
+    margin-bottom: 10px;
+  }
+
+  .main > .card:first-of-type .lang-filter-row {
+    margin-top: 10px;
+  }
+
+  .main > .card:first-of-type .controls {
+    margin-top: 10px;
+  }
+
+  .main > .card:first-of-type .progress-row {
+    margin-top: 8px;
+  }
+
+  /* Make the textarea a bit shorter at rest on desktop */
+  .main > .card:first-of-type .main-input {
+    min-height: 170px;
+  }
+
+  /* Header also a bit tighter so everything fits */
+  .hero {
+    margin-bottom: 18px;
+  }
+}
+
+/* Optional: subtle glass border on ENGINE STATUS header line only */
+.card.card-holo .card-head-main h2 {
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
