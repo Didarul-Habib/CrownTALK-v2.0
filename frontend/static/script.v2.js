@@ -209,7 +209,7 @@ if (val === ACCESS_CODE) {
       showGate();
       bindGate();
     }
-  }, 50);
+  }, 150);
   }
 
   if (document.readyState === 'loading') {
