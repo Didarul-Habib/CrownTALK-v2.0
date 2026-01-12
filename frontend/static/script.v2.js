@@ -503,7 +503,6 @@ function analyzeUrlLines(raw) {
   return { entries, valid, invalid, duplicates, total: entries.length };
 }
 
-}
 function updateUrlHealth() {
   if (!urlInput || !urlHealthBadgeEl) return;
   const info = analyzeUrlLines(urlInput.value || "");
