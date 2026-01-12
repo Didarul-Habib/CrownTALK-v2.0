@@ -218,6 +218,7 @@ const failedCountEl   = document.getElementById("failedCount");
 const historyEl       = document.getElementById("history");
 const clearHistoryBtn = document.getElementById("clearHistoryBtn");
 const yearEl          = document.getElementById("year");
+const retryFailedBtn  = document.getElementById("retryFailedBtn");
 
 // theme dots (live node list -> array)
 let themeDots = Array.from(document.querySelectorAll(".theme-dot"));
@@ -251,16 +252,12 @@ const safeModeToggle        = document.getElementById("safeModeToggle");
 // ------------------------
 let cancelled    = false;
 let historyItems = [];
-
-/* ========= PATCH: premium state ========= */
+let failedUrlList = [];
 let ctSessions = [];
 let ctActiveSessionId = null;
 let ctSessionCounter = 0;
-
 let ctCopyQueue = [];
 let ctCopyQueueIndex = 0;
-
-// Language + safe mode + analytics prefs
 let langPrefs = { useEn: true, useNative: true };
 let safeModeOn = false;
 let runCounter = 0;
@@ -384,6 +381,7 @@ function resetResults() {
   if (failedEl) failedEl.innerHTML = "";
   if (resultCountEl) resultCountEl.textContent = "0 tweets";
   if (failedCountEl) failedCountEl.textContent = "0";
+  failedUrlList = [];
 }
 async function copyToClipboard(text) {
   if (!text) return;
@@ -1200,6 +1198,9 @@ async function handleGenerate() {
     return;
   }
 
+  // NEW: clear previous failed URLs for this run
+  failedUrlList = [];
+
   maybeWarmBackend();
 
   cancelled = false;
@@ -1216,46 +1217,42 @@ async function handleGenerate() {
   resetProgress();
 
   setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
-  setProgressRatio(0.03);
-  showSkeletons(urls.length);
+  setProgressRatio(0);
 
-  const PER_URL_TIMEOUT_MS = 90000; // 90s per URL
-  const CLIENT_DELAY_MS = 1200;     // spacing between URLs (client-side)
-  const sleep = (ms) => new Promise(r => setTimeout(r, ms));
-
+  const commentURL = "/api/comments";
+  let totalResults   = 0;
+  let totalFailed    = 0;
+  let processedUrls  = 0;
   let clearedSkeletons = false;
-  let processedUrls = 0;
-  let totalResults = 0;
-  let totalFailed  = 0;
 
+  showSkeletons(Math.min(urls.length, 4));
   const runStartedAt = performance.now();
+
+  // Fire-and-forget warmup
+  maybeWarmBackend();
 
   for (let i = 0; i < urls.length; i++) {
     if (cancelled) break;
-
     const oneUrl = urls[i];
 
-    // progress tick BEFORE request
-    setProgressText(`Processing ${i + 1}/${urls.length}…`);
-    setProgressRatio(Math.max(0.03, i / Math.max(1, urls.length)));
+    if (!oneUrl) continue;
 
-    const headers = { "Content-Type": "application/json" };
-    try {
-      const token = (window.CROWNTALK && typeof window.CROWNTALK.getAccessToken === "function"
-        ? window.CROWNTALK.getAccessToken()
-        : (window.__CROWNTALK_AUTH_TOKEN || ""));
-      if (token) {
-        const headerName = (window.CROWNTALK && window.CROWNTALK.TOKEN_HEADER) || "X-Crowntalk-Token";
-        headers[headerName] = token;
-      }
-    } catch {}
-    const payload = { urls: [oneUrl] };
-    try {
-      const langs = getLanguagePreferenceArray();
-      if (Array.isArray(langs) && langs.length) {
-        payload.languages = langs;
-      }
-    } catch {}
+    const headers = {
+      "Content-Type": "application/json",
+    };
+    if (window.CROWNTALK?.getAccessToken && window.CROWNTALK.TOKEN_HEADER) {
+      const t = window.CROWNTALK.getAccessToken();
+      if (t) headers[window.CROWNTALK.TOKEN_HEADER] = t;
+    }
+
+    const payload = {
+      url: oneUrl,
+      lang_en: !!(langEnToggle && langEnToggle.checked),
+      lang_native: !!(langNativeToggle && langNativeToggle.checked),
+      safe_mode: !!(safeModeToggle && safeModeToggle.checked),
+      preset: presetSelect?.value || "",
+    };
+
     const requestOptions = {
       method: "POST",
       headers,
@@ -1290,6 +1287,11 @@ async function handleGenerate() {
         appendFailedItem(failure);
         totalFailed += 1;
         failedCountEl.textContent = String(totalFailed);
+
+        // NEW: remember this failed URL
+        if (failure.url && !failedUrlList.includes(failure.url)) {
+          failedUrlList.push(failure.url);
+        }
       } else {
         const results = Array.isArray(data.results) ? data.results : [];
         const failed  = Array.isArray(data.failed)  ? data.failed  : [];
@@ -1307,6 +1309,11 @@ async function handleGenerate() {
         for (const f of failed) {
           appendFailedItem(f);
           totalFailed += 1;
+
+          // NEW: remember these backend-reported failed URLs
+          if (f && f.url && !failedUrlList.includes(f.url)) {
+            failedUrlList.push(f.url);
+          }
         }
 
         resultCountEl.textContent = formatTweetCount(totalResults);
@@ -1329,6 +1336,11 @@ async function handleGenerate() {
       appendFailedItem(failure);
       totalFailed += 1;
       failedCountEl.textContent = String(totalFailed);
+
+      // NEW: remember this client-side failure URL
+      if (failure.url && !failedUrlList.includes(failure.url)) {
+        failedUrlList.push(failure.url);
+      }
     }
 
     processedUrls = i + 1;
@@ -1336,7 +1348,7 @@ async function handleGenerate() {
     setProgressRatio(processedUrls / Math.max(1, urls.length));
 
     if (i < urls.length - 1 && !cancelled) {
-      await sleep(CLIENT_DELAY_MS);
+      await sleep(200);
     }
   }
 
@@ -1402,6 +1414,13 @@ function handleClear() {
       failedEl.innerHTML = __lastClear.failed;
       resultCountEl.textContent = __lastClear.rc;
       failedCountEl.textContent = __lastClear.fc;
+      failedUrlList = [];
+      failedEl.querySelectorAll(".failed-url").forEach((node) => {
+        const text = (node.textContent || "").trim();
+        if (text && !failedUrlList.includes(text)) {
+          failedUrlList.push(text);
+        }
+      });
       autoResizeTextarea();
       u.classList.remove('show');
       ctToast('Restore complete', 'ok');
@@ -1417,6 +1436,26 @@ function hideUndoSnackSoon(){
   const s = document.getElementById('ctUndo');
   if (!s) return;
   setTimeout(()=> s.classList.remove('show'), 4000);
+}
+
+function handleRetryFailed() {
+  if (!failedUrlList.length) {
+    if (typeof ctToast === "function") {
+      ctToast("No failed URLs to retry yet.", "info");
+    } else {
+      alert("No failed URLs to retry yet.");
+    }
+    return;
+  }
+
+  // Put only failed URLs back into the textarea (numbered)
+  const lines = failedUrlList.map((u, idx) => `${idx + 1}. ${u}`);
+  urlInput.value = lines.join("\n");
+  autoResizeTextarea();
+  hideUndoSnackSoon();
+
+  // Run the normal generate flow on just these URLs
+  handleGenerate();
 }
 
 // ------------------------
@@ -1583,6 +1622,10 @@ function bootAppUI() {
 
   cancelBtn?.addEventListener("click", handleCancel);
   clearBtn?.addEventListener("click", handleClear);
+  retryFailedBtn?.addEventListener("click", (e) => {
+    e.preventDefault();
+    handleRetryFailed();
+  });
 
   clearHistoryBtn?.addEventListener("click", () => {
     historyItems = [];
