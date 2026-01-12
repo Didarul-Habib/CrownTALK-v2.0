@@ -5746,3 +5746,75 @@ body.ct-progress-done .progress-bar-inner{
   text-transform: uppercase;
   opacity: 0.9;
 }
+
+/* ===========================
+   Engine status card overrides
+   =========================== */
+
+/* Remove normal card gradient, keep radius + shadow */
+.card.card-holo {
+  background: transparent;
+}
+
+/* Let content hug the edges so the scene can fill it */
+.card.card-holo .card-body {
+  padding: 0;
+}
+
+/* Holo scene should occupy the whole card */
+.card.card-holo .holo-system {
+  position: relative;
+  width: 100% !important;
+  max-width: none !important;
+  height: 260px;        /* tweak this height if you want shorter/taller */
+  margin: 0 !important;
+  border-radius: inherit;
+  overflow: hidden;
+
+  /* full-card background for the scene */
+  background:
+    radial-gradient(circle at 50% 0%, rgba(59,130,246,0.45), transparent 60%),
+    radial-gradient(circle at 50% 130%, rgba(16,185,129,0.6), transparent 55%),
+    #020617;
+  box-shadow:
+    inset 0 0 0 1px rgba(56,189,248,0.4),
+    0 24px 60px rgba(15,23,42,0.9);
+}
+
+/* Make all layers stretch across the card */
+.card.card-holo .grid-plane,
+.card.card-holo .nebula,
+.card.card-holo .stars-container {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Center the cube inside the full-width background */
+.card.card-holo .checkbox-container {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Optional: border color reacts to engine on/off */
+
+html:not(.ct-engine-on) .card.card-holo .holo-system {
+  box-shadow:
+    inset 0 0 0 1px rgba(59,130,246,0.45),
+    0 18px 40px rgba(15,23,42,0.8);
+  filter: saturate(0.8);
+}
+
+html.ct-engine-on .card.card-holo .holo-system {
+  box-shadow:
+    inset 0 0 0 1px rgba(16,185,129,0.75),
+    0 26px 70px rgba(16,185,129,0.35);
+  filter: saturate(1.1);
+}
