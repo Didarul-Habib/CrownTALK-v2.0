@@ -124,18 +124,125 @@
           </div>
         </div>
 
-        <div class="theme-switcher">
-          <span class="theme-label">Theme</span>
-          <div class="theme-dots">
-            <button class="theme-dot" data-theme="white" title="White"></button>
-            <button class="theme-dot" data-theme="dark-purple" title="Purple"></button>
-            <button class="theme-dot" data-theme="gold" title="Gold"></button>
-            <button class="theme-dot" data-theme="blue" title="Blue"></button>
-            <button class="theme-dot" data-theme="black" title="Black"></button>
-            <button class="theme-dot" data-theme="emerald" title="Emerald"></button>
-            <button class="theme-dot" data-theme="crimson" title="Crimson"></button>
-          </div>
-        </div>
+<div class="theme-switcher">
+  <span class="theme-label">Theme</span>
+
+  <!-- keep .theme-dots so the existing container styling still works -->
+  <div class="theme-dots ct-theme-radios">
+    <!-- White -->
+    <div class="ct-theme-radio">
+      <input
+        type="radio"
+        name="ct-theme"
+        id="ct-theme-white"
+        class="ct-theme-input theme-dot"
+        data-theme="white"
+      />
+      <div class="ct-theme-btn">
+        <span aria-hidden="">_</span>WHT
+        <span aria-hidden="" class="ct-theme-glitch">_WHITE_</span>
+        <span class="ct-theme-number">01</span>
+      </div>
+    </div>
+
+    <!-- Dark Purple -->
+    <div class="ct-theme-radio">
+      <input
+        type="radio"
+        name="ct-theme"
+        id="ct-theme-purple"
+        class="ct-theme-input theme-dot"
+        data-theme="dark-purple"
+      />
+      <div class="ct-theme-btn">
+        <span aria-hidden="">_</span>PRPL
+        <span aria-hidden="" class="ct-theme-glitch">_PURPLE_</span>
+        <span class="ct-theme-number">02</span>
+      </div>
+    </div>
+
+    <!-- Gold -->
+    <div class="ct-theme-radio">
+      <input
+        type="radio"
+        name="ct-theme"
+        id="ct-theme-gold"
+        class="ct-theme-input theme-dot"
+        data-theme="gold"
+      />
+      <div class="ct-theme-btn">
+        <span aria-hidden="">_</span>GOLD
+        <span aria-hidden="" class="ct-theme-glitch">_GOLD_</span>
+        <span class="ct-theme-number">03</span>
+      </div>
+    </div>
+
+    <!-- Blue -->
+    <div class="ct-theme-radio">
+      <input
+        type="radio"
+        name="ct-theme"
+        id="ct-theme-blue"
+        class="ct-theme-input theme-dot"
+        data-theme="blue"
+      />
+      <div class="ct-theme-btn">
+        <span aria-hidden="">_</span>BLUE
+        <span aria-hidden="" class="ct-theme-glitch">_BLUE_</span>
+        <span class="ct-theme-number">04</span>
+      </div>
+    </div>
+
+    <!-- Black -->
+    <div class="ct-theme-radio">
+      <input
+        type="radio"
+        name="ct-theme"
+        id="ct-theme-black"
+        class="ct-theme-input theme-dot"
+        data-theme="black"
+      />
+      <div class="ct-theme-btn">
+        <span aria-hidden="">_</span>BLK
+        <span aria-hidden="" class="ct-theme-glitch">_BLACK_</span>
+        <span class="ct-theme-number">05</span>
+      </div>
+    </div>
+
+    <!-- Emerald -->
+    <div class="ct-theme-radio">
+      <input
+        type="radio"
+        name="ct-theme"
+        id="ct-theme-emerald"
+        class="ct-theme-input theme-dot"
+        data-theme="emerald"
+      />
+      <div class="ct-theme-btn">
+        <span aria-hidden="">_</span>EMR
+        <span aria-hidden="" class="ct-theme-glitch">_EMERALD_</span>
+        <span class="ct-theme-number">06</span>
+      </div>
+    </div>
+
+    <!-- Crimson -->
+    <div class="ct-theme-radio">
+      <input
+        type="radio"
+        name="ct-theme"
+        id="ct-theme-crimson"
+        class="ct-theme-input theme-dot"
+        data-theme="crimson"
+      />
+      <div class="ct-theme-btn">
+        <span aria-hidden="">_</span>CRIM
+        <span aria-hidden="" class="ct-theme-glitch">_CRIMSON_</span>
+        <span class="ct-theme-number">07</span>
+      </div>
+    </div>
+  </div>
+</div>
+
       </header>
 
       <!-- ===== MAIN ===== -->
