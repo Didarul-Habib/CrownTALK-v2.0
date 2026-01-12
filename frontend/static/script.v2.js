@@ -986,6 +986,9 @@ function renderHistory() {
                     Rendering helpers
    ========================================================= */
 function buildTweetBlock(result) {
+  const url = (result && result.url) || "";
+  const comments = Array.isArray(result && result.comments) ? result.comments : [];
+
   const tweet = document.createElement("div");
   tweet.className = "tweet";
   tweet.dataset.url = url;
@@ -1041,9 +1044,8 @@ function buildTweetBlock(result) {
   header.appendChild(headerLeft);
   header.appendChild(actions);
   tweet.appendChild(header);
-    }
-  });
 
+  // ----- comments list -----
   const commentsWrap = document.createElement("div");
   commentsWrap.className = "comments";
 
@@ -1065,7 +1067,7 @@ function buildTweetBlock(result) {
     const tag = document.createElement("span");
     tag.className = "comment-tag";
     tag.textContent = multilingual
-      ? (lang === "en" ? "EN" : lang.toUpperCase())
+      ? (lang === "en" ? "EN" : (lang || "native").toUpperCase())
       : `EN #${idx + 1}`;
 
     const bubble = document.createElement("span");
@@ -1124,6 +1126,7 @@ function buildTweetBlock(result) {
   tweet.appendChild(commentsWrap);
   return tweet;
 }
+
 function appendResultBlock(result) {
   const block = buildTweetBlock(result);
   resultsEl.appendChild(block);
