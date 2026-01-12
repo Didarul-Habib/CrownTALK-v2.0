@@ -5818,3 +5818,88 @@ html.ct-engine-on .card.card-holo .holo-system {
     0 26px 70px rgba(16,185,129,0.35);
   filter: saturate(1.1);
 }
+
+/* ============================================
+   CrownTALK – Engine status holo layout fix
+   (paste at the very end of styles.css)
+   ============================================ */
+
+/* Use the holo as the visual background of this card */
+.card.card-holo {
+  padding: 0;
+  overflow: hidden;
+}
+
+/* Keep your header spacing, but remove extra padding from body */
+.card.card-holo .card-head {
+  padding: 10px 18px 0;
+}
+
+.card.card-holo .card-body {
+  padding: 0 0 14px;
+}
+
+/* Scene covers full card width and is tall enough
+   so the data chips never get cut off */
+.card-holo .holo-system {
+  position: relative;
+  width: 100%;
+  height: 340px;              /* > 300px so labels fit inside */
+  display: flex;
+  align-items: center;
+  justify-content: center;    /* center by default */
+  overflow: visible;
+}
+
+/* Center the original 300×300 hologram block inside the scene */
+.card-holo .checkbox-container {
+  position: relative;         /* keep all the absolute children working */
+  width: 300px;
+  height: 300px;
+  margin: 0;                  /* no unexpected offsets */
+}
+
+/* On big desktop, push the cube to the right like in your mock */
+@media (min-width: 1200px) {
+  .card-holo .holo-system {
+    justify-content: flex-end;
+    padding-right: 6vw;       /* controls how far right it sits */
+  }
+}
+
+/* On smaller screens, gently scale the whole hologram down
+   so nothing feels cramped */
+@media (max-width: 900px) {
+  .card-holo .holo-system {
+    height: 280px;
+  }
+
+  .card-holo .checkbox-container {
+    transform: scale(0.85);
+    transform-origin: center;
+  }
+}
+
+/* Tighter layout for the top Tweet URLs card on desktop */
+@media (min-width: 1100px) {
+  /* slightly reduce the vertical gap between cards */
+  .main {
+    gap: 18px;
+  }
+
+  /* limit how tall the URL textarea can grow */
+  .ai-chat-input .main-input {
+    min-height: 170px;
+    max-height: 230px;
+  }
+
+  /* trim some bottom padding in the first card */
+  .main > .card:first-of-type {
+    padding-bottom: 18px;
+  }
+
+  /* make the footer row under the textarea a bit tighter */
+  .footer-info {
+    margin-top: 6px;
+  }
+}
