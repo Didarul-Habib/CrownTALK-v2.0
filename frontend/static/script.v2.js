@@ -132,17 +132,17 @@
 // Fallback: allow the hard-coded ACCESS_CODE if backend is not reachable yet.
 // Hash and store a SHA-256 hex so the token looks like a backend token.
 if (val === ACCESS_CODE) {
-  function sha256Hex(str) {
+  async function sha256Hex(str) {
     if (typeof crypto !== 'undefined' && crypto.subtle && typeof TextEncoder !== 'undefined') {
       const enc = new TextEncoder().encode(str);
-      return crypto.subtle.digest('SHA-256', enc)
-        .then(hash => Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join(''));
-    } else {
-      return Promise.resolve(null);
+      const hash = await crypto.subtle.digest('SHA-256', enc);
+      return Array.from(new Uint8Array(hash)).map(b => b.toString(16).padStart(2, '0')).join('');
     }
+    return null;
   }
 
-  sha256Hex(ACCESS_CODE).then(hashed => {
+  try {
+    const hashed = await sha256Hex(ACCESS_CODE);
     if (hashed) {
       markAuthorized(hashed);
     } else {
@@ -150,11 +150,15 @@ if (val === ACCESS_CODE) {
       markAuthorized(ACCESS_CODE);
       console.warn('SubtleCrypto not available — stored raw ACCESS_CODE temporarily.');
     }
-    exposeTokenHelpers();
-    hideGate();
-    bootAppUI();
-  });
+  } catch (err) {
+    // Hash failed for some reason — fall back to storing raw code (temporary).
+    markAuthorized(ACCESS_CODE);
+    console.warn('Hashing failed — stored raw ACCESS_CODE temporarily.', err);
+  }
 
+  exposeTokenHelpers();
+  hideGate();
+  bootAppUI();
   return;
 }
     input.classList.add('ct-shake');
@@ -195,7 +199,9 @@ if (val === ACCESS_CODE) {
   }
 
   function init() {
-    exposeTokenHelpers();
+  exposeTokenHelpers();
+  // Defer auth check slightly so in-flight async writes (hash -> storage) can finish on mobile.
+  setTimeout(() => {
     if (isAuthorized()) {
       hideGate();
       bootAppUI();
@@ -203,6 +209,7 @@ if (val === ACCESS_CODE) {
       showGate();
       bindGate();
     }
+  }, 50);
   }
 
   if (document.readyState === 'loading') {
