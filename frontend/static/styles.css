@@ -6090,3 +6090,13 @@ html.ct-engine-on .card.card-holo .holo-system{
   --primary: #f43f5e;      /* crimson nova */
   --shadow-primary: #9f1239;
 }
+
+
+#adminGate,
+.admin-gate,
+.gate,
+[data-gate] {
+  display: none !important;
+  visibility: hidden !important;
+  pointer-events: none !important;
+}
