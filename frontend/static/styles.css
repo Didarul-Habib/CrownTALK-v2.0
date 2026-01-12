@@ -1647,9 +1647,16 @@ body.low-motion.is-generating #progressBarFill::before{
   }
 
   .app-shell{
-    transform: scale(.80);           /* was .85 – shrink a bit more */
-    transform-origin: top center;
+    zoom: .80;                       /* Chrome/Edge: compacts layout (no “ghost” space) */
   }
+
+  @supports not (zoom: 1){
+    .app-shell{
+      transform: scale(.80);         /* Firefox fallback */
+      transform-origin: top center;
+    }
+  }
+
 
   /* 2) Trim hero bar height slightly */
   .hero{
@@ -5381,31 +5388,42 @@ body.ct-progress-done .progress-bar-inner{
   border-radius: 4px;
   font-size: 10px;
   opacity: 0;
-  transform: scale(0);
+  --chip-tx: 0px;
+  --chip-ty: 0px;
+  transform: translate(var(--chip-tx), var(--chip-ty)) scale(0);
   transition: all 0.3s ease;
+  will-change: transform, opacity;
 }
 
 .holo-system .data-chip:nth-child(1) {
-  top: -60px;
-  left: 50px;
+  top: 10px;
+  left: 50%;
+  --chip-tx: -50%;
+  --chip-ty: 0px;
   animation-delay: 0.5s;
 }
 
 .holo-system .data-chip:nth-child(2) {
-  top: 40px;
-  left: -120px;
+  top: 46%;
+  left: 10px;
+  --chip-tx: 0px;
+  --chip-ty: -50%;
   animation-delay: 1.2s;
 }
 
 .holo-system .data-chip:nth-child(3) {
-  top: 120px;
-  left: 60px;
+  top: 66%;
+  left: 55%;
+  --chip-tx: -50%;
+  --chip-ty: -50%;
   animation-delay: 1.8s;
 }
 
 .holo-system .data-chip:nth-child(4) {
-  top: 20px;
-  left: 120px;
+  top: 32%;
+  left: 72%;
+  --chip-tx: -50%;
+  --chip-ty: -50%;
   animation-delay: 2.3s;
 }
 
@@ -5637,9 +5655,10 @@ body.ct-progress-done .progress-bar-inner{
   100% { height: 5px; }
 }
 @keyframes chip-appear {
-  0%   { opacity: 0; transform: scale(0); }
-  100% { opacity: 1; transform: scale(1); }
+  0%   { opacity: 0; transform: translate(var(--chip-tx), var(--chip-ty)) scale(0); }
+  100% { opacity: 1; transform: translate(var(--chip-tx), var(--chip-ty)) scale(1); }
 }
+
 
 /* Small screen tweak so it never explodes layout if shown */
 @media (max-width: 768px){
@@ -5650,293 +5669,127 @@ body.ct-progress-done .progress-bar-inner{
 }
 
 /* ===========================
-   Engine status card overrides
+   Engine status card (card-holo) – cleaned + fixed
+   - Fix: data chips stay inside the holo scene (no clipping / no off-screen negatives)
+   - Fix: cube sits to the right on desktop (matches your original visual)
    =========================== */
 
-/* Kill the default card gradient only for the holo card */
-.card.card-holo {
+/* Use the holo scene as the visual body of this card */
+.card.card-holo{
   background: transparent;
-}
-
-/* Remove extra padding so the holo system can occupy the whole body */
-.card.card-holo .card-body {
   padding: 0;
 }
 
-/* Make the holo system fill the card nicely */
-.card.card-holo .holo-system {
+/* Keep header spacing, let the scene go full width */
+.card.card-holo .card-head{
+  padding: 10px 18px 0;
+}
+
+.card.card-holo .card-body{
+  padding: 0 0 14px;
+}
+
+/* Scene sizing + background */
+.card.card-holo .holo-system{
   position: relative;
   width: 100%;
-  min-height: 220px;
-  border-radius: inherit;
+  height: 340px;        /* enough room for labels */
   overflow: hidden;
+  border-radius: inherit;
 
-  /* Full-card background for the holo scene */
   background:
     radial-gradient(circle at 50% 0%, rgba(59,130,246,0.45), transparent 60%),
     radial-gradient(circle at 50% 130%, rgba(16,185,129,0.6), transparent 55%),
     #020617;
+
   box-shadow:
     inset 0 0 0 1px rgba(56,189,248,0.4),
     0 24px 60px rgba(15,23,42,0.9);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
 }
 
-/* Ensure all layers stretch to fill the holo card */
+/* Ensure all holo layers fill the scene */
 .card.card-holo .grid-plane,
 .card.card-holo .nebula,
-.card.card-holo .stars-container {
+.card.card-holo .stars-container{
   position: absolute;
   inset: 0;
   width: 100%;
   height: 100%;
 }
 
-/* Center the checkbox “cube” in the scene */
-.card.card-holo .checkbox-container {
+/* Keep the original hologram block sizing so the internal layout stays consistent */
+.card.card-holo .checkbox-container{
   position: relative;
-  width: 100%;
-  height: 100%;
+  width: 300px;
+  height: 300px;
+  margin: 0;
 }
-/* ===========================
-   Desktop compaction (optional)
-   =========================== */
-@media (min-width: 1200px) {
-  /* Slightly tighter vertical rhythm between cards */
-  .main {
-    gap: 18px;
-  }
 
-  /* First card = Tweet URLs */
-  .main > .card:first-of-type {
-    padding-top: 18px;
-    padding-bottom: 18px;
-  }
-
-  .main > .card:first-of-type .ai-chat-input {
-    margin-bottom: 10px;
-  }
-
-  .main > .card:first-of-type .lang-filter-row {
-    margin-top: 10px;
-  }
-
-  .main > .card:first-of-type .controls {
-    margin-top: 10px;
-  }
-
-  .main > .card:first-of-type .progress-row {
-    margin-top: 8px;
-  }
-
-  /* Make the textarea a bit shorter at rest on desktop */
-  .main > .card:first-of-type .main-input {
-    min-height: 170px;
-  }
-
-  /* Header also a bit tighter so everything fits */
-  .hero {
-    margin-bottom: 18px;
+/* Desktop: push the cube to the right like your original mock */
+@media (min-width: 1200px){
+  .card.card-holo .holo-system{
+    justify-content: flex-end;
+    padding-right: 6vw;
   }
 }
 
-/* Optional: subtle glass border on ENGINE STATUS header line only */
-.card.card-holo .card-head-main h2 {
+/* Smaller screens: scale down the block so it never feels cramped */
+@media (max-width: 900px){
+  .card.card-holo .holo-system{
+    height: 280px;
+  }
+
+  .card.card-holo .checkbox-container{
+    transform: scale(0.85);
+    transform-origin: center;
+  }
+}
+
+/* Optional: subtle header treatment (matches your existing style) */
+.card.card-holo .card-head-main h2{
   letter-spacing: 0.08em;
   font-size: 0.8rem;
   text-transform: uppercase;
   opacity: 0.9;
 }
 
-/* ===========================
-   Engine status card overrides
-   =========================== */
-
-/* Remove normal card gradient, keep radius + shadow */
-.card.card-holo {
-  background: transparent;
-}
-
-/* Let content hug the edges so the scene can fill it */
-.card.card-holo .card-body {
-  padding: 0;
-}
-
-/* Holo scene should occupy the whole card */
-.card.card-holo .holo-system {
-  position: relative;
-  width: 100% !important;
-  max-width: none !important;
-  height: 260px;        /* tweak this height if you want shorter/taller */
-  margin: 0 !important;
-  border-radius: inherit;
-  overflow: hidden;
-
-  /* full-card background for the scene */
-  background:
-    radial-gradient(circle at 50% 0%, rgba(59,130,246,0.45), transparent 60%),
-    radial-gradient(circle at 50% 130%, rgba(16,185,129,0.6), transparent 55%),
-    #020617;
-  box-shadow:
-    inset 0 0 0 1px rgba(56,189,248,0.4),
-    0 24px 60px rgba(15,23,42,0.9);
-}
-
-/* Make all layers stretch across the card */
-.card.card-holo .grid-plane,
-.card.card-holo .nebula,
-.card.card-holo .stars-container {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
-}
-
-/* Center the cube inside the full-width background */
-.card.card-holo .checkbox-container {
-  position: absolute;
-  inset: 0;
-  margin: 0;
-  width: 100%;
-  height: 100%;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-}
-
-/* Optional: border color reacts to engine on/off */
-
-html:not(.ct-engine-on) .card.card-holo .holo-system {
+/* Optional: border color reacts to engine on/off (kept from your previous patches) */
+html:not(.ct-engine-on) .card.card-holo .holo-system{
   box-shadow:
     inset 0 0 0 1px rgba(59,130,246,0.45),
     0 18px 40px rgba(15,23,42,0.8);
   filter: saturate(0.8);
 }
 
-html.ct-engine-on .card.card-holo .holo-system {
+html.ct-engine-on .card.card-holo .holo-system{
   box-shadow:
     inset 0 0 0 1px rgba(16,185,129,0.75),
     0 26px 70px rgba(16,185,129,0.35);
   filter: saturate(1.1);
 }
 
-/* ============================================
-   CrownTALK – Engine status holo layout fix
-   (paste at the very end of styles.css)
-   ============================================ */
-
-/* Use the holo as the visual background of this card */
-.card.card-holo {
-  padding: 0;
-  overflow: hidden;
-}
-
-/* Keep your header spacing, but remove extra padding from body */
-.card.card-holo .card-head {
-  padding: 10px 18px 0;
-}
-
-.card.card-holo .card-body {
-  padding: 0 0 14px;
-}
-
-/* Scene covers full card width and is tall enough
-   so the data chips never get cut off */
-.card-holo .holo-system {
-  position: relative;
-  width: 100%;
-  height: 340px;              /* > 300px so labels fit inside */
-  display: flex;
-  align-items: center;
-  justify-content: center;    /* center by default */
-  overflow: visible;
-}
-
-/* Center the original 300×300 hologram block inside the scene */
-.card-holo .checkbox-container {
-  position: relative;         /* keep all the absolute children working */
-  width: 300px;
-  height: 300px;
-  margin: 0;                  /* no unexpected offsets */
-}
-
-/* On big desktop, push the cube to the right like in your mock */
-@media (min-width: 1200px) {
-  .card-holo .holo-system {
-    justify-content: flex-end;
-    padding-right: 6vw;       /* controls how far right it sits */
-  }
-}
-
-/* On smaller screens, gently scale the whole hologram down
-   so nothing feels cramped */
-@media (max-width: 900px) {
-  .card-holo .holo-system {
-    height: 280px;
+/* ===========================
+   Tweet URLs card – height/spacing (desktop)
+   - Helps keep the full stack visible at 100% zoom
+   =========================== */
+@media (min-width: 1100px){
+  /* slightly tighter vertical rhythm */
+  .main{
+    row-gap: 14px;
   }
 
-  .card-holo .checkbox-container {
-    transform: scale(0.85);
-    transform-origin: center;
-  }
-}
-
-/* Tighter layout for the top Tweet URLs card on desktop */
-@media (min-width: 1100px) {
-  /* slightly reduce the vertical gap between cards */
-  .main {
-    gap: 18px;
+  /* keep the URL textarea reasonable on desktop */
+  .ai-chat-input .main-input{
+    min-height: 170px !important;
+    max-height: 230px !important;
   }
 
-  /* limit how tall the URL textarea can grow */
-  .ai-chat-input .main-input {
-    min-height: 170px;
-    max-height: 230px;
+  /* remove any accidental bottom spacing on the first card */
+  .main > .card:first-of-type{
+    margin-bottom: 0 !important;
   }
-
-  /* trim some bottom padding in the first card */
-  .main > .card:first-of-type {
-    padding-bottom: 18px;
-  }
-
-  /* make the footer row under the textarea a bit tighter */
-  .footer-info {
-    margin-top: 6px;
-  }
-}
-/* ============================================
-   CrownTALK – Final holo card fix
-   (override clipping + centering)
-   ============================================ */
-
-/* 1) Let the labels overflow a bit outside the cube area */
-.card.card-holo {
-  overflow: visible;    /* undo previous overflow:hidden */
-}
-
-/* 2) Full-width scene, cube centered like the original shot */
-.card-holo .holo-system {
-  position: relative;
-  width: 100%;
-  height: 340px;        /* adjust this if you want taller/shorter */
-  display: flex;
-  align-items: center;
-  justify-content: center;  /* center the 300x300 block */
-}
-
-/* 3) Keep the original 300x300 hologram block with its internal layout */
-.card-holo .checkbox-container {
-  position: relative;
-  width: 300px;
-  height: 300px;
-  margin: 0;
-}
-
-/* 4) Make sure the starfield / grid still cover the whole card */
-.card-holo .grid-plane,
-.card-holo .nebula,
-.card-holo .stars-container {
-  position: absolute;
-  inset: 0;
-  width: 100%;
-  height: 100%;
 }
