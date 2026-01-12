@@ -5874,29 +5874,36 @@ html.ct-engine-on .card.card-holo .holo-system{
 
 .main > .card:first-of-type{ padding-bottom: 10px !important; }
 
-/* === Cyber theme radio buttons === */
+/* === Cyber theme radio buttons (compact version) === */
 
 .ct-theme-radios {
   display: flex;
   flex-wrap: wrap;
-  gap: 6px;
+  gap: 4px;
 }
 
 .ct-theme-radio {
   position: relative;
-  height: 26px;
-  width: 70px; /* keep small */
-  margin: 2px;
+  height: 22px;
+  width: 60px; /* smaller width */
+  margin: 1px;
 }
 
-/* the real clickable target – JS uses .theme-dot */
-.ct-theme-input.theme-dot {
+/* real clickable target – JS uses .theme-dot
+   more specific selector so it beats old .theme-dot circle styles */
+.theme-switcher .theme-dots .ct-theme-input.theme-dot {
   position: absolute;
   inset: 0;
   margin: 0;
   cursor: pointer;
   z-index: 10;
   opacity: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
 }
 
 /* main button body */
@@ -5904,7 +5911,7 @@ html.ct-engine-on .card.card-holo .holo-system{
   --primary: #f5434f;
   --shadow-primary: #631e29;
   --color: #ffffff;
-  --font-size: 9px;
+  --font-size: 8px;
   --shadow-secondary: #000000;
   --clip: polygon(
     11% 0,
@@ -5917,18 +5924,18 @@ html.ct-engine-on .card.card-holo .holo-system{
     7% 100%,
     0 80%
   );
-  --border: 4px;
+  --border: 3px;
   --shimmy-distance: 5;
 
   color: var(--color);
   text-transform: uppercase;
   font-size: var(--font-size);
-  letter-spacing: 2px;
+  letter-spacing: 1.5px;
   position: relative;
   font-weight: 900;
   width: 100%;
   height: 100%;
-  line-height: 26px;
+  line-height: 22px;
   text-align: center;
   transition: background 0.2s, transform 0.2s, font-size 0.2s, box-shadow 0.2s;
   font-family: "Orbitron", system-ui, sans-serif;
@@ -5954,16 +5961,16 @@ html.ct-engine-on .card.card-holo .holo-system{
 }
 
 /* hover state – keep theme color, just lift/glow a bit */
-.ct-theme-input.theme-dot:hover + .ct-theme-btn {
-  font-size: 10px;
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:hover + .ct-theme-btn {
+  font-size: 8.5px;
   transform: translateY(-1px);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18),
               0 0 10px rgba(0, 0, 0, 0.4);
 }
 
 /* active / selected state – stronger lift/glow, no color override */
-.ct-theme-input.theme-dot:checked + .ct-theme-btn,
-.ct-theme-input.theme-dot.is-active + .ct-theme-btn {
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:checked + .ct-theme-btn,
+.theme-switcher .theme-dots .ct-theme-input.theme-dot.is-active + .ct-theme-btn {
   transform: translateY(-1px);
   box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22),
               0 0 14px rgba(255, 255, 255, 0.18);
@@ -5973,15 +5980,15 @@ html.ct-engine-on .card.card-holo .holo-system{
 .ct-theme-number {
   background: var(--shadow-primary);
   color: #111827;
-  font-size: 6px;
+  font-size: 5.5px;
   font-weight: 700;
   letter-spacing: 1px;
   position: absolute;
-  width: 16px;
-  height: 8px;
+  width: 14px;
+  height: 7px;
   top: 0;
   right: 8%;
-  line-height: 8px;
+  line-height: 7px;
 }
 
 /* glitch overlay */
@@ -6013,14 +6020,14 @@ html.ct-engine-on .card.card-holo .holo-system{
 }
 
 /* show glitch on hover / active */
-.ct-theme-input.theme-dot:hover + .ct-theme-btn .ct-theme-glitch,
-.ct-theme-input.theme-dot:checked + .ct-theme-btn .ct-theme-glitch,
-.ct-theme-input.theme-dot.is-active + .ct-theme-btn .ct-theme-glitch {
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:hover + .ct-theme-btn .ct-theme-glitch,
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:checked + .ct-theme-btn .ct-theme-glitch,
+.theme-switcher .theme-dots .ct-theme-input.theme-dot.is-active + .ct-theme-btn .ct-theme-glitch {
   display: block;
   animation: ct-theme-glitch 5s infinite;
 }
 
-/* glitch keyframes (trimmed from your snippet) */
+/* glitch keyframes */
 @keyframes ct-theme-glitch {
   0% {
     clip-path: polygon(0 2%, 100% 2%, 100% 95%, 95% 95%, 95% 90%,
@@ -6048,7 +6055,6 @@ html.ct-engine-on .card.card-holo .holo-system{
 }
 
 /* === Per-theme color for each cyber tab === */
-/* Uses the data-theme on the input, so each tab always shows its own palette */
 
 .ct-theme-input.theme-dot[data-theme="white"] + .ct-theme-btn {
   --primary: #2563eb;      /* bright royal blue */
