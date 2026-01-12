@@ -1226,7 +1226,6 @@ async function handleGenerate() {
   setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
   setProgressRatio(0);
 
-  const commentURL = "/api/comments";
   let totalResults   = 0;
   let totalFailed    = 0;
   let processedUrls  = 0;
