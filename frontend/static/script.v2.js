@@ -345,33 +345,55 @@ function sleep(ms) {
 
 function parseURLs(raw) {
   if (!raw) return [];
-  // strip any leading "1. " or "2) " etc.
+
+  // Strip numbering & blank lines first
   const lines = raw
     .split(/\r?\n/)
     .map((line) => line.replace(/^\s*(?:\d+[\.)]\s*)?/, "").trim())
     .filter(Boolean);
 
-  // normalize X/Twitter urls, remove query/hash, unify host, drop trailing "/"
   const norm = lines.map((line) => {
+    let candidate = line;
+
+    // If user omitted scheme but host looks like x/twitter.com → prepend https://
+    if (/^(?:x|twitter)\.com\//i.test(candidate)) {
+      candidate = "https://" + candidate;
+    } else if (/^(?:\/\/)(?:www\.)?(?:x|twitter)\.com\//i.test(candidate)) {
+      // things like //x.com/...
+      candidate = "https:" + candidate;
+    }
+
     try {
-      const u = new URL(line);
-      if (/^(?:www\.)?twitter\.com$/i.test(u.hostname)) u.hostname = 'x.com';
-      u.search = ''; u.hash = '';
-      u.pathname = u.pathname.replace(/\/+$/, '');
+      const u = new URL(candidate);
+
+      // Normalize twitter → x
+      if (/^(?:www\.)?twitter\.com$/i.test(u.hostname)) {
+        u.hostname = "x.com";
+      }
+
+      // Remove query + hash + trailing slash
+      u.search = "";
+      u.hash = "";
+      u.pathname = u.pathname.replace(/\/+$/, "");
+
       return u.toString();
     } catch {
       return line;
     }
   });
 
-  // de-dupe while preserving order
+  // De-dupe while preserving order
   const seen = new Set();
   const unique = [];
   for (const v of norm) {
-    if (!seen.has(v)) { seen.add(v); unique.push(v); }
+    if (!seen.has(v)) {
+      seen.add(v);
+      unique.push(v);
+    }
   }
   return unique;
 }
+
 function setProgressText(text) {
   if (progressEl) progressEl.textContent = text || "";
 }
@@ -456,19 +478,31 @@ function analyzeUrlLines(raw) {
   const lines = (raw || "").split(/\r?\n/);
   const entries = [];
   const seen = new Set();
-  let valid = 0, invalid = 0, duplicates = 0;
-  const urlRegex = /^https?:\/\/(?:www\.)?(?:x|twitter)\.com\/[^/]+\/status\/\d+/i;
+  let valid = 0,
+    invalid = 0,
+    duplicates = 0;
+
+  const urlRegex =
+    /^(?:https?:\/\/)?(?:www\.)?(?:x|twitter)\.com\/[^/]+\/status\/\d+/i;
 
   for (let line of lines) {
     const cleaned = line.replace(/^\s*(?:\d+[\.)]\s*)?/, "").trim();
     if (!cleaned) continue;
+
     const isValid = urlRegex.test(cleaned);
     const isDup = seen.has(cleaned);
-    if (!isDup) seen.add(cleaned); else duplicates++;
-    if (isValid) valid++; else invalid++;
+    if (!isDup) seen.add(cleaned);
+    else duplicates++;
+
+    if (isValid) valid++;
+    else invalid++;
+
     entries.push({ raw: line, url: cleaned, isValid, isDup });
   }
+
   return { entries, valid, invalid, duplicates, total: entries.length };
+}
+
 }
 function updateUrlHealth() {
   if (!urlInput || !urlHealthBadgeEl) return;
