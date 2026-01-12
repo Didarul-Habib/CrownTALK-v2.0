@@ -6092,11 +6092,3 @@ html.ct-engine-on .card.card-holo .holo-system{
 }
 
 
-#adminGate,
-.admin-gate,
-.gate,
-[data-gate] {
-  display: none !important;
-  visibility: hidden !important;
-  pointer-events: none !important;
-}
