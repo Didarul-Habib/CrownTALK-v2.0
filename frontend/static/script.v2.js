@@ -286,6 +286,8 @@ function ctToast(msg, kind='ok', ms=1800){
 /* =========================================================
    Backend helpers (warmup + timeout fetch)
    ========================================================= */
+const PER_URL_TIMEOUT_MS = 60000; 
+
 function warmBackendOnce() {
   try {
     fetch(backendBase + "/", {
@@ -307,6 +309,7 @@ function maybeWarmBackend() {
     warmBackendOnce();
   }
 }
+
 
 /* ================================
    PATCH: Abort-aware fetch timeout
@@ -333,6 +336,10 @@ async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
 // ------------------------
 // Utilities
 // ------------------------
+function sleep(ms) {
+  return new Promise(resolve => setTimeout(resolve, ms));
+}
+
 function parseURLs(raw) {
   if (!raw) return [];
   // strip any leading "1. " or "2) " etc.
