@@ -1560,11 +1560,26 @@ function initTheme() {
 /* ---------- Results menu: wrap preset + export into dropdown ---------- */
 function initResultsMenu() {
   if (!resultsEl) return;
+
   const card = resultsEl.closest(".card");
   if (!card) return;
+
   const toolbar = card.querySelector(".results-toolbar");
   if (!toolbar) return;
+
   if (toolbar.dataset.menuInit === "1") return;
+
+  // NEW: if the HTML already contains a menu + toggle,
+  // we respect that and do not rebuild or move anything.
+  const existingMenu   = card.querySelector("#resultsMenu");
+  const existingToggle = card.querySelector("#resultsMenuToggle");
+  if (existingMenu && existingToggle) {
+    toolbar.dataset.menuInit = "1";
+    return;
+  }
+
+  // Legacy fallback (kept for backwards compatibility):
+  // only runs if there is no static markup.
   toolbar.dataset.menuInit = "1";
 
   const menu = document.createElement("div");
@@ -1590,6 +1605,7 @@ function initResultsMenu() {
     menu.classList.toggle("is-open");
   });
 }
+
 
 /* ---------- Boot UI once unlocked ---------- */
 function bootAppUI() {
