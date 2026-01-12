@@ -5086,6 +5086,14 @@ body.ct-progress-done .progress-bar-inner{
   z-index: 40;           /* above everything in this area */
 }
 
+
+
+/* Results card: allow the dropdown to overlap below cards */
+#resultsCard{
+  position: relative;
+  z-index: 80;     /* above Failed/Engine/History cards */
+  overflow: visible;
+}
 /* Make sure the failed card doesn't sit on top of the menu */
 .card-failed {
   position: relative;
@@ -5693,6 +5701,7 @@ body.ct-progress-done .progress-bar-inner{
 .card.card-holo .holo-system{
   position: relative;
   width: 100%;
+  max-width: none;
   height: 340px;        /* enough room for labels */
   overflow: hidden;
   border-radius: inherit;
