@@ -248,6 +248,7 @@ const sessionTabsEl         = document.getElementById("sessionTabs");
 const analyticsHudEl        = document.getElementById("analyticsHud");
 const urlHealthBadgeEl      = document.getElementById("urlHealthBadge");
 const urlHealthMeterFillEl  = document.getElementById("urlHealthMeterFill");
+const urlQueueEl            = document.getElementById("urlQueue");
 const sortUrlsBtn           = document.getElementById("sortUrlsBtn");
 const shuffleUrlsBtn        = document.getElementById("shuffleUrlsBtn");
 const removeInvalidBtn      = document.getElementById("removeInvalidBtn");
@@ -278,6 +279,7 @@ let historyItems = [];
 let failedUrlList = [];
 let ctSessions = [];
 let ctActiveSessionId = null;
+let urlQueueState = [];
 let ctSessionCounter = 0;
 let ctCopyQueue = [];
 let ctCopyQueueIndex = 0;
@@ -286,7 +288,7 @@ let safeModeOn = false;
 let runCounter = 0;
 
  /* =========================================================
-   === PATCH: Mini Toast + Snack (used by multiple bits) ===
+   === Mini Toast + Snack (used by multiple bits) ===
    ========================================================= */
 (function mountToast(){
   if (document.getElementById('ctToasts')) return;
@@ -335,7 +337,7 @@ function maybeWarmBackend() {
 
 
 /* ================================
-   PATCH: Abort-aware fetch timeout
+    Abort-aware fetch timeout
    ================================ */
 let __activeAbortController = null;
 
@@ -492,7 +494,7 @@ function renumberTextareaAndDedupe(showToasts=true) {
 }
 
 /* =========================================================
-   === PATCH: URL health + sorting / cleaning (desktop-ok) ===
+   === URL health + sorting / cleaning ===
    ========================================================= */
 function analyzeUrlLines(raw) {
   const lines = (raw || "").split(/\r?\n/);
@@ -589,7 +591,7 @@ function removeInvalidUrls() {
 }
 
 /* =========================================================
-   === PATCH: Sessions timeline (desktop tabs) ==============
+   === Sessions timeline (desktop tabs) ==============
    ========================================================= */
 function getSessionById(id) {
   return ctSessions.find((s) => s.id === id);
@@ -619,14 +621,24 @@ function renderSessionTabs() {
 function addSessionSnapshot(meta) {
   if (!resultsEl || !failedEl) return;
   const id = `run_${Date.now()}_${++ctSessionCounter}`;
-  const label = `Run ${ctSessionCounter}`;
   const createdAt = new Date().toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const m = meta || {};
+  const tweets = m.tweets || 0;
+  const totalUrls = m.totalUrls || tweets;
+  const failed = m.failed || 0;
+
+  let quality = "perfect";
+  if (failed >= 3) quality = "rough";
+  else if (failed >= 1) quality = "smooth";
+
+  const label = `Run ${ctSessionCounter} • ${tweets}/${totalUrls} • ${quality}`;
+
   const snapshot = {
     resultsHTML: resultsEl.innerHTML,
     failedHTML: failedEl.innerHTML,
     rc: resultCountEl ? resultCountEl.textContent : "",
     fc: failedCountEl ? failedCountEl.textContent : "",
-    meta: meta || {},
+    meta: m,
   };
   ctSessions.push({ id, label, createdAt, snapshot });
   ctActiveSessionId = id;
@@ -642,7 +654,7 @@ function restoreSessionSnapshot(id) {
 }
 
 /* =========================================================
-   === PATCH: Copy queue (logic still present, UI hidden) ===
+   ===Copy queue===
    ========================================================= */
 function renderCopyQueue() {
   if (!copyQueueListEl) return;
@@ -688,7 +700,63 @@ function clearCopyQueue() {
 }
 
 /* =========================================================
-   === PATCH: Analytics HUD + export helpers ===============
+   URL Queue chips (per-batch visual)
+   ========================================================= */
+function resetUrlQueue() {
+  urlQueueState = [];
+  renderUrlQueue();
+}
+
+function renderUrlQueue() {
+  if (!urlQueueEl) return;
+  urlQueueEl.innerHTML = "";
+
+  if (!urlQueueState || !urlQueueState.length) {
+    urlQueueEl.setAttribute("aria-hidden", "true");
+    urlQueueEl.classList.add("is-empty");
+    return;
+  }
+
+  urlQueueEl.removeAttribute("aria-hidden");
+  urlQueueEl.classList.remove("is-empty");
+
+  urlQueueState.forEach((item, idx) => {
+    const chip = document.createElement("button");
+    chip.type = "button";
+    chip.className = "url-chip";
+
+    if (item.status === "processing") chip.classList.add("is-processing");
+    else if (item.status === "done") chip.classList.add("is-done");
+    else if (item.status === "failed") chip.classList.add("is-failed");
+
+    const indexSpan = document.createElement("span");
+    indexSpan.className = "url-chip-index";
+    indexSpan.textContent = `${idx + 1}.`;
+
+    const labelSpan = document.createElement("span");
+    labelSpan.className = "url-chip-label";
+    const short = item.shortLabel || item.url.replace(/^https?:\/\//, "");
+    labelSpan.textContent = short.slice(0, 40);
+
+    chip.appendChild(indexSpan);
+    chip.appendChild(labelSpan);
+
+    chip.addEventListener("click", () => {
+      if (!resultsEl) return;
+      const sel = `.tweet[data-url="${item.url}"]`;
+      const el = resultsEl.querySelector(sel);
+      if (el) {
+        el.scrollIntoView({ behavior: "smooth", block: "start" });
+        el.classList.add("ct-highlight");
+        setTimeout(() => el.classList.remove("ct-highlight"), 900);
+      }
+    });
+
+    urlQueueEl.appendChild(chip);
+  });
+}
+
+/* ============================================================ Analytics HUD + export helpers ===============
    ========================================================= */
 function updateAnalytics(meta) {
   const summaryEl       = document.getElementById("analyticsSummary");
@@ -903,7 +971,7 @@ async function exportComments(mode) {
 }
 
 /* =========================================================
-   === PATCH: Presets & keyboard HUD / hotkeys =============
+   === Presets & keyboard HUD / hotkeys =============
    ========================================================= */
 function applyPreset(presetName) {
   const p = presetName || (presetSelect && presetSelect.value) || "default";
@@ -1311,6 +1379,15 @@ async function handleGenerate() {
   cancelBtn.disabled   = false;
   resetResults();
   resetProgress();
+  resetUrlQueue();
+
+  // build visual queue for this batch
+  urlQueueState = urls.map((u) => ({
+    url: u,
+    status: "queued",
+    shortLabel: u.replace(/^https?:\/\//, "")
+  }));
+  renderUrlQueue();
 
   setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
   setProgressRatio(0);
@@ -1332,6 +1409,11 @@ async function handleGenerate() {
     const oneUrl = urls[i];
 
     if (!oneUrl) continue;
+
+    if (urlQueueState[i]) {
+      urlQueueState[i].status = "processing";
+      renderUrlQueue();
+    }
 
     const headers = {
       "Content-Type": "application/json",
@@ -1417,6 +1499,13 @@ async function handleGenerate() {
 
         resultCountEl.textContent = formatTweetCount(totalResults);
         failedCountEl.textContent = String(totalFailed);
+
+       // update queue chip status for this URL
+        if (urlQueueState[i]) {
+          const hadFailed = failed && failed.length > 0;
+          urlQueueState[i].status = hadFailed ? "failed" : "done";
+          renderUrlQueue();
+        }
       }
     } catch (err) {
       if (cancelled) break;
@@ -1435,6 +1524,12 @@ async function handleGenerate() {
       appendFailedItem(failure);
       totalFailed += 1;
       failedCountEl.textContent = String(totalFailed);
+
+      // update queue chip
+      if (urlQueueState[i]) {
+        urlQueueState[i].status = "failed";
+        renderUrlQueue();
+      }
 
       // NEW: remember this client-side failure URL
       if (failure.url && !failedUrlList.includes(failure.url)) {
@@ -1505,6 +1600,7 @@ function handleCancel() {
   cancelBtn.disabled   = true;
   setProgressText("Cancelled.");
   setProgressRatio(0);
+  resetUrlQueue();
   setEngineStatus("idle");
 }
 function handleClear() {
@@ -1544,6 +1640,7 @@ function handleClear() {
   urlInput.value = "";
   resetResults();
   resetProgress();
+  resetUrlQueue();
   autoResizeTextarea();
 }
 function hideUndoSnackSoon(){
@@ -1580,9 +1677,16 @@ async function handleReroll(tweetEl) {
   if (!url) return;
   const button = tweetEl.querySelector(".reroll-btn");
   if (!button) return;
+
+  // 🔹 Smooth focus + highlight when rerolling this tweet
+  tweetEl.scrollIntoView({ behavior: "smooth", block: "start" });
+  tweetEl.classList.add("ct-highlight");
+  setTimeout(() => tweetEl.classList.remove("ct-highlight"), 900);
+
   const oldLabel = button.textContent;
   button.disabled = true;
   button.textContent = "Rerolling…";
+
   const commentsWrap = tweetEl.querySelector(".comments");
   if (commentsWrap) {
     commentsWrap.innerHTML = "";
@@ -1590,6 +1694,7 @@ async function handleReroll(tweetEl) {
     const sk2 = document.createElement("div"); sk2.className = "tweet-skeleton-line";
     commentsWrap.appendChild(sk1); commentsWrap.appendChild(sk2);
   }
+
   try {
     const headers = { "Content-Type": "application/json" };
     try {
@@ -1601,6 +1706,7 @@ async function handleReroll(tweetEl) {
         headers[headerName] = token;
       }
     } catch {}
+
     const payload = { url };
     try {
       const langs = getLanguagePreferenceArray();
@@ -1608,12 +1714,14 @@ async function handleReroll(tweetEl) {
         payload.languages = langs;
       }
     } catch {}
+
     const res = await fetch(rerollURL, {
       method: "POST",
       headers,
       body: JSON.stringify(payload),
     });
     if (!res.ok) throw new Error(`Reroll failed: ${res.status}`);
+
     const data = await res.json();
     if (data && Array.isArray(data.comments)) {
       updateTweetBlock(tweetEl, { url: data.url || url, comments: data.comments });
@@ -1628,7 +1736,6 @@ async function handleReroll(tweetEl) {
     button.textContent = oldLabel;
   }
 }
-
 // ------------------------
 // Theme
 // ------------------------
