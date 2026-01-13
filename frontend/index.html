@@ -351,12 +351,17 @@
           </div>
 
           <div class="progress-row">
-            <span id="progress" class="helper-text"></span>
-            <div class="progress-bar-outer"><div id="progressBarFill" class="progress-bar-inner"></div></div>
-          </div>
+  <span id="progress" class="helper-text"></span>
+  <div class="progress-bar-outer">
+    <div id="progressBarFill" class="progress-bar-inner"></div>
+  </div>
+</div>
 
-          <!-- ===== PATCH-03: Analytics HUD row (pure UI) ===== -->
-          <div id="analyticsHud" class="analytics-row hide-on-mobile" aria-hidden="true">
+<!-- NEW: visual queue of URLs in this batch -->
+<div id="urlQueue" class="url-queue hide-on-mobile" aria-hidden="true"></div>
+
+<!-- ===== PATCH-03: Analytics HUD row (pure UI) ===== -->
+<div id="analyticsHud" class="analytics-row hide-on-mobile" aria-hidden="true">
             <div class="analytics-pill">
               <span class="label">Last run</span>
               <span class="value" id="analyticsSummary">—</span>
@@ -417,6 +422,9 @@
       </div>
     </div>
   </div>
+
+<!-- session tabs (history of runs in this page) -->
+  <div id="sessionTabs" class="session-tabs"></div>
 
   <!-- results list -->
   <div id="results" class="tweets"></div>
