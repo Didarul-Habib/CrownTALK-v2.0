@@ -280,20 +280,38 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 
     Files live in PROJECT_RESEARCH_DIR.
 
-    For a handle '@warden_protocol', we will check (in this order):
+    For a handle '@warden_protocol', we will check (in this order),
+    in a *case-insensitive* way:
+
       - '@warden_protocol.md'
       - '@warden_protocol.txt'
       - '@warden_protocol'
       - 'warden_protocol.md'
       - 'warden_protocol.txt'
       - 'warden_protocol'
+
     The first existing non-empty file per handle wins.
+
+    Implementation detail:
+    - We build a lowercase index of all files in PROJECT_RESEARCH_DIR
+      so that '@Warden_Protocol', '@warden_protocol' and '@WARDEN_PROTOCOL'
+      all resolve to the same research file.
     """
     base = PROJECT_RESEARCH_DIR
     results: list[dict] = []
     seen_paths: set[str] = set()
 
     if not handles:
+        return results
+
+    # Build a case-insensitive mapping of filename -> full path once.
+    try:
+        all_files = {}
+        for name in os.listdir(base):
+            full = os.path.join(base, name)
+            if os.path.isfile(full):
+                all_files[name.casefold()] = full
+    except FileNotFoundError:
         return results
 
     for raw in handles:
@@ -306,35 +324,34 @@ def _load_project_research(handles: list[str]) -> list[dict]:
         if not safe:
             continue
 
-        candidates: list[str] = [
-            os.path.join(base, safe + ".md"),
-            os.path.join(base, safe + ".txt"),
-            os.path.join(base, safe),
-        ]
+        # Build candidate base names (with and without leading "@"),
+        # but do *not* assume a particular case on disk.
+        candidates_keys: list[str] = []
 
-        # Also support filenames without the leading '@'
+        variants = [safe]
         if safe.startswith("@"):
             bare = safe[1:]
             if bare:
-                candidates.extend(
-                    [
-                        os.path.join(base, bare + ".md"),
-                        os.path.join(base, bare + ".txt"),
-                        os.path.join(base, bare),
-                    ]
-                )
+                variants.append(bare)
 
-        for path in candidates:
-            if path in seen_paths:
+        for base_name in variants:
+            candidates_keys.append(f"{base_name}.md")
+            candidates_keys.append(f"{base_name}.txt")
+            candidates_keys.append(base_name)
+
+        chosen_path: str | None = None
+        for key in candidates_keys:
+            real_path = all_files.get(key.casefold())
+            if not real_path:
                 continue
-            if not os.path.isfile(path):
+            if real_path in seen_paths:
                 continue
 
             try:
-                with open(path, "r", encoding="utf-8") as f:
+                with open(real_path, "r", encoding="utf-8") as f:
                     raw_text = f.read().strip()
             except Exception as e:  # noqa: BLE001
-                logger.warning("Error reading project research file %s: %s", path, e)
+                logger.warning("Error reading project research file %s: %s", real_path, e)
                 continue
 
             if not raw_text:
@@ -344,14 +361,18 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 
             results.append(
                 {
-                    "handle": h,                       # e.g. "@warden_protocol"
-                    "file": os.path.basename(path),   # e.g. "@warden_protocol.txt"
-                    "path": path,
-                    "summary": text,                  # truncated content
+                    "handle": h,                        # e.g. "@Warden_Protocol"
+                    "file": os.path.basename(real_path),# e.g. "@warden_protocol.txt"
+                    "path": real_path,
+                    "summary": text,                    # truncated content
                 }
             )
-            seen_paths.add(path)
+            seen_paths.add(real_path)
+            chosen_path = real_path
             break
+
+        if not chosen_path:
+            continue
 
     return results
 
@@ -756,9 +777,29 @@ COHERE_MODEL = os.getenv("COHERE_MODEL", "command-r")
 # ------------------------------------------------------------------------------
 HUGGINGFACE_API_KEY = os.getenv("HUGGINGFACE_API_KEY", "").strip()
 USE_HUGGINGFACE = bool(HUGGINGFACE_API_KEY)
-HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "").strip()
+HUGGINGFACE_MODEL = os.getenv("HUGGINGFACE_MODEL", "meta-llama/Meta-Llama-3.1-8B-Instruct").strip()
 HUGGINGFACE_API_BASE = os.getenv(
     "HUGGINGFACE_API_BASE", "https://api-inference.huggingface.co/models"
+)
+
+# ------------------------------------------------------------------------------
+# Optional OpenRouter (HTTP client, e.g. DeepSeek via OpenRouter)
+# ------------------------------------------------------------------------------
+OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+USE_OPENROUTER = bool(OPENROUTER_API_KEY)
+OPENROUTER_MODEL = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-r1:free").strip()
+OPENROUTER_API_BASE = os.getenv(
+    "OPENROUTER_API_BASE", "https://openrouter.ai/api/v1/chat/completions"
+)
+
+# ------------------------------------------------------------------------------
+# Optional DeepSeek (direct HTTP, OpenAI-compatible)
+# ------------------------------------------------------------------------------
+DEEPSEEK_API_KEY = os.getenv("DEEPSEEK_API_KEY", "").strip()
+USE_DEEPSEEK = bool(DEEPSEEK_API_KEY)
+DEEPSEEK_MODEL = os.getenv("DEEPSEEK_MODEL", "deepseek-chat").strip()
+DEEPSEEK_API_BASE = os.getenv(
+    "DEEPSEEK_API_BASE", "https://api.deepseek.com/v1/chat/completions"
 )
 
 # ------------------------------------------------------------------------------
@@ -3174,6 +3215,30 @@ VOICE_CARDS = [
         "boost_topics": {"meme": 2.4},
         "boost_if_crypto": 1.1,
     },
+    {
+        "id": "defi_strategist",
+        "description": "DeFi strategist: talks in plain English about yield, risk buckets, and exit plans, no farm-shill.",
+        "boost_topics": {"thread": 1.5, "generic": 1.2},
+        "boost_if_crypto": 2.0,
+    },
+    {
+        "id": "infra_maxi",
+        "description": "Infra / L1-L2 maxi: zooms in on security, decentralization, fees, and validator / sequencer economics.",
+        "boost_topics": {"announcement": 1.6, "thread": 1.3},
+        "boost_if_crypto": 1.8,
+    },
+    {
+        "id": "ecosystem_kol",
+        "description": "Ecosystem KOL: highlights teams shipping, connects narratives across the stack, avoids price calls.",
+        "boost_topics": {"announcement": 1.7, "generic": 1.3},
+        "boost_if_crypto": 1.7,
+    },
+    {
+        "id": "governance_nerd",
+        "description": "DAO governance nerd: cares about proposals, token voting, incentive design, and long-term alignment.",
+        "boost_topics": {"thread": 1.4, "complaint": 1.3},
+        "boost_if_crypto": 1.6,
+    },
 ]
 
 CT_SLANG_TOKENS = [
@@ -4259,6 +4324,183 @@ def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = 
     return candidates[:2]
 
 
+
+def deepseek_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    """
+    DeepSeek direct HTTP client (OpenAI-compatible chat completions).
+
+    Requires:
+      - DEEPSEEK_API_KEY
+      - DEEPSEEK_MODEL
+    """
+    if not (USE_DEEPSEEK and DEEPSEEK_API_KEY and DEEPSEEK_MODEL):
+        raise RuntimeError("DeepSeek disabled or not fully configured")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    user_prompt += _build_context_json_snippet()
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
+
+    mode_line = llm_mode_hint(tweet_text)
+    sys_prompt = _llm_sys_prompt(mode_line)
+
+    payload = {
+        "model": DEEPSEEK_MODEL,
+        "messages": [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.7,
+        "max_tokens": 160,
+    }
+    headers = {
+        "Authorization": f"Bearer {DEEPSEEK_API_KEY}",
+        "Content-Type": "application/json",
+    }
+
+    resp = call_with_retries(
+        "DeepSeek",
+        lambda: requests.post(DEEPSEEK_API_BASE, headers=headers, json=payload, timeout=60),
+    )
+    resp.raise_for_status()
+    data = resp.json() or {}
+
+    raw = ""
+    try:
+        raw = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+    except Exception:
+        raw = json.dumps(data, ensure_ascii=False)
+
+    raw = (raw or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
+    candidates = [postprocess_comment(c, "llm") for c in candidates]
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(candidates) < 2:
+        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+
+    if len(candidates) < 2:
+        raise RuntimeError("DeepSeek did not produce two valid comments")
+
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
+    return candidates[:2]
+
+
+def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    """
+    OpenRouter HTTP client.
+
+    Defaults to a DeepSeek model (free tier) but can be overridden via env:
+      - OPENROUTER_MODEL (e.g. "deepseek/deepseek-r1:free" or "deepseek/deepseek-chat")
+    """
+    if not (USE_OPENROUTER and OPENROUTER_API_KEY and OPENROUTER_MODEL):
+        raise RuntimeError("OpenRouter disabled or not fully configured")
+
+    user_prompt = (
+        f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
+        "Return exactly two distinct comments (JSON array or two lines)."
+    )
+    user_prompt += _build_context_json_snippet()
+    user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
+
+    mode_line = llm_mode_hint(tweet_text)
+    sys_prompt = _llm_sys_prompt(mode_line)
+
+    payload = {
+        "model": OPENROUTER_MODEL,
+        "messages": [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
+        "temperature": 0.7,
+        "max_tokens": 160,
+    }
+
+    headers = {
+        "Authorization": f"Bearer {OPENROUTER_API_KEY}",
+        "Content-Type": "application/json",
+    }
+    referer = os.getenv("OPENROUTER_HTTP_REFERER", "").strip()
+    if referer:
+        headers["HTTP-Referer"] = referer
+    app_name = os.getenv("OPENROUTER_APP_NAME", "CrownTALK").strip()
+    if app_name:
+        headers["X-Title"] = app_name
+
+    resp = call_with_retries(
+        "OpenRouter",
+        lambda: requests.post(OPENROUTER_API_BASE, headers=headers, json=payload, timeout=60),
+    )
+    resp.raise_for_status()
+    data = resp.json() or {}
+
+    raw = ""
+    try:
+        raw = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+    except Exception:
+        raw = json.dumps(data, ensure_ascii=False)
+
+    raw = (raw or "").strip()
+    candidates = parse_two_comments_flex(raw)
+    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
+    candidates = [postprocess_comment(c, "llm") for c in candidates]
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(candidates) < 2:
+        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+
+    if len(candidates) < 2:
+        raise RuntimeError("OpenRouter did not produce two valid comments")
+
+    if _pair_too_similar(candidates[0], candidates[1]):
+        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        if len(merged) >= 2:
+            candidates = merged[:2]
+
+    return candidates[:2]
+
+
+def generate_two_comments_with_groq(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return groq_two_comments(tweet_text, author, url)
+
+
+def generate_two_comments_with_openai(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return openai_two_comments(tweet_text, author, url)
+
+
+def generate_two_comments_with_gemini(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return gemini_two_comments(tweet_text, author, url)
+
+
+def generate_two_comments_with_mistral(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return mistral_two_comments(tweet_text, author, url)
+
+
+def generate_two_comments_with_cohere(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return cohere_two_comments(tweet_text, author, url)
+
+
+def generate_two_comments_with_huggingface(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return huggingface_two_comments(tweet_text, author, url)
+
+
+def generate_two_comments_with_openrouter(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return openrouter_two_comments(tweet_text, author, url)
+
+
+def generate_two_comments_with_deepseek(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    return deepseek_two_comments(tweet_text, author, url)
+
+
 def _available_providers() -> list[tuple[str, callable]]:
     """
     Build ordered list of (name, fn) providers.
@@ -4282,6 +4524,8 @@ def _available_providers() -> list[tuple[str, callable]]:
             USE_HUGGINGFACE,
             generate_two_comments_with_huggingface,
         ),
+        "openrouter": (USE_OPENROUTER, generate_two_comments_with_openrouter),
+        "deepseek": (USE_DEEPSEEK, generate_two_comments_with_deepseek),
         "offline": (True, generate_two_comments_offline),
     }
 
@@ -4296,7 +4540,7 @@ def _available_providers() -> list[tuple[str, callable]]:
         return providers
 
     # Fallback: no env override → use default order of all enabled providers
-    for name in ["groq", "openai", "gemini", "mistral", "cohere", "huggingface", "offline"]:
+    for name in ["groq", "openai", "gemini", "mistral", "cohere", "huggingface", "openrouter", "deepseek", "offline"]:
         is_on, fn = all_providers.get(name, (False, None))
         if is_on and fn is not None:
             providers.append((name, fn))
@@ -5015,4 +5259,3 @@ def weighted_sample(weight_map: dict[str, float]) -> str:
             return key
     # numerical safety fallback
     return items[-1][0]
-
