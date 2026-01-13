@@ -623,8 +623,8 @@ if USE_GROQ:
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 # Groq pacing / backoff (to avoid falling back too quickly)
 GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "5.0"))  # spacing between calls
-GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "6"))               # how many times to retry one call
-GROQ_BACKOFF_SECONDS = float(os.getenv("GROQ_BACKOFF_SECONDS", "15"))   # extra wait on 429/rate-limit
+GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "4"))               # how many times to retry one call
+GROQ_BACKOFF_SECONDS = float(os.getenv("GROQ_BACKOFF_SECONDS", "10"))   # extra wait on 429/rate-limit
 _GROQ_LAST_CALL_TS: float = 0.0
 _GROQ_DISABLED_UNTIL: float = 0.0
 
@@ -4235,31 +4235,44 @@ def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = 
 
 def _available_providers() -> list[tuple[str, callable]]:
     """
-    Returns [(name, fn), ...] for all enabled providers.
-    Respects CROWNTALK_LLM_ORDER if set; otherwise keeps the original default order.
+    Build ordered list of (name, fn) providers.
+
+    IMPORTANT:
+    - If CROWNTALK_LLM_ORDER is set, we ONLY use providers that are explicitly
+      listed there.
+    - If it's empty, we fall back to the default order.
     """
-    all_providers: dict[str, tuple[bool, Optional[callable]]] = {
-        "groq": (USE_GROQ and _groq_client, groq_two_comments),
-        "openai": (USE_OPENAI and _openai_client, openai_two_comments),
-        "gemini": (USE_GEMINI and _gemini_model, gemini_two_comments),
-        "mistral": (USE_MISTRAL and MISTRAL_API_KEY, mistral_two_comments),
-        "cohere": (USE_COHERE and COHERE_API_KEY, cohere_two_comments),
-        "huggingface": (USE_HUGGINGFACE and HUGGINGFACE_MODEL, huggingface_two_comments),
+
+    order_raw = os.getenv("CROWNTALK_LLM_ORDER", "").strip().lower()
+    order = [x.strip() for x in order_raw.split(",") if x.strip()]
+
+    all_providers: dict[str, tuple[bool, callable | None]] = {
+        "groq": (USE_GROQ, generate_two_comments_with_groq),
+        "openai": (USE_OPENAI, generate_two_comments_with_openai),
+        "gemini": (USE_GEMINI, generate_two_comments_with_gemini),
+        "mistral": (USE_MISTRAL, generate_two_comments_with_mistral),
+        "cohere": (USE_COHERE, generate_two_comments_with_cohere),
+        "huggingface": (
+            USE_HUGGINGFACE,
+            generate_two_comments_with_huggingface,
+        ),
+        "offline": (True, generate_two_comments_offline),
     }
 
     providers: list[tuple[str, callable]] = []
 
-    # Respect explicit order if provided
-    order = CROWNTALK_LLM_ORDER or ["groq", "openai", "gemini", "mistral", "cohere", "huggingface"]
-    for name in order:
-        ok, fn = all_providers.get(name, (False, None))
-        if ok and fn:
-            providers.append((name, fn))
+    # If an explicit order is configured, respect it and ignore others
+    if order:
+        for name in order:
+            is_on, fn = all_providers.get(name, (False, None))
+            if is_on and fn is not None:
+                providers.append((name, fn))
+        return providers
 
-    # Append any enabled provider that wasn't explicitly ordered
-    seen = {name for name, _ in providers}
-    for name, (ok, fn) in all_providers.items():
-        if ok and fn and name not in seen:
+    # Fallback: no env override → use default order of all enabled providers
+    for name in ["groq", "openai", "gemini", "mistral", "cohere", "huggingface", "offline"]:
+        is_on, fn = all_providers.get(name, (False, None))
+        if is_on and fn is not None:
             providers.append((name, fn))
 
     return providers
