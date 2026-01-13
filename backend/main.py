@@ -170,14 +170,10 @@ PORT = int(os.environ.get("PORT", "10000"))
 DB_PATH = os.environ.get("DB_PATH", "/app/crowntalk.db")
 BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onrender.com")
 
-# --------------------------------------------------------------------
-# Batch & pacing (env-tunable)
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))
-
-
+# -------------------------------------------------------------------
 # Batch & pacing (env-tunable)
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))                 # ← process N at a time
-PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "2.5"))  # ← sleep after every URL
+PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "2.0"))  # ← sleep after every URL
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← hard cap per request
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
