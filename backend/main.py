@@ -3491,11 +3491,11 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
     """
     Combined research context for a tweet.
 
-    - On-chain / DeFi research keyed by $TICKERS (existing behavior).
-    - Local project research loaded from files keyed by @handles (NEW).
+    - Local project research loaded from files keyed by @handles
+      (ALWAYS on, cheap, no network).
+    - On-chain / DeFi research keyed by $TICKERS
+      (ONLY when ENABLE_RESEARCH = 1).
     """
-    if not ENABLE_RESEARCH:
-        return {"status": "disabled"}
 
     # Extract entities once (both cashtags and handles)
     ents = extract_entities(tweet_text or "")
@@ -3517,7 +3517,40 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
             return cached
 
     # ------------------------------------------------------------------
-    # 1) DeFi / on-chain research (same as before, just moved inside)
+    # 1) Local project research by @handle  (ALWAYS ON)
+    # ------------------------------------------------------------------
+    projects: list[dict] = []
+    if handles:
+        try:
+            projects = _load_project_research(handles)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("project_research load failed: %s", e)
+            projects = []
+
+    # ------------------------------------------------------------------
+    # If ENABLE_RESEARCH is OFF → return only local project info
+    # ------------------------------------------------------------------
+    if not ENABLE_RESEARCH:
+        if not projects:
+            ctx: dict[str, Any] = {
+                "status": "empty",
+                "cashtags": cashtags,
+                "protocols": [],
+            }
+        else:
+            ctx = {
+                "status": "ok",
+                "cashtags": cashtags,
+                "protocols": [],
+                "projects": projects,
+            }
+
+        if cache_key:
+            _research_cache_set(cache_key, ctx)
+        return ctx
+
+    # ------------------------------------------------------------------
+    # 2) DeFi / on-chain research (only when ENABLE_RESEARCH = 1)
     # ------------------------------------------------------------------
     protocols: list[dict] = []
 
@@ -3578,17 +3611,10 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
             protocols.append(entry)
 
     # ------------------------------------------------------------------
-    # 2) Local project research by @handle (NEW)
-    # ------------------------------------------------------------------
-    projects: list[dict] = []
-    if handles:
-        projects = _load_project_research(handles)
-
-    # ------------------------------------------------------------------
-    # Final status + payload
+    # 3) Final status + payload
     # ------------------------------------------------------------------
     if not protocols and not projects:
-        ctx = {"status": "empty", "cashtags": cashtags}
+        ctx = {"status": "empty", "cashtags": cashtags, "protocols": []}
         if cache_key:
             _research_cache_set(cache_key, ctx)
         return ctx
