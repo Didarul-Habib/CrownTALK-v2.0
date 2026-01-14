@@ -287,6 +287,24 @@ let langPrefs = { useEn: true, useNative: true };
 let safeModeOn = false;
 let runCounter = 0;
 
+// Premium feature bridge (no-op if premium script missing)
+window.CROWN_PREMIUM = window.CROWN_PREMIUM || {};
+window.CROWN_PREMIUM.hooks = window.CROWN_PREMIUM.hooks || {
+  onAnalytics: [],
+  onQueueRender: [],
+  onResultAppend: [],
+  onRunStart: [],
+  onRunFinish: []
+};
+
+function ctPremiumEmit(ev, payload) {
+  const hooks = (window.CROWN_PREMIUM && window.CROWN_PREMIUM.hooks && window.CROWN_PREMIUM.hooks[ev]) || [];
+  for (const fn of hooks) {
+    try { fn(payload); } catch (e) { /* ignore */ }
+  }
+}
+
+
  /* =========================================================
    === Mini Toast + Snack (used by multiple bits) ===
    ========================================================= */
@@ -1371,8 +1389,8 @@ async function handleGenerate() {
   setEngineStatus("running");
 
   // Ultra-Lite mode if phone/low-motion
-  if (matchMedia('(pointer:coarse)').matches || matchMedia('(prefers-reduced-motion: reduce)').matches) {
-    document.documentElement.classList.add('ultralite-on');
+  if (matchMedia("(pointer:coarse)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+    document.documentElement.classList.add("ultralite-on");
   }
 
   generateBtn.disabled = true;
@@ -1380,6 +1398,9 @@ async function handleGenerate() {
   resetResults();
   resetProgress();
   resetUrlQueue();
+
+  // PREMIUM: notify run start
+  ctPremiumEmit("onRunStart", { urls, preset: presetSelect?.value || "" });
 
   // build visual queue for this batch
   urlQueueState = urls.map((u) => ({
@@ -1389,13 +1410,16 @@ async function handleGenerate() {
   }));
   renderUrlQueue();
 
+  // PREMIUM: initial queue snapshot
+  ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
+
   setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
   setProgressRatio(0);
 
-  let totalResults   = 0;
-  let totalFailed    = 0;
-  let processedUrls  = 0;
-  let totalComments = 0;
+  let totalResults    = 0;
+  let totalFailed     = 0;
+  let processedUrls   = 0;
+  let totalComments   = 0;
   let clearedSkeletons = false;
 
   showSkeletons(Math.min(urls.length, 4));
@@ -1413,6 +1437,8 @@ async function handleGenerate() {
     if (urlQueueState[i]) {
       urlQueueState[i].status = "processing";
       renderUrlQueue();
+      // (optional) PREMIUM: per-step queue update
+      // ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
     }
 
     const headers = {
@@ -1500,11 +1526,13 @@ async function handleGenerate() {
         resultCountEl.textContent = formatTweetCount(totalResults);
         failedCountEl.textContent = String(totalFailed);
 
-       // update queue chip status for this URL
+        // update queue chip status for this URL
         if (urlQueueState[i]) {
           const hadFailed = failed && failed.length > 0;
           urlQueueState[i].status = hadFailed ? "failed" : "done";
           renderUrlQueue();
+          // (optional) PREMIUM: per-step queue update
+          // ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
         }
       }
     } catch (err) {
@@ -1529,6 +1557,8 @@ async function handleGenerate() {
       if (urlQueueState[i]) {
         urlQueueState[i].status = "failed";
         renderUrlQueue();
+        // (optional) PREMIUM: per-step queue update
+        // ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
       }
 
       // NEW: remember this client-side failure URL
@@ -1549,7 +1579,7 @@ async function handleGenerate() {
   if (cancelled) return;
 
   document.body.classList.remove("is-generating");
-  document.documentElement.classList.remove('ultralite-on');
+  document.documentElement.classList.remove("ultralite-on");
   generateBtn.disabled = false;
   cancelBtn.disabled   = true;
 
@@ -1563,7 +1593,7 @@ async function handleGenerate() {
     setProgressText(`Processed ${processedUrls} tweet${processedUrls === 1 ? "" : "s"}.`);
     setProgressRatio(1);
   }
-   
+
   if (!totalResults && totalFailed) {
     setEngineStatus("error");
   } else {
@@ -1581,8 +1611,12 @@ async function handleGenerate() {
     durationSec,
     comments: totalComments,
   };
+
   updateAnalytics(meta);
   addSessionSnapshot(meta);
+
+  // PREMIUM: notify run finish
+  ctPremiumEmit("onRunFinish", meta);
 }
 
 // ------------------------
