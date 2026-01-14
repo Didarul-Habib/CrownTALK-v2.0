@@ -4416,8 +4416,13 @@ def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "
     """
     OpenRouter HTTP client.
 
-    Defaults to a DeepSeek model (free tier) but can be overridden via env:
-      - OPENROUTER_MODEL (e.g. "deepseek/deepseek-r1:free" or "deepseek/deepseek-chat")
+    Env:
+      - OPENROUTER_API_KEY (required)
+      - OPENROUTER_MODEL (required) e.g. "deepseek/deepseek-r1:free"
+      - OPENROUTER_API_BASE (optional) base like "https://openrouter.ai/api/v1"
+        OR full endpoint like "https://openrouter.ai/api/v1/chat/completions"
+      - OPENROUTER_HTTP_REFERER (optional but recommended)
+      - OPENROUTER_APP_NAME (optional)
     """
     if not (USE_OPENROUTER and OPENROUTER_API_KEY and OPENROUTER_MODEL):
         raise RuntimeError("OpenRouter disabled or not fully configured")
@@ -4446,17 +4451,41 @@ def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
     }
+
+    # Recommended by OpenRouter (can affect access / routing)
     referer = os.getenv("OPENROUTER_HTTP_REFERER", "").strip()
     if referer:
         headers["HTTP-Referer"] = referer
+
     app_name = os.getenv("OPENROUTER_APP_NAME", "CrownTALK").strip()
     if app_name:
         headers["X-Title"] = app_name
 
+    # ---- FIX: always hit /chat/completions ----
+    base = (os.getenv("OPENROUTER_API_BASE") or "https://openrouter.ai/api/v1").strip()
+    base = base.rstrip("/")
+
+    # If user provided the full endpoint already, keep it.
+    if base.endswith("/chat/completions"):
+        endpoint = base
+    else:
+        endpoint = f"{base}/chat/completions"
+    # ------------------------------------------
+
     resp = call_with_retries(
         "OpenRouter",
-        lambda: requests.post(OPENROUTER_API_BASE, headers=headers, json=payload, timeout=60),
+        lambda: requests.post(endpoint, headers=headers, json=payload, timeout=60),
     )
+
+    # Helpful debug on failures (prevents "mystery 404")
+    if resp is None:
+        raise RuntimeError("OpenRouter request returned no response")
+    if resp.status_code >= 400:
+        try:
+            logger.warning("OpenRouter error %s: %s", resp.status_code, (resp.text or "")[:800])
+        except Exception:
+            pass
+
     resp.raise_for_status()
     data = resp.json() or {}
 
@@ -4474,13 +4503,23 @@ def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     if len(candidates) < 2:
-        candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        candidates = enforce_unique(
+            candidates + safe_offline_two_comments(tweet_text, author),
+            tweet_text=tweet_text,
+            url=url,
+            lang="en",
+        )
 
     if len(candidates) < 2:
         raise RuntimeError("OpenRouter did not produce two valid comments")
 
     if _pair_too_similar(candidates[0], candidates[1]):
-        merged = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
+        merged = enforce_unique(
+            candidates + safe_offline_two_comments(tweet_text, author),
+            tweet_text=tweet_text,
+            url=url,
+            lang="en",
+        )
         if len(merged) >= 2:
             candidates = merged[:2]
 
