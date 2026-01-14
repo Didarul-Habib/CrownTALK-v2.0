@@ -38,6 +38,16 @@ METRICS: dict[str, object] = {
     "total_errors": 0,
 }
 
+PREMIUM_EVENTS_URL = os.getenv("PREMIUM_EVENTS_URL", "").strip()
+import requests  # already imported above
+
+def emit_premium_event(ev_type: str, payload: dict):
+    if not PREMIUM_EVENTS_URL:
+        return
+    try:
+        requests.post(PREMIUM_EVENTS_URL, json={"type": ev_type, "payload": payload}, timeout=0.5)
+    except Exception:
+        pass
 
 
 # --------- Access gate configuration ---------
@@ -55,9 +65,6 @@ def _compute_access_token(code: str) -> str:
 EXPECTED_ACCESS_TOKEN = _compute_access_token(ACCESS_CODE_ENV) if ACCESS_CODE_ENV else None
 
 
-
-
-# --- Added by ChatGPT fix ---
 def _require_access_or_forbidden():
     """Alias kept for compatibility with older endpoint code.
 
@@ -65,7 +72,6 @@ def _require_access_or_forbidden():
     a Flask Response (to deny access) or None (to allow).
     """
     return _require_access_or_none()
-# --- End ChatGPT fix ---
 
 def _require_access_or_none():
     """Return a Flask response if access should be denied, otherwise None.
@@ -4991,10 +4997,20 @@ def comment_endpoint():
             "hint": "For best results, chunk your list into batches of around 20-25 links.",
         }), 400
 
+    # -------- PREMIUM: run_start telemetry --------
+    # optional preset info for the event
+    preset = str(payload.get("preset") or "")
+    total = len(cleaned)
+    emit_premium_event("run_start", {
+        "total": total,
+        "preset": preset,
+    })
+    started_at = time.monotonic()
+    # ----------------------------------------------
+
     results: list[dict] = []
     failed: list[dict] = []
 
-    total = len(cleaned)
     done = 0
 
     for batch in chunked(cleaned, BATCH_SIZE):
@@ -5054,6 +5070,17 @@ def comment_endpoint():
             # ✅ Sleep only if there are more URLs left (no sleep after last)
             if done < total and PER_URL_SLEEP and PER_URL_SLEEP > 0:
                 time.sleep(PER_URL_SLEEP)
+
+    # -------- PREMIUM: run_finish telemetry --------
+    duration_sec = time.monotonic() - started_at
+    emit_premium_event("run_finish", {
+        "tweets": len(results),
+        "failed": len(failed),
+        "duration_sec": duration_sec,
+        "total_urls": total,
+        "preset": preset,
+    })
+    # ----------------------------------------------
 
     return jsonify({"results": results, "failed": failed}), 200
 
