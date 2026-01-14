@@ -1315,9 +1315,13 @@ def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
     txt = re.sub(r"[@#]\S+", "", txt)
     txt = re.sub(r"\s+", " ", txt).strip()
-    txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
+
+    # DO NOT strip terminal punctuation; smart_trim_words uses it to cut cleanly.
+    # txt = re.sub(r"[.!?;:…]+$", "", txt).strip()
+
     txt = re.sub(r"[\U0001F300-\U0001FAFF\U00002702-\U000027B0\U000024C2-\U0001F251]+", "", txt)
     return txt
+
 
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
