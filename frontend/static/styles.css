@@ -6196,16 +6196,22 @@ html.ct-engine-on .card.card-holo .holo-system{
   opacity:.8;
 }
 
-/* Swimlane container per brand */
+/* Swimlane container per brand (MULTI-COLUMN) */
 .pipeline-swimlane{
   border-radius:8px;
   padding:4px;
   margin-bottom:4px;
   background:rgba(15,23,42,.85);
   border:1px solid rgba(148,163,184,.25);
+
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); /* adjust 220px */
+  gap: 6px;
 }
 
+/* Make the "default" label span full width */
 .pipeline-swimlane-label{
+  grid-column: 1 / -1;
   font-size:10px;
   opacity:.7;
   margin-bottom:2px;
@@ -6223,6 +6229,8 @@ html.ct-engine-on .card.card-holo .holo-system{
   align-items:center;
   gap:4px;
   cursor:pointer;
+  margin-bottom: 0;
+  width: 100%;
   transition:
     transform .15s ease-out,
     box-shadow .15s ease-out,
