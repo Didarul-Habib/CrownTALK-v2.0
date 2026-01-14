@@ -806,6 +806,7 @@ function updateAnalytics(meta) {
     analyticsHudEl.style.opacity = "1";
     analyticsHudEl.setAttribute("aria-hidden", "false");
   }
+    ctPremiumEmit("onAnalytics", meta || {});
 }
 // ------------------------
 // Language filter helpers
@@ -1270,6 +1271,8 @@ function buildTweetBlock(result) {
 function appendResultBlock(result) {
   const block = buildTweetBlock(result);
   resultsEl.appendChild(block);
+
+  ctPremiumEmit("onResultAppend", { result, element: block });
 }
 function updateTweetBlock(tweetEl, result) {
   if (!tweetEl) return;
