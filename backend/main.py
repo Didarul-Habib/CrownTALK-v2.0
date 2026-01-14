@@ -4229,32 +4229,38 @@ def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
 
     mode_line = llm_mode_hint(tweet_text)
-    prompt = _llm_sys_prompt(mode_line) + "\n\n" + user_prompt
+    sys_prompt = _llm_sys_prompt(mode_line)
+
+    endpoint = os.getenv("COHERE_CHAT_ENDPOINT", "https://api.cohere.ai/v2/chat")
 
     payload = {
         "model": COHERE_MODEL,
-        "prompt": prompt,
-        "max_tokens": 160,
+        "messages": [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": user_prompt},
+        ],
         "temperature": 0.7,
+        "max_tokens": 160,
     }
+
     headers = {
         "Authorization": f"Bearer {COHERE_API_KEY}",
         "Content-Type": "application/json",
     }
 
     resp = call_with_retries("Cohere", lambda: requests.post(
-        "https://api.cohere.com/v1/generate",
-        headers=headers,
-        json=payload,
-        timeout=30,
+        endpoint, headers=headers, json=payload, timeout=30
     ))
     resp.raise_for_status()
     data = resp.json() or {}
+
     raw = ""
     try:
-        gens = data.get("generations") or []
-        if gens:
-            raw = gens[0].get("text") or ""
+        # Cohere Chat response example uses: res.message.content[0].text :contentReference[oaicite:3]{index=3}
+        msg = (data.get("message") or {})
+        content = msg.get("content") or []
+        if content and isinstance(content, list):
+            raw = content[0].get("text") or ""
     except Exception:
         raw = json.dumps(data, ensure_ascii=False)
 
@@ -4276,7 +4282,6 @@ def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
             candidates = merged[:2]
 
     return candidates[:2]
-
 
 def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     if not (USE_HUGGINGFACE and HUGGINGFACE_MODEL and HUGGINGFACE_API_KEY):
@@ -4414,22 +4419,53 @@ def deepseek_two_comments(tweet_text: str, author: Optional[str], url: str = "")
 
 def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     """
-    OpenRouter HTTP client.
+    Generate exactly two short comments via OpenRouter chat/completions with fallbacks.
 
-    Env:
-      - OPENROUTER_API_KEY (required)
-      - OPENROUTER_MODEL (required) e.g. "deepseek/deepseek-r1:free"
-      - OPENROUTER_API_BASE (optional) base like "https://openrouter.ai/api/v1"
-        OR full endpoint like "https://openrouter.ai/api/v1/chat/completions"
-      - OPENROUTER_HTTP_REFERER (optional but recommended)
-      - OPENROUTER_APP_NAME (optional)
+    Expected helpers already in your codebase:
+      - call_with_retries(provider_name, fn)
+      - parse_two_comments_flex(text) -> list[str]
+      - enforce_word_count_llm(text) -> str
+      - restore_decimals_and_tickers(text, tweet_text) -> str
+      - words(text) -> list[str]
+      - enforce_unique(comments, tweet_text, url="", lang="en") -> list[str]
+      - safe_offline_two_comments(tweet_text, author) -> list[str]
+      - _pair_too_similar(a, b) -> bool
+      - llm_mode_hint(tweet_text) -> str
+      - _llm_sys_prompt(mode_line) -> str
+      - _build_context_json_snippet() -> str
+      - _maybe_llm_variety_snippet(url, tweet_text) -> str
     """
-    if not (USE_OPENROUTER and OPENROUTER_API_KEY and OPENROUTER_MODEL):
-        raise RuntimeError("OpenRouter disabled or not fully configured")
 
+    OPENROUTER_API_KEY = os.getenv("OPENROUTER_API_KEY", "").strip()
+    USE_OPENROUTER = os.getenv("USE_OPENROUTER", "true").lower() in ("1", "true", "yes", "on")
+
+    if not (USE_OPENROUTER and OPENROUTER_API_KEY):
+        raise RuntimeError("OpenRouter disabled or API key not available")
+
+    # Your primary model (can be overridden in Render env)
+    primary_model = os.getenv("OPENROUTER_MODEL", "deepseek/deepseek-r1-0528:free").strip()
+
+    # Fallbacks for when OpenRouter returns:
+    # 404 {"error":{"message":"No endpoints found for ...","code":404}}
+    fallback_models = [
+        m.strip() for m in os.getenv(
+            "OPENROUTER_FALLBACK_MODELS",
+            "deepseek/deepseek-r1-0528:free,deepseek/deepseek-r1-distill-qwen-32b:free"
+        ).split(",")
+        if m.strip()
+    ]
+
+    # Build prompt
     user_prompt = (
         f"Post (author: {author or 'unknown'}):\n{tweet_text}\n\n"
-        "Return exactly two distinct comments (JSON array or two lines)."
+        "Write exactly TWO distinct short comments.\n"
+        "Rules:\n"
+        "- 6 to 18 words each\n"
+        "- No hashtags\n"
+        "- No links\n"
+        "- No @mentions\n"
+        "- Natural, human tone\n"
+        "Return format: either JSON array of 2 strings OR two lines.\n"
     )
     user_prompt += _build_context_json_snippet()
     user_prompt += _maybe_llm_variety_snippet(url, tweet_text)
@@ -4437,71 +4473,89 @@ def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "
     mode_line = llm_mode_hint(tweet_text)
     sys_prompt = _llm_sys_prompt(mode_line)
 
-    payload = {
-        "model": OPENROUTER_MODEL,
-        "messages": [
-            {"role": "system", "content": sys_prompt},
-            {"role": "user", "content": user_prompt},
-        ],
-        "temperature": 0.7,
-        "max_tokens": 160,
-    }
+    endpoint = os.getenv("OPENROUTER_API_BASE", "https://openrouter.ai/api/v1").rstrip("/")
+    endpoint = f"{endpoint}/chat/completions"
+
+    # OpenRouter recommended meta headers (optional but helpful)
+    http_referer = os.getenv("OPENROUTER_HTTP_REFERER", "https://crowntalk.netlify.app").strip()
+    app_name = os.getenv("OPENROUTER_APP_NAME", "CrownTALK").strip()
 
     headers = {
         "Authorization": f"Bearer {OPENROUTER_API_KEY}",
         "Content-Type": "application/json",
+        "HTTP-Referer": http_referer,
+        "X-Title": app_name,
     }
 
-    # Recommended by OpenRouter (can affect access / routing)
-    referer = os.getenv("OPENROUTER_HTTP_REFERER", "").strip()
-    if referer:
-        headers["HTTP-Referer"] = referer
+    def _make_payload(model_name: str) -> dict:
+        return {
+            "model": model_name,
+            "messages": [
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": user_prompt},
+            ],
+            "temperature": 0.7,
+            "max_tokens": 180,
+        }
 
-    app_name = os.getenv("OPENROUTER_APP_NAME", "CrownTALK").strip()
-    if app_name:
-        headers["X-Title"] = app_name
+    def _post_once(model_name: str) -> requests.Response:
+        payload = _make_payload(model_name)
+        return requests.post(endpoint, headers=headers, json=payload, timeout=60)
 
-    # ---- FIX: always hit /chat/completions ----
-    base = (os.getenv("OPENROUTER_API_BASE") or "https://openrouter.ai/api/v1").strip()
-    base = base.rstrip("/")
+    # 1) Try primary model (with your retry wrapper)
+    resp = call_with_retries("OpenRouter", lambda: _post_once(primary_model))
 
-    # If user provided the full endpoint already, keep it.
-    if base.endswith("/chat/completions"):
-        endpoint = base
-    else:
-        endpoint = f"{base}/chat/completions"
-    # ------------------------------------------
-
-    resp = call_with_retries(
-        "OpenRouter",
-        lambda: requests.post(endpoint, headers=headers, json=payload, timeout=60),
-    )
-
-    # Helpful debug on failures (prevents "mystery 404")
-    if resp is None:
-        raise RuntimeError("OpenRouter request returned no response")
+    # 2) If primary fails with "No endpoints found", fallback to alternates
     if resp.status_code >= 400:
-        try:
-            logger.warning("OpenRouter error %s: %s", resp.status_code, (resp.text or "")[:800])
-        except Exception:
-            pass
+        body = (resp.text or "")
+        is_no_endpoint_404 = (resp.status_code == 404 and "No endpoints found" in body)
 
-    resp.raise_for_status()
+        if is_no_endpoint_404:
+            last_exc = None
+            for m in fallback_models:
+                try:
+                    resp2 = call_with_retries("OpenRouter", lambda: _post_once(m))
+                    if resp2.status_code < 400:
+                        resp = resp2
+                        break
+                except Exception as e:
+                    last_exc = e
+                    continue
+
+            # If still failing, raise the original error (or last fallback exception)
+            if resp.status_code >= 400:
+                if last_exc:
+                    raise last_exc
+                resp.raise_for_status()
+        else:
+            # Not a "model not available" error → raise normally
+            resp.raise_for_status()
+
     data = resp.json() or {}
 
+    # Extract assistant text
     raw = ""
     try:
-        raw = (data.get("choices", [{}])[0].get("message", {}).get("content") or "").strip()
+        raw = (
+            data.get("choices", [{}])[0]
+                .get("message", {})
+                .get("content", "")
+        ) or ""
     except Exception:
         raw = json.dumps(data, ensure_ascii=False)
 
-    raw = (raw or "").strip()
+    raw = raw.strip()
+
+    # Parse → clean → enforce constraints (exactly 2)
     candidates = parse_two_comments_flex(raw)
-    candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
+    candidates = [
+        restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
+        for c in candidates
+    ]
     candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
-    candidates = [postprocess_comment(c, "llm") for c in candidates]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
+    # Ensure we always end with 2
     if len(candidates) < 2:
         candidates = enforce_unique(
             candidates + safe_offline_two_comments(tweet_text, author),
@@ -4513,6 +4567,7 @@ def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "
     if len(candidates) < 2:
         raise RuntimeError("OpenRouter did not produce two valid comments")
 
+    # If two are near-duplicates, try to diversify using offline fallbacks
     if _pair_too_similar(candidates[0], candidates[1]):
         merged = enforce_unique(
             candidates + safe_offline_two_comments(tweet_text, author),
