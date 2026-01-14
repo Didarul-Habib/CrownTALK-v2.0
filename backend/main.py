@@ -3817,6 +3817,18 @@ def safe_offline_two_comments(tweet_text: str, author: Optional[str]) -> list[st
         logger.warning("offline generator failed, using rescue: %s", e)
 
     return _rescue_two(tweet_text)[:2]
+
+def generate_two_comments_offline(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    """Offline provider wrapper required by _available_providers()."""
+    out = safe_offline_two_comments(tweet_text, author)
+    out = [postprocess_comment(x, "offline") for x in out if x]
+    out = enforce_unique(out, tweet_text=tweet_text, url=url, lang="en")
+
+    if len(out) < 2:
+        out = enforce_unique(out + _rescue_two(tweet_text), tweet_text=tweet_text, url=url, lang="en")
+
+    return out[:2]
+
 # ------------------------------------------------------------------------------
 # LLM parsing helper shared by providers
 # ------------------------------------------------------------------------------
