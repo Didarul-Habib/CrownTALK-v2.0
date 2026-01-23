@@ -193,6 +193,40 @@ html,body{
   color:var(--text-main); background:var(--bg);
   min-height:100%;
 }
+
+/* Ensure form controls don't fall back to UA "buttontext" (often black on dark UIs) */
+button,
+input,
+select,
+textarea{
+  color: inherit;
+}
+
+/* Minimal premium scrollbars (works on Firefox + WebKit) */
+html{
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,.45) transparent;
+}
+*{
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,.45) transparent;
+}
+*::-webkit-scrollbar{
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track{
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb{
+  background-color: rgba(148,163,184,.28);
+  border-radius: 999px;
+  border: 3px solid transparent; /* creates the thin “pill” look */
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover{
+  background-color: rgba(148,163,184,.45);
+}
 body{
   display:flex; align-items:stretch; justify-content:center; padding:16px;
 }
@@ -4574,6 +4608,7 @@ html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0
   border:1px solid rgba(148,163,184,.65);
   background:rgba(15,23,42,.9);
   font-size:11px;
+  color: var(--text-main);
   cursor:pointer;
   opacity:.75;
   transition:background-color .15s, border-color .15s, opacity .12s, transform .08s;
@@ -4801,6 +4836,7 @@ body.ct-progress-done .progress-bar-inner{
 /* Menu shell */
 .results-menu{
   position:relative;
+  z-index: 60; /* keep above tweet cards */
 }
 .results-menu-toggle{
   border-radius:999px;
@@ -4824,7 +4860,12 @@ body.ct-progress-done .progress-bar-inner{
   border:1px solid rgba(148,163,184,.75);
   box-shadow:0 18px 45px rgba(0,0,0,.75);
   display:none;
-  z-index:20;
+  z-index:9999;
+}
+
+/* Allow the results dropdown to escape the card clipping without changing other cards */
+#resultsCard{
+  overflow: visible;
 }
 .results-menu.is-open .results-menu-pop{
   display:block;
@@ -5147,17 +5188,41 @@ body.ct-progress-done .progress-bar-inner{
 .results-toolbar {
   position: relative;
   z-index: 30; /* higher than the cards below */
+
+  /* 
+    IMPORTANT: the timeline can become very long.
+    If the toolbar is a single non-wrapping flex row, it will push the whole card wider
+    (what you're seeing in the screenshot).
+  */
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
 }
+
+/* Put the timeline on its own row and keep it inside the card */
+.run-timeline{
+  flex: 1 1 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0; /* avoid adding extra height that can look like overflow */
+  order: 20;
+}
+
+/* Keep the menu button aligned on the first row */
+.results-menu{ order: 10; }
 
 .results-menu {
   position: relative;
+  z-index: 60;
 }
 
 .results-menu-pop {
   position: absolute;
   right: 0;
   top: calc(100% + 8px); /* dropdown under the Menu button */
-  z-index: 40;           /* above everything in this area */
+  z-index: 9999;         /* above everything in this area */
 }
 
 
@@ -6230,6 +6295,7 @@ html.ct-engine-on .card.card-holo .holo-system{
   margin-bottom:3px;
   background:rgba(15,23,42,.96);
   border:1px solid rgba(148,163,184,.35);
+  color: var(--text-main);
   display:flex;
   align-items:center;
   gap:4px;
@@ -6393,7 +6459,13 @@ html.ct-engine-on .card.card-holo .holo-system{
 }
 
 .run-timeline{
-  margin-top:8px;
+  /* Keep the timeline *inside* the card and prevent horizontal spill */
+  flex: 1 1 100%;
+  max-width: 100%;
+  min-width: 0;
+  order: 20;
+
+  margin-top:0;
   padding:4px 6px;
   border-radius:10px;
   background:rgba(15,23,42,.96);
@@ -6413,6 +6485,7 @@ html.ct-engine-on .card.card-holo .holo-system{
   padding:2px 6px;
   border-radius:999px;
   border:1px solid rgba(148,163,184,.5);
+  color: var(--text-main);
   cursor:pointer;
   transition:background-color .12s ease, transform .12s ease;
 }
