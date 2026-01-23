@@ -55,6 +55,29 @@
     return "heat-hot";
   }
 
+  // Make pipeline labels readable (avoid showing the full raw URL everywhere)
+  function formatPipelineLabel(rawUrl) {
+    const fallback = (rawUrl || "").replace(/^https?:\/\//, "");
+    try {
+      const u = new URL(rawUrl);
+      const host = (u.hostname || "").replace(/^www\./, "");
+      const parts = (u.pathname || "").split("/").filter(Boolean);
+
+      // X / Twitter: show @handle + tweet id
+      if (host === "x.com" || host === "twitter.com") {
+        const handle = parts[0] ? `@${parts[0]}` : host;
+        const id = parts[2] || parts[1] || "";
+        return id ? `${handle}/${id}` : handle;
+      }
+
+      // Generic: host + first path segment
+      const p0 = parts[0] ? `/${parts[0]}` : "";
+      return `${host}${p0}`;
+    } catch {
+      return fallback;
+    }
+  }
+
   function renderPipeline(queueState) {
     if (!pipelineEl) return;
     lastQueueSnapshot = queueState || [];
@@ -119,8 +142,8 @@
           card.classList.add(heatClass);
           card.dataset.url = item.url;
 
-          const short = (item.shortLabel || item.url || "").replace(/^https?:\/\//, "");
-          card.textContent = short.slice(0, 40);
+          const label = item.shortLabel || formatPipelineLabel(item.url || "");
+          card.textContent = String(label).slice(0, 40);
 
           card.addEventListener("click", () => {
             const resultsEl = document.getElementById("results");
