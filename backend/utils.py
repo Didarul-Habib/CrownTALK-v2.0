@@ -153,10 +153,55 @@ def _parse_payload(payload: dict) -> TweetData:
         or payload.get("full_text")
     )
 
+    # X long-form / note tweets / articles (best-effort)
+    note_obj = None
+    for k in ("note_tweet", "noteTweet", "note_tweet_results", "noteTweetResults"):
+        if isinstance(base.get(k), dict):
+            note_obj = base.get(k)
+            break
+        if isinstance(payload.get(k), dict):
+            note_obj = payload.get(k)
+            break
+    note_text = None
+    if isinstance(note_obj, dict):
+        note_text = (
+            note_obj.get("text")
+            or note_obj.get("full_text")
+            or note_obj.get("fullText")
+            or note_obj.get("note")
+        )
+
+    article_obj = base.get("article") if isinstance(base.get("article"), dict) else payload.get("article") if isinstance(payload.get("article"), dict) else None
+    article_text = None
+    if isinstance(article_obj, dict):
+        article_text = article_obj.get("text") or article_obj.get("content") or article_obj.get("body")
+
+    extra = None
+    if note_text:
+        extra = note_text
+    elif article_text:
+        extra = article_text
+
+    if extra and isinstance(extra, str):
+        extra = extra.strip()
+        if extra and extra not in (text or ""):
+            # If it's substantially longer, prefer it as the main text
+            if len(extra) > len(text or "") + 40:
+                text = extra
+            else:
+                text = (text or "") + "\n\n" + extra
+
+
     user_name = (
         base.get("user", {}).get("name")
         or payload.get("user", {}).get("name")
     )
+
+    # FixTweet/FXTwitter style: author object (name + screen_name)
+    author_obj = base.get("author") if isinstance(base.get("author"), dict) else None
+    if not user_name and author_obj:
+        user_name = author_obj.get("name") or user_name
+
 
     # Handle is very vendor-specific; try multiple common fields.
     handle = (
@@ -169,6 +214,15 @@ def _parse_payload(payload: dict) -> TweetData:
         or payload.get("user_screen_name")
         or payload.get("userScreenName")
     )
+
+    if (not handle) and author_obj:
+        handle = (
+            author_obj.get("screen_name")
+            or author_obj.get("username")
+            or author_obj.get("screenName")
+            or handle
+        )
+
 
     tweet_id = (
         base.get("id_str")

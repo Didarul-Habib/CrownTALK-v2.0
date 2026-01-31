@@ -90,7 +90,15 @@ def _require_access_or_none():
     token = (request.headers.get(ACCESS_HEADER_NAME) or "").strip()
     if not token:
         return jsonify({"error": "forbidden", "code": "missing_access"}), 403
-    if token != expected:
+
+    # Accept:
+    # 1) backend-issued hashed token (expected)
+    # 2) raw access code (manual entry / legacy)
+    # 3) SHA-256(access_code) (frontend fallback)
+    raw_ok = bool(ACCESS_CODE_ENV and token == ACCESS_CODE_ENV)
+    sha_ok = bool(ACCESS_CODE_ENV and token == hashlib.sha256(ACCESS_CODE_ENV.encode("utf-8")).hexdigest())
+
+    if token != expected and not raw_ok and not sha_ok:
         return jsonify({"error": "forbidden", "code": "bad_access"}), 403
     return None
 
@@ -386,6 +394,7 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 # Request-scoped context (per tweet request)
 REQUEST_THREAD_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_THREAD_CTX", default=None)
 REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_CTX", default=None)
+REQUEST_TARGET_LANG: ContextVar[str] = ContextVar("REQUEST_TARGET_LANG", default="en")
 REQUEST_VOICE: ContextVar[Optional[dict]] = ContextVar("REQUEST_VOICE", default=None)
 
 REQUEST_REACTION_PLAN: ContextVar[Optional[dict]] = ContextVar("REQUEST_REACTION_PLAN", default=None)
@@ -681,7 +690,7 @@ def _is_rate_limit_error(e: Exception) -> bool:
     msg = str(e).lower()
     return ("429" in msg) or ("too many requests" in msg) or ("rate" in msg) or ("quota" in msg)
 
-def groq_chat_limited(*, messages, max_tokens: int, temperature: float, n: int = 1):
+def groq_chat_limited(*, messages, max_tokens: int, temperature: float, n: int = 1, model: str | None = None):
     """
     SINGLE entry-point for Groq calls.
     - Serialized across workers (same instance) by using the URL lock file.
@@ -709,7 +718,7 @@ def groq_chat_limited(*, messages, max_tokens: int, temperature: float, n: int =
 
             try:
                 resp = _groq_client.chat.completions.create(
-                    model=GROQ_MODEL,
+                    model=model or GROQ_MODEL,
                     messages=messages,
                     n=n,
                     max_tokens=max_tokens,
@@ -4041,6 +4050,18 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         "- If not JSON, return two lines separated by a newline.\n"
     )
 
+    # Per-request target language (set by endpoints before generation)
+    target_lang = (REQUEST_TARGET_LANG.get() or "en").strip().lower()
+    if target_lang:
+        base = base.replace(
+            "Hard rules:\n",
+            f"Hard rules:\n- Write the comments in language code '{target_lang}'. If it's not English, do NOT mix English.\n- Avoid @mentions; if you address the author, use their display name (no @handle).\n",
+        )
+        base = base.replace(
+            "Human style:\n",
+            "Human style:\n- If the tweet is a greeting (GM/GN/Good morning/etc), greet back first. Use the author's display name (no @handle) when possible.\n",
+        )
+
     voice = current_voice_card()
     if voice:
         base += (
@@ -4687,6 +4708,21 @@ def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
             if cashtag not in c and re.search(rf"\b{re.escape(sym)}\b", c):
                 c = re.sub(rf"\b{re.escape(sym)}\b", cashtag, c, count=1)
 
+    # percents (keep the % sign when tweet uses it)
+    for pct in re.findall(r"\b\d{1,3}(?:\.\d+)?%\b", t):
+        num = pct[:-1]
+        if pct not in c and re.search(rf"\b{re.escape(num)}\b", c):
+            c = re.sub(rf"\b{re.escape(num)}\b", pct, c, count=1)
+
+    # comma-separated numbers (keep commas exactly when tweet uses them)
+    for comma_num in re.findall(r"\b\d{1,3}(?:,\d{3})+\b", t):
+        no_commas = comma_num.replace(",", "")
+        spaced = comma_num.replace(",", " ")
+        if comma_num not in c:
+            c = re.sub(rf"\b{re.escape(spaced)}\b", comma_num, c)
+            c = re.sub(rf"\b{re.escape(no_commas)}\b", comma_num, c)
+
+
     return c
 
 def _maybe_llm_variety_snippet(url: str, tweet_text: str) -> str:
@@ -4864,12 +4900,92 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
 
 MAX_CANDIDATES_FOR_SELECTION = int(os.getenv("CROWNTALK_MAX_CANDIDATES", "6"))
 
+
+# ------------------------------------------------------------------------------
+# Greeting fast-path (GM/GN/etc) — deterministic + higher quality
+# ------------------------------------------------------------------------------
+
+_GREETING_RE = re.compile(
+    r"\b(gm|gn|g\s*m|g\s*n|good\s+morning|good\s+night|good\s+evening|good\s+afternoon)\b",
+    re.IGNORECASE,
+)
+
+def _is_greeting_tweet(txt: str) -> bool:
+    t = (txt or "").strip()
+    if not t:
+        return False
+    m = _GREETING_RE.search(t[:80])
+    if not m:
+        return False
+    return len(t) <= 180 or (m.start() <= 12)
+
+def _extract_project_hint(txt: str) -> Optional[str]:
+    t = txt or ""
+    m = re.search(r"(@[A-Za-z0-9_]{2,20})", t)
+    if m:
+        return m.group(1)
+    m = re.search(r"(\$[A-Za-z0-9]{2,12})", t)
+    if m:
+        return m.group(1)
+    low = t.lower()
+    g = _GREETING_RE.search(low[:80])
+    if not g:
+        return None
+    after = t[g.end():].strip(" -—:;,.\\n\\t")
+    after = re.sub(r"https?://\\S+", "", after).strip()
+    if not after:
+        return None
+    words_ = after.split()
+    if not words_:
+        return None
+    return " ".join(words_[:5])
+
+def _name_for_greeting(author_name: Optional[str], handle: Optional[str]) -> str:
+    if author_name:
+        nm = re.sub(r"\\s+", " ", author_name).strip()
+        parts = nm.split(" ")
+        if parts and len(parts[0]) >= 2:
+            return parts[0]
+        return nm[:18]
+    if handle:
+        return re.sub(r"^@", "", handle).strip()[:18]
+    return "fam"
+
+def build_greeting_pair(tweet_text: str, author_name: Optional[str], handle: Optional[str], lang_code: str = "en") -> list[str]:
+    """Build two short greeting replies."""
+    name = _name_for_greeting(author_name, handle)
+    hint = _extract_project_hint(tweet_text or "")
+    lang_code = (lang_code or "en").lower().strip()
+
+    if lang_code.startswith("ko"):
+        if hint:
+            return [
+                f"좋은 아침 {name}님, {hint} 흐름 좋아 보이네요.",
+                f"오늘도 화이팅이에요 {name}님 — 좋은 하루 보내세요.",
+            ]
+        return [
+            f"좋은 아침 {name}님, 오늘도 좋은 하루 되세요.",
+            f"{name}님 화이팅! 컨디션 좋게 시작해봐요.",
+        ]
+
+    if hint:
+        return [
+            f"Gm {name}, love the focus on {hint}.",
+            f"Have a great day {name} — keep building.",
+        ]
+    return [
+        f"Gm {name}, hope your day starts strong.",
+        f"Have a great one {name} — stay sharp and healthy.",
+    ]
+
 def generate_two_comments_with_providers(
     tweet_text: str,
     author: Optional[str],
     handle: Optional[str],
     lang: Optional[str],
     url: Optional[str] = None,
+    target_lang: Optional[str] = None,
+    out_lang_tag: Optional[str] = None,
 ) -> List[Dict[str, Any]]:
     """
     Working cascade:
@@ -4905,11 +5021,28 @@ def generate_two_comments_with_providers(
     and index 1 as a follow-up reply to comment 0 (thread behaviour).
     """
     url = url or ""
-    lang_out = lang or "en"
+
+    # Decide language for generation vs UI tagging
+    gen_lang = (target_lang or lang or "en").strip().lower()
+    lang_out = (out_lang_tag or gen_lang or "en").strip().lower()
+
+    # Make target language available to all LLM providers for this request
+    try:
+        REQUEST_TARGET_LANG.set(gen_lang)
+    except Exception:
+        pass
+
+    # Greeting fast-path (better, less gibberish)
+    if _is_greeting_tweet(tweet_text) and (gen_lang.startswith("en") or gen_lang.startswith("ko")):
+        pair = build_greeting_pair(tweet_text, author, handle, lang_code=gen_lang)
+        return [
+            {"lang": lang_out, "text": pair[0], "reaction": "greeting", "delay_sec": 0, "mode": "greeting", "thread_pair": bool(THREAD_PAIR_MODE), "thread_index": 0},
+            {"lang": lang_out, "text": pair[1], "reaction": "greeting", "delay_sec": 2, "mode": "greeting", "thread_pair": bool(THREAD_PAIR_MODE), "thread_index": 1, "follow_up": bool(THREAD_PAIR_MODE)},
+        ]
 
     # --- Build + store reaction plan for this tweet ---------------------------
     try:
-        plan = build_reaction_plan_with_modes(tweet_text, handle, lang_hint=lang)
+        plan = build_reaction_plan_with_modes(tweet_text, handle, lang_hint=gen_lang)
     except Exception:
         plan = None
     try:
@@ -5044,12 +5177,31 @@ def chunked(seq, size):
 
 def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
     """
-    Build a clean x.com URL with handle + status id when we have them.
+    Build a clean x.com URL for display.
 
-    - If upstream payload gives us both handle and tweet_id:
-        https://x.com/{handle}/status/{tweet_id}
-    - Otherwise fall back to whatever url we already normalized.
+    Priority order:
+    1) If upstream provided a canonical URL (VX/FX often returns one), use it.
+    2) Else, if we have handle + tweet_id, construct https://x.com/{handle}/status/{id}.
+    3) Else, fall back to the original (already normalized) URL.
+
+    Note: We normalize twitter.com/mobile.twitter.com/etc to x.com and drop query/fragment.
     """
+    cand = (getattr(t, 'canonical_url', None) or '').strip()
+    if cand:
+        try:
+            if not cand.startswith(('http://', 'https://')):
+                cand = 'https://' + cand
+            p = urlparse(cand)
+            host = (p.netloc or '').lower()
+            if host.startswith('www.'):
+                host = host[4:]
+            if host.endswith('twitter.com') or host.endswith('x.com'):
+                p = p._replace(scheme='https', netloc='x.com', query='', fragment='')
+                cand = p.geturl()
+        except Exception:
+            pass
+        return cand
+
     if t.handle and t.tweet_id:
         return f"https://x.com/{t.handle}/status/{t.tweet_id}"
     return original_url
@@ -5093,6 +5245,11 @@ def comment_endpoint():
 
     try:
         cleaned = clean_and_normalize_urls(urls)
+        if not cleaned:
+            return jsonify({
+                'error': 'No valid X/Twitter status URLs found in input',
+                'code': 'no_valid_urls',
+            }), 400
     except CrownTALKError as e:
         return jsonify({"error": str(e), "code": e.code}), 400
     except Exception:
@@ -5153,7 +5310,44 @@ def comment_endpoint():
 
                 handle = t.handle or _extract_handle_from_url(url)
 
-                two = generate_two_comments_with_providers(
+                # Requested output languages (frontend toggles)
+                want_en = bool(payload.get("lang_en", True))
+                want_native = bool(payload.get("lang_native", False))
+                native_override = (payload.get("native_lang") or "").strip().lower() or None
+
+                comments_all: list[dict] = []
+
+                if want_en:
+                    comments_all.extend(
+                        generate_two_comments_with_providers(
+                            t.text or "",
+                            t.author_name or None,
+                            handle,
+                            t.lang or None,
+                            url=url,
+                            target_lang="en",
+                            out_lang_tag="en",
+                        )
+                    )
+
+                if want_native:
+                    native_lang = native_override or (t.lang or "en")
+                    native_lang = str(native_lang).strip().lower() if native_lang else "en"
+                    if not native_lang.startswith("en") or not want_en:
+                        out_tag = native_lang if not native_lang.startswith("en") else "native"
+                        comments_all.extend(
+                            generate_two_comments_with_providers(
+                                t.text or "",
+                                t.author_name or None,
+                                handle,
+                                t.lang or None,
+                                url=url,
+                                target_lang=native_lang,
+                                out_lang_tag=out_tag,
+                            )
+                        )
+
+                two = comments_all or generate_two_comments_with_providers(
                     t.text or "",
                     t.author_name or None,
                     handle,
@@ -5229,7 +5423,44 @@ def reroll_endpoint():
         set_request_voice(t.text or "")
 
         handle = t.handle or _extract_handle_from_url(url)
-        two = generate_two_comments_with_providers(
+
+        want_en = bool(data.get("lang_en", True))
+        want_native = bool(data.get("lang_native", False))
+        native_override = (data.get("native_lang") or "").strip().lower() or None
+
+        comments_all: list[dict] = []
+
+        if want_en:
+            comments_all.extend(
+                generate_two_comments_with_providers(
+                    t.text or "",
+                    t.author_name or None,
+                    handle,
+                    t.lang or None,
+                    url=url,
+                    target_lang="en",
+                    out_lang_tag="en",
+                )
+            )
+
+        if want_native:
+            native_lang = native_override or (t.lang or "en")
+            native_lang = str(native_lang).strip().lower() if native_lang else "en"
+            if not native_lang.startswith("en") or not want_en:
+                out_tag = native_lang if not native_lang.startswith("en") else "native"
+                comments_all.extend(
+                    generate_two_comments_with_providers(
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
+                        url=url,
+                        target_lang=native_lang,
+                        out_lang_tag=out_tag,
+                    )
+                )
+
+        two = comments_all or generate_two_comments_with_providers(
             t.text or "",
             t.author_name or None,
             handle,
@@ -5319,10 +5550,11 @@ def thread_story_endpoint():
 
     try:
         resp = groq_chat_limited(
-            messages,
+            messages=messages,
             # Thread stories are short; keep the budget tiny
-            model=GROQ_MODEL or "llama-3.1-70b-versatile",
+            model=os.getenv("GROQ_THREAD_STORY_MODEL", "llama-3.1-70b-versatile"),
             max_tokens=512,
+            temperature=float(os.getenv("GROQ_THREAD_STORY_TEMPERATURE", "0.7")),
         )
     except Exception as exc:
         logger.exception("thread_story Groq failure", exc_info=exc)
@@ -5356,19 +5588,6 @@ def thread_story_endpoint():
     )
 
 
-# ------------------------------------------------------------------------------
-# Boot
-# ------------------------------------------------------------------------------
-
-def main() -> None:
-    init_db()
-    # threading.Thread(target=keep_alive, daemon=True).start()  # optional keep-alive
-    app.run(host="0.0.0.0", port=PORT)
-
-
-if __name__ == "__main__":
-    main()
-
 
 # ---- injected helper(s) by ChatGPT fix ----
 
@@ -5396,3 +5615,17 @@ def weighted_sample(weight_map: dict[str, float]) -> str:
             return key
     # numerical safety fallback
     return items[-1][0]
+
+# ------------------------------------------------------------------------------
+# Boot
+# ------------------------------------------------------------------------------
+
+def main() -> None:
+    init_db()
+    # threading.Thread(target=keep_alive, daemon=True).start()  # optional keep-alive
+    app.run(host="0.0.0.0", port=PORT)
+
+
+if __name__ == "__main__":
+    main()
+
