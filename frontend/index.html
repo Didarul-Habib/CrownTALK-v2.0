@@ -12,11 +12,16 @@
     <link rel="stylesheet" href="static/styles.css" />
     <link rel="stylesheet" href="static/generate-button.css" />
     <link rel="stylesheet" href="static/inputbox.css" />
+    <link rel="stylesheet" href="static/desktop-premium.css" />
     <link rel="shortcut icon" href="static/logo.png" type="image/png" />
 
     <script>
       // Global toggle to enable/disable heavy premium features
       window.CT_PREMIUM_ENABLED = true; // set to false to disable
+
+      // Optional: set this if your backend isn't same-origin.
+      // Example: window.CT_API_BASE = "https://crowntalk.onrender.com";
+      window.CT_API_BASE = window.CT_API_BASE || "";
 
       // Feature-level toggles if you want finer control
       window.CT_PREMIUM_FLAGS = {
@@ -29,7 +34,16 @@
       };
     </script>
     <script>
-  window.CT_PREMIUM_WS_URL = "ws://localhost:8081/ws";
+  // Optional: set window.CT_PREMIUM_WS_URL yourself.
+  // If not set, we try to derive a sensible default.
+  (function(){
+    if (window.CT_PREMIUM_WS_URL) return;
+    try {
+      const proto = (location.protocol === "https:") ? "wss" : "ws";
+      // default to same host, premium-node usually runs on :8081
+      window.CT_PREMIUM_WS_URL = `${proto}://${location.hostname}:8081/ws`;
+    } catch {}
+  })();
 </script>
 
 
@@ -1075,5 +1089,36 @@
     <!-- Your main app JS (contains the single-gate + app logic) -->
     <script src="static/script.v2.js"></script>
     <script src="static/premium.v1.js" defer></script>
-  </body>
+<script>
+  // Desktop-only loader for React + GSAP premium UI
+  (function () {
+    try {
+      const isDesktop = window.innerWidth >= 1024;
+      const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+      if (!window.CT_PREMIUM_ENABLED) return;
+      if (!isDesktop) return; // keep mobile light
+      // React UMD
+      const add = (src) => new Promise((resolve, reject) => {
+        const s = document.createElement("script");
+        s.src = src;
+        s.async = true;
+        s.onload = resolve;
+        s.onerror = reject;
+        document.head.appendChild(s);
+      });
+
+      const chain = [];
+      chain.push(add("https://unpkg.com/react@18/umd/react.production.min.js"));
+      chain.push(add("https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"));
+
+      if (!reduced) {
+        // GSAP is optional (micro animations only)
+        chain.push(add("https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"));
+      }
+
+      Promise.all(chain).then(() => add("static/desktop-premium-react.js")).catch(() => {});
+    } catch {}
+  })();
+</script>
+  </body
 </html>
