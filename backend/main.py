@@ -5288,7 +5288,9 @@ def comment_endpoint():
                 except Exception:
                     pass
 
+                emit_premium_event("item_stage", {"url": url, "stage": "fetching"})
                 t = fetch_tweet_data(url)
+                emit_premium_event("item_stage", {"url": url, "stage": "generating"})
 
                 # Per-request context: thread, research, voice
                 try:
@@ -5363,13 +5365,34 @@ def comment_endpoint():
                     "used_research": used_research,
                 })
 
+                try:
+                    emit_premium_event("item_stage", {"url": display_url, "stage": "done"})
+                except Exception:
+                    pass
+
             except CrownTALKError as e:
+                try:
+                    emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": getattr(e, "code", "error")})
+                except Exception:
+                    pass
+
                 failed.append({"url": url, "reason": str(e), "code": e.code})
             except Exception:
                 logger.exception("Unhandled error while processing %s", url)
+                try:
+                    emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": "internal_error"})
+                except Exception:
+                    pass
+
                 failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
 
             done += 1
+            try:
+                percent = int(round((done * 100.0) / float(total))) if total else 100
+                emit_premium_event("run_progress", {"done": done, "total": total, "percent": max(0, min(100, percent))})
+            except Exception:
+                pass
+
 
             # ✅ Sleep only if there are more URLs left (no sleep after last)
             if done < total and PER_URL_SLEEP and PER_URL_SLEEP > 0:
