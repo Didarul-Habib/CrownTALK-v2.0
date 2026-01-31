@@ -6,7 +6,18 @@
 
 /* ---------- Gate Pass ---------- */
 (() => {
-  const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
+  
+// Backend base URL: prefer injected config, then same-origin, else fall back to hosted API.
+const API_BASE = (() => {
+  try {
+    if (window.CT_API_BASE && String(window.CT_API_BASE).trim()) return String(window.CT_API_BASE).trim().replace(/\/$/, "");
+    // When served from a domain, same-origin is best for local/prod parity.
+    if (location && location.origin && location.origin !== "null") return location.origin.replace(/\/$/, "");
+  } catch {}
+  return "https://crowntalk.onrender.com";
+})();
+
+const ACCESS_CODE = '@CrownTALK@2026@CrownDEX';
   const STORAGE_KEY = 'crowntalk_access_v1';    // local/session storage key
   const COOKIE_KEY  = 'crowntalk_access_v1';    // cookie fallback
 
@@ -104,15 +115,15 @@
 
     // Prefer backend verification so the server can enforce the gate too.
     try {
-       const res = await fetch("https://crowntalk.onrender.com/verify_access", {
+       const res = await fetch(`${API_BASE}/verify_access`, {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ code: val }),
       });
       let data = {};
       try { data = await res.json(); } catch {}
-      if (res.ok && data && data.token) {
-        const token = String(data.token);
+      if (res.ok && data && (data.ok || data.token)) {
+        const token = (data && data.token) ? String(data.token) : val;
         markAuthorized(token);
         exposeTokenHelpers();
         hideGate();
@@ -296,7 +307,9 @@ window.CROWN_PREMIUM.hooks = window.CROWN_PREMIUM.hooks || {
   onQueueRender: [],
   onResultAppend: [],
   onRunStart: [],
-  onRunFinish: []
+  onRunFinish: [],
+  onProgress: [],
+  onItemStage: []
 };
 
 function ctPremiumEmit(ev, payload) {
@@ -1531,6 +1544,7 @@ async function handleGenerate() {
       } else {
         const results = Array.isArray(data.results) ? data.results : [];
         const failed  = Array.isArray(data.failed)  ? data.failed  : [];
+        try { window.__CT_RESULTS = results; window.__CT_FAILED = failed; } catch {}
 
         if (!clearedSkeletons) {
           resultsEl.innerHTML = "";

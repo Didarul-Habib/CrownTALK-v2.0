@@ -1,0 +1,157 @@
+/* Desktop premium UI enhancements (kept lightweight; heavy effects gated in JS) */
+@media (min-width: 1024px) {
+  .ct-cmdk-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(0,0,0,.55);
+    backdrop-filter: blur(10px);
+    z-index: 99990;
+    display: flex;
+    align-items: flex-start;
+    justify-content: center;
+    padding-top: 8vh;
+  }
+  .ct-cmdk {
+    width: min(720px, 92vw);
+    border-radius: 18px;
+    background: rgba(20, 16, 40, .92);
+    border: 1px solid rgba(255,255,255,.10);
+    box-shadow: 0 22px 80px rgba(0,0,0,.55);
+    overflow: hidden;
+    transform: translateZ(0);
+  }
+  .ct-cmdk-header {
+    padding: 14px 16px 10px;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+    display:flex;
+    gap:10px;
+    align-items:center;
+  }
+  .ct-cmdk-input {
+    width: 100%;
+    padding: 10px 12px;
+    border-radius: 12px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(0,0,0,.25);
+    color: rgba(255,255,255,.92);
+    outline: none;
+    font-size: 14px;
+  }
+  .ct-cmdk-kbd {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 10px;
+    border: 1px solid rgba(255,255,255,.10);
+    opacity:.8;
+    white-space: nowrap;
+  }
+  .ct-cmdk-list { max-height: 52vh; overflow:auto; }
+  .ct-cmdk-item {
+    padding: 12px 16px;
+    display:flex;
+    justify-content: space-between;
+    gap: 12px;
+    cursor:pointer;
+    border-bottom: 1px solid rgba(255,255,255,.06);
+  }
+  .ct-cmdk-item:hover { background: rgba(255,255,255,.06); }
+  .ct-cmdk-item .title { font-weight: 600; }
+  .ct-cmdk-item .desc { opacity: .75; font-size: 12px; margin-top: 2px; }
+
+  /* Smart paste chips */
+  .ct-smartpaste-wrap {
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(0,0,0,.18);
+    padding: 10px;
+    min-height: 160px;
+    display:flex;
+    flex-wrap: wrap;
+    gap: 8px;
+    align-content: flex-start;
+  }
+  .ct-chip-url {
+    max-width: 100%;
+    display:flex;
+    align-items:center;
+    gap:8px;
+    padding: 8px 10px;
+    border-radius: 999px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.06);
+  }
+  .ct-chip-url .txt {
+    overflow:hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    max-width: 520px;
+    font-size: 12px;
+    opacity:.92;
+  }
+  .ct-chip-url.bad { border-color: rgba(255,120,120,.35); background: rgba(255,120,120,.08); }
+  .ct-chip-url .x { cursor:pointer; opacity:.85; }
+  .ct-smartpaste-input {
+    flex: 1 1 260px;
+    min-width: 260px;
+    border: none;
+    outline: none;
+    background: transparent;
+    color: rgba(255,255,255,.92);
+    padding: 8px 6px;
+    font-size: 14px;
+  }
+
+  /* Timeline queue */
+  .ct-timeline {
+    display:grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 10px;
+  }
+  .ct-lane {
+    border-radius: 18px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(0,0,0,.14);
+    overflow:hidden;
+  }
+  .ct-lane-head{
+    padding: 10px 12px;
+    display:flex;
+    justify-content: space-between;
+    align-items:center;
+    border-bottom: 1px solid rgba(255,255,255,.08);
+  }
+  .ct-lane-title{ font-weight:700; font-size: 12px; letter-spacing:.06em; opacity:.85; }
+  .ct-lane-count{ font-size:12px; opacity:.7; }
+  .ct-lane-body{ padding: 10px; max-height: 240px; overflow:auto; }
+  .ct-mini-card{
+    border-radius: 14px;
+    border: 1px solid rgba(255,255,255,.10);
+    background: rgba(255,255,255,.05);
+    padding: 10px 10px;
+    margin-bottom: 8px;
+    transform: translateZ(0);
+    transition: transform .22s ease, background .22s ease;
+  }
+  .ct-mini-card:hover{ transform: translateY(-1px); background: rgba(255,255,255,.07); }
+  .ct-mini-url{ font-size: 12px; opacity:.9; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+  .ct-mini-stage{ font-size: 11px; opacity:.7; margin-top: 4px; }
+
+  /* Progress micro animation */
+  .progress-bar-inner.ct-premium-sheen::after {
+    content:"";
+    position:absolute;
+    inset:0;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.16) 45%, rgba(255,255,255,0) 100%);
+    transform: translateX(-120%);
+    animation: ctSheen 1.25s ease-in-out infinite;
+  }
+  @keyframes ctSheen { 
+    0% { transform: translateX(-120%); }
+    100% { transform: translateX(120%); }
+  }
+
+  /* Ensure results menu overlays correctly */
+  #resultsCard { overflow: visible; }
+  .results-menu { position: relative; }
+  .results-menu-pop { z-index: 9999; }
+}

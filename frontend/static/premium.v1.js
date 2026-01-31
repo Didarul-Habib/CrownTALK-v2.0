@@ -14,6 +14,21 @@
     try { msg = JSON.parse(ev.data); } catch { return; }
     if (!msg || !msg.type) return;
 
+    if (msg.type === "run_progress" && msg.payload) {
+      try {
+        const pct = Math.max(0, Math.min(100, Number(msg.payload.percent || 0)));
+        const pctEl = document.getElementById("progressPct");
+        const fill = document.getElementById("progressBarFill");
+        if (pctEl) pctEl.textContent = `${pct}%`;
+        if (fill) fill.style.width = `${pct}%`;
+      } catch {}
+      ctPremiumEmit("onProgress", msg.payload);
+    }
+
+    if (msg.type === "item_stage" && msg.payload) {
+      ctPremiumEmit("onItemStage", msg.payload);
+    }
+
     if (msg.type === "run_finish" && msg.payload) {
       ctPremiumEmit("onAnalytics", msg.payload); // reuse same hooks if you like
     }
@@ -27,7 +42,10 @@
   const flags = window.CT_PREMIUM_FLAGS || {};
   if (!flags.pipelineView) return;
 
-  const pipelineEl = document.getElementById("pipelineView");
+    // If React desktop timeline is enabled, let it own the pipeline view.
+  if (window.CT_USE_REACT_TIMELINE) return;
+
+const pipelineEl = document.getElementById("pipelineView");
   if (!pipelineEl) return;
 
   const isSafe = window.safeModeOn; // read-only usage
