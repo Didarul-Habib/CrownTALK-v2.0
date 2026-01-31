@@ -230,6 +230,7 @@ const generateBtn     = document.getElementById("generateBtn");
 const cancelBtn       = document.getElementById("cancelBtn");
 const clearBtn        = document.getElementById("clearBtn");
 const progressEl      = document.getElementById("progress");
+const progressPctEl   = document.getElementById("progressPct");
 const progressBarFill = document.getElementById("progressBarFill");
 const resultsEl       = document.getElementById("results");
 const failedEl        = document.getElementById("failed");
@@ -265,6 +266,7 @@ const exportNativeBtn       = document.getElementById("exportNativeBtn");
 const downloadTxtBtn        = document.getElementById("downloadTxtBtn");
 const langEnToggle          = document.getElementById("langEnToggle");
 const langNativeToggle      = document.getElementById("langNativeToggle");
+const nativeLangSelect     = document.getElementById("nativeLangSelect");
 const runCountEl            = document.getElementById("runCount");
 const safeModeToggle        = document.getElementById("safeModeToggle");
 const holoCheckEl = document.getElementById("holo-check");
@@ -383,8 +385,25 @@ function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
+const CT_URL_EXTRACT_RE = /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)\/(?:i\/status\/\d+|[A-Za-z0-9_]{1,15}\/status\/\d+))/gi;
+const CT_URL_EXTRACT_NOSCHEME_RE = /((?:^|[^a-z0-9_])(?:(?:x|twitter)\.com)\/(?:i\/status\/\d+|[A-Za-z0-9_]{1,15}\/status\/\d+))/gi;
+
 function parseURLs(raw) {
   if (!raw) return [];
+
+  // If the user pasted URLs back-to-back with no spaces/newlines, extract them.
+  try {
+    const hits = [];
+    const m1 = raw.match(CT_URL_EXTRACT_RE) || [];
+    m1.forEach((u) => hits.push(u));
+    const m2 = raw.match(CT_URL_EXTRACT_NOSCHEME_RE) || [];
+    m2.forEach((u) => hits.push(String(u).replace(/^[^a-z0-9]+/i, "")));
+    const uniqHits = Array.from(new Set(hits)).filter(Boolean);
+    if (uniqHits.length >= 2) {
+      raw = uniqHits.join("
+");
+    }
+  } catch {}
 
   // Strip numbering & blank lines first
   const lines = raw
@@ -443,6 +462,10 @@ function setProgressRatio(ratio) {
   // drive only via CSS variables (progress bar CSS uses --ct-progress-frac)
   document.documentElement.style.setProperty('--ct-progress-frac', String(clamped));
   document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(clamped*100)));
+  try {
+    const pct = Math.round(clamped * 100);
+    if (progressPctEl) progressPctEl.dataset.pct = `${pct}%`;
+  } catch {}
 }
 function resetProgress() {
   setProgressText("");
@@ -772,6 +795,8 @@ function renderUrlQueue() {
 
     urlQueueEl.appendChild(chip);
   });
+
+  ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
 }
 
 /* ============================================================ Analytics HUD + export helpers ===============
@@ -849,6 +874,8 @@ function syncLangUIFromPrefs() {
     langEnToggle.checked = !!langPrefs.useEn;
     langEnToggle.parentElement.setAttribute("data-active", langPrefs.useEn ? "true" : "false");
   }
+  toggleNativeLangSelect();
+
   if (langNativeToggle && langNativeToggle.parentElement) {
     langNativeToggle.checked = !!langPrefs.useNative;
     langNativeToggle.parentElement.setAttribute("data-active", langPrefs.useNative ? "true" : "false");
@@ -876,7 +903,8 @@ function initLanguageToggles() {
   syncLangUIFromPrefs();
   applyLangFilterToDom();
   if (langEnToggle) langEnToggle.addEventListener("change", syncLangPrefsFromUI);
-  if (langNativeToggle) langNativeToggle.addEventListener("change", syncLangPrefsFromUI);
+  if (langNativeToggle) langNativeToggle.addEventListener("change", () => { syncLangPrefsFromUI(); toggleNativeLangSelect(); });
+  if (nativeLangSelect) nativeLangSelect.addEventListener("change", () => { /* no-op; used in payload */ });
 }
 
 
@@ -1456,6 +1484,7 @@ async function handleGenerate() {
       urls: [oneUrl],
       lang_en: !!(langEnToggle && langEnToggle.checked),
       lang_native: !!(langNativeToggle && langNativeToggle.checked),
+      native_lang: (nativeLangSelect && nativeLangSelect.value) || "",
       safe_mode: !!(safeModeToggle && safeModeToggle.checked),
       preset: presetSelect?.value || "",
     };
@@ -1744,7 +1773,7 @@ async function handleReroll(tweetEl) {
       }
     } catch {}
 
-    const payload = { url };
+    const payload = { url, lang_en: !!(langEnToggle && langEnToggle.checked), lang_native: !!(langNativeToggle && langNativeToggle.checked), native_lang: (nativeLangSelect && nativeLangSelect.value) || "" };
     try {
       const langs = getLanguagePreferenceArray();
       if (Array.isArray(langs) && langs.length) {
@@ -2224,3 +2253,12 @@ function bootAppUI() {
     });
   } catch {}
 })();
+
+function toggleNativeLangSelect() {
+  if (!nativeLangSelect) return;
+  const on = !!(langNativeToggle && langNativeToggle.checked);
+  nativeLangSelect.style.display = on ? "inline-flex" : "none";
+  nativeLangSelect.disabled = !on;
+}
+
+

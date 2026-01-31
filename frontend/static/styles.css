@@ -2535,6 +2535,9 @@ button:focus-visible,
   border-radius: 999px;
   background: #22c55e;
   box-shadow: 0 0 10px rgba(34,197,94,.9);
+
+.helper-text-pct::before{ content: attr(data-pct); color: var(--text-muted); }
+.helper-text-pct::after{ display:none; }
 }
 
 /* generating state – warm accent */
@@ -4999,6 +5002,21 @@ body.ct-progress-done .progress-bar-inner{
 }
 .lang-filter-pill[data-active="false"]{
   opacity:.55;
+}
+
+.native-lang-select{
+  margin-left:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.5);
+  background:rgba(15,23,42,.9);
+  color:rgba(226,232,240,.92);
+  font-size:11px;
+  outline:none;
+}
+.native-lang-select:focus-visible{
+  outline:2px solid rgba(var(--btn-glow), .9);
+  outline-offset:2px;
 }
 
 /* Tweet header extras: research-assisted badge */
