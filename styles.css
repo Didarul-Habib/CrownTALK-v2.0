@@ -1,0 +1,6521 @@
+/* =========================================================
+   CrownTALK — Full Stylesheet
+   ========================================================= */
+
+/* ---------- ROOT VARIABLES ---------- */
+:root{
+  --bg: #0b1426 radial-gradient(circle at 50% -20%, #0b1426 0, #091321 60%, #08101c 100%);
+  --card-bg: rgba(15, 23, 42, 0.92);
+  --card-border: rgba(148, 163, 184, 0.35);
+  --text-main: #e5e7eb;
+  --text-muted: #93a4b8;
+  --accent: #c4b5fd;
+  --accent-soft: rgba(129, 140, 248, 0.25);
+  --accent-soft-strong: rgba(129, 140, 248, 0.45);
+  --chip-bg: rgba(16, 23, 38, 0.9);
+  --hero-glow-from: rgba(129, 140, 248, 0.65);
+  --hero-glow-to: rgba(248, 250, 252, 0.4);
+
+  /* reroll */
+  --reroll-primary: 129, 140, 248;
+  --reroll-secondary: 88, 28, 135;
+
+  /* theme-aware button colors (used by generate-button.css) */
+  --btn-base: #7c3aed;
+  --btn-edge: #4c1d95;
+  --btn-glow: 129, 140, 248;
+
+  /* ct-card tokens default (used by premium skin) */
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 78%);
+  --ct-line: hsl(240 9% 17%);
+  --ct-bg: hsl(240 15% 9%);
+  --ct-primary: hsl(266 92% 58%);
+  --ct-accent1: hsl(284 100% 84%);
+  --ct-accent2: hsl(306 100% 57%);
+  --ct-sheen: hsl(277 95% 60%);
+}
+
+/* ---------- THEMES ---------- */
+[data-theme="white"]{
+  --bg:#f5f5f7;
+  --card-bg:#ffffff;
+  --card-border:#e5e7eb;
+  --text-main:#111827;
+  --text-muted:#6b7280;
+  --accent:#3b82f6;
+  --accent-soft:#eef2ff;
+  --accent-soft-strong:#d1d5db;
+  --chip-bg:#f3f4f6;
+  --hero-glow-from:rgba(15,23,42,.45);
+  --hero-glow-to:rgba(250,204,21,.45);
+  --reroll-primary:96,165,250;
+  --reroll-secondary:37,99,235;
+  --btn-base:#2563eb; --btn-edge:#1e3a8a; --btn-glow:59,130,246;
+
+  --ct-text: hsl(240 10% 10%);
+  --ct-paragraph: hsl(240 6% 35%);
+  --ct-line: hsl(240 10% 90%);
+  --ct-bg: hsl(0 0% 100%);
+  --ct-primary: hsl(222 94% 55%);
+  --ct-accent1: hsl(222 100% 85%);
+  --ct-accent2: hsl(200 100% 70%);
+  --ct-sheen: hsl(222 95% 60%);
+}
+[data-theme="dark-purple"]{
+  --bg: radial-gradient(circle at 50% -25%, #3b1a6d 0, #140b2a 50%, #0a0819 100%);
+  --card-bg: rgba(18, 16, 33, 0.92);
+  --card-border: rgba(168, 85, 247, 0.28);
+  --text-main:#ece9ff; --text-muted:#bfb9d9;
+  --accent:#a78bfa; --accent-soft:rgba(129,140,248,.22); --accent-soft-strong:rgba(129,140,248,.45);
+  --chip-bg: rgba(21, 17, 34, 0.92);
+  --hero-glow-from: rgba(167,139,250,.75);
+  --hero-glow-to: rgba(244,114,182,.45);
+  --reroll-primary:167,139,250; --reroll-secondary:88,28,135;
+  --btn-base:#7c3aed; --btn-edge:#4c1d95; --btn-glow:167,139,250;
+
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 78%);
+  --ct-line: hsl(260 20% 20%);
+  --ct-bg: hsl(250 20% 12%);
+  --ct-primary: hsl(266 92% 58%);
+  --ct-accent1: hsl(284 100% 84%);
+  --ct-accent2: hsl(306 100% 57%);
+  --ct-sheen: hsl(277 95% 60%);
+}
+[data-theme="gold"]{
+  --bg: radial-gradient(circle at 50% -25%, #4d2f0d 0, #1a1206 55%, #0a0805 100%);
+  --card-bg: rgba(15, 12, 4, 0.92);
+  --card-border: rgba(251, 191, 36, 0.45);
+  --text-main:#fde68a; --text-muted:#facc15; --accent:#fbbf24;
+  --accent-soft: rgba(251,191,36,.2); --accent-soft-strong: rgba(251,191,36,.42);
+  --chip-bg: rgba(21, 17, 6, .9);
+  --hero-glow-from: rgba(251,191,36,.8); --hero-glow-to: rgba(252,211,77,.5);
+  --reroll-primary:251,191,36; --reroll-secondary:180,83,9;
+  --btn-base:#f59e0b; --btn-edge:#92400e; --btn-glow:251,191,36;
+
+  --ct-text: hsl(45 20% 95%);
+  --ct-paragraph: hsl(45 15% 78%);
+  --ct-line: hsl(45 25% 25%);
+  --ct-bg: hsl(45 25% 12%);
+  --ct-primary: hsl(43 96% 56%);
+  --ct-accent1: hsl(50 100% 80%);
+  --ct-accent2: hsl(35 100% 65%);
+  --ct-sheen: hsl(44 95% 62%);
+}
+[data-theme="blue"]{
+  --bg: radial-gradient(circle at 50% -25%, #123a7a 0, #0a1328 55%, #050a16 100%);
+  --card-bg: rgba(10, 18, 36, 0.94);
+  --card-border: rgba(96, 165, 250, 0.38);
+  --text-main:#dbeafe; --text-muted:#9ca3af; --accent:#60a5fa;
+  --accent-soft: rgba(59,130,246,.2); --accent-soft-strong: rgba(59,130,246,.42);
+  --chip-bg: rgba(9,17,35,.92);
+  --hero-glow-from: rgba(56,189,248,.75); --hero-glow-to: rgba(239,246,255,.4);
+  --reroll-primary:56,189,248; --reroll-secondary:37,99,235;
+  --btn-base:#2563eb; --btn-edge:#1e3a8a; --btn-glow:59,130,246;
+
+  --ct-text: hsl(210 20% 96%);
+  --ct-paragraph: hsl(210 10% 78%);
+  --ct-line: hsl(210 20% 22%);
+  --ct-bg: hsl(220 22% 12%);
+  --ct-primary: hsl(217 91% 60%);
+  --ct-accent1: hsl(200 100% 72%);
+  --ct-accent2: hsl(190 100% 68%);
+  --ct-sheen: hsl(210 100% 66%);
+}
+[data-theme="black"]{
+  --bg: radial-gradient(circle at 50% -25%, #1f2937 0, #0b1220 55%, #050910 100%);
+  --card-bg: rgba(17, 24, 39, 0.95);
+  --card-border: rgba(107, 114, 128, 0.45);
+  --text-main:#f9fafb; --text-muted:#9ca3af; --accent:#f9fafb;
+  --accent-soft: rgba(229,231,235,.2); --accent-soft-strong: rgba(229,231,235,.4);
+  --chip-bg: rgba(17,24,39,.92);
+  --hero-glow-from: rgba(249,250,251,.6); --hero-glow-to: rgba(156,163,175,.45);
+  --reroll-primary:249,250,251; --reroll-secondary:31,41,55;
+  --btn-base:#374151; --btn-edge:#111827; --btn-glow:209,213,219;
+
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 70%);
+  --ct-line: hsl(0 0% 18%);
+  --ct-bg: hsl(240 15% 6%);
+  --ct-primary: hsl(190 95% 55%);
+  --ct-accent1: hsl(200 100% 72%);
+  --ct-accent2: hsl(160 100% 60%);
+  --ct-sheen: hsl(190 95% 60%);
+}
+[data-theme="crimson"]{
+  --bg: radial-gradient(circle at top, #7f1d1d 0, #1b0b0b 45%, #0a0202 100%);
+  --card-bg: rgba(24, 16, 20, 0.94);
+  --card-border: rgba(248, 113, 113, 0.45);
+  --text-main: #ffeaea; --text-muted:#fecaca; --accent:#f43f5e;
+  --accent-soft: rgba(244,63,94,.25); --accent-soft-strong: rgba(244,63,94,.45);
+  --chip-bg: rgba(24,16,20,.92);
+  --hero-glow-from: rgba(244,63,94,.75); --hero-glow-to: rgba(255,228,230,.45);
+  --reroll-primary:244,63,94; --reroll-secondary:127,29,29;
+  --btn-base:#D32A4E; --btn-edge:#8F1430; --btn-glow:255,64,96;
+  --title-grad-1:#fff1f2; --title-grad-2:#fecdd3; --title-grad-3:#f43f5e; --title-grad-4:#fb7185;
+
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 80%);
+  --ct-line: hsl(350 22% 22%);
+  --ct-bg: hsl(350 20% 12%);
+  --ct-primary: hsl(356 72% 54%);
+  --ct-accent1: hsl(340 95% 76%);
+  --ct-accent2: hsl(10 100% 62%);
+  --ct-sheen: hsl(350 90% 60%);
+}
+[data-theme="emerald"]{
+  --bg: radial-gradient(circle at 50% -25%, #0f513b 0, #07241c 55%, #041016 100%);
+  --card-bg: rgba(6, 32, 28, 0.96);
+  --card-border: rgba(52, 211, 153, 0.45);
+  --text-main:#e6fff6; --text-muted:#6ee7b7; --accent:#34d399;
+  --accent-soft: rgba(16,185,129,.28); --accent-soft-strong: rgba(16,185,129,.55);
+  --chip-bg: rgba(6,78,59,.9);
+  --hero-glow-from: rgba(45,212,191,.8); --hero-glow-to: rgba(16,185,129,.55);
+  --reroll-primary:52,211,153; --reroll-secondary:4,120,87;
+  --btn-base:#059669; --btn-edge:#065f46; --btn-glow:45,212,191;
+
+  --ct-text: hsl(150 15% 96%);
+  --ct-paragraph: hsl(150 10% 78%);
+  --ct-line: hsl(155 20% 20%);
+  --ct-bg: hsl(160 25% 12%);
+  --ct-primary: hsl(158 64% 52%);
+  --ct-accent1: hsl(156 100% 80%);
+  --ct-accent2: hsl(170 100% 70%);
+  --ct-sheen: hsl(158 80% 58%);
+}
+
+/* ---------- GLOBAL LAYOUT ---------- */
+*,*::before,*::after{ box-sizing:border-box; }
+html,body{
+  margin:0; padding:0;
+  font-family: system-ui, -apple-system, Segoe UI, Roboto, "SF Pro Text", sans-serif;
+  color:var(--text-main); background:var(--bg);
+  min-height:100%;
+}
+
+/* Ensure form controls don't fall back to UA "buttontext" (often black on dark UIs) */
+button,
+input,
+select,
+textarea{
+  color: inherit;
+}
+
+/* Minimal premium scrollbars (works on Firefox + WebKit) */
+html{
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,.45) transparent;
+}
+*{
+  scrollbar-width: thin;
+  scrollbar-color: rgba(148,163,184,.45) transparent;
+}
+*::-webkit-scrollbar{
+  width: 10px;
+  height: 10px;
+}
+*::-webkit-scrollbar-track{
+  background: transparent;
+}
+*::-webkit-scrollbar-thumb{
+  background-color: rgba(148,163,184,.28);
+  border-radius: 999px;
+  border: 3px solid transparent; /* creates the thin “pill” look */
+  background-clip: content-box;
+}
+*::-webkit-scrollbar-thumb:hover{
+  background-color: rgba(148,163,184,.45);
+}
+body{
+  display:flex; align-items:stretch; justify-content:center; padding:16px;
+}
+
+/* Shell */
+.app-shell{
+  width:min(1200px,96vw); margin:0 auto;
+  display:flex; flex-direction:column; gap:16px; min-height:100vh;
+}
+.app-main{ flex:1; min-height:0; }
+.app-footer{ margin-top:auto; font-size:11px; color:var(--text-muted); display:flex; justify-content:space-between; align-items:center; padding-bottom:4px; }
+
+/* HEADER / HERO */
+.hero{
+  position:relative; isolation:isolate;
+  display:flex; align-items:center; gap:16px; padding-block:8px; margin-bottom:4px;
+}
+.hero-main{ display:flex; align-items:center; gap:14px; margin:0 auto; }
+.theme-switcher{ margin-left:auto; }
+.hero-orbit{
+  width:88px; height:88px; border-radius:999px;
+  background: radial-gradient(circle at 30% 20%, #0f172a, #020617 70%);
+  box-shadow: 0 0 30px var(--hero-glow-from), 0 0 70px var(--hero-glow-to);
+  display:flex; align-items:center; justify-content:center; overflow:hidden;
+  animation: hero-glow-pulse 7s ease-in-out infinite;
+}
+.hero-orbit-inner{ width:70px; height:70px; border-radius:999px; display:flex; align-items:center; justify-content:center; overflow:hidden; }
+.hero-orbit-inner img{ width:120%; height:120%; object-fit:cover; border-radius:50%; display:block; }
+.hero-copy{ display:flex; flex-direction:column; gap:4px; }
+.hero-copy h1{
+  margin:0; letter-spacing:.32em; font-size:22px; text-transform:uppercase;
+  background: linear-gradient(135deg, rgba(255,255,255,.95) 0%, var(--accent) 25%, #fff 50%, var(--accent) 75%, rgba(255,255,255,.9) 100%);
+  -webkit-background-clip:text; background-clip:text; color:transparent;
+  position:relative; text-shadow: 0 1px 0 rgba(255,255,255,.12), 0 6px 18px rgba(var(--btn-glow), .25);
+}
+.hero-copy h1::after{
+  content:""; position:absolute; inset:0;
+  background: linear-gradient(120deg, transparent 0%, rgba(255,255,255,.6) 35%, transparent 70%);
+  transform: translateX(-120%); filter: blur(1px); animation: sheen 4.8s ease-in-out infinite;
+  -webkit-mask-image: linear-gradient(#000,#000); mask-image: linear-gradient(#000,#000);
+}
+.hero-copy p{ margin:0; font-size:13px; color:var(--text-muted); }
+@keyframes sheen{ 0%{transform:translateX(-120%);opacity:0}8%{opacity:.9}20%{transform:translateX(120%);opacity:0}100%{transform:translateX(120%);opacity:0} }
+@keyframes hero-glow-pulse{ 0%,100%{ box-shadow:0 0 30px var(--hero-glow-from),0 0 70px var(--hero-glow-to); transform:scale(1) } 50%{ box-shadow:0 0 52px var(--hero-glow-from),0 0 110px var(--hero-glow-to); transform:scale(1.02) } }
+
+/* ---------- THEME SWITCHER (dots) ---------- */
+.theme-switcher{ display:flex; align-items:center; gap:8px; }
+.theme-label{ font-size:12px; text-transform:uppercase; letter-spacing:.12em; color:var(--text-muted); }
+.theme-dots{
+  display:flex; gap:10px; padding:8px; overflow:visible;
+  border-radius:16px; background-color:rgba(15,23,42,.55); box-shadow:0 10px 30px rgba(15,23,42,.45);
+}
+.theme-dot{
+  --ring: rgba(148,163,184,.55);
+  --glow: 129,140,248;
+  --arc-angle: 0deg; --arc-size: 60deg; --ring-thick: 2px;  /* longer arc */
+
+  position:relative; width:16px; height:16px; border-radius:999px;
+  border:2px solid var(--ring); cursor:pointer; overflow:visible; z-index:0;
+
+  background: var(--dot-grad, radial-gradient(circle at 35% 25%, #fff 20%, #bbb 60%, #666 100%));
+  transition: transform .18s ease, border-color .18s ease, box-shadow .18s ease, filter .18s ease;
+}
+.theme-dot:hover{ transform: translateY(-1px) scale(1.05); border-color: rgba(248,250,252,.85); }
+
+/* partial orbit arc */
+.theme-dot::after{
+  content:""; position:absolute; inset: calc(-1 * var(--ring-thick)); border-radius:999px; padding:var(--ring-thick);
+  background: conic-gradient(from var(--arc-angle), rgba(var(--glow), .95) 0 var(--arc-size), transparent var(--arc-size) 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring-thick)), #000 calc(100% - var(--ring-thick)));
+  opacity:0; pointer-events:none; z-index:-1;
+}
+.theme-dot.is-active{
+  border-color: rgba(var(--glow), .9);
+  box-shadow: 0 0 0 4px rgba(var(--glow), .10), 0 0 24px rgba(var(--glow), .35);
+}
+.theme-dot.is-active::after{ opacity:1; animation: ct-theme-orbit 6s linear infinite; }
+@keyframes ct-theme-orbit{ to{ --arc-angle: 360deg; } }
+
+/* tooltip ABOVE */
+.theme-dot::before{
+  position:absolute; left:50%; bottom:22px; transform:translateX(-50%) translateY(-8px);
+  padding:6px 10px; border-radius:8px; font-size:12px; font-weight:700; letter-spacing:.2px; white-space:nowrap;
+  background:rgba(15,23,42,.95); color:#fff; border:1px solid rgba(148,163,184,.35); box-shadow:0 8px 22px rgba(0,0,0,.35);
+  opacity:0; pointer-events:none; transition:opacity .18s ease, transform .18s ease;
+  clip-path: polygon(8px 8px, calc(100% - 8px) 8px, 100% 100%, 50% calc(100% - 8px), 0 100%);
+  content: attr(data-label);
+  z-index:10;
+}
+.theme-dot:hover::before{ opacity:1; transform:translateX(-50%) translateY(-12px); }
+
+/* dot visuals + labels */
+.theme-dot[data-theme="dark-purple"]{ --dot-grad: radial-gradient(circle at 35% 25%, #e879f9 12%, #a855f7 55%, #4c1d95 100%); --glow:167,139,250; }
+.theme-dot[data-theme="dark-purple"]::before{ content:"Cygnus Magenta"; }
+.theme-dot[data-theme="blue"]{ --dot-grad: radial-gradient(circle at 35% 25%, #93c5fd 12%, #3b82f6 55%, #1e3a8a 100%); --glow:59,130,246; }
+.theme-dot[data-theme="blue"]::before{ content:"Helios Blue"; }
+.theme-dot[data-theme="emerald"]{ --dot-grad: radial-gradient(circle at 35% 25%, #86efac 14%, #10b981 52%, #065f46 100%); --glow:16,185,129; }
+.theme-dot[data-theme="emerald"]::before{ content:"Orion Lime"; }
+.theme-dot[data-theme="gold"]{ --dot-grad: radial-gradient(circle at 35% 25%, #fde68a 12%, #f59e0b 55%, #92400e 100%); --glow:251,191,36; }
+.theme-dot[data-theme="gold"]::before{ content:"Solar Gold"; }
+.theme-dot[data-theme="white"]{ --dot-grad: radial-gradient(circle at 35% 25%, #ffffff 10%, #e5e7eb 55%, #9ca3af 100%); --glow:209,213,219; }
+.theme-dot[data-theme="white"]::before{ content:"Polar White"; }
+.theme-dot[data-theme="black"]{ --dot-grad: radial-gradient(circle at 35% 25%, #e5e7eb 10%, #6b7280 48%, #111827 100%); --glow:209,213,219; }
+.theme-dot[data-theme="black"]::before{ content:"Nebula Black"; }
+.theme-dot[data-theme="crimson"]{ --dot-grad: radial-gradient(circle at 35% 25%, #fecdd3 12%, #f43f5e 55%, #7f1d1d 100%); --glow:255,64,96; }
+.theme-dot[data-theme="crimson"]::before{ content:"Crimson Nova"; }
+
+/* ---------- MAIN LAYOUT ---------- */
+.app-main{ display:grid; grid-template-columns:1fr; gap:12px; }
+
+/* ---------- CARDS (Premium skin applied) ---------- */
+.card{
+  /* layout kept */
+  padding:12px 12px 10px; display:flex; flex-direction:column; gap:8px;
+  position:relative; z-index:2; border-radius:16px; overflow:hidden; isolation:isolate;
+
+  /* premium background */
+  background-color: var(--card-bg);
+  background-image:
+    radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 0% 64%,  color-mix(in oklab, var(--accent) 75%, #fff 0%) 0px, transparent 85%),
+    radial-gradient(at 41% 94%, color-mix(in oklab, var(--accent) 55%, var(--hero-glow-from) 45%) 0px, transparent 85%),
+    radial-gradient(at 100% 99%, color-mix(in oklab, var(--accent) 45%, var(--hero-glow-to) 55%) 0px, transparent 85%);
+
+  border:1px solid var(--card-border);
+  box-shadow: inset 0 -16px 24px rgba(255,255,255,0.12), 0 8px 24px rgba(0,0,0,.25);
+}
+
+/* rotating thin arc hugging the border (CLIPPED, no overflow) */
+.card::before{
+  content:""; position:absolute; inset:-1px; border-radius:inherit; pointer-events:none;
+  --ring:2px; padding:var(--ring); --angle:0deg;
+  background: conic-gradient(from var(--angle),
+              color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 14deg,
+              transparent 14deg 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
+  animation: ct-card-orbit 6s linear infinite; z-index:0;
+}
+@keyframes ct-card-orbit{ to{ --angle: 360deg; } }
+
+/* ensure content stays above effects */
+.card > *{ position:relative; z-index:1; }
+
+.card-input{ min-height:200px; }
+.card-results{ min-height:200px; }
+.card-failed{ min-height:84px; }
+.card-history{ min-height:120px; }
+
+.card-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.card-title{
+  margin:0; font-size:12px; font-weight:600; letter-spacing:.16em; text-transform:uppercase; color:var(--text-muted);
+}
+.card-subtitle{ margin:0; font-size:12px; color:var(--text-muted); }
+
+/* ---------- TEXTAREA ---------- */
+.url-textarea{
+  width:100%; min-height:130px; max-height:300px; resize:none;
+  padding:10px 11px; border-radius:12px; border:1px solid rgba(148,163,184,.5);
+  background: rgba(9,17,35,.9); color:#e5e7eb;
+  font-family:"JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono","Courier New", monospace;
+  font-size:12px; line-height:1.5; outline:none;
+  box-shadow: 0 10px 26px rgba(6,12,24,.5);
+}
+.url-textarea::placeholder{ color: rgba(148,163,184,.75); }
+.url-textarea:focus{
+  border-color: rgba(var(--btn-glow), .9);
+  box-shadow: 0 0 0 1px rgba(var(--btn-glow), .9), 0 14px 36px rgba(6,12,24,.85);
+}
+
+/* ---------- BUTTONS ---------- */
+button{ font-family:inherit; }
+.controls{ display:flex; align-items:center; gap:8px; margin-top:6px; }
+
+/* secondary base */
+.btn-secondary,.secondary{
+  border-radius:999px; border:1px solid rgba(148,163,184,.6);
+  background: rgba(15,23,42,.8); color:var(--text-muted);
+  font-size:12px; padding:7px 14px; cursor:pointer; display:inline-flex; align-items:center; gap:6px;
+  transition: border-color .15s, background-color .15s, color .15s, transform .08s;
+}
+.btn-secondary.subtle,.secondary.subtle{ background: rgba(15,23,42,.65); border-style:dashed; }
+.btn-secondary:hover:not(:disabled),.secondary:hover:not(:disabled){
+  border-color: rgba(var(--btn-glow), .9); color:#e5e7eb; transform: translateY(-.5px);
+}
+.btn-secondary:disabled,.secondary:disabled{ opacity:.45; cursor:default; }
+
+/* Guard: never hide Generate's SVG/sparkle */
+.btn .sparkle, .btn svg{ display:inline-block; }
+
+/* CANCEL (red outline → glow on hover) — keep id="cancelBtn" class="btn-secondary" */
+#cancelBtn.btn-secondary{
+  --cancel-col:#ef4444; --cancel-rgb:239,68,68;
+  border:2px solid rgba(var(--cancel-rgb),.9);
+  background: rgba(15,23,42,.8);
+  color:#e5e7eb; text-transform:uppercase; letter-spacing:.12em; font-weight:700;
+  padding:9px 16px; border-radius:10px;
+  transition: background-color .2s, box-shadow .25s, transform .12s, color .2s, border-color .2s;
+}
+#cancelBtn.btn-secondary:hover:not(:disabled){
+  background-color: var(--cancel-col); border-color: var(--cancel-col); color:#fff;
+  text-shadow:0 0 14px #fff;
+  box-shadow: 0 0 30px rgba(var(--cancel-rgb), .65), 0 0 60px rgba(var(--cancel-rgb), .45), 0 0 120px rgba(var(--cancel-rgb), .35);
+  transform: translateY(-1px) scale(1.02);
+}
+#cancelBtn.btn-secondary:active{ transform: translateY(0) scale(.98); box-shadow:none; }
+
+/* CLEAR (round trash) — keep id="clearBtn" class="btn-secondary subtle"
+   inside: two SVGs with classes .svgIcon.bin-top / .svgIcon.bin-bottom */
+#clearBtn .sr-only{
+  position:absolute!important; width:1px; height:1px; padding:0; margin:-1px; overflow:hidden; clip:rect(0,0,1px,1px); white-space:nowrap; border:0;
+}
+#clearBtn.btn-secondary.subtle{
+  --clear-bg:#141414; --clear-bg-hover:#ff4545; --clear-col:#ffffff;
+  width:50px; height:50px; padding:0; border-radius:50%; border:none;
+  background:var(--clear-bg); color:var(--clear-col);
+  display:inline-flex; align-items:center; justify-content:center; position:relative; overflow:hidden;
+  box-shadow:0 0 20px rgba(0,0,0,.18); transition: background-color .25s, transform .15s, box-shadow .25s;
+  font-size:0; line-height:0;
+}
+#clearBtn .svgIcon{ position:absolute; width:18px; height:auto; color:currentColor; transition: transform .35s, opacity .25s; }
+#clearBtn .bin-bottom{ top:50%; left:50%; transform: translate(-50%, -46%); }
+#clearBtn .bin-top{
+  top:50%; left:50%;
+  transform-box: fill-box; transform-origin: 90% 100%;
+  transform: translate(-50%, -120%) rotate(0deg);   /* sits on rim */
+}
+#clearBtn.btn-secondary.subtle:hover{
+  background-color:var(--clear-bg-hover);
+  box-shadow: 0 0 30px rgba(255,69,69,.75), 0 0 60px rgba(255,69,69,.45), 0 0 120px rgba(255,69,69,.35);
+  transform: translateY(-1px);
+}
+#clearBtn.btn-secondary.subtle:hover .bin-top{ transform: translate(-50%, -120%) rotate(160deg); }
+#clearBtn.btn-secondary.subtle:active{ transform: translateY(0) scale(.97); box-shadow:none; }
+
+/* ---------- PROGRESS BAR ---------- */
+.progress-row{ display:flex; flex-direction:column; gap:4px; margin-top:6px; }
+.helper-text{ font-size:11px; color:var(--text-muted); }
+.progress-bar-outer{ width:100%; height:5px; border-radius:999px; background: rgba(15,23,42,.7); overflow:hidden; }
+.progress-bar-inner{ width:0%; height:100%; border-radius:inherit; background: linear-gradient(90deg, #22c55e, #a855f7, #f97316); transition: width .2s ease-out; }
+
+/* ---------- URL QUEUE (multi-column chips) ---------- */
+.url-queue{
+  margin-top:6px;
+
+  display:grid;
+  grid-template-columns: repeat(auto-fill, minmax(190px, 1fr)); /* change 190px to control columns */
+  gap:4px;
+
+  max-height:72px;
+  overflow-y:auto;
+}
+
+
+.url-chip{
+  font-size:11px;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.5);
+  background:rgba(15,23,42,.96);
+  color:var(--text-muted);
+  display:flex;
+  align-items:center;
+  gap:4px;
+  width:100%;
+  cursor:pointer;
+  transition:
+    background-color .12s ease,
+    border-color .12s ease,
+    color .12s ease,
+    transform .08s ease;
+}
+
+.url-chip-index{
+  opacity:.7;
+}
+
+.url-chip-label{
+  max-width:100%;
+  overflow:hidden;
+  text-overflow:ellipsis;
+  white-space:nowrap;
+}
+
+
+.url-chip.is-processing{
+  border-color:#38bdf8;
+  background:radial-gradient(circle at 0 0, rgba(56,189,248,.25), rgba(15,23,42,.98));
+  color:#e0f2fe;
+  transform:translateY(-0.5px);
+}
+
+.url-chip.is-done{
+  border-color:#22c55e;
+  color:#bbf7d0;
+}
+
+.url-chip.is-failed{
+  border-color:#f97316;
+  color:#fed7aa;
+}
+
+/* ---------- RESULTS / FAILED / HISTORY ---------- */
+.results-list{ display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; padding-right:4px; }
+.tweet{ border-radius:14px; border:1px solid rgba(148,163,184,.38); background: linear-gradient(135deg, rgba(9,17,35,.98), rgba(9,17,35,.86)); padding:10px 10px 8px; display:flex; flex-direction:column; gap:6px; }
+.tweet-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
+.tweet-link{ font-size:11px; color:#e5e7eb; text-decoration:none; word-break:break-all; position:relative; padding-right:14px; text-underline-offset:3px; text-decoration-style:dotted; opacity:.92; transition: color .15s, opacity .15s, filter .15s; }
+.tweet-link:hover{ color:var(--accent); opacity:1; filter: drop-shadow(0 0 10px rgba(129,140,248,.25)); }
+.tweet-link::after{ content:"↗"; position:absolute; right:0; top:0; font-size:10px; line-height:1; opacity:.8; }
+@media (pointer:fine){
+  .tweet-header:hover .tweet-link::before{
+    content:"Open tweet"; position:absolute; left:0; top:-18px; font-size:10px; letter-spacing:.06em; text-transform:uppercase; color:var(--text-muted);
+  }
+}
+.tweet-actions{ display:flex; align-items:center; gap:8px; }
+
+/* Comments layout: 2 columns on desktop, 1 column on mobile */
+.comments{
+  display:grid;
+  grid-template-columns: minmax(0,1fr) minmax(0,1fr);
+  gap:6px;
+  margin-top:4px;
+}
+
+@media (max-width: 768px){
+  .comments{
+    grid-template-columns: minmax(0,1fr);
+  }
+}
+.comment-line{
+  display:grid; grid-template-columns:auto 1fr auto; gap:8px; align-items:center;
+  padding:5px 7px; border-radius:999px; background:var(--chip-bg); border:1px solid rgba(148,163,184,.55); color:var(--text-main);
+}
+.comment-tag{ font-size:10px; text-transform:uppercase; letter-spacing:.12em; color:rgba(55,65,81,.9); white-space:nowrap; }
+.comment-text{ white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+
+/* copy buttons */
+.copy-btn,.copy-btn-en,.history-copy-btn{
+  position:relative; background-color:#f2f7fa; width:100px; height:30px; border:none; border-radius:10px; font-weight:600; cursor:pointer; overflow:hidden; transition-duration:700ms; font-size:11px;
+}
+.history-copy-btn{ width:90px; height:26px; font-size:10px; }
+.copy-btn span:first-child,.copy-btn-en span:first-child,.history-copy-btn span:first-child{
+  color:#0e418f; position:absolute; top:50%; left:50%; transform:translate(-50%,-50%); display:inline-flex; align-items:center; gap:6px;
+}
+.copy-btn span:last-child,.copy-btn-en span:last-child,.history-copy-btn span:last-child{
+  position:absolute; top:50%; left:50%; color:#b5ccf3; opacity:0; transform:translateY(100%) translateX(-50%); height:14px; line-height:13px;
+}
+.copy-btn:focus,.copy-btn-en:focus,.history-copy-btn:focus{ background-color:#0e418f; width:120px; height:40px; transition-delay:100ms; transition-duration:500ms; }
+.history-copy-btn:focus{ width:110px; height:34px; }
+.copy-btn:focus span:first-child,.copy-btn-en:focus span:first-child,.history-copy-btn:focus span:first-child{ color:#b5ccf3; transform:translateX(-50%) translateY(-150%); opacity:0; transition-duration:500ms; }
+.copy-btn:focus span:last-child,.copy-btn-en:focus span:last-child,.history-copy-btn:focus span:last-child{ transform:translateX(-50%) translateY(-50%); opacity:1; transition-delay:300ms; transition-duration:500ms; }
+
+/* reroll */
+.reroll-btn{
+  position:relative; width:46px; height:38px; padding:0; border:none; border-radius:50%; cursor:pointer; user-select:none; background:transparent;
+  outline:6px solid rgba(var(--reroll-primary), .3);
+  transition: outline-color .3s, transform .15s;
+}
+.reroll-btn::before{ content:""; position:absolute; inset:0; border-radius:50%; background: rgb(var(--reroll-secondary)); }
+.reroll-btn::after{
+  content:"Re-roll"; position:absolute; inset:0; border-radius:50%;
+  background: linear-gradient(0deg, rgba(var(--reroll-primary), .6) 20%, rgba(var(--reroll-primary), 1) 50%);
+  box-shadow:0 .45em .9em -.2em rgba(var(--reroll-secondary), .5);
+  border:1px solid rgb(var(--reroll-secondary)); transform: translateY(-15%);
+  display:flex; align-items:center; justify-content:center; font-size:.55rem; font-weight:600; color: rgb(var(--reroll-secondary)); text-transform:uppercase; letter-spacing:.08em; transition: transform .15s, box-shadow .15s;
+}
+.reroll-btn:hover{ outline-color: rgba(var(--reroll-primary), .7); }
+.reroll-btn:active::after{ transform:translateY(0%); box-shadow:none; }
+.reroll-btn:active{ transform: translateY(1px); }
+
+/* failed/history lists */
+.failed-list{ display:flex; flex-direction:column; gap:6px; max-height:140px; overflow-y:auto; padding-right:4px; }
+.failed-item{ padding:6px 8px; border-radius:10px; background: rgba(15,23,42,.9); border:1px dashed rgba(248,113,113,.7); font-size:11px; color:#fecaca; }
+.failed-url{ display:block; word-break:break-all; }
+.failed-reason{ display:block; margin-top:2px; font-size:10px; color:#fca5a5; }
+
+.history-list{ display:flex; flex-direction:column; gap:6px; max-height:160px; overflow-y:auto; padding-right:4px; }
+.history-item{ display:flex; align-items:center; justify-content:space-between; gap:8px; padding:5px 7px; border-radius:999px; background: rgba(15,23,42,.9); border:1px solid rgba(148,163,184,.5); font-size:11px; color:#e5e7eb; }
+.history-text{ flex:1; overflow:hidden; text-overflow:ellipsis; white-space:nowrap; }
+.history-meta{ display:flex; align-items:center; gap:6px; font-size:10px; color:var(--text-muted); }
+
+/* copied state */
+.comment-line.copied{
+  background:linear-gradient(90deg, rgba(129,140,248,.10), rgba(129,140,248,.06));
+  border-color:var(--accent-soft-strong);
+  box-shadow:0 0 0 1px var(--accent-soft-strong), 0 8px 22px rgba(129,140,248,.25);
+}
+.copy-btn.is-copied,.copy-btn-en.is-copied{ background-color:rgba(129,140,248,.15); outline:1px dashed var(--accent-soft-strong); }
+.copy-btn.is-copied span:first-child,.copy-btn-en.is-copied span:first-child{ color:var(--accent); }
+
+/* skeleton */
+.tweet-skeleton{
+  border-radius:14px; border:1px solid rgba(148,163,184,.3); padding:10px 10px 8px;
+  background: linear-gradient(90deg, rgba(15,23,42,.9) 0%, rgba(30,64,175,.85) 50%, rgba(15,23,42,.9) 100%);
+  background-size:200% 100%; animation: shimmer 1.3s infinite linear;
+}
+.tweet-skeleton-line{ height:8px; border-radius:999px; background-color: rgba(15,23,42,.75); margin-bottom:6px; }
+.tweet-skeleton-line:last-child{ width:80%; }
+@keyframes shimmer{ 0%{ background-position:-200% 0; } 100%{ background-position:200% 0; } }
+
+/* ---------- RESPONSIVE ---------- */
+@media (max-height:900px){
+  body{ padding:16px; }
+  .app-main{ gap:12px; }
+  .card{ padding:12px; }
+  .url-textarea{ min-height:120px; max-height:280px; }
+  .card-results{ min-height:180px; }
+  .card-history{ min-height:120px; }
+  .hero-orbit{ width:80px; height:80px; }
+  .hero-orbit-inner{ width:64px; height:64px; }
+  .hero-copy h1{ font-size:20px; letter-spacing:.28em; }
+}
+@media (max-height:740px){
+  .url-textarea{ min-height:100px; }
+  .card-results{ min-height:160px; }
+  .card-failed{ min-height:80px; }
+}
+@media (max-width:900px){
+  body{ padding:14px; }
+  .app-main{ grid-template-columns:1fr; }
+}
+@media (max-width:640px){
+  body{ padding:12px; }
+  .hero{ flex-direction:column; align-items:center; gap:10px; }
+  .controls{ flex-wrap:wrap; }
+}
+
+/* ===== Custom properties registration for smooth angle animation ===== */
+@property --angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+@property --arc-angle {
+  syntax: "<angle>";
+  inherits: false;
+  initial-value: 0deg;
+}
+
+/* ===== Legacy safety: if any old Uiverse border exists, clip it ===== */
+/* (Prevents the big viewport band by forcing absolute + clipping) */
+.uiverse-card .card__border{ position:absolute; inset:-1px; border-radius:inherit; overflow:hidden; pointer-events:none; }
+.uiverse-card .card__border::before{
+  content:""; position:absolute; inset:0; border-radius:inherit; pointer-events:none;
+  --angle:0deg; --ring:2px; padding:var(--ring);
+  background: conic-gradient(from var(--angle),
+              color-mix(in oklab, var(--accent) 85%, #fff 15%) 0 14deg,
+              transparent 14deg 360deg);
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
+  animation: ct-card-orbit 6s linear infinite;
+}
+
+/* =========================
+   CrownTALK New patches 
+   ========================= */
+
+/* 1) THEME DOT: gap between core and arc + same partial ring style */
+.theme-dot{
+  --ring-gap: 3px;             /* space between dot and arc */
+  --ring-thick: 2px;           /* arc thickness */
+  --arc-angle: 0deg;
+  --arc-size: 16deg;
+  overflow: visible;
+}
+
+/* draw the arc OUTSIDE with a gap (uses mask-composite to keep only the ring) */
+.theme-dot::after{
+  content:"";
+  position:absolute;
+  inset: calc(-1 * (var(--ring-gap) + var(--ring-thick)));
+  border-radius: calc(999px + var(--ring-gap) + var(--ring-thick));
+  border: var(--ring-thick) solid transparent;       /* controls thickness */
+  background:
+    conic-gradient(from var(--arc-angle),
+      rgba(var(--glow), .95) 0 var(--arc-size),
+      transparent var(--arc-size) 360deg)
+    border-box;
+  /* keep only the border area, leaving a gap to the core */
+  -webkit-mask:
+     linear-gradient(#000 0 0) padding-box,
+     linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  opacity: 1; /* visible even when not active so the gap shows */
+  pointer-events: none;
+  z-index: 1;
+}
+
+.theme-dot.is-active::after{
+  animation: ct-theme-orbit 6s linear infinite !important;
+}
+
+@property --arc-angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
+@keyframes ct-theme-orbit { to { --arc-angle: 360deg; } }
+
+/* 2) CARDS: arc outside the box + gap (matches theme-dot arc) */
+.card{
+  overflow: visible;           /* allow outside ring to show */
+}
+
+/* remove any earlier inside-arc to avoid double rings */
+.card::before{ content:none !important; }
+
+/* brand-new outer arc ring with gap */
+.card::after{
+  --arc-gap: 8px;              /* space between card edge and arc */
+  --arc-thick: 2px;            /* arc thickness */
+  --angle: 0deg;
+
+  content:"";
+  position:absolute;
+  inset: calc(-1 * (var(--arc-gap) + var(--arc-thick)));
+  border-radius: calc(16px + var(--arc-gap) + var(--arc-thick));
+  border: var(--arc-thick) solid transparent;
+  background:
+    conic-gradient(from var(--angle),
+      color-mix(in oklab, var(--accent) 88%, white 12%) 0 14deg,
+      transparent 14deg 360deg)
+    border-box;
+  /* keep only the border area so a clean gap appears */
+  -webkit-mask:
+     linear-gradient(#000 0 0) padding-box,
+     linear-gradient(#000 0 0);
+  -webkit-mask-composite: xor;
+          mask-composite: exclude;
+  filter: drop-shadow(0 0 10px color-mix(in oklab, var(--accent) 55%, transparent));
+  pointer-events: none;
+  animation: ct-card-orbit 6s linear infinite;
+  z-index: 0;
+}
+
+@property --angle { syntax:"<angle>"; inherits:false; initial-value:0deg; }
+@keyframes ct-card-orbit { to { --angle: 360deg; } }
+
+/* 3) TRASH BUTTON: lid aligned to the rim, not the middle */
+#clearBtn .svgIcon{ width:18px; height:auto; }
+
+#clearBtn .bin-bottom{
+  top:50%;
+  left:50%;
+  transform: translate(-50%, -46%);     /* keeps body visually centered */
+}
+
+#clearBtn .bin-top{
+  top:50%;
+  left:50%;
+  transform-box: fill-box;
+  transform-origin: 90% 96%;            /* hinge near back-right corner */
+  transform: translate(-50%, -124%) rotate(0deg);   /* sits on the rim */
+}
+
+#clearBtn.btn-secondary.subtle:hover .bin-top{
+  transform: translate(-50%, -124%) rotate(160deg);
+}
+
+/* (optional) tiny smoothing on the outer arcs’ glow */
+.card::after,
+.theme-dot::after{
+  will-change: transform;
+}
+
+/* keep generate icon always visible */
+.btn .sparkle,
+.btn svg{ display:inline-block; }
+
+/* ===== Access Gate helpers ===== */
+html[data-locked="1"] { overflow: hidden; }
+#appRoot[data-hidden="1"] { display: none !important; }
+
+/* small nudge so the gate’s input looks crisp on all themes */
+#ctAccessInput::placeholder { letter-spacing: .02em; }
+
+
+/* ===== Simple spacing between cards ===== */
+
+/* Your <main class="main"> wrapper */
+.main{
+  display: grid;
+  grid-template-columns: 1fr;
+  row-gap: 18px;   /* space between each .card – tweak if you want */
+}
+
+/* Slightly tighter on short viewports */
+@media (max-height: 900px){
+  .main{
+    row-gap: 14px;
+  }
+}
+
+
+/* =========================================
+   CrownTALK — Mobile performance helpers
+   - Only affect small screens
+   - Only while body.has class "is-generating"
+   ========================================= */
+
+/* 1) Pause the heaviest ring animations during generate on mobile */
+@media (max-width: 768px) {
+  body.is-generating .card::after,
+  body.is-generating .theme-dot.is-active::after {
+    animation: none !important;
+  }
+}
+
+/* 2) Soften some shadows during generate (less GPU, still pretty) */
+@media (max-width: 768px) {
+  body.is-generating .card {
+    box-shadow:
+      inset 0 -10px 16px rgba(255, 255, 255, 0.10),
+      0 4px 14px rgba(0, 0, 0, 0.45);
+  }
+}
+
+
+/* =====================================
+   CrownTALK – Premium progress bar patch
+   ===================================== */
+
+/* give the track a glassy, inset look */
+.progress-bar-outer{
+  position: relative;
+  overflow: hidden;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255,255,255,.12), transparent 55%),
+    radial-gradient(circle at 100% 0%, rgba(255,255,255,.10), transparent 55%),
+    linear-gradient(90deg,
+      rgba(15,23,42,.95),
+      rgba(15,23,42,.85),
+      rgba(15,23,42,.95)
+    );
+  border-radius: 999px;
+  box-shadow:
+    inset 0 0 0 1px rgba(148,163,184,.45),
+    0 8px 18px rgba(15,23,42,.85);
+}
+
+/* core bar: animated, glossy gradient */
+.progress-bar-inner{
+  position: relative;
+  width: 0%;
+  height: 100%;
+  border-radius: inherit;
+  background-image: linear-gradient(
+    120deg,
+    #22c55e,
+    #a855f7,
+    #f97316,
+    #22c55e
+  );
+  background-size: 200% 100%;
+  transition: width .2s ease-out;
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.15),
+    0 0 18px rgba(168,85,247,.65);
+}
+
+/* shimmer highlight that sweeps across */
+.progress-bar-inner::before{
+  content:"";
+  position:absolute;
+  inset:-2px;
+  background: linear-gradient(
+    120deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,.55) 40%,
+    rgba(255,255,255,0) 70%
+  );
+  transform: translateX(-120%);
+  opacity: 0;
+  pointer-events:none;
+}
+
+/* pulse + flowing gradient while generating */
+@keyframes ct-progress-flow{
+  0%{ background-position: 0% 0; }
+  100%{ background-position: -200% 0; }
+}
+
+@keyframes ct-progress-sheen{
+  0%{ transform: translateX(-120%); opacity:0; }
+  20%{ opacity:1; }
+  60%{ opacity:1; }
+  100%{ transform: translateX(120%); opacity:0; }
+}
+
+/* tie the “premium” animation to your existing body.is-generating flag */
+body.is-generating #progressBarFill{
+  animation: ct-progress-flow 1.3s linear infinite;
+}
+
+body.is-generating #progressBarFill::before{
+  animation: ct-progress-sheen 1.6s ease-in-out infinite;
+}
+
+/* when not generating, keep it calm & static */
+body:not(.is-generating) #progressBarFill{
+  animation: none;
+}
+body:not(.is-generating) #progressBarFill::before{
+  animation: none;
+  opacity:0;
+}
+
+/* =====================================
+   CrownTALK – Premium footer strip
+   ===================================== */
+
+.footer{
+  position: relative;
+  margin-top: 18px;
+  padding: 10px 18px;
+  border-radius: 999px;
+  font-size: 11px;
+  color: var(--text-muted);
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255,255,255,.08), transparent 55%),
+    radial-gradient(circle at 100% 0%, rgba(255,255,255,.06), transparent 55%),
+    linear-gradient(90deg,
+      rgba(15,23,42,.98),
+      color-mix(in oklab, var(--accent) 24%, #020617 76%),
+      rgba(15,23,42,.98)
+    );
+  border: 1px solid rgba(148,163,184,.45);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,.95),
+    0 14px 38px rgba(0,0,0,.75);
+  overflow: hidden;
+}
+
+/* thin glowing line hugging the top of the footer */
+.footer::before{
+  content:"";
+  position:absolute;
+  left:0;
+  right:0;
+  top:0;
+  height:2px;
+  background: linear-gradient(90deg,
+    transparent,
+    rgba(255,255,255,.65),
+    rgba(var(--btn-glow), .9),
+    transparent
+  );
+  opacity:.75;
+}
+
+/* soft ambient glow under the strip */
+.footer::after{
+  content:"";
+  position:absolute;
+  inset:-40px 8%;
+  border-radius:999px;
+  background: radial-gradient(circle at 50% 120%,
+    color-mix(in oklab, var(--accent) 55%, #000 45%) 0,
+    transparent 60%
+  );
+  opacity:.42;
+  pointer-events:none;
+  z-index:-1;
+}
+
+/* keep actual content above effects */
+.footer > *{
+  position:relative;
+  z-index:1;
+}
+
+/* CrownDEX link gets a pill / badge treatment */
+.footer a{
+  position: relative;
+  color: var(--accent);
+  text-decoration: none;
+  font-weight: 600;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 0%, rgba(255,255,255,.18), transparent 60%);
+  box-shadow:
+    0 0 0 1px rgba(148,163,184,.45),
+    0 4px 12px rgba(0,0,0,.55);
+  text-shadow: 0 0 10px rgba(var(--btn-glow), .5);
+  transition:
+    transform .15s ease,
+    box-shadow .2s ease,
+    text-shadow .2s ease,
+    background .2s ease;
+}
+
+.footer a::after{
+  content:"↗";
+  margin-left:4px;
+  font-size:9px;
+  opacity:.85;
+}
+
+.footer a:hover{
+  transform: translateY(-1px);
+  background: radial-gradient(circle at 30% 0%, rgba(255,255,255,.28), transparent 60%);
+  box-shadow:
+    0 0 0 1px rgba(var(--btn-glow), .9),
+    0 8px 20px rgba(var(--btn-glow), .55);
+  text-shadow: 0 0 18px rgba(var(--btn-glow), .75);
+}
+
+/* tiny layout tweak for narrow screens */
+@media (max-width: 640px){
+  .footer{
+    flex-direction: column;
+    align-items: flex-start;
+    padding-inline: 14px;
+  }
+}
+
+/* =====================================
+   CrownTALK – Hero alignment patch
+   ===================================== */
+
+/* Keep header as a bar with left hero + right theme switcher */
+.hero{
+  justify-content: space-between;
+}
+
+/* Stop auto-centering the hero block – anchor it left */
+.hero-main{
+  margin: 0;
+  margin-right: auto;
+}
+
+/* =====================================
+   CrownTALK – Premium hero title patch
+   ===================================== */
+
+.hero-copy h1{
+  margin: 0;
+  text-transform: uppercase;
+  letter-spacing: 0.35em;
+  font-size: clamp(18px, 3vw, 26px);
+  position: relative;
+
+  /* richer multi-stop gradient tied to theme */
+  background: linear-gradient(
+    120deg,
+    rgba(255,255,255,.98) 0%,
+    color-mix(in oklab, var(--accent) 82%, #ffffff 18%) 24%,
+    color-mix(in oklab, var(--hero-glow-from) 90%, #ffffff 10%) 52%,
+    color-mix(in oklab, var(--accent) 80%, #f97316 20%) 78%,
+    rgba(255,255,255,.98) 100%
+  );
+  -webkit-background-clip: text;
+  background-clip: text;
+  color: transparent;
+
+  /* premium-ish glow + depth */
+  text-shadow:
+    0 0 26px rgba(var(--btn-glow), .55),
+    0 2px 6px rgba(0,0,0,.85);
+  filter: drop-shadow(0 6px 20px rgba(0,0,0,.9));
+}
+
+/* soft neon “underglow” bar under the text */
+.hero-copy h1::before{
+  content: "";
+  position: absolute;
+  left: 8px;
+  right: 8px;
+  bottom: -4px;
+  height: 8px;
+  background: radial-gradient(
+    circle at 50% 100%,
+    rgba(var(--btn-glow), .75) 0,
+    transparent 70%
+  );
+  opacity: .85;
+  filter: blur(4px);
+  pointer-events: none;
+}
+
+/* refined sheen sweep over the letters */
+.hero-copy h1::after{
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(
+    115deg,
+    transparent 0%,
+    rgba(255,255,255,.85) 45%,
+    transparent 80%
+  );
+  transform: translateX(-130%);
+  opacity: 0;
+  pointer-events: none;
+  animation: ct-hero-sheen 5.2s ease-in-out infinite;
+}
+
+@keyframes ct-hero-sheen{
+  0%   { transform: translateX(-130%); opacity: 0; }
+  10%  { opacity: .95; }
+  35%  { transform: translateX(110%); opacity: 0; }
+  100% { transform: translateX(110%); opacity: 0; }
+}
+
+
+/* =====================================
+   CrownTALK – Hero parallax glow + responsive / perf patch
+   ===================================== */
+
+/* subtle parallax glow around the logo */
+.hero-orbit{
+  position: relative;
+  transform-style: preserve-3d;
+}
+
+.hero-orbit::before,
+.hero-orbit::after{
+  content:"";
+  position:absolute;
+  inset:-8px;
+  border-radius:999px;
+  background:
+    radial-gradient(circle at 30% 10%, rgba(255,255,255,.45), transparent 55%),
+    radial-gradient(circle at 80% 90%, rgba(var(--btn-glow), .65), transparent 60%);
+  mix-blend-mode: screen;
+  opacity:.55;
+  filter: blur(10px);
+  pointer-events:none;
+  z-index:-1;
+}
+
+/* back layer */
+.hero-orbit::after{
+  inset:-18px;
+  opacity:.32;
+  filter: blur(18px);
+  animation: ct-hero-orbit-back 18s ease-in-out infinite;
+  transform-origin: 50% 60%;
+}
+
+/* front layer */
+.hero-orbit::before{
+  animation: ct-hero-orbit-front 14s ease-in-out infinite;
+  transform-origin: 40% 40%;
+}
+
+@keyframes ct-hero-orbit-front{
+  0%   { transform: translate3d(-2px, -1px, 0) scale(1); }
+  25%  { transform: translate3d(2px, 1px, 0) scale(1.04); }
+  50%  { transform: translate3d(1px, -2px, 0) scale(1.02); }
+  75%  { transform: translate3d(-2px, 1px, 0) scale(1.05); }
+  100% { transform: translate3d(-2px, -1px, 0) scale(1); }
+}
+
+@keyframes ct-hero-orbit-back{
+  0%   { transform: translate3d(2px, 1px, 0) scale(1.02); }
+  25%  { transform: translate3d(-2px, -2px, 0) scale(1.05); }
+  50%  { transform: translate3d(-1px, 2px, 0) scale(1.03); }
+  75%  { transform: translate3d(2px, 0, 0) scale(1.06); }
+  100% { transform: translate3d(2px, 1px, 0) scale(1.02); }
+}
+
+/* desktop spacing */
+@media (min-width: 1024px){
+  .hero{
+    padding-block: 12px;
+  }
+  .hero-main{
+    gap: 18px;
+  }
+}
+
+/* small devices – calmer animations + tuned sizing */
+@media (max-width: 768px){
+  .hero-orbit{
+    width: 76px;
+    height: 76px;
+  }
+  .hero-orbit-inner{
+    width: 60px;
+    height: 60px;
+  }
+  .hero-orbit::before,
+  .hero-orbit::after{
+    opacity: .38;
+    filter: blur(10px);
+  }
+
+  /* slow down decorative orbits a bit */
+  .card::after{
+    animation-duration: 11s;
+  }
+  .theme-dot.is-active::after{
+    animation-duration: 10s;
+  }
+  .tweet-skeleton{
+    animation-duration: 1.8s;
+  }
+}
+
+/* ultra-small phones */
+@media (max-width: 480px){
+  body{
+    padding: 10px;
+  }
+  .app-shell{
+    width: 100%;
+  }
+  .hero-copy h1{
+    letter-spacing: 0.28em;
+  }
+}
+
+/* respect user "reduced motion" preference: kill decorative-only animations */
+@media (prefers-reduced-motion: reduce){
+  .hero-orbit,
+  .hero-orbit::before,
+  .hero-orbit::after,
+  .card::after,
+  .theme-dot.is-active::after,
+  .hero-copy h1::after,
+  .tweet-skeleton{
+    animation: none !important;
+  }
+
+  body.is-generating #progressBarFill{
+    animation: none;
+  }
+  body.is-generating #progressBarFill::before{
+    animation: none;
+    opacity: 0;
+  }
+}
+
+/* =====================================
+   CrownTALK – Clear button (keyboard key style)
+   ===================================== */
+
+#clearBtn.btn-secondary.subtle{
+  position: relative;
+
+  /* key dimensions */
+  min-width: 88px;
+  height: 36px;
+  padding: 0 16px;
+
+  /* key shape */
+  border-radius: 9px;
+  border: 1px solid rgba(148,163,184,.6);
+
+  /* keycap gradient (theme-aware but still “dark key”) */
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255,255,255,.22), transparent 65%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--accent) 25%, #020617 75%),
+      rgba(10,16,30,1)
+    );
+  background-clip: padding-box;
+
+  /* layout */
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  /* text: looks like keyboard legends */
+  font-size: 11px;
+  font-weight: 600;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #f9fafb;
+  font-family: inherit;
+
+  /* 3D key shadow */
+  box-shadow:
+    0 3px 0 rgba(0,0,0,.85),      /* rim at bottom edge */
+    0 8px 16px rgba(0,0,0,.7);    /* drop shadow */
+
+  cursor: pointer;
+  gap: 0;
+
+  transition:
+    transform .12s ease,
+    box-shadow .14s ease,
+    background .16s ease,
+    border-color .16s ease,
+    color .16s ease,
+    opacity .15s ease;
+}
+
+/* top gloss like a real key surface */
+#clearBtn.btn-secondary.subtle::before{
+  content: "";
+  position: absolute;
+  inset: 2px 3px 55%;
+  border-radius: 7px;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,.45),
+    rgba(255,255,255,.06)
+  );
+  opacity: .9;
+  pointer-events: none;
+}
+
+/* label text (since we’re not using the icon) */
+#clearBtn.btn-secondary.subtle::after{
+  content: "CLEAR";
+  position: relative;
+  z-index: 1;
+}
+
+/* completely hide the old trash SVG so no lid/body shows */
+#clearBtn .svgIcon,
+#clearBtn .bin-top,
+#clearBtn .bin-bottom{
+  display: none !important;
+}
+
+/* HOVER: brighter edge & top, slight pop */
+#clearBtn.btn-secondary.subtle:hover{
+  background:
+    radial-gradient(circle at 20% 0%, rgba(255,255,255,.26), transparent 65%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, var(--accent) 40%, #020617 60%),
+      rgba(10,16,30,1)
+    );
+  border-color: rgba(var(--btn-glow), .9);
+  box-shadow:
+    0 3px 0 rgba(0,0,0,.9),
+    0 10px 20px rgba(0,0,0,.8);
+}
+
+/* PRESSED: key goes “down” */
+#clearBtn.btn-secondary.subtle:active{
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 rgba(0,0,0,.9),
+    0 4px 10px rgba(0,0,0,.85);
+}
+
+/* MOBILE: keep it tighter on small screens */
+@media (max-width: 480px){
+  #clearBtn.btn-secondary.subtle{
+    min-width: 72px;
+    padding: 0 10px;
+    font-size: 10px;
+    letter-spacing: .10em;
+  }
+}
+
+/* More breathing room between the action buttons */
+.controls{
+  gap: 16px;
+}
+
+
+/* =====================================
+   CrownTALK – Cancel button glossy keycap
+   ===================================== */
+
+#cancelBtn.btn-secondary{
+  position: relative;
+
+  /* key-ish sizing */
+  min-width: 96px;
+  height: 36px;
+  padding: 0 18px;
+
+  border-radius: 9px;
+  border: 1px solid rgba(248,113,113,.9);
+
+  /* red keycap gradient */
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255,255,255,.35), transparent 60%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, #ef4444 30%, #7f1d1d 70%),
+      #991b1b
+    );
+  background-clip: padding-box;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  /* keep your “CANCEL” vibe */
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: .14em;
+  text-transform: uppercase;
+  color: #fef2f2;
+
+  /* 3D key shadow */
+  box-shadow:
+    0 3px 0 rgba(127,29,29,.95),
+    0 8px 16px rgba(0,0,0,.75);
+
+  cursor: pointer;
+  text-shadow: 0 1px 2px rgba(0,0,0,.55);
+
+  transition:
+    transform .12s ease,
+    box-shadow .14s ease,
+    background .18s ease,
+    border-color .18s ease,
+    color .18s ease,
+    opacity .15s ease;
+}
+
+/* glossy highlight strip on top face */
+#cancelBtn.btn-secondary::before{
+  content: "";
+  position: absolute;
+  inset: 2px 3px 55%;
+  border-radius: 7px;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,.55),
+    rgba(255,255,255,.08)
+  );
+  opacity: .9;
+  pointer-events: none;
+}
+
+/* HOVER – brighter, more “alert”, a bit of glow */
+#cancelBtn.btn-secondary:hover:not(:disabled){
+  background:
+    radial-gradient(circle at 18% 0%, rgba(255,255,255,.4), transparent 60%),
+    linear-gradient(
+      180deg,
+      color-mix(in oklab, #f97373 45%, #7f1d1d 55%),
+      #b91c1c
+    );
+  border-color: #fecaca;
+  box-shadow:
+    0 3px 0 rgba(127,29,29,1),
+    0 10px 22px rgba(153,27,27,.95);
+  color: #fff;
+}
+
+/* ACTIVE – pressed key effect */
+#cancelBtn.btn-secondary:active{
+  transform: translateY(2px);
+  box-shadow:
+    0 1px 0 rgba(127,29,29,1),
+    0 4px 10px rgba(0,0,0,.8);
+}
+
+/* DISABLED – softer, less alarming */
+#cancelBtn.btn-secondary:disabled{
+  opacity: .55;
+  cursor: default;
+  box-shadow:
+    0 2px 0 rgba(75,85,99,.9),
+    0 4px 8px rgba(0,0,0,.6);
+}
+
+
+/* ======================================================
+   NEW PREMIUM PATCHES (focus mode, scrollbars, rails, etc)
+   ====================================================== */
+
+/* 1. Generating focus mode (desktop only) */
+@media (min-width: 900px){
+  body.is-generating .card{
+    transition:
+      transform .18s ease,
+      box-shadow .2s ease,
+      opacity .2s ease;
+  }
+
+  /* highlight input card */
+  body.is-generating .card.card-input{
+    transform: translateY(-1px);
+    box-shadow:
+      0 18px 40px rgba(0,0,0,.65),
+      0 0 0 1px rgba(var(--btn-glow), .35);
+  }
+
+  /* gently push other cards into the background */
+  body.is-generating .card:not(.card-input){
+    opacity: .78;
+  }
+
+  body.is-generating .card:not(.card-input)::before{
+    content: "" !important;
+    position: absolute;
+    inset: 0;
+    border-radius: inherit;
+    background: radial-gradient(circle at 50% -10%,
+      rgba(15,23,42,.35),
+      rgba(3,7,18,.9)
+    );
+    pointer-events: none;
+  }
+}
+
+/* 2. Theme switch glow trail */
+body.theme-changing .app-shell{
+  animation: ct-theme-flash 0.24s ease-out;
+}
+
+@keyframes ct-theme-flash{
+  0%{
+    filter: brightness(1.02);
+    box-shadow: 0 0 0 0 rgba(var(--btn-glow),0);
+  }
+  40%{
+    filter: brightness(1.06);
+    box-shadow: 0 0 60px rgba(var(--btn-glow),.45);
+  }
+  100%{
+    filter: none;
+    box-shadow: none;
+  }
+}
+
+/* quick ping on active dot */
+.theme-dot.is-active{
+  animation: ct-theme-dot-pulse 0.26s ease-out;
+}
+
+@keyframes ct-theme-dot-pulse{
+  0%{
+    transform: scale(1);
+  }
+  40%{
+    transform: scale(1.12);
+  }
+  100%{
+    transform: scale(1.02);
+  }
+}
+
+/* 3. Card header “crown line” */
+.card-header{
+  position: relative;
+  padding-bottom: 4px;
+}
+
+.card-header::after{
+  content:"";
+  position:absolute;
+  left:6px;
+  right:6px;
+  bottom:-6px;
+  height:1px;
+  border-radius:999px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(var(--btn-glow), .55),
+    transparent
+  );
+  opacity:.42;
+  pointer-events:none;
+}
+
+.card:hover .card-header::after{
+  opacity:.8;
+}
+
+/* 4. Tweet left rail + crown marker */
+.tweet{
+  position: relative;
+  padding-left: 16px;
+}
+
+.tweet::before{
+  content:"";
+  position:absolute;
+  top:8px;
+  bottom:8px;
+  left:6px;
+  width:3px;
+  border-radius:999px;
+  background: linear-gradient(
+    180deg,
+    rgba(var(--btn-glow), .9),
+    rgba(var(--btn-glow), .25)
+  );
+  opacity:.8;
+  box-shadow: 0 0 12px rgba(var(--btn-glow), .5);
+  pointer-events:none;
+}
+
+.tweet::after{
+  content:"";
+  position:absolute;
+  top:5px;
+  left:4px;
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background: radial-gradient(circle at 30% 0%,
+    #ffffff,
+    rgba(var(--btn-glow),1)
+  );
+  box-shadow: 0 0 10px rgba(var(--btn-glow), .85);
+  opacity:.95;
+  pointer-events:none;
+}
+
+.tweet:hover::before{
+  width:4px;
+  opacity:1;
+}
+
+/* 5. Comment-line hover “lane” */
+.comment-line{
+  transition:
+    background .16s ease,
+    border-color .16s ease,
+    box-shadow .16s ease,
+    transform .12s ease;
+}
+
+.comment-line:hover{
+  background:
+    linear-gradient(
+      90deg,
+      rgba(15,23,42,.95),
+      rgba(15,23,42,.9),
+      rgba(15,23,42,.95)
+    );
+  border-color: rgba(var(--btn-glow), .75);
+  box-shadow:
+    0 0 0 1px rgba(var(--btn-glow), .4),
+    0 8px 20px rgba(0,0,0,.7);
+  transform: translateY(-1px);
+}
+
+.comment-line:hover .comment-tag{
+  letter-spacing:.16em;
+  color: var(--accent);
+}
+
+/* 6. Glassy scrollbars on lists (desktop) */
+@media (pointer: fine){
+  .results-list,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95);
+  }
+
+  .results-list::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
+  }
+
+  .results-list::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
+  }
+
+  .results-list::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .9),
+      rgba(var(--btn-glow), .5)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
+  }
+
+  .results-list::-webkit-scrollbar-thumb:hover,
+  .failed-list::-webkit-scrollbar-thumb:hover,
+  .history-list::-webkit-scrollbar-thumb:hover{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), 1),
+      rgba(var(--btn-glow), .7)
+    );
+  }
+}
+
+/* 7. Extra low-motion guardrail hook */
+body.low-motion .hero-orbit,
+body.low-motion .hero-orbit::before,
+body.low-motion .hero-orbit::after,
+body.low-motion .card::after,
+body.low-motion .theme-dot.is-active::after,
+body.low-motion .hero-copy h1::after,
+body.low-motion .tweet-skeleton{
+  animation: none !important;
+}
+
+body.low-motion.is-generating #progressBarFill,
+body.low-motion.is-generating #progressBarFill::before{
+  animation: none !important;
+}
+
+/* 8. Tiny quality-of-life: make results/failure/history lists feel a bit more “panel-y” */
+.results-list,
+.failed-list,
+.history-list{
+  padding-right: 6px;
+}
+
+
+/* =====================================
+   CrownTALK – Desktop viewport fit tweak v2
+   (make 100% zoom behave closer to your 75% layout)
+   ===================================== */
+
+@media (min-width: 1280px) and (min-height: 800px){
+  /* 1) Global scale a bit smaller + tighter vertical padding */
+  body{
+    padding-top: 6px;
+    padding-bottom: 6px;
+  }
+
+  .app-shell{
+    zoom: .80;                       /* Chrome/Edge: compacts layout (no “ghost” space) */
+  }
+
+  @supports not (zoom: 1){
+    .app-shell{
+      transform: scale(.80);         /* Firefox fallback */
+      transform-origin: top center;
+    }
+  }
+
+
+  /* 2) Trim hero bar height slightly */
+  .hero{
+    padding-block: 4px;
+    margin-bottom: 2px;
+  }
+
+  .hero-orbit{
+    width: 80px;
+    height: 80px;
+  }
+  .hero-orbit-inner{
+    width: 64px;
+    height: 64px;
+  }
+  .hero-copy h1{
+    font-size: clamp(16px, 2.6vw, 22px);
+  }
+
+  /* 3) Slightly smaller vertical padding in cards */
+  .card{
+    padding-top: 10px;
+    padding-bottom: 8px;
+  }
+
+  /* 4) Reduce “minimum” heights so the stack is shorter */
+  .card-input{
+    min-height: 155px;          /* was 170 / 200 */
+  }
+  .card-results{
+    min-height: 155px;
+  }
+  .card-failed{
+    min-height: 64px;
+  }
+  .card-history{
+    min-height: 90px;
+  }
+
+  /* textarea doesn’t need to be that tall on desktop */
+  .url-textarea{
+    min-height: 110px;
+    max-height: 240px;
+  }
+
+  /* 5) Tighter spacing between sections + footer */
+  .main{
+    row-gap: 12px;              /* was 14–18 */
+  }
+
+  .footer{
+    margin-top: 8px;            /* was 12–18 */
+  }
+}
+
+/* =====================================================
+   CrownTALK – Premium Lite Pack (safe to add at the end)
+   - Desktop: nicer hovers & rails
+   - Mobile: lighter GPU, fewer animations
+   ===================================================== */
+
+/* 1) Desktop-only card hover lift (no effect on touch devices) */
+@media (pointer: fine) and (min-width: 900px){
+  .card{
+    transition:
+      transform .15s ease,
+      box-shadow .18s ease,
+      border-color .18s ease;
+  }
+
+  .card:hover{
+    transform: translateY(-2px);
+    box-shadow:
+      0 18px 40px rgba(0,0,0,.7),
+      0 0 0 1px rgba(15,23,42,.9);
+    border-color: rgba(var(--btn-glow), .85);
+  }
+}
+
+/* 2) Desktop tweet rail + glow marker (very cheap, no animation) */
+@media (pointer: fine){
+  .tweet{
+    position: relative;
+    padding-left: 16px;
+  }
+
+  .tweet::before{
+    content:"";
+    position:absolute;
+    top:8px;
+    bottom:8px;
+    left:6px;
+    width:3px;
+    border-radius:999px;
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .25)
+    );
+    opacity:.9;
+    box-shadow:0 0 10px rgba(var(--btn-glow), .5);
+    pointer-events:none;
+  }
+
+  .tweet::after{
+    content:"";
+    position:absolute;
+    top:5px;
+    left:4px;
+    width:7px;
+    height:7px;
+    border-radius:999px;
+    background: radial-gradient(circle at 30% 0%,
+      #ffffff,
+      rgba(var(--btn-glow),1)
+    );
+    box-shadow:0 0 10px rgba(var(--btn-glow), .9);
+    pointer-events:none;
+  }
+}
+
+/* 3) Desktop: nicer hover on comments & history pills */
+@media (pointer: fine){
+  .comment-line,
+  .history-item{
+    transition:
+      background .16s ease,
+      border-color .16s ease,
+      box-shadow .16s ease,
+      transform .12s ease;
+  }
+
+  .comment-line:hover,
+  .history-item:hover{
+    background: linear-gradient(
+      90deg,
+      rgba(15,23,42,.98),
+      rgba(15,23,42,.9),
+      rgba(15,23,42,.98)
+    );
+    border-color: rgba(var(--btn-glow), .75);
+    box-shadow:
+      0 0 0 1px rgba(var(--btn-glow), .4),
+      0 8px 20px rgba(0,0,0,.7);
+    transform: translateY(-1px);
+  }
+
+  .comment-line:hover .comment-tag{
+    letter-spacing:.16em;
+    color: var(--accent);
+  }
+}
+
+/* 4) Desktop-only glassy scrollbars for lists */
+@media (pointer: fine){
+  .results-list,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95);
+  }
+
+  .results-list::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
+  }
+
+  .results-list::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
+  }
+
+  .results-list::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .6)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
+  }
+}
+
+/* 5) MOBILE PERF MODE – kill heavy stuff & simplify visuals */
+@media (max-width: 768px){
+  /* a) Turn OFF decorative animations on phones */
+  .hero-orbit,
+  .hero-orbit::before,
+  .hero-orbit::after,
+  .card::after,
+  .theme-dot.is-active::after,
+  .hero-copy h1::after,
+  .tweet-skeleton{
+    animation: none !important;
+  }
+
+  /* keep behaviour of the progress bar, but if you want,
+     you can also fully kill its animation by uncommenting:
+
+  body.is-generating #progressBarFill,
+  body.is-generating #progressBarFill::before{
+    animation: none !important;
+  }
+  */
+
+  /* b) Simpler card background for GPUs */
+  .card{
+    background-image:
+      /* keep only subtle top-side reflections */
+      radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
+      radial-gradient(at 49% 30%, var(--card-bg) 0px, transparent 85%),
+      radial-gradient(at 14% 26%, var(--card-bg) 0px, transparent 85%),
+      /* base smooth gradient, no bottom ellipse */
+      linear-gradient(
+        145deg,
+        rgba(15,23,42,.96),
+        color-mix(in oklab, var(--accent) 8%, var(--card-bg) 92%),
+        rgba(15,23,42,.98)
+      );
+    box-shadow:
+      0 4px 10px rgba(0,0,0,.6);
+  }
+
+  /* c) Softer hero glow (cheaper) */
+  .hero-orbit{
+    box-shadow: 0 0 24px rgba(15,23,42,.9);
+  }
+
+  /* d) Theme dots: keep static, no orbit arc move */
+  .theme-dot::after{
+    animation: none !important;
+  }
+}
+
+/* 6) Optional “manual low-motion” hook for really weak phones
+   - If you ever add: document.body.classList.add("low-motion")
+   - it will hard-disable all decorative animations everywhere.
+*/
+body.low-motion .hero-orbit,
+body.low-motion .hero-orbit::before,
+body.low-motion .hero-orbit::after,
+body.low-motion .card::after,
+body.low-motion .theme-dot.is-active::after,
+body.low-motion .hero-copy h1::after,
+body.low-motion .tweet-skeleton{
+  animation: none !important;
+}
+
+body.low-motion.is-generating #progressBarFill,
+body.low-motion.is-generating #progressBarFill::before{
+  animation: none !important;
+}
+
+/* =====================================
+   CrownTALK – Premium micro interactions (desktop-only where possible)
+   ===================================== */
+
+/* Fix: remove big oval glow inside cards */
+.card{
+  background-image:
+    /* keep only subtle top-side reflections */
+    radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, var(--card-bg) 0px, transparent 85%),
+    /* base smooth gradient, no bottom ellipse */
+    linear-gradient(
+      145deg,
+      rgba(15,23,42,.96),
+      color-mix(in oklab, var(--accent) 8%, var(--card-bg) 92%),
+      rgba(15,23,42,.98)
+    );
+}
+
+/* 2) Card header micro “chrome” line */
+.card-header{
+  position: relative;
+}
+.card-header::after{
+  content:"";
+  position:absolute;
+  left:-4px;
+  right:-4px;
+  bottom:-3px;
+  height:1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148,163,184,.65),
+    transparent
+  );
+  opacity:.45;
+  pointer-events:none;
+}
+
+/* 3) Focused textarea → card gets a soft accent glow */
+@supports(selector(:has(*))){
+  .card:has(.url-textarea:focus){
+    box-shadow:
+      0 0 0 1px rgba(var(--btn-glow), .45),
+      0 0 22px rgba(var(--btn-glow), .30),
+      inset 0 -16px 24px rgba(255,255,255,0.13);
+    border-color: rgba(var(--btn-glow), .85);
+  }
+}
+
+/* 4) Theme-dot subtle breathing when active (desktop only) */
+@media (pointer: fine){
+  .theme-dot.is-active{
+    animation: ct-theme-pulse 4.5s ease-in-out infinite;
+  }
+}
+@keyframes ct-theme-pulse{
+  0%{
+    box-shadow:
+      0 0 0 4px rgba(var(--glow), .10),
+      0 0 18px rgba(var(--glow), .35);
+  }
+  50%{
+    box-shadow:
+      0 0 0 6px rgba(var(--glow), .16),
+      0 0 26px rgba(var(--glow), .50);
+  }
+  100%{
+    box-shadow:
+      0 0 0 4px rgba(var(--glow), .10),
+      0 0 18px rgba(var(--glow), .35);
+  }
+}
+
+/* 5) Magnetic hover on main action buttons (desktop only) */
+@media (pointer: fine){
+  .controls .btn,
+  #cancelBtn.btn-secondary,
+  #clearBtn.btn-secondary.subtle{
+    transition:
+      transform .14s ease,
+      box-shadow .16s ease,
+      filter .16s ease;
+  }
+
+  .controls .btn:hover,
+  #cancelBtn.btn-secondary:hover:not(:disabled),
+  #clearBtn.btn-secondary.subtle:hover{
+    transform: translateY(-1px) scale(1.02);
+  }
+}
+
+/* 6) Tweet “cinematic” entry (desktop only) */
+@media (pointer: fine){
+  .tweet{
+    animation: ct-tweet-in .18s ease-out;
+    transform-origin: top;
+  }
+}
+@keyframes ct-tweet-in{
+  from{
+    opacity: 0;
+    transform: translateY(6px);
+  }
+  to{
+    opacity: 1;
+    transform: translateY(0);
+  }
+}
+
+/* 7) Slightly richer skeleton look (no extra animation cost) */
+.tweet-skeleton{
+  position: relative;
+  overflow: hidden;
+}
+.tweet-skeleton::before{
+  content:"";
+  position:absolute;
+  inset:-18%;
+  background:
+    radial-gradient(circle at 0% 0%, rgba(255,255,255,.14), transparent 60%),
+    radial-gradient(circle at 100% 0%, rgba(var(--btn-glow), .20), transparent 65%);
+  opacity:.55;
+  pointer-events:none;
+}
+
+/* 8) Extra theme reflection on cards – static, no animation */
+.card{
+  background-image:
+    radial-gradient(at 88% 40%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 49% 30%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 14% 26%, var(--card-bg) 0px, transparent 85%),
+    radial-gradient(at 0% 64%,  color-mix(in oklab, var(--accent) 75%, #fff 0%) 0px, transparent 85%),
+    radial-gradient(at 41% 94%, color-mix(in oklab, var(--accent) 55%, var(--hero-glow-from) 45%) 0px, transparent 85%),
+    radial-gradient(at 100% 99%, color-mix(in oklab, var(--accent) 45%, var(--hero-glow-to) 55%) 0px, transparent 85%),
+    linear-gradient(
+      145deg,
+      rgba(15,23,42,.96),
+      color-mix(in oklab, var(--accent) 8%, var(--card-bg) 92%),
+      rgba(15,23,42,.98)
+    );
+}
+
+/* 9) Respect reduced motion: kill new cosmetic animations too */
+@media (prefers-reduced-motion: reduce){
+  .theme-dot.is-active{
+    animation: none !important;
+  }
+  .tweet{
+    animation: none !important;
+  }
+}
+
+/* =========================================
+   CrownTALK – Premium micro FX patch (no live halo)
+   ========================================= */
+
+/* 1) Card type accent strip: Results / Failed / History */
+.card-results,
+.card-failed,
+.card-history{
+  position: relative; /* ensure the strip anchors correctly */
+}
+
+.card-results::before,
+.card-failed::before,
+.card-history::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:10px;
+  bottom:10px;
+  width:3px;
+  border-radius:999px;
+  opacity:.9;
+  pointer-events:none;
+}
+
+/* subtle colours per type */
+.card-results::before{
+  background: linear-gradient(
+    180deg,
+    rgba(56,189,248,.9),
+    rgba(129,140,248,.95)
+  );
+}
+.card-failed::before{
+  background: linear-gradient(
+    180deg,
+    rgba(248,113,113,.95),
+    rgba(185,28,28,.95)
+  );
+}
+.card-history::before{
+  background: linear-gradient(
+    180deg,
+    rgba(45,212,191,.9),
+    rgba(148,163,184,.9)
+  );
+}
+
+
+/* 2) Comment line hover highlight (desktop only) */
+@media (pointer: fine){
+  .comment-line{
+    transition:
+      transform .12s ease,
+      box-shadow .16s ease,
+      border-color .16s ease,
+      background .16s ease;
+  }
+
+  .comment-line:hover{
+    transform: translateY(-1px);
+    border-color: var(--accent-soft-strong);
+    background: linear-gradient(
+      90deg,
+      rgba(148,163,184,.22),
+      rgba(15,23,42,.95)
+    );
+    box-shadow:
+      0 0 0 1px rgba(148,163,184,.45),
+      0 8px 18px rgba(0,0,0,.6);
+  }
+}
+
+
+/* 3) History row soft badge */
+.history-item{
+  position: relative;
+}
+
+.history-item::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:50%;
+  transform: translateY(-50%);
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background: radial-gradient(
+    circle,
+    var(--accent) 0,
+    rgba(148,163,184,1) 60%,
+    transparent 100%
+  );
+  opacity:.9;
+  pointer-events:none;
+}
+
+/* keep text shifted a bit so dot doesn’t overlap */
+.history-text{
+  padding-left: 6px;
+}
+
+
+/* 4) Footer CrownDEX link shimmer (desktop, low-motion only) */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .footer a{
+    position: relative;
+    overflow: hidden;
+  }
+
+  .footer a::before{
+    content:"";
+    position:absolute;
+    top:0;
+    bottom:0;
+    left:-40%;
+    width:40%;
+    background: linear-gradient(
+      115deg,
+      transparent 0%,
+      rgba(255,255,255,.65) 45%,
+      rgba(var(--btn-glow), .9) 60%,
+      transparent 100%
+    );
+    opacity:0;
+    pointer-events:none;
+    transform: translateX(-20%);
+    animation: ct-footer-link-sheen 9s ease-in-out infinite;
+  }
+
+  @keyframes ct-footer-link-sheen{
+    0%   { transform: translateX(-40%); opacity: 0; }
+    8%   { opacity: .9; }
+    18%  { transform: translateX(140%); opacity: 0; }
+    100% { transform: translateX(140%); opacity: 0; }
+  }
+}
+
+
+/* 5) Skeleton heartbeat while generating (desktop only) */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  body.is-generating .tweet-skeleton{
+    /* keep shimmer + add soft pulse */
+    animation:
+      shimmer 1.3s linear infinite,
+      ct-skeleton-pulse 2.4s ease-in-out infinite;
+  }
+}
+
+@keyframes ct-skeleton-pulse{
+  0%   { opacity: .92; }
+  50%  { opacity: 1; }
+  100% { opacity: .92; }
+}
+
+
+/* 6) Theme dot subtle premium glow (very light, no extra lag) */
+.theme-dot.is-active{
+  box-shadow:
+    0 0 0 4px rgba(var(--glow), .12),
+    0 0 16px rgba(var(--glow), .35);
+}
+
+/* tiny “breathing” only on desktop + full motion */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .theme-dot.is-active{
+    animation: ct-theme-dot-breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes ct-theme-dot-breathe{
+    0%   { transform: translateY(0) scale(1); }
+    50%  { transform: translateY(-1px) scale(1.03); }
+    100% { transform: translateY(0) scale(1); }
+  }
+}
+
+
+/* 7) Tweet card hover lift (desktop only) */
+@media (pointer: fine){
+  .tweet{
+    transition:
+      transform .12s ease,
+      box-shadow .16s ease,
+      border-color .16s ease,
+      background .16s ease;
+  }
+
+  .tweet:hover{
+    transform: translateY(-2px);
+    border-color: rgba(148,163,184,.6);
+    background: radial-gradient(
+        circle at 0% 0%,
+        rgba(255,255,255,.06),
+        transparent 55%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(15,23,42,.98),
+        rgba(15,23,42,.86)
+      );
+    box-shadow:
+      0 10px 22px rgba(0,0,0,.8);
+  }
+}
+
+
+/* =========================================
+   CrownTALK – Premium micro-upgrades + status chip
+   ========================================= */
+
+/* 1) Textarea polish */
+.url-textarea{
+  transition:
+    border-color .18s ease,
+    box-shadow .22s ease,
+    background .22s ease;
+}
+
+/* hover only on pointer devices */
+@media (pointer: fine){
+  .url-textarea:not(:focus):hover{
+    border-color: rgba(148,163,184,.85);
+    background: radial-gradient(circle at 0% 0%,
+        rgba(148,163,184,.12),
+        rgba(9,17,35,.92) 55%
+      );
+    box-shadow:
+      0 10px 26px rgba(6,12,24,.5),
+      0 0 0 1px rgba(15,23,42,1);
+  }
+}
+
+/* while generating: calm accent trim, no animation */
+body.is-generating .url-textarea{
+  border-color: var(--accent-soft-strong);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 12px 30px rgba(0,0,0,.85);
+}
+
+
+/* 2) Copy buttons – small hover feedback (no layout shift) */
+.copy-btn,
+.copy-btn-en,
+.history-copy-btn{
+  transition:
+    background-color .16s ease,
+    box-shadow .18s ease,
+    transform .10s ease;
+}
+
+.copy-btn:hover,
+.copy-btn-en:hover,
+.history-copy-btn:hover{
+  background-color: #e6eefb;
+  box-shadow:
+    0 4px 10px rgba(15,23,42,.45);
+  transform: translateY(-1px);
+}
+
+/* keep pressed feeling consistent */
+.copy-btn:active,
+.copy-btn-en:active,
+.history-copy-btn:active{
+  transform: translateY(0);
+  box-shadow:
+    0 1px 4px rgba(15,23,42,.6);
+}
+
+
+/* 3) Reroll button – refined hover (desktop only) */
+@media (pointer: fine){
+  .reroll-btn{
+    transition:
+      outline-color .22s ease,
+      transform .12s ease,
+      filter .16s ease;
+  }
+
+  .reroll-btn:hover{
+    transform: translateY(-1px);
+    filter: drop-shadow(0 8px 18px rgba(var(--reroll-secondary), .55));
+  }
+
+  .reroll-btn:active{
+    transform: translateY(1px);
+    filter: none;
+  }
+}
+
+
+/* 4) Keyboard focus ring – subtle but clear */
+button:focus-visible,
+.theme-dot:focus-visible,
+.url-textarea:focus-visible,
+.footer a:focus-visible{
+  outline: 2px solid rgba(var(--btn-glow), .9);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 0 0 4px rgba(var(--btn-glow), .35);
+}
+
+
+/* 5) Progress row + status chip (READY / GENERATING) */
+.progress-row{
+  gap: 6px;
+}
+
+/* turn .helper-text into a small status pill */
+.helper-text{
+  align-self: flex-start;
+  position: relative;
+
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+
+  padding: 3px 10px;
+  border-radius: 999px;
+
+  background: rgba(15,23,42,.96);
+  border: 1px solid rgba(148,163,184,.65);
+
+  font-size: 10px;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+
+  /* hide original text visually but keep it in DOM */
+  color: transparent;
+
+  gap: 6px;
+  overflow: hidden;
+
+  transition:
+    background .18s ease,
+    border-color .18s ease,
+    box-shadow .18s ease,
+    color .18s ease,
+    opacity .15s ease;
+}
+
+/* label text */
+.helper-text::before{
+  content: "Ready";
+  color: var(--text-muted);
+}
+
+/* tiny status dot */
+.helper-text::after{
+  content:"";
+  width: 6px;
+  height: 6px;
+  border-radius: 999px;
+  background: #22c55e;
+  box-shadow: 0 0 10px rgba(34,197,94,.9);
+
+.helper-text-pct::before{ content: attr(data-pct); color: var(--text-muted); }
+.helper-text-pct::after{ display:none; }
+}
+
+/* generating state – warm accent */
+body.is-generating .helper-text{
+  background: radial-gradient(
+    circle at 0% 0%,
+    rgba(129,140,248,.22),
+    rgba(15,23,42,.98) 70%
+  );
+  border-color: var(--accent-soft-strong);
+  box-shadow:
+    0 6px 16px rgba(0,0,0,.85);
+}
+
+body.is-generating .helper-text::before{
+  content: "Generating";
+  color: var(--accent);
+}
+
+body.is-generating .helper-text::after{
+  background: #f97316;
+  box-shadow: 0 0 10px rgba(249,115,22,.9);
+}
+
+/* =====================================
+   CrownTALK – Kill conic / orbit rings
+   ===================================== */
+
+/* Remove any rotating / conic borders on cards */
+.card::before,
+.card::after{
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+}
+
+/* Hard-disable legacy Uiverse border ring as well */
+.uiverse-card .card__border,
+.uiverse-card .card__border::before{
+  content: none !important;
+  display: none !important;
+  animation: none !important;
+}
+
+/* =====================================
+   CrownTALK – Premium scrollbar for URL textarea
+   (desktop only, mobile keeps native scroll)
+   ===================================== */
+
+@media (pointer: fine){
+  .url-textarea{
+    /* Firefox */
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .75) rgba(15,23,42,.96);
+  }
+
+  .url-textarea::-webkit-scrollbar{
+    width: 8px;                  /* slim bar */
+  }
+
+  .url-textarea::-webkit-scrollbar-track{
+    background: radial-gradient(
+      circle at 50% 0%,
+      rgba(255,255,255,.08),
+      transparent 55%
+    );
+    border-radius: 999px;
+    box-shadow:
+      inset 0 0 0 1px rgba(15,23,42,.95);
+  }
+
+  .url-textarea::-webkit-scrollbar-thumb{
+    border-radius: 999px;
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .98),
+      rgba(var(--btn-glow), .65)
+    );
+    box-shadow:
+      0 0 10px rgba(var(--btn-glow), .75);
+    border: 1px solid rgba(15,23,42,1);   /* small dark rim */
+  }
+
+  .url-textarea::-webkit-scrollbar-thumb:hover{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), 1),
+      rgba(var(--btn-glow), .8)
+    );
+  }
+}
+
+/* =========================================================
+   - Removes weird conic circles / tilt
+   - Adds premium hovers, scroll, and status styling
+   - Mobile-friendly (no extra lag)
+   ========================================================= */
+
+/* 0) Kill old conic orbit rings on cards & theme dots */
+.card::before,
+.card::after,
+.theme-dot::after{
+  content: none !important;
+  background: none !important;
+  box-shadow: none !important;
+}
+
+/* 1) Card micro-lift (desktop, no leaning forwards) */
+@media (pointer: fine) and (min-width: 900px){
+  .card{
+    transform-origin: center top;
+    transition:
+      transform .16s ease-out,
+      box-shadow .18s ease-out,
+      border-color .18s ease-out;
+  }
+
+  .card:hover{
+    transform: translateY(-2px);
+    box-shadow:
+      0 16px 32px rgba(0,0,0,.70);
+    border-color: rgba(var(--btn-glow), .75);
+  }
+}
+
+/* 2) Results list container (ID #results) */
+#results{
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  max-height: 360px;
+  overflow-y: auto;
+  padding-right: 4px;
+}
+
+/* 3) Premium scrollbars for lists (desktop only) */
+@media (pointer: fine){
+  #results,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .7) rgba(15,23,42,.95);
+  }
+
+  #results::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
+  }
+
+  #results::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
+  }
+
+  #results::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .6)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
+  }
+}
+
+/* 4) Card head chrome line + tidy titles */
+.card-head{
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+}
+
+.card-head h2{
+  margin: 0;
+  font-size: 12px;
+  font-weight: 600;
+  letter-spacing: .16em;
+  text-transform: uppercase;
+  color: var(--text-muted);
+}
+
+.card-head .muted{
+  margin: 0;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+
+/* subtle chrome line under header */
+.card-head::after{
+  content:"";
+  position:absolute;
+  left:-4px;
+  right:-4px;
+  bottom:-3px;
+  height:1px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(148,163,184,.65),
+    transparent
+  );
+  opacity:.45;
+  pointer-events:none;
+}
+
+/* 5) System status pill + glowing dot */
+.system-status{
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  font-size: 11px;
+  color: var(--text-muted);
+}
+
+/* support both old .system-indicator and new .system-status-dot */
+.system-status-dot,
+.system-indicator{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: radial-gradient(circle at 30% 0%,
+    #22c55e,
+    #16a34a 70%
+  );
+  box-shadow: 0 0 12px rgba(34,197,94,.85);
+}
+
+/* 6) Results / Failed / History vertical accent strips */
+.card-results,
+.card-failed,
+.card-history{
+  position: relative;
+}
+
+.card-results::before,
+.card-failed::before,
+.card-history::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:10px;
+  bottom:10px;
+  width:3px;
+  border-radius:999px;
+  opacity:.9;
+  pointer-events:none;
+}
+
+.card-results::before{
+  background: linear-gradient(
+    180deg,
+    rgba(56,189,248,.9),
+    rgba(129,140,248,.95)
+  );
+}
+.card-failed::before{
+  background: linear-gradient(
+    180deg,
+    rgba(248,113,113,.95),
+    rgba(185,28,28,.95)
+  );
+}
+.card-history::before{
+  background: linear-gradient(
+    180deg,
+    rgba(45,212,191,.9),
+    rgba(148,163,184,.9)
+  );
+}
+
+/* shift inner content a tiny bit so strip doesn’t overlap */
+.card-results > *,
+.card-failed > *,
+.card-history > *{
+  position: relative;
+  z-index: 1;
+  padding-left: 4px;
+}
+
+/* 7) Comment + history hover polish (desktop only) */
+@media (pointer: fine){
+  .comment-line,
+  .history-item{
+    transition:
+      background .16s ease,
+      border-color .16s ease,
+      box-shadow .16s ease,
+      transform .12s ease;
+  }
+
+  .comment-line:hover,
+  .history-item:hover{
+    transform: translateY(-1px);
+    border-color: var(--accent-soft-strong);
+    background: linear-gradient(
+      90deg,
+      rgba(148,163,184,.22),
+      rgba(15,23,42,.95)
+    );
+    box-shadow:
+      0 0 0 1px rgba(148,163,184,.45),
+      0 8px 18px rgba(0,0,0,.6);
+  }
+
+  .comment-line:hover .comment-tag{
+    letter-spacing: .16em;
+    color: var(--accent);
+  }
+}
+
+/* 8) History dot badge */
+.history-item{
+  position: relative;
+}
+
+.history-item::before{
+  content:"";
+  position:absolute;
+  left:8px;
+  top:50%;
+  transform: translateY(-50%);
+  width:7px;
+  height:7px;
+  border-radius:999px;
+  background: radial-gradient(
+    circle,
+    var(--accent) 0,
+    rgba(148,163,184,1) 60%,
+    transparent 100%
+  );
+  opacity:.9;
+  pointer-events:none;
+}
+
+.history-text{
+  padding-left: 6px;
+}
+
+/* 9) Tweet card hover lift (desktop only) */
+@media (pointer: fine){
+  .tweet{
+    transition:
+      transform .12s ease,
+      box-shadow .16s ease,
+      border-color .16s ease,
+      background .16s ease;
+  }
+
+  .tweet:hover{
+    transform: translateY(-2px);
+    border-color: rgba(148,163,184,.6);
+    background:
+      radial-gradient(
+        circle at 0% 0%,
+        rgba(255,255,255,.06),
+        transparent 55%
+      ),
+      linear-gradient(
+        135deg,
+        rgba(15,23,42,.98),
+        rgba(15,23,42,.86)
+      );
+    box-shadow:
+      0 10px 22px rgba(0,0,0,.8);
+  }
+}
+
+/* 10) Theme dot premium glow (no orbit circle) */
+.theme-dot.is-active{
+  box-shadow:
+    0 0 0 4px rgba(var(--glow, var(--btn-glow)), .12),
+    0 0 16px rgba(var(--glow, var(--btn-glow)), .35);
+}
+
+/* subtle breathing only on desktop + full motion */
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .theme-dot.is-active{
+    animation: ct-theme-dot-breathe 4s ease-in-out infinite;
+  }
+
+  @keyframes ct-theme-dot-breathe{
+    0%   { transform: translateY(0) scale(1); }
+    50%  { transform: translateY(-1px) scale(1.03); }
+    100% { transform: translateY(0) scale(1); }
+  }
+}
+
+/* 11) Mobile performance: calm everything down */
+@media (max-width: 768px){
+  .card{
+    transform: none !important;
+    box-shadow: 0 4px 10px rgba(0,0,0,.6);
+  }
+
+  .tweet,
+  .comment-line,
+  .history-item{
+    transform: none !important;
+    box-shadow: none;
+  }
+}
+
+/* 12) Respect reduced motion – kill fancy transitions if user asks */
+@media (prefers-reduced-motion: reduce){
+  .card,
+  .tweet,
+  .comment-line,
+  .history-item,
+  .theme-dot{
+    transition: none !important;
+    animation: none !important;
+  }
+}
+
+/* =====================================================
+   CrownTALK – Premium Pack v2 (global, safe)
+   ===================================================== */
+
+/* ---------------------------------
+   1) Ambient card edge glow (static)
+   --------------------------------- */
+
+.card{
+  position: relative;
+  /* keep your existing shadows but slightly deepen them */
+  box-shadow:
+    inset 0 -16px 24px rgba(255,255,255,0.10),
+    0 12px 28px rgba(0,0,0,0.75);
+}
+
+/* subtle static ring hugging each card, no animation */
+.card::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  pointer-events:none;
+  border:1px solid rgba(15,23,42,0.95);
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,1),
+    0 0 22px rgba(var(--btn-glow), .14);
+}
+
+/* reset any older animated ::before usage */
+.card::before{
+  content:none;
+}
+
+/* ---------------------------------------------------
+   2) Glass reflection strip on the first (input) card
+   --------------------------------------------------- */
+
+.main .card:first-of-type::before{
+  content:"";
+  position:absolute;
+  left:10%;
+  right:10%;
+  top:0;
+  height:26px;
+  border-radius:0 0 999px 999px;
+  background: linear-gradient(
+    180deg,
+    rgba(255,255,255,.38),
+    rgba(255,255,255,0)
+  );
+  opacity:.22;
+  pointer-events:none;
+}
+
+/* ------------------------------------------
+   3) Hero ambient micro particles (desktop)
+   ------------------------------------------ */
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .hero{
+    position:relative;
+    overflow:visible;
+  }
+
+  .hero::before,
+  .hero::after{
+    content:"";
+    position:absolute;
+    inset:-40px -80px;
+    pointer-events:none;
+    z-index:-1;
+    background:
+      radial-gradient(circle at 10% 80%, rgba(255,255,255,.18) 0, transparent 50%),
+      radial-gradient(circle at 30% 10%, rgba(var(--btn-glow), .22) 0, transparent 45%),
+      radial-gradient(circle at 80% 30%, rgba(129,140,248,.18) 0, transparent 48%),
+      radial-gradient(circle at 65% 90%, rgba(15,23,42,.75) 0, transparent 55%);
+    opacity:.45;
+    filter: blur(4px);
+    transform: translate3d(0, 0, 0);
+    animation: ct-hero-dust 24s linear infinite;
+  }
+
+  .hero::after{
+    animation-duration: 32s;
+    opacity:.35;
+  }
+
+  @keyframes ct-hero-dust{
+    0%   { transform: translate3d(0, 6px, 0); }
+    50%  { transform: translate3d(0, -6px, 0); }
+    100% { transform: translate3d(0, 6px, 0); }
+  }
+}
+
+/* ------------------------------------------
+   4) Hero logo frame theme accent (static)
+   ------------------------------------------ */
+
+.hero-orbit{
+  position:relative;
+  border-radius:999px;
+  outline: 1px solid rgba(var(--btn-glow), .55);
+  outline-offset: 2px;
+  box-shadow:
+    0 0 0 1px rgba(15,23,42,0.95),
+    0 0 32px rgba(var(--btn-glow), .55);
+}
+
+/* ------------------------------------------------------
+   5) Micro shadow ripple on main actions (desktop only)
+   ------------------------------------------------------ */
+
+@media (pointer: fine){
+  .controls .btn,
+  #cancelBtn.btn-secondary,
+  #clearBtn.btn-secondary.subtle{
+    transition:
+      transform .14s ease,
+      box-shadow .18s ease,
+      filter .16s ease;
+  }
+
+  .controls .btn:hover:not(:disabled),
+  #cancelBtn.btn-secondary:hover:not(:disabled),
+  #clearBtn.btn-secondary.subtle:hover{
+    transform: translateY(-1px) scale(1.015);
+    filter: saturate(1.05);
+  }
+}
+
+/* ---------------------------------------------
+   6) Premium input focus ring (textarea helper)
+   --------------------------------------------- */
+/* (JS / HTML are unchanged – this just sweetens the glow) */
+
+body .ai-chat-input .main-input:focus{
+  box-shadow:
+    0 0 0 1px rgba(var(--btn-glow), .85),
+    0 0 0 3px rgba(var(--btn-glow), .35),
+    0 16px 40px rgba(0,0,0,.85);
+  border-color: rgba(var(--btn-glow), .95);
+}
+
+/* ---------------------------------------------
+   7) Micro dividers in long lists (results/history)
+   --------------------------------------------- */
+
+.tweet + .tweet,
+.failed-item + .failed-item,
+.history-item + .history-item{
+  border-top: 1px solid rgba(15,23,42,.90);
+}
+
+/* ---------------------------------------------
+   8) Crown “signature” hover on copy buttons
+   --------------------------------------------- */
+
+.copy-btn,
+.copy-btn-en,
+.history-copy-btn{
+  position:relative;
+  overflow:hidden;
+}
+
+.copy-btn::before,
+.copy-btn-en::before,
+.history-copy-btn::before{
+  content:"";
+  position:absolute;
+  inset:-40%;
+  border-radius:999px;
+  background: radial-gradient(
+    circle at 20% 0%,
+    rgba(251,191,36,.75),
+    transparent 55%
+  );
+  opacity:0;
+  transform: translate3d(-30%, 40%, 0);
+  pointer-events:none;
+  transition:
+    opacity .22s ease,
+    transform .22s ease;
+}
+
+.copy-btn:hover::before,
+.copy-btn-en:hover::before,
+.history-copy-btn:hover::before{
+  opacity:.9;
+  transform: translate3d(0, 0, 0);
+}
+
+/* ---------------------------------------------
+   9) Failed card header emphasis (subtle, static)
+   --------------------------------------------- */
+
+.main .card:nth-of-type(3) .card-head h2{
+  position:relative;
+  color:#fee2e2;
+}
+
+.main .card:nth-of-type(3) .card-head h2::after{
+  content:"";
+  position:absolute;
+  left:0;
+  bottom:-3px;
+  height:2px;
+  width:38px;
+  border-radius:999px;
+  background: linear-gradient(
+    90deg,
+    rgba(248,113,113,.95),
+    rgba(127,29,29,.95)
+  );
+  opacity:.85;
+}
+
+/* ---------------------------------------------
+   10) System status signal wave
+   --------------------------------------------- */
+
+.system-status{
+  position:relative;
+}
+
+.system-indicator{
+  position:relative;
+  width:8px;
+  height:8px;
+  border-radius:999px;
+}
+
+.system-indicator::after{
+  content:"";
+  position:absolute;
+  inset:0;
+  border-radius:inherit;
+  border:1px solid rgba(34,197,94,.65);
+  opacity:0;
+  pointer-events:none;
+}
+
+@media (pointer: fine) and (prefers-reduced-motion: no-preference){
+  .system-indicator::after{
+    animation: ct-signal-wave 2.4s ease-out infinite;
+  }
+
+  @keyframes ct-signal-wave{
+    0%{
+      transform: scale(1);
+      opacity:.45;
+    }
+    60%{
+      transform: scale(2.2);
+      opacity:0;
+    }
+    100%{
+      transform: scale(2.2);
+      opacity:0;
+    }
+  }
+}
+
+/* ---------------------------------------------
+   11) Desktop-only glass scrollbars for lists
+   --------------------------------------------- */
+
+@media (pointer: fine){
+  .results-list,
+  .failed-list,
+  .history-list{
+    scrollbar-width: thin;
+    scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95);
+  }
+
+  .results-list::-webkit-scrollbar,
+  .failed-list::-webkit-scrollbar,
+  .history-list::-webkit-scrollbar{
+    width: 6px;
+  }
+
+  .results-list::-webkit-scrollbar-track,
+  .failed-list::-webkit-scrollbar-track,
+  .history-list::-webkit-scrollbar-track{
+    background: rgba(15,23,42,.9);
+    border-radius: 999px;
+  }
+
+  .results-list::-webkit-scrollbar-thumb,
+  .failed-list::-webkit-scrollbar-thumb,
+  .history-list::-webkit-scrollbar-thumb{
+    background: linear-gradient(
+      180deg,
+      rgba(var(--btn-glow), .95),
+      rgba(var(--btn-glow), .6)
+    );
+    border-radius: 999px;
+    box-shadow: 0 0 10px rgba(var(--btn-glow), .7);
+  }
+}
+
+/* ---------------------------------------------
+   12) Respect reduced motion for new effects
+   --------------------------------------------- */
+
+@media (prefers-reduced-motion: reduce){
+  .hero::before,
+  .hero::after,
+  .system-indicator::after{
+    animation: none !important;
+  }
+}
+
+/* ===== Header rectangle cleanup (theme switcher pill → transparent) ===== */
+.theme-switcher { isolation: auto; } /* keep z-order sane, no extra backgrounds */
+
+.theme-dots{
+  background: transparent !important;   /* kill the slab */
+  box-shadow: none !important;          /* no drop-shadow rectangle */
+  padding: 0 2px;                       /* tighter, still clickable */
+  border-radius: 999px;                 /* keep round group shape */
+  gap: 10px;                            /* maintain spacing */
+}
+
+/* keep dots crisp without the pill; add subtle hover/active only */
+.theme-dot{
+  border: 2px solid var(--ring);
+  box-shadow: none;
+  transition: transform .15s ease, border-color .15s ease, box-shadow .15s ease;
+}
+.theme-dot:hover{ transform: translateY(-1px) scale(1.05); }
+.theme-dot.is-active{
+  border-color: rgba(var(--glow), .9);
+  box-shadow:
+    0 0 0 4px rgba(var(--glow), .10),
+    0 0 18px rgba(var(--glow), .35);
+}
+
+/* optional: nudge tooltip so it’s not clipped by the header edge */
+.theme-dot::before{ transform: translateX(-50%) translateY(-10px); }
+
+/* guard: if any earlier hero/header background leftovers exist, make them transparent */
+.hero { background: transparent !important; }
+
+/* =========================================================
+   CrownTALK — Premium Lite (feature pack 3,4,5,7,10,11,13,14,15)
+   Safe to append at end of styles.css
+========================================================= */
+
+/* ---------- [5] Per-theme micro accent tuning ---------- */
+[data-theme="dark-purple"] .chip,
+[data-theme="dark-purple"] .comment-line { border-color: rgba(167,139,250,.42); }
+[data-theme="blue"] .chip,
+[data-theme="blue"] .comment-line { border-color: rgba(59,130,246,.42); }
+[data-theme="emerald"] .chip,
+[data-theme="emerald"] .comment-line { border-color: rgba(16,185,129,.42); }
+[data-theme="gold"] .chip,
+[data-theme="gold"] .comment-line { border-color: rgba(251,191,36,.42); }
+[data-theme="crimson"] .chip,
+[data-theme="crimson"] .comment-line { border-color: rgba(244,63,94,.42); }
+[data-theme="black"] .chip,
+[data-theme="black"] .comment-line { border-color: rgba(209,213,219,.38); }
+[data-theme="white"] .chip,
+[data-theme="white"] .comment-line { border-color: rgba(37,99,235,.35); }
+
+/* progress gradient nudges per theme */
+[data-theme="emerald"] #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(16,185,129,.65); }
+[data-theme="gold"]    #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(251,191,36,.65); }
+[data-theme="crimson"] #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(244,63,94,.65); }
+
+/* ---------- [3] Dense toggle styles ---------- */
+.ct-density-toggle{
+  display:inline-flex; align-items:center; gap:8px;
+  font-size:11px; color:var(--text-muted);
+  user-select:none;
+}
+.ct-switch{
+  --w:34px; --h:18px;
+  width:var(--w); height:var(--h); border-radius:999px; position:relative;
+  background:rgba(148,163,184,.28); border:1px solid rgba(148,163,184,.45);
+  box-shadow: inset 0 0 0 1px rgba(0,0,0,.35);
+  cursor:pointer;
+}
+.ct-switch::after{
+  content:""; position:absolute; top:1px; left:1px;
+  width: calc(var(--h) - 2px); height: calc(var(--h) - 2px);
+  border-radius:999px; background:#fff; transition: transform .18s ease;
+  box-shadow: 0 1px 2px rgba(0,0,0,.45);
+}
+body.ct-dense .ct-switch::after{ transform: translateX(16px); }
+body.ct-dense .results-list .comment-line,
+body.ct-dense .history-item{ padding:4px 6px; }
+body.ct-dense .tweet{ padding:8px 8px 6px; }
+body.ct-dense .results-list{ gap:6px; }
+
+/* ---------- [7] Pipeline badges (static, no animation) ---------- */
+.ct-pipe{
+  display:flex; align-items:center; gap:10px;
+  font-size:10px; color:var(--text-muted); margin-top:8px;
+}
+.ct-step{ display:inline-flex; align-items:center; gap:6px; }
+.ct-dot{ width:7px; height:7px; border-radius:999px; background:#475569; box-shadow:0 0 0 1px rgba(148,163,184,.35) inset; }
+.ct-step.is-on .ct-dot{ background:rgba(var(--btn-glow),.9); box-shadow:0 0 10px rgba(var(--btn-glow),.6); }
+
+/* ---------- [10] Ambient top progress on first card ---------- */
+.card.is-ambient-progress::before{
+  content:""; position:absolute; left:10px; right:10px; top:6px; height:2px;
+  border-radius:999px; overflow:hidden;
+  background: rgba(148,163,184,.22);
+}
+.card.is-ambient-progress::after{
+  content:""; position:absolute; left:10px; top:6px; height:2px; width:0%;
+  border-radius:999px;
+  background: linear-gradient(90deg, rgba(var(--btn-glow),.95), rgba(var(--btn-glow),.5));
+  box-shadow: 0 0 10px rgba(var(--btn-glow),.6);
+  animation: ct-ambient-line 2.2s ease-in-out infinite;
+}
+@keyframes ct-ambient-line{
+  0%{ width:0%; }
+  55%{ width: 86%; }
+  100%{ width:0%; }
+}
+body:not(.is-generating) .card.is-ambient-progress::before,
+body:not(.is-generating) .card.is-ambient-progress::after{ display:none; }
+
+/* ---------- [11] Low-motion badge (optional helper) ---------- */
+.ct-lowmotion-pill{
+  display:none; position:fixed; bottom:12px; left:12px; z-index:20;
+  font-size:11px; color:#111; background:#e5e7eb; border-radius:999px; padding:4px 8px;
+  box-shadow:0 6px 16px rgba(0,0,0,.35);
+}
+body.low-motion .ct-lowmotion-pill{ display:inline-block; }
+
+/* ---------- [13] URL “compact view” mirror ---------- */
+.ai-chat-input{ position:relative; }
+#ctUrlCompactToggle{
+  position:absolute; right:16px; top:38px; z-index:3; cursor:pointer;
+  width:24px; height:24px; border-radius:6px; border:1px solid rgba(148,163,184,.45);
+  background: radial-gradient(circle at 30% 0%, rgba(255,255,255,.18), transparent 60%);
+  display:flex; align-items:center; justify-content:center; color:#e5e7eb;
+}
+#ctUrlMirror{
+  position:absolute; inset:0; z-index:1; border-radius:12px; pointer-events:none;
+  color: rgba(229,231,235,.92);
+  font: 500 0.95rem/1.5 ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
+  padding: 14px 14px 44px 14px; white-space:pre-wrap;
+  overflow:auto; -webkit-font-smoothing: antialiased; text-rendering: optimizeLegibility;
+}
+.ct-compact-on .main-input{ color: transparent; caret-color: #fff; position: relative; z-index:2; }
+.ct-compact-on #ctUrlMirror{ display:block; }
+#ctUrlMirror{ display:none; }
+
+/* Premium scrollbar on the mirror */
+#ctUrlMirror::-webkit-scrollbar{ width:8px; }
+#ctUrlMirror::-webkit-scrollbar-thumb{ background:linear-gradient(180deg, rgba(var(--btn-glow),.95), rgba(var(--btn-glow),.6)); border-radius:999px; }
+#ctUrlMirror{ scrollbar-width: thin; scrollbar-color: rgba(var(--btn-glow), .65) rgba(15,23,42,.95); }
+
+/* ---------- [14] Confetti (tiny, 6 particles) ---------- */
+.ct-confetti{ position:fixed; inset:0; pointer-events:none; z-index:10000; }
+.ct-confetti i{
+  position:absolute; width:8px; height:8px; border-radius:2px;
+  background: currentColor; top:50%; left:50%;
+  transform: translate(-50%,-50%); opacity:0; animation: ct-pop .7s ease forwards;
+}
+.ct-confetti i:nth-child(1){ color:#60a5fa; transform: translate(-50%,-50%) rotate(12deg); }
+.ct-confetti i:nth-child(2){ color:#a78bfa; transform: translate(-50%,-50%) rotate(-24deg); }
+.ct-confetti i:nth-child(3){ color:#34d399; transform: translate(-50%,-50%) rotate(36deg); }
+.ct-confetti i:nth-child(4){ color:#fbbf24; transform: translate(-50%,-50%) rotate(-48deg); }
+.ct-confetti i:nth-child(5){ color:#f43f5e; transform: translate(-50%,-50%) rotate(22deg); }
+.ct-confetti i:nth-child(6){ color:#e5e7eb; transform: translate(-50%,-50%) rotate(-12deg); }
+@keyframes ct-pop{
+  0%{ opacity:0; transform: translate(-50%,-50%) scale(.6); }
+  30%{ opacity:1; }
+  100%{ opacity:0; transform: translate(var(--dx,60px), var(--dy,-80px)) rotate(160deg) scale(1); }
+}
+
+/* ---------- [15] Theme hover preview (header only) ---------- */
+.hero[data-preview-theme="blue"]{
+  box-shadow: 0 0 30px rgba(59,130,246,.45), 0 0 70px rgba(239,246,255,.25) inset;
+}
+.hero[data-preview-theme="emerald"]{
+  box-shadow: 0 0 30px rgba(16,185,129,.45), 0 0 70px rgba(45,212,191,.25) inset;
+}
+.hero[data-preview-theme="gold"]{
+  box-shadow: 0 0 30px rgba(251,191,36,.35), 0 0 70px rgba(252,211,77,.22) inset;
+}
+.hero[data-preview-theme="crimson"]{
+  box-shadow: 0 0 30px rgba(244,63,94,.45), 0 0 70px rgba(255,228,230,.28) inset;
+}
+.hero[data-preview-theme="black"]{
+  box-shadow: 0 0 30px rgba(209,213,219,.25), 0 0 70px rgba(107,114,128,.18) inset;
+}
+.hero[data-preview-theme="white"]{
+  box-shadow: 0 0 30px rgba(15,23,42,.25), 0 0 70px rgba(250,204,21,.22) inset;
+}
+
+/* ---------- Mobile perf guard: the new bits obey low-motion ---------- */
+@media (max-width: 768px){
+  body.low-motion .card.is-ambient-progress::after,
+  body.low-motion .card.is-ambient-progress::before{
+    animation:none !important; display:none !important;
+  }
+}
+
+/* =========================================================
+   CrownTALK — Switcher Orbit + Hero/Preview Cleanup + Dense OFF
+   (safe overrides; no class/id changes)
+   ========================================================= */
+
+/* ---- 1) Theme switcher: bring back a rotating arc around the group ---- */
+.theme-dots{
+  position: relative;
+  background: transparent !important;   /* keep the pill gone */
+  box-shadow: none !important;
+  padding: 0 2px;
+}
+.theme-dots::after{
+  /* outer orbit arc with a small gap from the dots */
+  --ring: 2px;
+  --angle: 0deg;
+
+  content: "";
+  position: absolute;
+  inset: -10px;                         /* arc sits outside the group */
+  border-radius: 999px;
+  padding: var(--ring);
+
+  /* single moving arc */
+  background:
+    conic-gradient(from var(--angle),
+      rgba(var(--btn-glow), .0) 0deg,
+      rgba(var(--btn-glow), .35) 0deg 42deg,
+      transparent 42deg 360deg);
+
+  /* carve the arc into a thin ring with a gap */
+  -webkit-mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+          mask: radial-gradient(farthest-side, transparent calc(100% - var(--ring)), #000 calc(100% - var(--ring)));
+
+  filter: drop-shadow(0 0 10px rgba(var(--btn-glow), .35));
+  pointer-events: none;
+  animation: ct-theme-ring-rotate 6s linear infinite;
+}
+@keyframes ct-theme-ring-rotate { to { --angle: 360deg; } }
+
+/* keep each dot clean (no individual orbit circle) */
+.theme-dot::after{ content:none !important; }
+
+/* ---- 2) Remove “theme hover preview” glow on the hero ---- */
+.hero[data-preview-theme],
+.hero[data-preview-theme="blue"],
+.hero[data-preview-theme="emerald"],
+.hero[data-preview-theme="gold"],
+.hero[data-preview-theme="crimson"],
+.hero[data-preview-theme="black"],
+.hero[data-preview-theme="white"]{
+  box-shadow: none !important;
+}
+
+/* ---- 3) Kill the hero rectangle/overlays completely ---- */
+.hero{ background: transparent !important; box-shadow: none !important; }
+.hero::before,
+.hero::after{ content: none !important; }
+
+/* If any earlier patch outlined the hero logo heavily, soften it */
+.hero-orbit{
+  outline: none !important;
+  box-shadow: 0 0 30px rgba(0,0,0,0) !important; /* neutralize big aura */
+}
+
+/* ---- 4) Hide the Dense toggle and neutralize its effects ---- */
+.ct-density-toggle,
+.ct-switch{ display: none !important; }
+
+/* revert any compact spacing if body still has .ct-dense */
+body.ct-dense .results-list .comment-line{ padding: 5px 7px !important; }
+body.ct-dense .history-item{ padding: 5px 7px !important; }
+body.ct-dense .tweet{ padding: 10px 10px 8px !important; }
+body.ct-dense .results-list{ gap: 10px !important; }
+
+/* ===============================
+   CrownTALK Premium Pack CSS
+   Features: 16,19,21,22,27,29
+   Non-destructive, additive only
+=================================*/
+
+/* Remove the little preview button beside the URL box (if it exists) */
+#ctUrlCompactToggle,
+.ct-preview-toggle,
+.url-preview-btn { display: none !important; }
+
+/* ---------- 27) Live System HUD ---------- */
+#ctHud{
+  position: fixed;
+  right: 12px;
+  bottom: 12px;
+  z-index: 9999;
+  font: 600 11px/1.2 system-ui, -apple-system, Segoe UI, Roboto, Inter, sans-serif;
+  color: var(--text-main);
+  pointer-events: none;
+  filter: drop-shadow(0 6px 20px rgba(0,0,0,.65));
+}
+#ctHud .ct-hud__row{
+  display: inline-flex; align-items: center; gap: 8px;
+  background: radial-gradient(circle at 0% 0%, rgba(255,255,255,.10), transparent 60%),
+              rgba(15,23,42,.96);
+  border: 1px solid rgba(148,163,184,.45);
+  padding: 8px 10px;
+  border-radius: 10px;
+  pointer-events: auto;
+}
+#ctHud .ct-hud__dot{
+  width: 8px; height: 8px; border-radius: 999px;
+  background: radial-gradient(circle at 30% 0%, #22c55e, #16a34a 70%);
+  box-shadow: 0 0 10px rgba(34,197,94,.9);
+}
+#ctHud.is-hot .ct-hud__dot{
+  background: radial-gradient(circle at 30% 0%, #f97316, #b45309 70%);
+  box-shadow: 0 0 10px rgba(249,115,22,.9);
+}
+#ctHud .ct-hud__sp{ opacity: .5; }
+
+/* HUD toast bubble */
+#ctHud .ct-hud__toast{
+  position: absolute;
+  right: 0; bottom: 40px;
+  background: rgba(15,23,42,.98);
+  border: 1px solid rgba(148,163,184,.45);
+  padding: 6px 10px;
+  border-radius: 8px;
+  transform: translateY(10px);
+  opacity: 0;
+  transition: transform .2s ease, opacity .2s ease;
+  pointer-events: none;
+}
+#ctHud .ct-hud__toast.show{ transform: translateY(0); opacity: 1; }
+#ctHud .ct-hud__toast[data-kind="warn"]{ border-color: rgba(244,63,94,.8); }
+
+/* ---------- 29) Accessibility & Focus Mode ---------- */
+/* Dim everything except the currently focused card */
+body.focus-mode .card{ filter: brightness(.88) saturate(.9); transition: filter .15s ease; }
+body.focus-mode .card.is-focused{ filter: none; }
+
+/* Reduce motion (your JS toggles body.low-motion as well) */
+@media (prefers-reduced-motion: reduce){
+  #ctHud, #ctHud *{ transition: none !important; animation: none !important; }
+}
+
+/* Slight highlight on active card’s header when focused */
+.card.is-focused .card-header::after,
+.card.is-focused .card-head::after{
+  opacity: .9;
+}
+
+/* ---------- 22) Scheduler: subtle progress cue when queue hot ---------- */
+#ctHud.is-hot .ct-hud__row{
+  box-shadow: 0 0 0 1px rgba(var(--btn-glow), .85), 0 8px 20px rgba(0,0,0,.75);
+}
+
+/* ---------- 16) Smart Paste+ small visual cue on textarea focus ---------- */
+.url-textarea:focus{
+  background-image: radial-gradient(circle at 0% 0%, rgba(148,163,184,.10), transparent 60%),
+                    rgba(9,17,35,.92);
+}
+
+/* Keep things clean if focus mode + low motion both on */
+body.focus-mode.low-motion .card{ transition: none !important; }
+
+/* --- Theme dots: single rotating mini-arc on the ACTIVE dot only --- */
+
+/* make sure the row itself isn’t adding any arc or clipping */
+.theme-dots::before,
+.theme-dots::after{ content:none !important; }
+.theme-dots{ overflow:visible !important; }
+
+/* base dot setup (keeps your existing visuals) */
+.theme-dot{
+  position: relative;
+  overflow: visible;                 /* let the small arc show */
+  --orbit-size: 26px;                /* arc ring box */
+  --orbit-thick: 2px;                /* arc thickness */
+  --arc-sweep: 60deg;                /* how long the arc looks */
+  --glow: var(--btn-glow, 129,140,248);
+}
+
+/* the arc (hidden by default) */
+.theme-dot::after{
+  content:"";
+  position:absolute;
+  top:50%; left:50%;
+  width: var(--orbit-size);
+  height: var(--orbit-size);
+  transform: translate(-50%, -50%);  /* center on the dot */
+  transform-origin: 50% 50%;
+  border-radius: 50%;
+  pointer-events: none;
+  opacity: 0;
+  z-index: 2;
+  will-change: transform;
+
+  /* draw a short conic slice, then carve a ring with (webkit) mask */
+  background:
+    conic-gradient(
+      rgba(var(--glow), .95) 0 var(--arc-sweep),
+      transparent var(--arc-sweep)
+    );
+  -webkit-mask:
+    radial-gradient(farthest-side,
+      transparent calc(100% - var(--orbit-thick)),
+      #000 calc(100% - var(--orbit-thick)));
+          mask:
+    radial-gradient(farthest-side,
+      transparent calc(100% - var(--orbit-thick)),
+      #000 calc(100% - var(--orbit-thick)));
+  /* soft halo so it feels premium but not a big ring */
+  box-shadow: 0 0 10px rgba(var(--glow), .35);
+}
+
+/* show + rotate ONLY for the active dot */
+.theme-dot.is-active::after{
+  opacity: 1;
+  animation: ct-theme-dot-orbit 2.8s linear infinite;
+}
+
+@keyframes ct-theme-dot-orbit{
+  to{
+    transform: translate(-50%, -50%) rotate(360deg);
+  }
+}
+
+/* ensure no theme-hover preview tinting the header */
+.hero[data-preview-theme]{ box-shadow:none !important; }
+
+/* Dense toggle: hide if still present */
+.ct-density-toggle, .ct-switch{ display:none !important; }
+
+/* =========================================
+   CrownTALK — Processing Bar Animation (drop-in)
+   - Keeps your current DOM & IDs
+   - Works whether width is static or updated
+   - Auto-stops when body loses .is-generating
+   ========================================= */
+
+/* make sure the track can host an overlay */
+.progress-bar-outer{
+  position: relative;            /* anchor for ::after runner */
+  overflow: hidden;              /* hide the runner edges */
+}
+
+/* 1) Indeterminate runner (thin light sweep) */
+body.is-generating .progress-bar-outer::after{
+  content:"";
+  position: absolute;
+  top: 0;
+  left: -30%;
+  width: 35%;                    /* size of the sweeping highlight */
+  height: 100%;
+  pointer-events: none;
+
+  background: linear-gradient(90deg,
+    rgba(255,255,255,0) 0%,
+    rgba(255,255,255,.45) 45%,
+    rgba(255,255,255,0) 100%
+  );
+
+  /* subtle theme glow so it feels integrated */
+  box-shadow: 0 0 12px rgba(var(--btn-glow, 129,140,248), .35);
+
+  animation: ct-progress-runner 1.35s linear infinite;
+}
+
+@keyframes ct-progress-runner{
+  0%   { transform: translateX(-120%); }
+  100% { transform: translateX(420%); }
+}
+
+/* 2) Flowing gradient on the actual fill (if you set width) */
+body.is-generating #progressBarFill{
+  background-image: linear-gradient(
+    120deg,
+    #22c55e,
+    #a855f7,
+    #f97316,
+    #22c55e
+  ) !important;
+  background-size: 200% 100%;
+  animation: ct-progress-flow 1.25s linear infinite;
+  /* slight glow so it reads “active” */
+  box-shadow:
+    0 0 0 1px rgba(255,255,255,.14),
+    0 0 18px rgba(var(--btn-glow,129,140,248), .65);
+}
+
+@keyframes ct-progress-flow{
+  0%   { background-position:   0% 0; }
+  100% { background-position: -200% 0; }
+}
+
+/* Optional: quick “done” flash you can trigger by toggling .ct-progress-done on body
+   (no JS change needed if you don’t use it) */
+body.ct-progress-done .progress-bar-outer::after{
+  animation: none !important;
+  background: linear-gradient(90deg,
+    rgba(34,197,94,0),
+    rgba(34,197,94,.65),
+    rgba(34,197,94,0)
+  );
+  left: 0;
+  width: 100%;
+  animation: ct-progress-finish 380ms ease-out 1;
+}
+
+@keyframes ct-progress-finish{
+  0%   { opacity: 0; }
+  25%  { opacity: 1; }
+  100% { opacity: 0; }
+}
+
+
+/* CrownTALK — Desktop Premium Patch v1 (CSS)
+   Desktop-only, motion-respectful. No HTML changes required. */
+@media (pointer:fine) and (hover:hover) {
+
+  /* ---------- Premium Progress Bar ---------- */
+  /* Works whether you drive width% or transform:scaleX */
+  #progressBarFill {
+    position: relative;
+    transform-origin: 0 50%;
+    will-change: transform, width, background-position, box-shadow;
+    /* base glassy fill + subtle texture */
+    background-image:
+      linear-gradient(180deg, rgba(255,255,255,.18), rgba(255,255,255,.04)),
+      linear-gradient(90deg, rgba(255,255,255,.12), rgba(255,255,255,0)),
+      repeating-linear-gradient(135deg, rgba(255,255,255,.06) 0 6px, transparent 6px 12px);
+    background-size: 100% 100%, 100% 100%, 16px 16px;
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.08) inset,
+      0 6px 18px rgba(0,0,0,.28),
+      0 8px 28px rgba(var(--btn-glow, 80,160,255), .24);
+    border-radius: 10px;
+  }
+  /* animated inner sheen + head spark while generating */
+  body.is-generating #progressBarFill::before,
+  body.is-generating #progressBarFill::after {
+    content: "";
+    position: absolute;
+    pointer-events: none;
+  }
+  /* moving diagonal ripple */
+  body.is-generating #progressBarFill::before {
+    inset: 0;
+    background:
+      linear-gradient(115deg, rgba(255,255,255,.18) 0%, rgba(255,255,255,0) 60%);
+    mix-blend-mode: screen;
+    opacity: .55;
+    animation: ct-ripple 1.8s linear infinite;
+    border-radius: inherit;
+  }
+  /* tiny spark that clings to the leading edge (width or scaleX both work) */
+  body.is-generating #progressBarFill::after {
+    top: -1px; bottom: -1px; right: -1px; width: 10px;
+    border-radius: 8px;
+    background: radial-gradient(10px 12px at 60% 50%, rgba(255,255,255,.9), transparent 65%);
+    opacity: .75;
+    animation: ct-spark 1.6s ease-in-out infinite;
+  }
+  /* finish flash (triggered by your code toggling body.ct-progress-done) */
+  body.ct-progress-done #progressBarFill {
+    box-shadow:
+      0 0 0 1px rgba(255,255,255,.10) inset,
+      0 10px 26px rgba(0,0,0,.3),
+      0 0 0 2px rgba(60,220,160,.45),
+      0 16px 40px rgba(60,220,160,.35);
+  }
+
+  @keyframes ct-ripple { to { background-position: 0 0, 160px 0, 160px 0; } }
+  @keyframes ct-spark  { 0%,100% {opacity:.35; transform:translateX(0)} 50% {opacity:.95; transform:translateX(2px)} }
+
+  /* ---------- Magnetic transform slot (no conflict with existing transforms) ---------- */
+  /* Uses CSS vars we set from JS; keeps current transforms intact on most modern browsers via translate property */
+  #generateBtn, .reroll-btn, .card {
+    translate: var(--ct-tx, 0) var(--ct-ty, 0);
+    transition: translate .12s cubic-bezier(.2,.8,.2,1);
+  }
+
+  /* ---------- Active theme “comet” tick (active dot only) ---------- */
+  .theme-dot.is-active { position: relative; }
+  .theme-dot.is-active::after {
+    content:"";
+    position:absolute; inset:0; border-radius:50%;
+    --sz: 8%;
+    background:
+      conic-gradient(from var(--ct-a,0deg),
+        transparent 0 330deg,
+        rgba(255,255,255,.9) 330deg 360deg);
+    -webkit-mask: radial-gradient(circle closest-side, transparent calc(100% - var(--sz)), #000 100%);
+            mask: radial-gradient(circle closest-side, transparent calc(100% - var(--sz)), #000 100%);
+    opacity:.85;
+    animation: ct-comet 2.4s linear infinite;
+  }
+  @keyframes ct-comet { to { --ct-a: 360deg; } }
+
+  /* ---------- Cursor snap tooltip ---------- */
+  #ctTip {
+    position: fixed; z-index: 9999; pointer-events: none;
+    padding: 6px 9px; border-radius: 10px; font-size: 12px; line-height: 1;
+    background: rgba(20,22,28,.92); color: #fff;
+    box-shadow: 0 4px 18px rgba(0,0,0,.35);
+    opacity: 0; transform: translateY(-6px);
+    transition: opacity .12s ease, transform .12s ease;
+  }
+  #ctTip.show { opacity: 1; transform: translateY(-2px); }
+
+  /* ---------- Focus halo sweep (works with your .is-focused hook) ---------- */
+  .card { position: relative; }
+  .card.is-focused::after, .card:focus-within::after {
+    content:""; position:absolute; inset:-1px; border-radius: 14px; pointer-events:none;
+    background: conic-gradient(from var(--h,0deg),
+                rgba(var(--btn-glow, 80,160,255), .6) 10deg,
+                transparent 60deg 360deg);
+    animation: ct-halo 1s ease;
+  }
+  @keyframes ct-halo { 0%{opacity:.0; --h:0deg} 20%{opacity:.6} 100%{opacity:0; --h:360deg} }
+  body.low-motion .card.is-focused::after, body.low-motion .card:focus-within::after { display:none; }
+
+  /* ---------- Copy success micro-flicker ---------- */
+  .comment-line.copied .comment-text { animation: ct-blip .18s ease; }
+  @keyframes ct-blip { 0%{filter:brightness(1)} 50%{filter:brightness(1.35)} 100%{filter:brightness(1)} }
+
+  /* ---------- Background aurora while generating ---------- */
+  .hero { position: relative; z-index: 0; }
+  body.is-generating .hero::before {
+    content:""; position:absolute; inset:-10%;
+    background:
+      radial-gradient(40% 30% at 20% 10%, rgba(var(--btn-glow,120,180,255),.10), transparent 60%),
+      radial-gradient(50% 35% at 80% 90%, rgba(180,120,255,.10), transparent 60%);
+    filter: blur(18px);
+    animation: ct-aurora 12s linear infinite;
+    pointer-events:none; z-index:0;
+  }
+  @keyframes ct-aurora { to { transform: translate3d(2%, -2%, 0) } }
+
+  /* ---------- Premium modal / card ---------- */
+  .ct-modal {
+    position: fixed; inset: 0; display: none; place-items: center;
+    background: rgba(8, 10, 14, .45); backdrop-filter: blur(6px);
+    z-index: 9998;
+  }
+  .ct-modal.show { display: grid; }
+  .ct-card {
+    width: min(520px, 92vw); color:#fff; position: relative; overflow: hidden;
+    background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.02));
+    border-radius: 20px; border: 1px solid rgba(255,255,255,.14);
+    box-shadow: 0 24px 60px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.05) inset;
+    padding: 22px;
+  }
+  .ct-card::before {
+    content:""; position:absolute; inset:-30%;
+    background: radial-gradient(45% 35% at 30% 0%, rgba(var(--btn-glow,120,170,255),.18), transparent 60%);
+    filter: blur(16px);
+  }
+  .ct-card h3 { margin: 0 0 8px; font-size: 20px; }
+  .ct-card p { margin: 0 0 16px; line-height: 1.35; opacity: .9; }
+  .ct-actions { display:flex; gap:10px; justify-content:flex-end; }
+  .ct-card .btn-ghost, .ct-card .btn-primary {
+    appearance:none; border:0; border-radius: 999px; padding: 10px 16px; font-weight:600; cursor:pointer;
+  }
+  .ct-card .btn-ghost  { background: rgba(255,255,255,.08); color:#fff; }
+  .ct-card .btn-primary{
+    background: linear-gradient(180deg,
+      color-mix(in srgb, var(--btn-base, #7aa2ff) 10%, #fff 90%),
+      var(--btn-base, #7aa2ff));
+    color:#111; box-shadow: 0 10px 20px rgba(var(--btn-glow, 80,160,255), .35);
+  }
+  .ct-card .btn-primary:active { transform: translateY(1px); }
+}
+
+/* Respect user’s low-motion preference globally */
+body.low-motion #progressBarFill::before,
+body.low-motion #progressBarFill::after,
+body.low-motion .hero::before { animation: none !important; }
+
+
+/* CrownTALK — Desktop Premium Animation Pack */
+@media (pointer:fine) and (hover:hover) {
+
+  /* -------- Results scroll-edge glow (top/bottom) -------- */
+  #results { position: relative; }
+  #results::before,
+  #results::after {
+    content:""; position:absolute; left:0; right:0; height:18px; pointer-events:none;
+    opacity:0; transition:opacity .18s ease; z-index:2;
+  }
+  #results::before { top:0;    background:linear-gradient(to bottom, rgba(255,255,255,.18), rgba(255,255,255,0)); }
+  #results::after  { bottom:0; background:linear-gradient(to top,    rgba(255,255,255,.14), rgba(255,255,255,0)); }
+  #results.ct-can-scroll-up::before    { opacity:1; }
+  #results.ct-can-scroll-down::after   { opacity:1; }
+
+  /* -------- Skeleton shimmer (only while generating) -------- */
+  .tweet-skeleton-line { position:relative; overflow:hidden; border-radius:6px; }
+  body.is-generating .tweet-skeleton-line::before{
+    content:""; position:absolute; inset:0;
+    background:linear-gradient(90deg, rgba(255,255,255,0.06) 0%, rgba(255,255,255,0.14) 45%, rgba(255,255,255,0.06) 100%);
+    background-size:200% 100%;
+    animation: ct-shimmer 1.2s linear infinite;
+  }
+  @keyframes ct-shimmer { to { background-position:-200% 0; } }
+
+  /* -------- Generate button click ripple (subtle) -------- */
+  #generateBtn { position:relative; overflow:hidden; }
+  #generateBtn .ct-rip{
+    position:absolute; left:var(--x); top:var(--y);
+    width:12px; height:12px; border-radius:50%;
+    transform:translate(-50%,-50%);
+    background:radial-gradient(circle, rgba(255,255,255,.9) 0, rgba(255,255,255,.35) 35%, transparent 60%);
+    opacity:.9; pointer-events:none;
+    animation: ct-rip 600ms ease-out forwards;
+  }
+  @keyframes ct-rip { to { width:240px; height:240px; opacity:0; } }
+
+  /* -------- Results counter odometer micro-anim -------- */
+  #resultCount{ display:inline-block; will-change:transform; }
+  .ct-odo{ display:inline-block; }
+  .ct-odo.up{ animation: ct-odo-up .28s ease; }
+  @keyframes ct-odo-up { from{ transform:translateY(6px); opacity:.3 } to{ transform:translateY(0); opacity:1 } }
+
+  /* -------- Copy fly chip -------- */
+  .ct-fly{
+    position:fixed; z-index:9999; pointer-events:none;
+    padding:6px 10px; border-radius:999px; font-size:12px; line-height:1;
+    background:rgba(255,255,255,.92); color:#111;
+    box-shadow:0 8px 24px rgba(0,0,0,.25);
+    transform:translate3d(0,0,0); transition:transform .45s cubic-bezier(.2,.8,.2,1), opacity .45s ease;
+  }
+  .ct-fly.hide{ opacity:0; }
+}
+
+/* Global low-motion kill switches for this pack */
+body.low-motion .tweet-skeleton-line::before,
+body.low-motion #generateBtn .ct-rip { animation:none !important; }
+
+
+/* ===========================
+   CrownTALK — Premium Desk Pack
+   =========================== */
+
+@media (pointer:fine) {
+  /* --- [1] Prism Progress + spark --- */
+  #progressBarFill {
+    position: relative;
+    overflow: hidden;
+    will-change: transform;
+  }
+  /* prism band */
+  body.is-generating #progressBarFill::before {
+    content:"";
+    position:absolute; inset:0;
+    background:
+      linear-gradient(120deg,
+        rgba(255,255,255,.06) 0%,
+        rgba(255,255,255,.16) 20%,
+        rgba(255,255,255,.06) 40%,
+        rgba(255,255,255,.12) 60%,
+        rgba(255,255,255,.05) 100%),
+      repeating-linear-gradient(135deg,
+        rgba(255,255,255,.06) 0 8px,
+        rgba(255,255,255,0) 8px 16px);
+    mix-blend-mode: screen;
+    animation: ctPrism 3.4s linear infinite;
+    pointer-events:none;
+  }
+  /* specular spark hugging the right edge */
+  body.is-generating #progressBarFill::after {
+    content:"";
+    position:absolute; inset:0;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(255,255,255,.9) 70%, rgba(255,255,255,0) 100%);
+    filter: drop-shadow(0 0 8px rgba(var(--btn-glow,14,65,143),.35));
+    -webkit-mask: linear-gradient(90deg, transparent calc(100% - 12px), #000 100%);
+            mask: linear-gradient(90deg, transparent calc(100% - 12px), #000 100%);
+    animation: ctSpark 1.8s ease-in-out infinite;
+    pointer-events:none;
+  }
+  @keyframes ctPrism { to { background-position: 240px 0, 160px 0; } }
+  @keyframes ctSpark { 0%,100% {opacity:.5} 50% {opacity:1} }
+
+  /* --- [12] Tick marks overlay (activated via JS) --- */
+  .ct-ticks { position:absolute; inset:0; pointer-events:none; }
+  .ct-ticks .tick {
+    position:absolute; top:0; bottom:0; width:1px; opacity:.35;
+    background: linear-gradient(180deg, rgba(255,255,255,.5), rgba(255,255,255,0));
+    transform: translateX(-0.5px);
+    transition: opacity .18s ease, box-shadow .18s ease;
+  }
+  .ct-ticks .tick.passed {
+    opacity:.9;
+    box-shadow: 0 0 0 1px rgba(var(--btn-glow,14,65,143),.35);
+  }
+
+  /* --- [2] Per-card microbar --- */
+  .tweet { position: relative; }
+  .tweet .ct-microbar {
+    position:absolute; top:0; left:0; height:2px; width:100%;
+    transform-origin:left;
+    transform: scaleX(0);
+    background: linear-gradient(90deg,
+      rgba(var(--btn-glow,14,65,143), .0) 0%,
+      rgba(var(--btn-glow,14,65,143), .7) 35%,
+      rgba(var(--btn-glow,14,65,143), 1) 60%,
+      rgba(var(--btn-glow,14,65,143), .0) 100%);
+    filter: drop-shadow(0 0 8px rgba(var(--btn-glow,14,65,143), .35));
+  }
+  .tweet .ct-microbar.run { transition: transform .45s ease; transform: scaleX(1); }
+  body.low-motion .tweet .ct-microbar { transform: none; }
+
+  /* --- [3] Scroll-edge ion glow for results --- */
+  #results { position: relative; }
+  #results::before,
+  #results::after {
+    content:""; position:absolute; left:0; right:0; height:18px; pointer-events:none; opacity:0; transition: opacity .18s ease;
+    background: radial-gradient(80% 100% at 50% 0%, rgba(var(--btn-glow,14,65,143),.20), rgba(0,0,0,0) 70%);
+    z-index: 1;
+  }
+  #results::before { top:0; transform: scaleY(-1); }
+  #results::after  { bottom:0; }
+  #results.can-up::before { opacity: .8; }
+  #results.can-down::after { opacity: .8; }
+
+  /* --- [4] Kinetic scrollbar (WebKit only) --- */
+  #results::-webkit-scrollbar { width:8px; height:8px; }
+  #results::-webkit-scrollbar-track { background: rgba(255,255,255,.06); border-radius: 99px; }
+  #results::-webkit-scrollbar-thumb {
+    background: linear-gradient(180deg, rgba(var(--btn-glow,14,65,143),.55), rgba(var(--btn-glow,14,65,143),.25));
+    border-radius: 99px;
+    transition: all .18s ease;
+  }
+  #results:is(:hover,.is-scrolling)::-webkit-scrollbar { width:10px; }
+  #results:is(:hover,.is-scrolling)::-webkit-scrollbar-thumb { background: linear-gradient(180deg, rgba(var(--btn-glow,14,65,143),.85), rgba(var(--btn-glow,14,65,143),.45)); }
+
+  /* --- [8] Cursor-driven specular on cards --- */
+  .tweet::after {
+    content:""; position:absolute; inset:-2px;
+    background: radial-gradient(200px 140px at var(--mx,50%) var(--my,50%),
+      rgba(255,255,255,.18), rgba(255,255,255,0) 60%);
+    opacity: .0; transition: opacity .18s ease;
+    pointer-events:none;
+  }
+  .tweet:hover::after { opacity:.9; }
+  body.low-motion .tweet::after { display:none; }
+
+  /* --- [9] Odometer flick on result count --- */
+  #resultCount.ct-odometer { display:inline-flex; gap:2px; }
+  .ct-digit {
+    display:inline-block; perspective:600px; width: .72ch; text-align:center;
+  }
+  .ct-digit .front, .ct-digit .back {
+    display:block; transform-origin:50% 50%;
+    backface-visibility:hidden;
+  }
+  .ct-digit.flip .front { animation: ctFlipOut .22s ease forwards; }
+  .ct-digit.flip .back  { animation: ctFlipIn  .22s ease forwards; }
+  @keyframes ctFlipOut { to { transform: rotateX(-90deg); opacity:.2; } }
+  @keyframes ctFlipIn  { from { transform: rotateX(90deg); opacity:.2; } to { transform: rotateX(0deg); opacity:1; } }
+
+  /* --- [15] Crown cursor during generate (results area only) --- */
+  body.is-generating #results { cursor: url("data:image/svg+xml;utf8,\
+<svg xmlns='http://www.w3.org/2000/svg' width='24' height='24' viewBox='0 0 24 24'>\
+<path fill='%23ffffff' d='M3 16l2-7 4 4 3.5-6 3.5 6 4-4 2 7H3zM5 18h14v2H5z'/>\
+</svg>") 8 8, default; }
+
+  /* --- [16] Theme dot breath (no rotate, no hover preview) --- */
+  .theme-dot.is-active { position:relative; }
+  .theme-dot.is-active::after {
+    content:""; position:absolute; inset:-6px; border-radius:50%;
+    box-shadow: 0 0 0 2px rgba(var(--btn-glow,14,65,143),.45), 0 0 24px rgba(var(--btn-glow,14,65,143),.35);
+    animation: ctBreath 2.4s ease-in-out infinite;
+  }
+  @keyframes ctBreath { 0%,100% {opacity:.9; transform: scale(1)} 50% {opacity:.65; transform: scale(.96)} }
+  body.low-motion .theme-dot.is-active::after { animation:none; }
+
+  /* --- [18] Link hover laser --- */
+  .tweet .tweet-link { position:relative; text-decoration:none; }
+  .tweet .tweet-link::after {
+    content:""; position:absolute; left:0; right:0; bottom:-2px; height:2px;
+    background: linear-gradient(90deg, rgba(255,255,255,0) 0%, rgba(var(--btn-glow,14,65,143),1) 50%, rgba(255,255,255,0) 100%);
+    transform: scaleX(0); transform-origin:left; transition: transform .18s ease;
+  }
+  .tweet .tweet-link:hover::after { transform: scaleX(1); }
+
+  /* --- [19] Ready ping --- */
+  .tweet.ct-ready-ping { box-shadow: inset 0 0 0 2px rgba(var(--btn-glow,14,65,143),.9); transition: box-shadow .18s ease; }
+  .tweet.ct-ready-ping.off { box-shadow: none; }
+
+  /* --- [20] Time-of-day ambient tint for .hero --- */
+  .hero { transition: background .28s ease; }
+  html[data-ambient="morning"]  .hero { background-image: linear-gradient(180deg, rgba(255,255,255,.06), rgba(255,255,255,0)); }
+  html[data-ambient="afternoon"] .hero { background-image: linear-gradient(180deg, rgba(255,255,255,.02), rgba(255,255,255,0)); }
+  html[data-ambient="evening"]   .hero { background-image: linear-gradient(180deg, rgba(0,0,0,.14), rgba(0,0,0,0)); }
+
+  /* --- [5] Empty-state premium card & [6] Daily welcome card --- */
+  .ct-overlay {
+    position: fixed; inset:0; background: rgba(0,0,0,.45);
+    display:flex; align-items:center; justify-content:center; z-index: 9999;
+    animation: ctFade .18s ease;
+  }
+  @keyframes ctFade { from { opacity: 0 } to { opacity: 1 } }
+
+  .ct-card {
+    min-width: 320px; max-width: 560px;
+    background: rgba(20,24,34,.72);
+    backdrop-filter: blur(10px);
+    border-radius: 18px;
+    box-shadow: 0 20px 60px rgba(0,0,0,.45), 0 0 0 1px rgba(255,255,255,.08) inset;
+    color: #fff; padding: 18px 20px 16px; position: relative;
+    transform: translateY(8px); animation: ctPop .2s ease forwards;
+  }
+  @keyframes ctPop { to { transform: translateY(0) } }
+
+  .ct-card h3 { margin:0 0 6px; font-size: 18px; font-weight: 700; letter-spacing:.2px; }
+  .ct-card p { margin: 0; opacity:.88; }
+  .ct-card .ct-actions { margin-top:12px; display:flex; gap:8px; justify-content:flex-end; }
+  .ct-btn {
+    border: 0; border-radius: 999px; padding: 8px 14px; cursor: pointer;
+    background: linear-gradient(180deg, rgba(255,255,255,.12), rgba(255,255,255,.04));
+    color:#fff;
+  }
+  .ct-btn.primary {
+    background: linear-gradient(180deg, rgba(var(--btn-glow,14,65,143),.85), rgba(var(--btn-glow,14,65,143),.55));
+    box-shadow: 0 12px 28px rgba(var(--btn-glow,14,65,143),.38);
+  }
+
+  .ct-welcome {
+    position: fixed; top:16px; right:16px; z-index: 9998;
+    background: rgba(20,24,34,.78); backdrop-filter: blur(8px);
+    border-radius: 14px; padding: 12px 14px; color:#fff;
+    box-shadow: 0 12px 40px rgba(0,0,0,.4), 0 0 0 1px rgba(255,255,255,.08) inset;
+    animation: ctWelcome .22s ease;
+  }
+  @keyframes ctWelcome { from { opacity:0; transform: translateY(-6px) } to { opacity:1; transform:none } }
+  .ct-welcome .title { font-weight:700; margin-bottom:4px; }
+  .ct-welcome .hint { opacity:.86; font-size:.95rem; }
+
+  /* --- [7] Copy heat-streak (only desktop) --- */
+  .ct-streak {
+    position: fixed; width: 10px; height: 10px; border-radius: 999px;
+    background: radial-gradient(circle at 30% 30%, #fff, rgba(255,255,255,0) 60%), rgba(var(--btn-glow,14,65,143),.85);
+    box-shadow: 0 0 18px rgba(var(--btn-glow,14,65,143),.65);
+    pointer-events:none; z-index: 9999; opacity:.9;
+    transition: transform .55s cubic-bezier(.2,.9,.2,1), opacity .2s linear;
+  }
+}
+
+
+/* ============================
+   CrownTALK Premium Patch CSS
+============================ */
+
+/* ----------Ambient Aurora (Generating Only) ---------- */
+#ctAurora {
+  position: fixed;
+  inset: 0;
+  pointer-events: none;
+  z-index: 0;
+  opacity: 0;
+  mix-blend-mode: screen;
+  background:
+    radial-gradient(40vmax 40vmax at 15% 20%, rgba(0, 204, 255, .12), transparent 60%),
+    radial-gradient(38vmax 38vmax at 85% 25%, rgba(255, 0, 185, .10), transparent 60%),
+    radial-gradient(45vmax 45vmax at 50% 110%, rgba(0, 255, 163, .10), transparent 60%);
+  transition: opacity .4s ease;
+}
+body.is-generating #ctAurora:not(.low-motion) { opacity: .95; }
+body.low-motion #ctAurora { opacity: 0 !important; }
+
+/* ---------- Caret Spark ---------- */
+.ct-caret-spark {
+  position: fixed;
+  width: 10px; height: 10px;
+  border-radius: 50%;
+  pointer-events: none;
+  background: radial-gradient(circle, rgba(255,255,255,.9), rgba(var(--btn-glow, 56,189,248), .6) 50%, transparent 70%);
+  filter: drop-shadow(0 0 8px rgba(var(--btn-glow,56,189,248),.65));
+  animation: ct-spark-pop 180ms ease-out forwards;
+  z-index: 9999;
+}
+@keyframes ct-spark-pop {
+  from { transform: translate(-50%,-50%) scale(.6); opacity: .95; }
+  to   { transform: translate(-50%,-50%) scale(1.25); opacity: 0; }
+}
+
+/* ---------- URL Gutter Lights + [19] Hover Hint Line ---------- */
+.ct-url-gutter {
+  position: absolute;
+  left: 0; top: 0;
+  width: 8px;
+  height: 100%;
+  pointer-events: none;
+  z-index: 2;
+}
+.ct-led {
+  width: 6px; height: 6px;
+  margin: 6px 1px;
+  border-radius: 50%;
+  opacity: .65;
+  box-shadow: 0 0 6px currentColor;
+}
+.ct-led.ok { color: #22c55e; }        /* green */
+.ct-led.warn { color: #f59e0b; }      /* amber */
+.ct-led.err { color: #ef4444; }       /* red */
+.ct-url-hoverline {
+  position: absolute;
+  left: 0; right: 0;
+  height: 1.6em;
+  background: linear-gradient(90deg, rgba(255,255,255,.06), transparent 55%);
+  border-left: 2px solid rgba(var(--btn-glow,56,189,248),.5);
+  pointer-events: none;
+  z-index: 1;
+  opacity: 0;
+  transition: opacity .12s ease;
+}
+body.low-motion .ct-url-hoverline { transition: none; }
+
+/* ---------- [7] Reroll “Shuffle Merge” ---------- */
+.comment-line.ct-out {
+  animation: ct-line-out 220ms ease forwards;
+}
+.comment-line.ct-in {
+  animation: ct-line-in 280ms cubic-bezier(.2,.8,.2,1) forwards;
+}
+@keyframes ct-line-out {
+  to { transform: translateY(-6px); filter: blur(2px); opacity: 0; }
+}
+@keyframes ct-line-in {
+  from { transform: translateY(6px); filter: blur(2px); opacity: 0; }
+  to   { transform: translateY(0); filter: blur(0); opacity: 1; }
+}
+.comment-line.ct-in .comment-text {
+  position: relative;
+}
+.comment-line.ct-in .comment-text::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(90deg, transparent, rgba(255,255,255,.35), transparent);
+  transform: translateX(-120%);
+  animation: ct-sheen 600ms ease 120ms forwards;
+  pointer-events: none;
+}
+@keyframes ct-sheen { to { transform: translateX(120%); } }
+
+/* ---------- [12] Cursor Trail (Generating Only) ---------- */
+.ct-trail {
+  position: fixed;
+  pointer-events: none;
+  z-index: 9998;
+}
+.ct-trail-dot {
+  position: absolute;
+  width: 6px; height: 6px;
+  border-radius: 50%;
+  background: rgba(var(--btn-glow,56,189,248), .9);
+  filter: blur(0.2px) drop-shadow(0 0 8px rgba(var(--btn-glow,56,189,248), .55));
+  animation: ct-trail-fade 360ms ease-out forwards;
+}
+.ct-trail-dot:nth-child(2) { width: 4px; height: 4px; opacity: .85; }
+@keyframes ct-trail-fade {
+  to { transform: translateY(2px) scale(.85); opacity: 0; }
+}
+body.low-motion .ct-trail { display: none !important; }
+
+/* ---------- [13] (no CSS needed) Tab Title Signals ---------- */
+
+/* ---------- [20] Mini Toast Queue ---------- */
+#ctToasts {
+  position: fixed;
+  right: 18px; bottom: 18px;
+  display: flex; flex-direction: column; gap: 8px;
+  z-index: 9999; pointer-events: none;
+}
+.ct-toast {
+  min-width: 180px;
+  max-width: 360px;
+  padding: 10px 12px;
+  border-radius: 10px;
+  background: rgba(17,24,39,.92);
+  color: #fff;
+  font-size: 13px;
+  line-height: 1.25;
+  box-shadow: 0 10px 20px rgba(0,0,0,.35), 0 0 0 1px rgba(255,255,255,.06) inset;
+  transform: translateY(12px);
+  opacity: 0;
+  pointer-events: auto;
+  animation: ct-toast-in 220ms cubic-bezier(.2,.8,.2,1) forwards;
+}
+.ct-toast[data-kind="ok"]    { background: linear-gradient(180deg, rgba(13,148,136,.96), rgba(6,95,70,.92)); }
+.ct-toast[data-kind="warn"]  { background: linear-gradient(180deg, rgba(234,179,8,.98), rgba(180,83,9,.95)); }
+.ct-toast[data-kind="error"] { background: linear-gradient(180deg, rgba(239,68,68,.98), rgba(153,27,27,.95)); }
+@keyframes ct-toast-in {
+  to { transform: translateY(0); opacity: 1; }
+}
+.ct-toast.ct-leave {
+  animation: ct-toast-out 240ms ease forwards;
+}
+@keyframes ct-toast-out {
+  to { transform: translateY(-6px); opacity: 0; }
+
+ /* CrownTALK — SAFE MODE (desktop) */
+html.ct-safe *, html.ct-safe *::before, html.ct-safe *::after {
+  animation: none !important;
+  transition: none !important;
+  filter: none !important;
+  will-change: auto !important;
+}
+
+html.ct-safe .btn::after,
+html.ct-safe .dots_border::before,
+html.ct-safe .ct-lowmotion-pill,
+html.ct-safe #ctHud,
+html.ct-safe .ambient-thread,
+html.ct-safe .sparkle,
+html.ct-safe .tweet-skeleton .tweet-skeleton-line {
+  display: none !important;
+}
+
+html.ct-safe #progressBarFill {
+  transition: transform .12s linear !important; /* cheap transform only */
+  box-shadow: none !important;
+}
+
+html.ct-safe .card,
+html.ct-safe .tweet {
+  box-shadow: 0 2px 10px rgba(0,0,0,.12) !important; /* lighter shadow */
+  transform: none !important;
+}
+  
+}
+
+/* ensure hero stays above aurora visuals */
+.hero { position: relative; z-index: 1; }
+
+
+/* === (1) Spectral Progress Comet (uses your existing #progressBarFill) === */
+#progressBarFill {
+  position: relative;
+  transform-origin: left center;
+}
+#progressBarFill::after{
+  content:"";
+  position:absolute; top:-2px; bottom:-2px;
+  width:min(140px, 30%);
+  right: calc(100% - (var(--ct-progress-frac, 0) * 100%));
+  background: radial-gradient(60% 50% at 70% 50%, rgba(255,255,255,.95), rgba(255,255,255,.0) 60%),
+              linear-gradient(90deg, rgba(255,255,255,.25), rgba(255,255,255,0));
+  filter: blur(3px);
+  pointer-events:none;
+}
+
+/* === (8) Batch ETA Whisper (small line under the progress label) === */
+.progress-eta{
+  font-size:.85rem;
+  opacity:.8;
+  margin-top:4px;
+}
+
+/* === (19) Micro-Shadow Sync (cards feel more “charged” as progress rises) === */
+.tweet{
+  --pct: var(--ct-progress-frac, 0);
+  transition: box-shadow .25s ease, transform .25s ease;
+  box-shadow:
+    0 1px 0 rgba(255,255,255,.05) inset,
+    0 0 0 1px rgba(255,255,255,.06),
+    0 10px 22px rgba(0,0,0,.35),
+    0 14px 36px rgba(0, 160, 255, calc(.06 + .20 * var(--pct)));
+}
+
+/* === (14) Undo Clear snackbar & generic toasts === */
+#ctToasts{ position:fixed; right:16px; bottom:16px; display:flex; flex-direction:column; gap:8px; z-index:9999; }
+.ct-toast{ padding:10px 14px; border-radius:10px; background:rgba(20,24,32,.95); color:#fff; box-shadow:0 8px 24px rgba(0,0,0,.35); transform:translateY(6px); opacity:0; animation:ctToastIn .18s ease forwards; }
+.ct-toast[data-kind="ok"]{ border:1px solid rgba(56,189,248,.45); }
+.ct-toast[data-kind="warn"]{ border:1px solid rgba(255,196,64,.45); }
+.ct-toast.ct-leave{ animation:ctToastOut .16s ease forwards; }
+@keyframes ctToastIn{ to{ transform:translateY(0); opacity:1; } }
+@keyframes ctToastOut{ to{ transform:translateY(6px); opacity:0; } }
+.ct-snack{ position:fixed; left:50%; transform:translateX(-50%); bottom:-64px; opacity:0; transition:all .22s ease; background:rgba(20,24,32,.96); color:#fff; padding:10px 14px; border-radius:12px; display:flex; align-items:center; gap:12px; z-index:9998; border:1px solid rgba(56,189,248,.35); }
+.ct-snack.show{ bottom:18px; opacity:1; }
+.ct-snack .ct-snack-btn{ all:unset; background:rgba(56,189,248,.14); padding:6px 10px; border-radius:8px; cursor:pointer; }
+
+/* === (49) Crash Guard restore banner === */
+.ct-restore{ position:fixed; left:50%; transform:translateX(-50%); top:14px; background:rgba(20,24,32,.98); color:#fff; padding:10px 14px; border-radius:12px; display:flex; gap:10px; align-items:center; z-index:9998; border:1px solid rgba(56,189,248,.35); }
+.ct-restore button{ all:unset; cursor:pointer; padding:6px 10px; border-radius:8px; }
+.ct-restore-btn{ background:rgba(56,189,248,.16); }
+.ct-restore-skip{ background:rgba(255,255,255,.06); }
+
+/* === Smooth URL Dropzone halo === */
+.ct-drop-halo{
+  position:fixed; inset:0; border:3px dashed rgba(56,189,248,.55);
+  border-radius:18px; pointer-events:none; box-shadow:0 0 0 6px rgba(56,189,248,.08) inset;
+  animation:ctHalo .9s ease-in-out infinite alternate; z-index:9997;
+}
+@keyframes ctHalo{ from{ opacity:.35; } to{ opacity:.8; } }
+
+/* === (50) Ultra-Lite Mode (hide frills on phones/low-motion while generating) === */
+html.ultralite-on .hero,
+html.ultralite-on #ctHud,
+html.ultralite-on .ct-trail,
+html.ultralite-on .ambient-thread,
+html.ultralite-on #ctAurora{ display:none !important; }
+html.ultralite-on .tweet{ box-shadow: 0 1px 0 rgba(255,255,255,.04) inset, 0 0 0 1px rgba(255,255,255,.06), 0 8px 18px rgba(0,0,0,.28) !important; }
+
+/* Small a11y tweak: ensure progress bar stays crisp */
+#progressBarFill{ will-change: transform; }
+
+
+/* =========================================================
+   CrownTALK — Desktop Comment Studio & premium tools
+   (All additions are additive; no existing class/id changed)
+   ========================================================= */
+
+/* Utility: hide on small screens or coarse pointers */
+.hide-on-mobile{
+  display:none !important;
+}
+
+@media (min-width: 768px){
+  .hide-on-mobile{
+    display:initial !important;
+  }
+}
+
+/* Tiny button size used in toolbars */
+.btn-xs{
+  padding:4px 10px;
+  font-size:11px;
+  line-height:1.35;
+}
+
+/* URL tools row under textarea */
+.url-tools-row{
+  display:flex;
+  flex-wrap:wrap;
+  align-items:center;
+  justify-content:space-between;
+  gap:8px;
+  margin:8px 2px 6px;
+  font-size:11px;
+}
+.url-health{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.url-health-badge{
+  padding:3px 8px;
+  border-radius:999px;
+  background:rgba(15,23,42,.9);
+  border:1px solid rgba(148,163,184,.6);
+  font-size:11px;
+  color:#e5e7eb;
+}
+.url-health-badge[data-status="warn"]{
+  border-color:rgba(248,113,113,.9);
+  background:linear-gradient(90deg,rgba(127,29,29,.9),rgba(30,64,175,.8));
+}
+.url-health-badge[data-status="ok"]{
+  border-color:rgba(52,211,153,.9);
+  background:linear-gradient(90deg,rgba(6,95,70,.95),rgba(30,64,175,.85));
+}
+.url-tools-buttons{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+/* Desktop comment studio split view
+   -> disabled now so the Results side gets full width */
+@media (min-width: 1024px) and (pointer:fine){
+  .main{
+    grid-template-columns:minmax(0,1fr);
+    column-gap:18px;
+  }
+}
+
+/* Results layout + copy queue (desktop only)
+   -> copy queue hidden, layout stays single-column */
+.results-layout{
+  display:block;
+}
+.copy-queue-panel{
+  display:none; /* fully hidden but styles kept if you re-enable later */
+  border-radius:14px;
+  border:1px dashed rgba(148,163,184,.55);
+  background:linear-gradient(145deg,rgba(15,23,42,.96),rgba(15,23,42,.88));
+  padding:10px;
+  font-size:11px;
+  min-height:120px;
+}
+.copy-queue-head{
+  display:flex;
+  flex-direction:column;
+  gap:2px;
+  margin-bottom:6px;
+}
+.copy-queue-head h3{
+  font-size:12px;
+  font-weight:600;
+}
+.copy-queue-empty{
+  opacity:.7;
+}
+.copy-queue-list{
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+  max-height:200px;
+  overflow:auto;
+  padding-right:2px;
+}
+.copy-queue-item{
+  text-align:left;
+  border-radius:10px;
+  border:1px solid rgba(30,64,175,.5);
+  background:rgba(15,23,42,.95);
+  padding:5px 8px;
+  font-size:11px;
+  cursor:pointer;
+  transition:background-color .12s, border-color .12s, transform .08s;
+}
+.copy-queue-item.is-active{
+  border-color:rgba(251,191,36,.9);
+  background:linear-gradient(90deg,rgba(30,64,175,1),rgba(30,64,175,.4));
+}
+.copy-queue-item:hover{
+  transform:translateY(-1px);
+}
+.copy-queue-footer{
+  margin-top:8px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+/* Session tabs */
+.session-tabs{
+  margin-top:6px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+.session-chip{
+  padding:3px 9px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.65);
+  background:rgba(15,23,42,.9);
+  font-size:11px;
+  color: var(--text-main);
+  cursor:pointer;
+  opacity:.75;
+  transition:background-color .15s, border-color .15s, opacity .12s, transform .08s;
+}
+.session-chip.is-active{
+  border-color:rgba(var(--btn-glow,59,130,246),.95);
+  background:radial-gradient(circle at 0 0,rgba(251,191,36,.14),transparent 55%), rgba(15,23,42,.98);
+  opacity:1;
+  transform:translateY(-0.5px);
+}
+
+/* Results toolbar */
+.results-toolbar{
+  display:flex;
+  justify-content:space-between;
+  align-items:center;
+  gap:10px;
+  margin:4px 0 8px;
+  font-size:11px;
+}
+.results-toolbar-left{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.preset-label{
+  display:flex;
+  align-items:center;
+  gap:6px;
+}
+.preset-select{
+  border-radius:999px;
+  background:rgba(15,23,42,.9);
+  border:1px solid rgba(148,163,184,.7);
+  padding:4px 22px 4px 8px;
+  font-size:11px;
+  color:#e5e7eb;
+}
+
+/* Keyboard HUD (still inline for now) */
+.keyboard-hud{
+  margin-top:8px;
+  padding:6px 8px;
+  border-radius:999px;
+  border:1px dashed rgba(148,163,184,.6);
+  background:radial-gradient(circle at 0 0,rgba(59,130,246,.22),transparent 55%), rgba(15,23,42,.9);
+  font-size:11px;
+  display:flex;
+  flex-wrap:wrap;
+  gap:10px;
+  align-items:center;
+  justify-content:flex-start;
+}
+.keyboard-hud span{
+  opacity:.86;
+}
+
+/* Analytics HUD */
+.analytics-row{
+  margin-top:6px;
+  display:flex;
+  justify-content:flex-end; 
+  flex-wrap:wrap;
+  gap:6px;
+  font-size:11px;
+  opacity:0;
+  transition:opacity .18s ease-out;
+}
+.analytics-pill{
+  padding:3px 8px;
+  border-radius:999px;
+  background:rgba(15,23,42,.95);
+  border:1px solid rgba(148,163,184,.65);
+  display:flex;
+  align-items:center;
+  gap:4px;
+}
+.analytics-pill .label{
+  opacity:.8;
+}
+.analytics-pill .value{
+  font-weight:600;
+}
+
+/* Tweet collapse & pin */
+.tweet.is-collapsed .comment-line:nth-of-type(n+2){
+  display:none;
+}
+.tweet.is-collapsed .comments{
+  max-height:46px;
+  overflow:hidden;
+}
+.tweet.is-pinned{
+  border-color:rgba(251,191,36,.9);
+  box-shadow:0 0 0 1px rgba(251,191,36,.4);
+}
+.tweet-collapse-btn,
+.tweet-pin-btn{
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.7);
+  background:rgba(15,23,42,.9);
+  padding:3px 7px;
+  font-size:11px;
+  cursor:pointer;
+}
+.tweet-pin-btn::before{
+  content:"📌";
+  margin-right:2px;
+}
+
+/* Queue button on each comment line */
+.queue-btn{
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.6);
+  background:rgba(15,23,42,.9);
+  font-size:11px;
+  padding:2px 6px;
+  margin-inline:4px;
+  cursor:pointer;
+}
+.comment-line.queued{
+  border-color:rgba(251,191,36,.8);
+}
+
+/* Focus mode subtle emphasis on desktop while generating */
+@media (min-width: 1024px) and (pointer:fine){
+  body.is-generating header,
+  body.is-generating .footer{
+    opacity:.65;
+    filter:blur(.2px);
+  }
+  body.is-generating .card{
+    box-shadow:0 22px 60px rgba(0,0,0,.7);
+  }
+}
+
+/* =========================================================
+   Fix comment visibility + premium progress bar
+   ========================================================= */
+
+/* 1) Let comments show fully (no cutoff) */
+.comment-text{
+  white-space:normal;
+  overflow:visible;
+  text-overflow:unset;
+  line-height:1.4;
+}
+
+/* Align multi-line rows a bit nicer */
+.comment-line{
+  align-items:flex-start;
+}
+
+/* 2) Premium animated progress bar */
+
+/* Outer track: slightly taller + soft inner shadow */
+.progress-bar-outer{
+  width:100%;
+  height:6px;
+  border-radius:999px;
+  background:radial-gradient(circle at 0 0,rgba(148,163,184,.25),transparent 45%) rgba(15,23,42,.85);
+  box-shadow:
+    inset 0 0 0 1px rgba(15,23,42,.9),
+    0 0 0 1px rgba(15,23,42,.9);
+  overflow:hidden;
+}
+
+/* Inner fill: full width, animated via scaleX + shimmer */
+.progress-bar-inner{
+  width:100%;
+  height:100%;
+  border-radius:inherit;
+  transform-origin:left center;
+  transform:scaleX(var(--ct-progress-frac,0));
+  background-image:linear-gradient(90deg,#22c55e,#a855f7,#f97316);
+  background-size:200% 100%;
+  box-shadow:
+    0 0 18px rgba(129,140,248,.55),
+    0 0 8px rgba(34,197,94,.75);
+  transition:transform .28s cubic-bezier(.22,.61,.36,1),
+             box-shadow .25s ease-out;
+}
+
+/* While generating, add subtle moving shine */
+body.is-generating .progress-bar-inner{
+  animation:ct-progress-wave 1.2s linear infinite;
+}
+
+@keyframes ct-progress-wave{
+  0%{ background-position:0 0; }
+  100%{ background-position:-200% 0; }
+}
+
+/* When we flash "done" (ct-progress-done), give a quick glow pop */
+body.ct-progress-done .progress-bar-inner{
+  box-shadow:
+    0 0 24px rgba(251,191,36,.9),
+    0 0 12px rgba(129,140,248,.85);
+}
+
+/* 3) Slight tidy for results column */
+#results.tweets{
+  display:flex;
+  flex-direction:column;
+  gap:10px;
+}
+
+/* =========================================================
+   RESULTS MENU DROPDOWN + FLOATING SHORTCUTS
+   ========================================================= */
+
+/* Completely hide any old copy queue card if it’s still in DOM */
+.copy-queue-panel,
+#copyQueuePanel{
+  display:none !important;
+}
+
+/* Toolbar layout tweaks */
+.results-toolbar-right{
+  display:flex;
+  align-items:center;
+  margin-left:auto;
+}
+
+/* Menu shell */
+.results-menu{
+  position:relative;
+  z-index: 60; /* keep above tweet cards */
+}
+.results-menu-toggle{
+  border-radius:999px;
+  background:rgba(15,23,42,.96);
+  border:1px solid rgba(148,163,184,.7);
+  color:#e5e7eb;
+  font-weight:500;
+  padding:4px 12px;
+  cursor:pointer;
+}
+
+/* Dropdown panel */
+.results-menu-pop{
+  position:absolute;
+  right:0;
+  top:115%;
+  min-width:230px;
+  padding:8px 9px;
+  border-radius:12px;
+  background:radial-gradient(circle at 0 0,rgba(59,130,246,.22),transparent 55%), rgba(15,23,42,.98);
+  border:1px solid rgba(148,163,184,.75);
+  box-shadow:0 18px 45px rgba(0,0,0,.75);
+  display:none;
+  z-index:9999;
+}
+
+/* Allow the results dropdown to escape the card clipping without changing other cards */
+#resultsCard{
+  overflow: visible;
+}
+.results-menu.is-open .results-menu-pop{
+  display:block;
+}
+
+.results-menu-group{
+  padding:6px 4px;
+  border-radius:8px;
+}
+.results-menu-group + .results-menu-group{
+  border-top:1px solid rgba(31,41,55,.9);
+  margin-top:4px;
+  padding-top:8px;
+}
+.results-menu-title{
+  font-size:11px;
+  opacity:.8;
+  margin-bottom:4px;
+}
+.results-menu-actions{
+  display:flex;
+  flex-wrap:wrap;
+  gap:6px;
+}
+
+/* Tiny “Run” badge */
+.badge-run{
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.7);
+  font-size:11px;
+}
+
+/* Floating keyboard hint */
+.keyboard-floating{
+  margin-top:6px;
+  display:flex;
+  justify-content:flex-end;
+  position:relative;
+}
+.keyboard-fab{
+  width:28px;
+  height:28px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.8);
+  background:radial-gradient(circle at 0 0,rgba(251,191,36,.25),transparent 55%), rgba(15,23,42,.98);
+  color:#e5e7eb;
+  font-size:14px;
+  cursor:pointer;
+  display:flex;
+  align-items:center;
+  justify-content:center;
+}
+
+/* Reuse keyboard-hud styling as a tooltip panel */
+.keyboard-fab-panel{
+  position:absolute;
+  right:36px;
+  bottom:0;
+  max-width:420px;
+  padding:6px 10px;
+  border-radius:999px;
+  white-space:nowrap;
+  opacity:0;
+  pointer-events:none;
+  transform:translateY(4px);
+  transition:opacity .15s ease-out, transform .15s ease-out;
+}
+.keyboard-fab-panel span + span{
+  margin-left:10px;
+}
+
+/* Show on hover / focus */
+.keyboard-floating:hover .keyboard-fab-panel,
+.keyboard-floating:focus-within .keyboard-fab-panel{
+  opacity:1;
+  pointer-events:auto;
+  transform:translateY(0);
+}
+
+
+/* ---------- [URL health meter] ---------- */
+.url-health-meter{
+  position:relative;
+  flex:0 0 96px;
+  max-width:160px;
+  height:4px;
+  border-radius:999px;
+  background:rgba(15,23,42,.9);
+  overflow:hidden;
+  box-shadow:0 0 0 1px rgba(148,163,184,.5);
+}
+.url-health-meter-fill{
+  width:0%;
+  height:100%;
+  background:linear-gradient(90deg,#22c55e,#eab308,#ef4444);
+  transition:width .25s ease-out;
+}
+.url-health-meter[data-status="empty"] .url-health-meter-fill{
+  width:0%;
+}
+.url-health-meter[data-status="bad"] .url-health-meter-fill{
+  background:linear-gradient(90deg,#fb923c,#ef4444);
+}
+
+/* ---------- [Language filter pills] ---------- */
+.lang-filter-row{
+  display:flex;
+  align-items:center;
+  gap:8px;
+  margin-top:6px;
+  font-size:11px;
+  color:rgba(148,163,184,.9);
+}
+.lang-filter-label{
+  text-transform:uppercase;
+  letter-spacing:.08em;
+}
+.lang-filter-pill{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:3px 8px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.5);
+  background:rgba(15,23,42,.9);
+  cursor:pointer;
+}
+.lang-filter-pill input{
+  accent-color:#22c55e;
+}
+.lang-filter-pill[data-active="false"]{
+  opacity:.55;
+}
+
+.native-lang-select{
+  margin-left:6px;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.5);
+  background:rgba(15,23,42,.9);
+  color:rgba(226,232,240,.92);
+  font-size:11px;
+  outline:none;
+}
+.native-lang-select:focus-visible{
+  outline:2px solid rgba(var(--btn-glow), .9);
+  outline-offset:2px;
+}
+
+/* Tweet header extras: research-assisted badge */
+.tweet-header-left{
+  display:flex;
+  align-items:center;
+  gap:6px;
+  min-width:0;
+}
+
+.tweet-badge{
+  padding:2px 7px;
+  border-radius:999px;
+  border:1px solid rgba(45,212,191,.65);
+  font-size:10px;
+  text-transform:uppercase;
+  letter-spacing:.08em;
+  background:radial-gradient(circle at 0 0,rgba(45,212,191,.25),transparent 55%), rgba(15,23,42,.96);
+  color:#99f6e4;
+  white-space:nowrap;
+}
+
+/* Session summary chip (desktop toolbar) */
+.badge-summary{
+  margin-left:8px;
+  padding:3px 10px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.7);
+  font-size:11px;
+  opacity:.85;
+}
+
+/* === Daily welcome overlay (Bangladesh day) === */
+.welcome-overlay{
+  position:fixed;
+  inset:0;
+  z-index:40;
+  display:none;
+  align-items:center;
+  justify-content:center;
+  padding:16px;
+  background:radial-gradient(circle at 0 0,rgba(15,23,42,.95),rgba(0,0,0,.98));
+  backdrop-filter:blur(14px);
+}
+
+.welcome-overlay.is-visible{
+  display:flex;
+}
+
+.welcome-card-shell{
+  display:flex;
+  flex-direction:column;
+  align-items:center;
+  gap:16px;
+}
+
+/* Glass card inspired by your design */
+.welcome-outer{
+  width:300px;
+  height:250px;
+  border-radius:10px;
+  padding:1px;
+  background:radial-gradient(circle 230px at 0% 0%, #ffffff, #0c0d0d);
+  position:relative;
+}
+
+.welcome-dot{
+  width:5px;
+  aspect-ratio:1;
+  position:absolute;
+  background-color:#fff;
+  box-shadow:0 0 10px #ffffff;
+  border-radius:999px;
+  z-index:2;
+  right:10%;
+  top:10%;
+  animation:welcomeMoveDot 6s linear infinite;
+}
+
+@keyframes welcomeMoveDot{
+  0%,100%{ top:10%; right:10%; }
+  25%{ top:10%; right:calc(100% - 35px); }
+  50%{ top:calc(100% - 30px); right:calc(100% - 35px); }
+  75%{ top:calc(100% - 30px); right:10%; }
+}
+
+.welcome-card{
+  z-index:1;
+  width:100%;
+  height:100%;
+  border-radius:9px;
+  border:1px solid #202222;
+  background:radial-gradient(circle 280px at 0% 0%, #444444, #0c0d0d);
+  display:flex;
+  align-items:center;
+  justify-content:center;
+  position:relative;
+  flex-direction:column;
+  color:#fff;
+}
+
+.welcome-ray{
+  width:220px;
+  height:45px;
+  border-radius:100px;
+  position:absolute;
+  background-color:#c7c7c7;
+  opacity:0.4;
+  box-shadow:0 0 50px #fff;
+  filter:blur(10px);
+  transform-origin:10%;
+  top:0%;
+  left:0;
+  transform:rotate(40deg);
+}
+
+.welcome-main-text{
+  font-weight:800;
+  font-size:2.8rem;
+  letter-spacing:.03em;
+  background:linear-gradient(45deg,#000000 4%,#ffffff,#000000);
+  -webkit-background-clip:text;
+  background-clip:text;
+  color:transparent;
+}
+
+.welcome-subtext{
+  margin-top:.35rem;
+  font-size:.9rem;
+  opacity:.85;
+}
+
+.welcome-line{
+  width:100%;
+  height:1px;
+  position:absolute;
+  background-color:#2c2c2c;
+}
+
+.welcome-line.topl{
+  top:10%;
+  background:linear-gradient(90deg,#888888 30%,#1d1f1f 70%);
+}
+
+.welcome-line.bottoml{
+  bottom:10%;
+}
+
+.welcome-line.leftl{
+  left:10%;
+  width:1px;
+  height:100%;
+  background:linear-gradient(180deg,#747474 30%,#222424 70%);
+}
+
+.welcome-line.rightl{
+  right:10%;
+  width:1px;
+  height:100%;
+}
+
+.welcome-dismiss-btn{
+  padding:0.5rem 1.1rem;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.9);
+  background:radial-gradient(circle at 0 0,rgba(251,191,36,.22),transparent 55%), rgba(15,23,42,.98);
+  color:#e5e7eb;
+  font-size:.85rem;
+  cursor:pointer;
+  box-shadow:0 12px 30px rgba(0,0,0,.7);
+  text-transform:uppercase;
+  letter-spacing:.12em;
+}
+
+.welcome-dismiss-btn:hover{
+  border-color:var(--accent);
+}
+
+/* small screens: shrink card a bit */
+@media (max-width:480px){
+  .welcome-outer{ width:260px; height:220px; }
+  .welcome-main-text{ font-size:2.3rem; }
+}
+
+/* Make the results dropdown float above the cards below it */
+.card-results .results-toolbar,
+.results-toolbar {
+  position: relative;
+  z-index: 30; /* higher than the cards below */
+
+  /* 
+    IMPORTANT: the timeline can become very long.
+    If the toolbar is a single non-wrapping flex row, it will push the whole card wider
+    (what you're seeing in the screenshot).
+  */
+  flex-wrap: wrap;
+  gap: 8px 10px;
+  align-items: center;
+  justify-content: flex-end;
+  min-width: 0;
+}
+
+/* Put the timeline on its own row and keep it inside the card */
+.run-timeline{
+  flex: 1 1 100%;
+  max-width: 100%;
+  min-width: 0;
+  margin-top: 0; /* avoid adding extra height that can look like overflow */
+  order: 20;
+}
+
+/* Keep the menu button aligned on the first row */
+.results-menu{ order: 10; }
+
+.results-menu {
+  position: relative;
+  z-index: 60;
+}
+
+.results-menu-pop {
+  position: absolute;
+  right: 0;
+  top: calc(100% + 8px); /* dropdown under the Menu button */
+  z-index: 9999;         /* above everything in this area */
+}
+
+
+
+/* Results card: allow the dropdown to overlap below cards */
+#resultsCard{
+  position: relative;
+  z-index: 80;     /* above Failed/Engine/History cards */
+  overflow: visible;
+}
+/* Make sure the failed card doesn't sit on top of the menu */
+.card-failed {
+  position: relative;
+  z-index: 1;
+}
+/* ===========================
+   Hologram Engine Status Card
+   (desktop only, inside .holo-system)
+   =========================== */
+
+.card-holo .card-body{
+  display:flex;
+  justify-content:center;
+  align-items:center;
+}
+
+/* Root container for all the effects */
+.holo-system{
+  position:relative;
+  width:100%;
+  max-width:320px;
+  height:280px;
+  margin:0 auto;
+  overflow:hidden;
+}
+
+/* Starfield + grid background */
+.holo-system .stars-container {
+  position: absolute;
+  inset: 0;
+  perspective: 500px;
+  transform-style: preserve-3d;
+}
+
+.holo-system .star-layer {
+  position: absolute;
+  inset: 0;
+  opacity: 0.8;
+}
+
+.holo-system .star-layer:nth-child(1) {
+  transform: translateZ(-50px);
+  animation: star-drift 150s linear infinite;
+}
+
+.holo-system .star-layer:nth-child(2) {
+  transform: translateZ(-100px);
+  animation: star-drift 200s linear infinite reverse;
+  opacity: 0.6;
+}
+
+.holo-system .star-layer:nth-child(3) {
+  transform: translateZ(-200px);
+  animation: star-drift 250s linear infinite;
+  opacity: 0.4;
+}
+
+.holo-system .star-layer::before,
+.holo-system .star-layer::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+}
+
+.holo-system .star-layer:nth-child(1)::before {
+  background-image:
+    radial-gradient(1px 1px at 10% 10%, white 100%, transparent),
+    radial-gradient(1px 1px at 20% 20%, white 100%, transparent),
+    radial-gradient(2px 2px at 30% 30%, white 100%, transparent),
+    radial-gradient(1px 1px at 40% 40%, white 100%, transparent),
+    radial-gradient(2px 2px at 50% 50%, white 100%, transparent),
+    radial-gradient(1px 1px at 60% 60%, white 100%, transparent),
+    radial-gradient(2px 2px at 70% 70%, white 100%, transparent),
+    radial-gradient(1px 1px at 80% 80%, white 100%, transparent),
+    radial-gradient(2px 2px at 90% 90%, white 100%, transparent),
+    radial-gradient(1px 1px at 15% 85%, white 100%, transparent);
+}
+
+.holo-system .nebula {
+  position: absolute;
+  width: 120%;
+  height: 120%;
+  top: -10%;
+  left: -10%;
+  background:
+    radial-gradient(ellipse at 30% 30%, rgba(63, 0, 113, 0.3) 0%, rgba(63, 0, 113, 0) 70%),
+    radial-gradient(ellipse at 70% 60%, rgba(0, 113, 167, 0.3) 0%, rgba(0, 113, 167, 0) 70%),
+    radial-gradient(ellipse at 50% 50%, rgba(167, 0, 157, 0.2) 0%, rgba(167, 0, 157, 0) 70%);
+  filter: blur(30px);
+  opacity: 0.5;
+  animation: nebula-shift 30s infinite alternate ease-in-out;
+}
+
+.holo-system .grid-plane {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  top: -50%;
+  left: -50%;
+  background-image:
+    linear-gradient(rgba(0, 162, 255, 0.15) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(0, 162, 255, 0.15) 1px, transparent 1px);
+  background-size: 40px 40px;
+  transform: perspective(500px) rotateX(60deg);
+  transform-origin: center;
+  animation: grid-move 20s linear infinite;
+  opacity: 0.3;
+}
+
+/* Checkbox + cube */
+.holo-system .checkbox-container {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  width: 260px;
+  height: 260px;
+  margin: 0 auto;
+  z-index: 10;
+}
+
+.holo-system .holo-checkbox-input {
+  position: absolute;
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.holo-system .holo-checkbox {
+  position: relative;
+  width: 80px;
+  height: 80px;
+  cursor: pointer;
+  transform-style: preserve-3d;
+  perspective: 1000px;
+  display: flex;
+  justify-content: center;
+  align-items: center;
+}
+
+.holo-system .holo-box {
+  position: relative;
+  width: 100%;
+  height: 100%;
+  border: 2px solid rgba(0, 162, 255, 0.7);
+  border-radius: 12px;
+  background-color: rgba(0, 24, 55, 0.5);
+  box-shadow:
+    0 0 10px rgba(0, 162, 255, 0.5),
+    inset 0 0 15px rgba(0, 162, 255, 0.3);
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  overflow: hidden;
+  transition: all 0.3s ease;
+  transform-style: preserve-3d;
+}
+
+.holo-system .holo-inner {
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  background-color: rgba(0, 162, 255, 0.5);
+  border-radius: 4px;
+  opacity: 0;
+  transform: scale(0) rotate(45deg);
+  transition: all 0.3s ease;
+  box-shadow: 0 0 15px rgba(0, 162, 255, 0.8);
+}
+
+.holo-system .scan-effect {
+  position: absolute;
+  top: 0;
+  left: -100%;
+  width: 100%;
+  height: 2px;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 162, 255, 0.8),
+    transparent
+  );
+  animation: scan-off 4s infinite;
+  opacity: 0.3;
+  transition: all 0.3s ease;
+}
+
+.holo-system .holo-glow {
+  position: absolute;
+  width: 200%;
+  height: 200%;
+  left: -50%;
+  top: -50%;
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 162, 255, 0.2) 0%,
+    rgba(0, 162, 255, 0.1) 40%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  pointer-events: none;
+  filter: blur(10px);
+  opacity: 0.5;
+  z-index: -1;
+  animation: glow-pulse 4s infinite alternate;
+  transition: all 0.5s ease;
+}
+
+/* Corners */
+.holo-system .corner-accent {
+  position: absolute;
+  width: 15px;
+  height: 15px;
+  border-style: solid;
+  border-width: 2px;
+  border-color: rgba(0, 162, 255, 0.5);
+  transition: all 0.3s ease;
+}
+
+.holo-system .corner-accent:nth-child(1) {
+  top: -5px;
+  left: -5px;
+  border-right: none;
+  border-bottom: none;
+  border-radius: 5px 0 0 0;
+}
+
+.holo-system .corner-accent:nth-child(2) {
+  top: -5px;
+  right: -5px;
+  border-left: none;
+  border-bottom: none;
+  border-radius: 0 5px 0 0;
+}
+
+.holo-system .corner-accent:nth-child(3) {
+  bottom: -5px;
+  left: -5px;
+  border-right: none;
+  border-top: none;
+  border-radius: 0 0 0 5px;
+}
+
+.holo-system .corner-accent:nth-child(4) {
+  bottom: -5px;
+  right: -5px;
+  border-left: none;
+  border-top: none;
+  border-radius: 0 0 5px 0;
+}
+
+/* Status text & spectrum */
+.holo-system .status-text {
+  margin-top: 30px;
+  font-size: 16px;
+  font-weight: 500;
+  color: rgba(0, 162, 255, 0.8);
+  text-shadow: 0 0 5px rgba(0, 162, 255, 0.5);
+  position: relative;
+  transition: all 0.3s ease;
+}
+
+.holo-system .status-text::before {
+  content: "SYSTEM DEACTIVATED";
+  position: absolute;
+  inset: 0;
+}
+
+.holo-system .frequency-spectrum {
+  display: flex;
+  justify-content: center;
+  align-items: flex-end;
+  height: 40px;
+  width: 260px;
+  margin-top: 30px;
+  gap: 3px;
+}
+
+.holo-system .frequency-bar {
+  width: 4px;
+  height: 5px;
+  background: rgba(0, 162, 255, 0.5);
+  border-radius: 2px 2px 0 0;
+  transition: height 0.3s ease, background 0.3s ease;
+}
+
+/* Data chips */
+.holo-system .data-chips {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+  color: white;
+}
+
+.holo-system .data-chip {
+  position: absolute;
+  padding: 5px 8px;
+  background-color: rgba(0, 24, 55, 0.7);
+  border: 1px solid rgba(0, 162, 255, 0.5);
+  border-radius: 4px;
+  font-size: 10px;
+  opacity: 0;
+  --chip-tx: 0px;
+  --chip-ty: 0px;
+  transform: translate(var(--chip-tx), var(--chip-ty)) scale(0);
+  transition: all 0.3s ease;
+  will-change: transform, opacity;
+}
+
+.holo-system .data-chip:nth-child(1) {
+  top: 10px;
+  left: 50%;
+  --chip-tx: -50%;
+  --chip-ty: 0px;
+  animation-delay: 0.5s;
+}
+
+.holo-system .data-chip:nth-child(2) {
+  top: 46%;
+  left: 10px;
+  --chip-tx: 0px;
+  --chip-ty: -50%;
+  animation-delay: 1.2s;
+}
+
+.holo-system .data-chip:nth-child(3) {
+  top: 66%;
+  left: 55%;
+  --chip-tx: -50%;
+  --chip-ty: -50%;
+  animation-delay: 1.8s;
+}
+
+.holo-system .data-chip:nth-child(4) {
+  top: 32%;
+  left: 72%;
+  --chip-tx: -50%;
+  --chip-ty: -50%;
+  animation-delay: 2.3s;
+}
+
+/* Activation rings & particles */
+.holo-system .activation-rings {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.holo-system .activation-ring {
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  width: 40%;
+  height: 40%;
+  border: 1px solid rgba(0, 255, 136, 0);
+  border-radius: 50%;
+  transform: translate(-50%, -50%) scale(0);
+  opacity: 0;
+  transition: all 0.3s ease;
+}
+
+.holo-system .holo-particles {
+  position: absolute;
+  inset: 0;
+  pointer-events: none;
+}
+
+.holo-system .holo-particle {
+  position: absolute;
+  background-color: rgba(0, 162, 255, 0.7);
+  border-radius: 50%;
+  width: 3px;
+  height: 3px;
+  opacity: 0;
+  filter: blur(1px);
+  transition: all 0.3s ease;
+}
+
+/* Cube */
+.holo-system .cube-transform {
+  position: absolute;
+  width: 30%;
+  height: 30%;
+  transform-style: preserve-3d;
+  opacity: 0;
+  transition: opacity 0.3s ease;
+}
+
+.holo-system .cube-face {
+  position: absolute;
+  inset: 0;
+  background-color: rgba(0, 162, 255, 0.3);
+  border: 1px solid rgba(0, 162, 255, 0.5);
+  box-shadow: 0 0 5px rgba(0, 162, 255, 0.3);
+  transition: all 0.3s ease;
+}
+
+/* ----- Checked state animations ----- */
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .holo-box {
+  border-color: rgba(0, 255, 136, 0.7);
+  box-shadow:
+    0 0 10px rgba(0, 255, 136, 0.6),
+    inset 0 0 15px rgba(0, 255, 136, 0.4);
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .holo-inner {
+  background-color: rgba(0, 255, 136, 0.7);
+  box-shadow: 0 0 15px rgba(0, 255, 136, 1);
+  opacity: 1;
+  transform: scale(1) rotate(45deg);
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .scan-effect {
+  animation: scan-on 2s infinite;
+  opacity: 1;
+  background: linear-gradient(
+    90deg,
+    transparent,
+    rgba(0, 255, 136, 0.8),
+    transparent
+  );
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .holo-glow {
+  background: radial-gradient(
+    ellipse at center,
+    rgba(0, 255, 136, 0.2) 0%,
+    rgba(0, 255, 136, 0.1) 40%,
+    rgba(0, 0, 0, 0) 70%
+  );
+  animation: active-glow-pulse 2s infinite alternate;
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .corner-accent {
+  width: 20px;
+  height: 20px;
+  border-color: rgba(0, 255, 136, 0.7);
+}
+
+.holo-system .holo-checkbox-input:checked ~ .status-text::before {
+  content: "SYSTEM ACTIVATED";
+  color: rgba(0, 255, 136, 0.8);
+  text-shadow: 0 0 5px rgba(0, 255, 136, 0.5);
+}
+
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar {
+  background: rgba(0, 255, 136, 0.5);
+  animation: frequency-animation 1.5s infinite ease;
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .activation-ring {
+  animation: ring-expand 2s ease-out forwards;
+  border-color: rgba(0, 255, 136, 0.7);
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .holo-particle {
+  background-color: rgba(0, 255, 136, 0.7);
+  animation: particle-float 3s infinite ease-in-out;
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-transform {
+  opacity: 1;
+  animation: cube-rotate 5s infinite linear;
+}
+
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-face {
+  background-color: rgba(0, 255, 136, 0.3);
+  border-color: rgba(0, 255, 136, 0.5);
+  box-shadow: 0 0 5px rgba(0, 255, 136, 0.3);
+}
+
+/* cube faces positions */
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-face:nth-child(1) {
+  transform: translateZ(15px);
+}
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-face:nth-child(2) {
+  transform: rotateY(180deg) translateZ(15px);
+}
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-face:nth-child(3) {
+  transform: rotateY(90deg) translateZ(15px);
+}
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-face:nth-child(4) {
+  transform: rotateY(-90deg) translateZ(15px);
+}
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-face:nth-child(5) {
+  transform: rotateX(90deg) translateZ(15px);
+}
+.holo-system .holo-checkbox-input:checked + .holo-checkbox .cube-face:nth-child(6) {
+  transform: rotateX(-90deg) translateZ(15px);
+}
+
+/* frequency bar delays */
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(1) { animation-delay: 0.1s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(2) { animation-delay: 0.2s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(3) { animation-delay: 0.1s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(4) { animation-delay: 0.3s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(5) { animation-delay: 0.5s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(6) { animation-delay: 0.2s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(7) { animation-delay: 0.4s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(8) { animation-delay: 0.1s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(9) { animation-delay: 0.3s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(10){ animation-delay: 0.2s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(11){ animation-delay: 0.5s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(12){ animation-delay: 0.3s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(13){ animation-delay: 0.1s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(14){ animation-delay: 0.4s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(15){ animation-delay: 0.2s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(16){ animation-delay: 0.3s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(17){ animation-delay: 0.1s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(18){ animation-delay: 0.5s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(19){ animation-delay: 0.2s; }
+.holo-system .holo-checkbox-input:checked ~ .frequency-spectrum .frequency-bar:nth-child(20){ animation-delay: 0.4s; }
+
+/* data chips animation when active */
+.holo-system .holo-checkbox-input:checked ~ .data-chips .data-chip {
+  animation: chip-appear 0.5s ease forwards;
+  border-color: rgba(0, 255, 136, 0.5);
+}
+
+/* Keyframes (re-used from your original) */
+@keyframes star-drift {
+  0%   { transform: translateZ(-50px) translateY(0); }
+  100% { transform: translateZ(-50px) translateY(100%); }
+}
+@keyframes nebula-shift {
+  0%   { transform: scale(1) rotate(0deg); opacity: 0.3; }
+  50%  { opacity: 0.5; }
+  100% { transform: scale(1.2) rotate(5deg); opacity: 0.4; }
+}
+@keyframes grid-move {
+  0%   { transform: perspective(500px) rotateX(60deg) translateY(0); }
+  100% { transform: perspective(500px) rotateX(60deg) translateY(40px); }
+}
+@keyframes scan-off {
+  0%   { left: -100%; opacity: 0.3; }
+  100% { left: 100%;  opacity: 0.3; }
+}
+@keyframes scan-on {
+  0%   { left: -100%; opacity: 1; }
+  100% { left: 100%;  opacity: 1; }
+}
+@keyframes glow-pulse {
+  0%   { opacity: 0.3; filter: blur(10px) brightness(0.8); }
+  100% { opacity: 0.6; filter: blur(15px) brightness(1.2); }
+}
+@keyframes active-glow-pulse {
+  0%   { opacity: 0.4; filter: blur(10px) brightness(1); }
+  100% { opacity: 0.8; filter: blur(20px) brightness(1.5); }
+}
+@keyframes ring-expand {
+  0%   { transform: translate(-50%, -50%) scale(0); opacity: 1; }
+  100% { transform: translate(-50%, -50%) scale(2.5); opacity: 0; }
+}
+@keyframes particle-float {
+  0%   { transform: translateY(0) scale(1);   opacity: 0; }
+  20%  { opacity: 1; }
+  80%  { opacity: 1; }
+  100% { transform: translateY(-20px) scale(0); opacity: 0; }
+}
+@keyframes cube-rotate {
+  0%   { transform: rotateX(0) rotateY(0) rotateZ(0); }
+  100% { transform: rotateX(360deg) rotateY(360deg) rotateZ(360deg); }
+}
+@keyframes frequency-animation {
+  0%   { height: 5px; }
+  50%  { height: 35px; }
+  100% { height: 5px; }
+}
+@keyframes chip-appear {
+  0%   { opacity: 0; transform: translate(var(--chip-tx), var(--chip-ty)) scale(0); }
+  100% { opacity: 1; transform: translate(var(--chip-tx), var(--chip-ty)) scale(1); }
+}
+
+
+/* Small screen tweak so it never explodes layout if shown */
+@media (max-width: 768px){
+  .holo-system{
+    max-width:260px;
+    height:240px;
+  }
+}
+
+/* ===========================
+   Engine status card (card-holo) – cleaned + fixed
+   - Fix: data chips stay inside the holo scene (no clipping / no off-screen negatives)
+   - Fix: cube sits to the right on desktop (matches your original visual)
+   =========================== */
+
+/* Use the holo scene as the visual body of this card */
+.card.card-holo{
+  background: transparent;
+  padding: 0;
+}
+
+/* Keep header spacing, let the scene go full width */
+.card.card-holo .card-head{
+  padding: 10px 18px 0;
+}
+
+.card.card-holo .card-body{
+  padding: 0 0 14px;
+}
+
+/* Scene sizing + background */
+.card.card-holo .holo-system{
+  position: relative;
+  width: 100%;
+  max-width: none;
+  height: 340px;        /* enough room for labels */
+  overflow: hidden;
+  border-radius: inherit;
+
+  background:
+    radial-gradient(circle at 50% 0%, rgba(59,130,246,0.45), transparent 60%),
+    radial-gradient(circle at 50% 130%, rgba(16,185,129,0.6), transparent 55%),
+    #020617;
+
+  box-shadow:
+    inset 0 0 0 1px rgba(56,189,248,0.4),
+    0 24px 60px rgba(15,23,42,0.9);
+
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+/* Ensure all holo layers fill the scene */
+.card.card-holo .grid-plane,
+.card.card-holo .nebula,
+.card.card-holo .stars-container{
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+/* Keep the original hologram block sizing so the internal layout stays consistent */
+.card.card-holo .checkbox-container{
+  position: relative;
+  width: 300px;
+  height: 300px;
+  margin: 0;
+}
+
+/* Desktop: push the cube to the right like your original mock */
+@media (min-width: 1200px){
+  .card.card-holo .holo-system{
+    justify-content: flex-end;
+    padding-right: 6vw;
+  }
+}
+
+/* Smaller screens: scale down the block so it never feels cramped */
+@media (max-width: 900px){
+  .card.card-holo .holo-system{
+    height: 280px;
+  }
+
+  .card.card-holo .checkbox-container{
+    transform: scale(0.85);
+    transform-origin: center;
+  }
+}
+
+/* Optional: subtle header treatment (matches your existing style) */
+.card.card-holo .card-head-main h2{
+  letter-spacing: 0.08em;
+  font-size: 0.8rem;
+  text-transform: uppercase;
+  opacity: 0.9;
+}
+
+/* Optional: border color reacts to engine on/off (kept from your previous patches) */
+html:not(.ct-engine-on) .card.card-holo .holo-system{
+  box-shadow:
+    inset 0 0 0 1px rgba(59,130,246,0.45),
+    0 18px 40px rgba(15,23,42,0.8);
+  filter: saturate(0.8);
+}
+
+html.ct-engine-on .card.card-holo .holo-system{
+  box-shadow:
+    inset 0 0 0 1px rgba(16,185,129,0.75),
+    0 26px 70px rgba(16,185,129,0.35);
+  filter: saturate(1.1);
+}
+
+/* ===========================
+   Tweet URLs card – height/spacing (desktop)
+   - Helps keep the full stack visible at 100% zoom
+   =========================== */
+@media (min-width: 1100px){
+  /* slightly tighter vertical rhythm */
+  .main{
+    row-gap: 14px;
+  }
+
+  /* keep the URL textarea reasonable on desktop */
+  .ai-chat-input .main-input{
+    min-height: 170px !important;
+    max-height: 230px !important;
+  }
+
+  /* remove any accidental bottom spacing on the first card */
+  .main > .card:first-of-type{
+    margin-bottom: 0 !important;
+  }
+}
+
+/* ===========================
+   PATCH v3 – Minor layout fixes
+   1) Engine status title must sit INSIDE the holo box
+   2) Tweet URLs card: remove the extra empty gap after the progress bar
+   (No HTML changes)
+   =========================== */
+
+/* 1) Engine status: overlay header text on top of the holo scene */
+.card.card-holo{ position: relative; }
+
+.card.card-holo .card-header{
+  position: absolute;
+  top: 12px;
+  left: 18px;
+  right: 18px;
+  z-index: 6;
+  padding: 0;
+  margin: 0;
+  pointer-events: none;
+}
+
+.card.card-holo .card-title{
+  color: rgba(226,232,240,.85);
+  text-shadow: 0 2px 10px rgba(2,6,23,.65);
+}
+
+/* keep the holo scene starting from the very top of the card */
+.card.card-holo .card-body{ padding: 0; }
+
+/* 2) Tweet URLs: force progress + analytics rows to stay in normal flow
+      (prevents them being pinned to bottom, which creates a big empty block) */
+.main > .card:first-of-type .progress-row,
+.main > .card:first-of-type #analyticsHud{
+  position: static !important;
+  inset: auto !important;
+}
+
+/* also prevent any "reserved" padding space that may be applied by other css files */
+.main > .card:first-of-type{
+  padding-bottom: 16px !important;
+}
+
+/* ===========================
+   PATCH v4 – Remove extra empty space under progress bar (Tweet URLs card)
+   - Some external CSS (inputbox.css) forces a fixed/min height on the first card.
+   - We explicitly reset it so the card wraps content naturally.
+   =========================== */
+
+/* Make the Tweet URLs card size to its content (no forced tall panel) */
+.main > .card:first-of-type{
+  height: auto !important;
+  min-height: 0 !important;
+  max-height: none !important;
+}
+
+/* Ensure no inner wrapper is forcing an extra height */
+.main > .card:first-of-type .ai-chat-input,
+.main > .card:first-of-type .chat-container,
+.main > .card:first-of-type .input-section{
+  height: auto !important;
+  min-height: 0 !important;
+}
+
+/* Keep the footer rows in normal flow and remove any extra bottom reserve */
+.main > .card:first-of-type .progress-row,
+.main > .card:first-of-type #analyticsHud{
+  margin-bottom: 0 !important;
+}
+
+.main > .card:first-of-type{ padding-bottom: 10px !important; }
+
+/* === Cyber theme radio buttons (compact version) === */
+
+.ct-theme-radios {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+}
+
+.ct-theme-radio {
+  position: relative;
+  height: 22px;
+  width: 60px; /* smaller width */
+  margin: 1px;
+}
+
+/* real clickable target – JS uses .theme-dot
+   more specific selector so it beats old .theme-dot circle styles */
+.theme-switcher .theme-dots .ct-theme-input.theme-dot {
+  position: absolute;
+  inset: 0;
+  margin: 0;
+  cursor: pointer;
+  z-index: 10;
+  opacity: 0;
+  width: 100%;
+  height: 100%;
+  border: 0;
+  border-radius: 0;
+  padding: 0;
+  background: transparent;
+}
+
+/* main button body */
+.ct-theme-btn {
+  --primary: #f5434f;
+  --shadow-primary: #631e29;
+  --color: #ffffff;
+  --font-size: 8px;
+  --shadow-secondary: #000000;
+  --clip: polygon(
+    11% 0,
+    95% 0,
+    100% 25%,
+    90% 90%,
+    95% 90%,
+    85% 90%,
+    85% 100%,
+    7% 100%,
+    0 80%
+  );
+  --border: 3px;
+  --shimmy-distance: 5;
+
+  color: var(--color);
+  text-transform: uppercase;
+  font-size: var(--font-size);
+  letter-spacing: 1.5px;
+  position: relative;
+  font-weight: 900;
+  width: 100%;
+  height: 100%;
+  line-height: 22px;
+  text-align: center;
+  transition: background 0.2s, transform 0.2s, font-size 0.2s, box-shadow 0.2s;
+  font-family: "Orbitron", system-ui, sans-serif;
+}
+
+/* base shape + shadow layers */
+.ct-theme-btn::before,
+.ct-theme-btn::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  clip-path: var(--clip);
+  z-index: -1;
+}
+
+.ct-theme-btn::before {
+  background: var(--shadow-primary);
+  transform: translate(var(--border), 0);
+}
+
+.ct-theme-btn::after {
+  background: var(--primary);
+}
+
+/* hover state – keep theme color, just lift/glow a bit */
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:hover + .ct-theme-btn {
+  font-size: 8.5px;
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.18),
+              0 0 10px rgba(0, 0, 0, 0.4);
+}
+
+/* active / selected state – stronger lift/glow, no color override */
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:checked + .ct-theme-btn,
+.theme-switcher .theme-dots .ct-theme-input.theme-dot.is-active + .ct-theme-btn {
+  transform: translateY(-1px);
+  box-shadow: 0 0 0 1px rgba(255, 255, 255, 0.22),
+              0 0 14px rgba(255, 255, 255, 0.18);
+}
+
+/* tiny tag area like r1/r2 in the example */
+.ct-theme-number {
+  background: var(--shadow-primary);
+  color: #111827;
+  font-size: 5.5px;
+  font-weight: 700;
+  letter-spacing: 1px;
+  position: absolute;
+  width: 14px;
+  height: 7px;
+  top: 0;
+  right: 8%;
+  line-height: 7px;
+}
+
+/* glitch overlay */
+.ct-theme-glitch {
+  position: absolute;
+  top: calc(var(--border) * -1);
+  left: calc(var(--border) * -1);
+  right: calc(var(--border) * -1);
+  bottom: calc(var(--border) * -1);
+  background: var(--shadow-primary);
+  text-shadow: 2px 2px var(--shadow-primary),
+    -2px -2px var(--shadow-secondary);
+  clip-path: var(--clip);
+  animation: ct-theme-glitch 2s infinite;
+  display: none;
+  overflow: hidden;
+}
+
+.ct-theme-glitch::before {
+  content: "";
+  position: absolute;
+  top: var(--border);
+  right: var(--border);
+  bottom: var(--border);
+  left: var(--border);
+  clip-path: var(--clip);
+  background: var(--primary);
+  z-index: -1;
+}
+
+/* show glitch on hover / active */
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:hover + .ct-theme-btn .ct-theme-glitch,
+.theme-switcher .theme-dots .ct-theme-input.theme-dot:checked + .ct-theme-btn .ct-theme-glitch,
+.theme-switcher .theme-dots .ct-theme-input.theme-dot.is-active + .ct-theme-btn .ct-theme-glitch {
+  display: block;
+  animation: ct-theme-glitch 5s infinite;
+}
+
+/* glitch keyframes */
+@keyframes ct-theme-glitch {
+  0% {
+    clip-path: polygon(0 2%, 100% 2%, 100% 95%, 95% 95%, 95% 90%,
+        85% 90%, 85% 95%, 8% 95%, 0 70%);
+  }
+  20% {
+    clip-path: polygon(0 44%, 100% 44%, 100% 54%, 95% 54%, 95% 54%,
+        85% 54%, 85% 54%, 8% 54%, 0 54%);
+    transform: translate(1%, 0);
+  }
+  40% {
+    clip-path: polygon(0 78%, 100% 78%, 100% 100%, 95% 100%, 95% 90%,
+        85% 90%, 85% 100%, 8% 100%, 0 78%);
+    transform: translate(-1%, 0);
+  }
+  60% {
+    clip-path: polygon(0 63%, 100% 63%, 100% 80%, 95% 80%, 95% 80%,
+        85% 80%, 85% 80%, 8% 80%, 0 70%);
+    transform: translate(0, 0);
+  }
+  100% {
+    clip-path: polygon(0 0, 100% 0, 100% 0, 95% 0, 95% 0,
+        85% 0, 85% 0, 8% 0, 0 0);
+  }
+}
+
+/* === Per-theme color for each cyber tab === */
+
+.ct-theme-input.theme-dot[data-theme="white"] + .ct-theme-btn {
+  --primary: #2563eb;      /* bright royal blue */
+  --shadow-primary: #0f172a;
+}
+
+.ct-theme-input.theme-dot[data-theme="dark-purple"] + .ct-theme-btn {
+  --primary: #a855f7;      /* cygnus magenta */
+  --shadow-primary: #4c1d95;
+}
+
+.ct-theme-input.theme-dot[data-theme="gold"] + .ct-theme-btn {
+  --primary: #fbbf24;      /* solar gold */
+  --shadow-primary: #92400e;
+}
+
+.ct-theme-input.theme-dot[data-theme="blue"] + .ct-theme-btn {
+  --primary: #3b82f6;      /* helios blue */
+  --shadow-primary: #1d4ed8;
+}
+
+.ct-theme-input.theme-dot[data-theme="black"] + .ct-theme-btn {
+  --primary: #0f172a;      /* nebula black */
+  --shadow-primary: #e5e7eb;
+}
+
+.ct-theme-input.theme-dot[data-theme="emerald"] + .ct-theme-btn {
+  --primary: #10b981;      /* orion lime */
+  --shadow-primary: #047857;
+}
+
+.ct-theme-input.theme-dot[data-theme="crimson"] + .ct-theme-btn {
+  --primary: #f43f5e;      /* crimson nova */
+  --shadow-primary: #9f1239;
+}
+
+/* Smooth focus highlight for scrolled tweets */
+.tweet.ct-highlight{
+  box-shadow:0 0 0 2px rgba(56,189,248,.95), 0 14px 32px rgba(15,23,42,.9);
+  transform:translateY(-1px);
+}
+
+/* New Features */
+
+.pipeline-view{
+  margin-top:8px;
+  display:grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr)); /* Incoming / Processing / Done */
+  gap:8px;
+  font-size:11px;
+}
+
+.pipeline-column{
+  background:rgba(15,23,42,.95);
+  border:1px solid rgba(148,163,184,.4);
+  border-radius:12px;
+  padding:6px;
+  min-height:80px;
+  display:flex;
+  flex-direction:column;
+  gap:4px;
+}
+
+.pipeline-column-head{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  margin-bottom:4px;
+  font-weight:500;
+  opacity:.8;
+}
+
+/* Swimlane container per brand (MULTI-COLUMN) */
+.pipeline-swimlane{
+  border-radius:8px;
+  padding:4px;
+  margin-bottom:4px;
+  background:rgba(15,23,42,.85);
+  border:1px solid rgba(148,163,184,.25);
+
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(220px, 1fr)); /* adjust 220px */
+  gap: 6px;
+}
+
+/* Make the "default" label span full width */
+.pipeline-swimlane-label{
+  grid-column: 1 / -1;
+  font-size:10px;
+  opacity:.7;
+  margin-bottom:2px;
+}
+
+/* Card in pipeline */
+.pipeline-item{
+  position:relative;
+  border-radius:999px;
+  padding:3px 8px;
+  margin-bottom:3px;
+  background:rgba(15,23,42,.96);
+  border:1px solid rgba(148,163,184,.35);
+  color: var(--text-main);
+  display:flex;
+  align-items:center;
+  gap:4px;
+  cursor:pointer;
+  margin-bottom: 0;
+  width: 100%;
+  transition:
+    transform .15s ease-out,
+    box-shadow .15s ease-out,
+    border-color .15s ease-out;
+}
+
+.pipeline-item:hover{
+  transform:translateY(-1px);
+  box-shadow:0 0 0 1px rgba(129,140,248,.45);
+}
+
+/* Time heat halo around card */
+.pipeline-item::before{
+  content:"";
+  position:absolute;
+  inset:-1px;
+  border-radius:inherit;
+  pointer-events:none;
+  opacity:0;
+  transition:opacity .25s ease-out, box-shadow .25s ease-out;
+}
+
+.pipeline-item.heat-fresh::before{
+  opacity:.75;
+  box-shadow:0 0 0 1px rgba(34,197,94,.6);
+}
+.pipeline-item.heat-warm::before{
+  opacity:.85;
+  box-shadow:0 0 0 1px rgba(234,179,8,.7);
+}
+.pipeline-item.heat-hot::before{
+  opacity:1;
+  box-shadow:0 0 0 1px rgba(248,113,113,.85);
+}
+
+#runHealthSparkSvg{
+  display:block;
+  overflow:visible;
+}
+
+#runHealthState[data-state="chill"]  .value{ color:#22c55e; }
+#runHealthState[data-state="busy"]   .value{ color:#facc15; }
+#runHealthState[data-state="strained"] .value{ color:#f97316; }
+
+/* subtle motion: pulse border */
+@keyframes runHealthPulse{
+  0%{ box-shadow:0 0 0 0 rgba(56,189,248,.0); }
+  50%{ box-shadow:0 0 0 3px rgba(56,189,248,.35); }
+  100%{ box-shadow:0 0 0 0 rgba(56,189,248,.0); }
+}
+
+#runHealthState[data-animated="1"]{
+  animation: runHealthPulse 1.4s ease-out infinite;
+}
+
+.ct-command-overlay{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  background:radial-gradient(circle at center, rgba(15,23,42,.0), rgba(15,23,42,.75));
+  opacity:0;
+  transition:opacity .15s ease-out;
+  z-index:9998;
+}
+
+.ct-command-overlay.is-visible{
+  opacity:1;
+}
+
+.ct-command-label{
+  position:absolute;
+  transform:translate(-50%, -50%);
+  padding:3px 6px;
+  border-radius:999px;
+  background:rgba(15,23,42,.96);
+  border:1px solid rgba(148,163,184,.6);
+  font-size:11px;
+  display:flex;
+  gap:4px;
+  align-items:center;
+}
+
+.ct-command-label span.key{
+  font-family:ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, "Liberation Mono", "Courier New", monospace;
+  padding:1px 4px;
+  border-radius:4px;
+  background:rgba(15,23,42,1);
+  border:1px solid rgba(148,163,184,.9);
+}
+
+.show-on-mobile{ display:none; }
+@media (max-width:768px){
+  .show-on-mobile{ display:block; }
+  .hide-on-mobile{ display:none!important; }
+}
+
+.run-sheet-toggle{
+  margin-top:6px;
+  font-size:11px;
+  padding:4px 10px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.5);
+  background:rgba(15,23,42,.9);
+  color:var(--text-muted);
+}
+
+/* bottom sheet */
+.run-sheet{
+  position:fixed;
+  inset:0;
+  pointer-events:none;
+  display:flex;
+  align-items:flex-end;
+  justify-content:center;
+  z-index:9997;
+  opacity:0;
+  transition:opacity .16s ease-out;
+}
+
+.run-sheet.is-open{
+  pointer-events:auto;
+  opacity:1;
+}
+
+.run-sheet-inner{
+  width:100%;
+  max-width:540px;
+  background:rgba(15,23,42,.98);
+  border-radius:16px 16px 0 0;
+  border-top:1px solid rgba(148,163,184,.6);
+  padding:8px 12px 14px;
+  transform:translateY(100%);
+  transition:transform .18s ease-out;
+}
+
+.run-sheet.is-open .run-sheet-inner{
+  transform:translateY(0);
+}
+
+.run-sheet-handle{
+  width:42px;
+  height:4px;
+  border-radius:999px;
+  background:rgba(148,163,184,.7);
+  margin:4px auto 8px;
+}
+.run-sheet-title{
+  font-size:13px;
+  margin-bottom:4px;
+}
+.run-sheet-summary,
+.run-sheet-stats{
+  font-size:11px;
+  opacity:.9;
+}
+
+.run-timeline{
+  /* Keep the timeline *inside* the card and prevent horizontal spill */
+  flex: 1 1 100%;
+  max-width: 100%;
+  min-width: 0;
+  order: 20;
+
+  margin-top:0;
+  padding:4px 6px;
+  border-radius:10px;
+  background:rgba(15,23,42,.96);
+  border:1px solid rgba(148,163,184,.5);
+  font-size:10px;
+  display:flex;
+  align-items:center;
+  gap:6px;
+  overflow-x:auto;
+  white-space:nowrap;
+}
+
+.run-dot{
+  display:inline-flex;
+  align-items:center;
+  gap:4px;
+  padding:2px 6px;
+  border-radius:999px;
+  border:1px solid rgba(148,163,184,.5);
+  color: var(--text-main);
+  cursor:pointer;
+  transition:background-color .12s ease, transform .12s ease;
+}
+.run-dot:hover{
+  background:rgba(37,99,235,.45);
+  transform:translateY(-1px);
+}
+.run-dot-time{
+  opacity:.85;
+}
+.run-dot-size{
+  opacity:.7;
+}
+
+
