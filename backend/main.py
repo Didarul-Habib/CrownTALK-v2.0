@@ -3485,6 +3485,78 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
         return [a, b]
     return [a, b]
 
+
+
+def ensure_question_mark(text: str) -> str:
+    """If a comment *reads* like a question, ensure it ends with '?'"""
+    t = (text or '').strip()
+    if not t:
+        return t
+
+    # If it is already a question, keep as-is (or normalize terminal punctuation)
+    is_q = (guess_mode(t) == 'question')
+    if not is_q:
+        return t
+
+    # If it already contains a '?', leave it (but trim trailing junk)
+    if '?' in t:
+        return t.strip()
+
+    # Replace terminal punctuation with '?'
+    t = t.rstrip().rstrip(',:;')
+    t = re.sub(r'[.!]+\s*$', '', t).strip()
+    return (t + '?').strip()
+
+
+def is_meaningless_comment(comment: str, tweet_text: str = '') -> bool:
+    """Heuristic guard to reject vague/empty replies ("nice", "great", etc.)."""
+    c = (comment or '').strip()
+    if not c:
+        return True
+
+    low = c.lower()
+
+    # Questions are acceptable (they invite engagement)
+    if '?' in low:
+        return False
+
+    # If it doesn't reference the tweet in any way AND is generic praise, kill it.
+    generic_seeds = (
+        'nice', 'great', 'good', 'cool', 'awesome', 'amazing', 'love', 'wow',
+        'well done', 'congrats', 'interesting', 'solid', 'clean'
+    )
+
+    ents = extract_entities(tweet_text or '') if tweet_text else {'cashtags': [], 'handles': [], 'numbers': []}
+    keys = extract_keywords(tweet_text or '') if tweet_text else []
+
+    focus_pool = set([k.lower() for k in keys] +
+                     [x.lower() for x in (ents.get('cashtags') or [])] +
+                     [x.lower().lstrip('@') for x in (ents.get('handles') or [])] +
+                     [x.lower() for x in (ents.get('numbers') or [])])
+
+    has_focus = any(fp and fp in low for fp in list(focus_pool)[:20])
+    has_operator = any(w in low for w in PRO_OPERATOR_WORDS)
+
+    # Content-word count: too few means it's basically filler.
+    toks = [t.lower() for t in words(low)]
+    content = [t for t in toks if t and t not in EN_STOPWORDS and not t.isdigit()]
+
+    # If tweet has no usable focus tokens, fall back to content-density checks.
+    if not focus_pool:
+        if len(content) < 3:
+            return True
+        if any(s in low for s in generic_seeds) and len(content) < 5:
+            return True
+        return False
+
+    # If we have focus available but the comment doesn't use it, be stricter.
+    if not has_focus and not has_operator:
+        if any(s in low for s in generic_seeds):
+            return True
+        if len(content) < 4:
+            return True
+
+    return False
 def enforce_unique(
     candidates: list[str],
     tweet_text: Optional[str] = None,
@@ -3500,6 +3572,7 @@ def enforce_unique(
 
     for c in candidates:
         c = enforce_word_count_natural(c)
+        c = ensure_question_mark(c)
         if not c:
             continue
 
@@ -3519,6 +3592,10 @@ def enforce_unique(
         if contains_generic_phrase(c):
             continue
 
+        # reject vague/meaningless replies
+        if is_meaningless_comment(c, tweet_text or ''):
+            continue
+
         # structural repetition guards
         if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
             continue
@@ -3534,7 +3611,8 @@ def enforce_unique(
             toks = words(c)
             if len(toks) < 13:
                 alt = enforce_word_count_natural(c + " today")
-                if alt and not comment_seen(alt) and not contains_generic_phrase(alt):
+                alt = ensure_question_mark(alt)
+                if alt and not comment_seen(alt) and (not contains_generic_phrase(alt)) and (not is_meaningless_comment(alt, tweet_text or '')):
                     remember_comment(alt)
                     remember_template(alt)
                     remember_opener(_openers(alt))
