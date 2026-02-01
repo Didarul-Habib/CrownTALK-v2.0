@@ -1,275 +1,151 @@
-idOS Network (idOS) — Deep Dive (multi‑angle research)
-Last compiled: 2026-01-11 (Asia/Dhaka)
+---
+name: idOS Network
+symbol: IDOS
+category: Identity / Reusable KYC / Verifiable Credentials
+twitter: @idOS_network
+website: https://www.idos.network/
+docs: https://docs.idos.network/
+app: https://app.idos.network/
+dashboard: https://dashboard.idos.network/
+blog: https://www.idos.network/blog
+legal: https://www.idos.network/legal/disclaimers
+github_org: https://github.com/idos-network
+compiled_at: 2026-01-11 Asia/Dhaka
+confidence: medium-high (official docs + blog; timelines may shift)
+---
 
 ===============================================================================
-0) Executive snapshot (1–2 minutes)
+1) One-liner (what it is)
 ===============================================================================
-idOS (“identity operating system”) is a decentralized storage + access management network designed to make identity data (starting with reusable KYC) portable across the “stablecoin economy”. It aims to let users hold encrypted credentials in a personal “digital vault” (idOS Profile), and selectively grant access to apps/businesses via onchain “Access Grants”. The system is built around:
-  • idOS Storage Network (L1): decentralized data storage layer built on Kwil (decentralized database), run by node operators.
-  • idOS Economy Network (coming soon): an Arbitrum Orbit chain that meters usage and implements the data‑economy / incentives via smart contracts.
-  • SDKs + Apps: developer SDKs plus the idOS App (user dashboard) and enclave tooling for encryption/decryption.
-
-Primary market thesis: stablecoin apps need compliant, privacy‑preserving identity re‑use. idOS positions itself as infrastructure for that.
-
-Official links (high priority)
-  • Docs: https://docs.idos.network/
-  • App: https://app.idos.network/
-  • Dashboard: https://dashboard.idos.network/
-  • Blog: https://www.idos.network/blog
-  • Legal / Disclaimers: https://www.idos.network/legal/disclaimers
-  • X: https://x.com/idOS_network
-  • GitHub org: https://github.com/idos-network
+idOS is an “identity operating system” that lets users store encrypted credentials (starting with reusable KYC)
+in a self-controlled digital vault and share access with apps via permissioned “Access Grants”.
 
 ===============================================================================
-1) Problem framing & value proposition
+2) Why it matters (human angle)
 ===============================================================================
-1.1 The pain
-• Today, KYC/AML and other identity checks are repeatedly performed and stored in siloed, centralized “honeypots”. Users re-submit sensitive data and businesses duplicate liability.
-• In stablecoin/crypto fintech flows, onboarding often requires regulated identity proofs across multiple services (on/off-ramps, neobanks, cards, exchanges, etc.). Reusability is hard because there’s no shared, user-controlled identity layer.
-
-1.2 idOS’s pitch (what they claim)
-• “Portable identity” for stablecoin apps: users can onboard and share identity “as easily as moving their money”.
-• Self-custodial data: end‑to‑end encryption with user-controlled keys; storage nodes and even idOS can’t read plaintext without user-granted access.
-• Verifiable Credentials approach: issuers sign structured credentials; consumers verify authenticity while access is permissioned by the user.
+Stablecoin/fintech apps repeatedly collect KYC in centralized silos. idOS pitches portable, privacy-preserving
+identity reuse: users keep encrypted credentials and selectively grant access instead of re-submitting data.
 
 ===============================================================================
-2) Core architecture (how it works)
+3) Core components (architecture summary)
 ===============================================================================
-2.1 Main network components
 A) Storage Network (L1)
-• A decentralized L1 data layer responsible for data storage/retrieval, authentication, consensus, encryption/signing support, and RPC load balancing.
-• Built on Kwil (decentralized database) plus idOS-specific extensions and schema.
+- Decentralized data storage + retrieval layer.
+- Built on Kwil (decentralized database) with idOS-specific schema/extensions.
 
-B) Economy Network (coming soon)
-• Planned as an Arbitrum Orbit chain.
-• Implements the “data economy” in smart contracts and meters Storage Network usage.
-• Intended to bring fees / incentives, progressive decentralization, and more open node operation.
+B) Economy Network (planned / “coming soon”)
+- Planned as an Arbitrum Orbit chain.
+- Intended to meter usage + implement fee/incentive mechanics (“data economy”).
 
-C) SDKs and application layer
-• SDKs for issuers and consumers (apps) to integrate create/read/write flows, issue credentials, request access, etc.
-• User-facing idOS App + dashboards.
-
-2.2 Key actors in the system (roles)
-• Owner (User): controls a profile (“digital vault”) and grants access. Auth with blockchain wallets.
-• Issuer: verifies user data and issues signed credentials (e.g., KYC provider or regulated entity).
-• Consumer: requests access to credentials; can only read after user grants permission.
-
-2.3 The “Enclave” model (privacy boundary)
-idOS uses an “idOS Enclave” concept: a separate-origin web app environment for sensitive cryptographic operations (password input, key derivation, encrypt/decrypt, viewing decrypted credential contents) so host apps cannot access plaintext.
-
-2.4 Key flows (high level)
-• New user onboarding: user connects wallet, initializes encryption keys via the enclave, profile created, issuer writes signed credential.
-• Viewing/updating data: dashboard reads encrypted data; user decrypts through enclave.
-• Sharing data: user creates an Access Grant to a consumer; data is re-encrypted for the recipient/consumer as needed.
+C) SDKs + Apps
+- SDKs for issuers/consumers.
+- User-facing idOS App + dashboards.
 
 ===============================================================================
-3) Identity & uniqueness (biometrics, “FaceSign”)
+4) Key roles (who does what)
 ===============================================================================
-idOS includes a “FaceSign” (Beta) mechanism aimed at proving a user is a unique human and preventing duplicates:
-• Uses “FaceVector” representations (non-reversible vectors). The docs say actual video/images are deleted inside the secure enclave after vector creation.
-• Stores no face photos in idOS; instead stores an encrypted credential containing a unique ID (issuer-signed VC), readable only via user-granted access.
-• Runs matching inside AWS Nitro Enclaves (isolated VMs without external networking; no shell access).
-• Mentions future plan to move compute from Nitro Enclaves to an MPC network.
-
-Important nuance:
-• This is “biometrics for uniqueness” within their onboarding; it’s not “identity” by itself, but a component to prevent multiple profiles claiming the same person (while still allowing multiple profiles under the same “same-person” proof).
+- Owner/User: controls an idOS Profile (digital vault) and grants access.
+- Issuer: verifies user data and issues signed credentials (VC-like).
+- Consumer: requests credential access; can read only after user grants permission.
 
 ===============================================================================
-4) Key management & encryption (MPC + password options)
+5) Privacy boundary (Enclave model)
 ===============================================================================
-4.1 Per-user encryption keys
-• Each user has their own encryption keypair; user public key is recorded on the idOS profile; all credential content is encrypted to that user.
-• Enclave must be able to recreate private keys reliably for web apps (which can’t store secrets like browser extensions do).
-
-4.2 Approaches described
-• Password-based key derivation (earlier option): user chooses a password; used as input to key derivation to recreate keys.
-• MPC-based key creation (recommended default in the idOS App, per blog): built with PartisiaBlockchain. The app can generate keys via wallet signing without additional passwords/seed phrases.
+Sensitive ops (key derivation, encrypt/decrypt, viewing plaintext) occur inside an “idOS Enclave”
+(separate-origin secure environment) so host apps can’t access plaintext.
 
 ===============================================================================
-5) Network model: permissioned today, decentralization later
+6) Uniqueness / biometrics (FaceSign)
 ===============================================================================
-System design docs describe idOS as currently “permissioned”:
-• Only authorized operators can participate initially, enabling real-world accountability.
-• It states the intent to progressively decentralize: when Economy Network is live, node operators would be KYB’d by the idOS Association and added based on stake weight; they also mention exploring sharding to enable more permissionless validation.
+FaceSign (Beta) aims to prevent duplicates:
+- Creates non-reversible face vectors.
+- Matching occurs inside AWS Nitro Enclaves (per docs).
+- Future plan mentioned: move compute from Nitro Enclaves to MPC network.
 
-===============================================================================
-6) Token (IDOS): supply, allocation, vesting, campaigns
-===============================================================================
-6.1 Basics
-• IDOS is an ERC‑20 token, first deployed on Arbitrum One.
-• Fixed total supply: 1,000,000,000 IDOS.
-
-6.2 Allocation overview (from official docs)
-Community (41.3%)
-  • Staking rewards: 15.0% (150M) — distributed across 10 years (120 months).
-    - Emission schedule described in blog: Years 1–2: 30M/yr; Years 3–6: 15M/yr; Years 7–10: 7.5M/yr.
-    - Rewards accrue daily and can be claimed any time.
-    - Staking rewards expected to be complemented later by fees (Access Grants) used for buy-backs and added incentives.
-  • Community sales: up to 12.5% — distributed via public rounds pre‑TDE; 100% unlock on TDE.
-  • User incentives & airdrops: 8.8% total
-      - InfoFi campaigns: 1.0% (100% unlock on TDE)
-      - idOS App campaign: 1.5% (100% unlock on TDE)
-      - Marketing & other incentives: 2.5% (0–10 month linear vesting)
-      - FCL community airdrop: 3.8% (snapshot June 20, 2025; 6‑month linear vesting)
-  • Community reserve: 5.0%
-
-Team & Advisors: 10.9%
-  • Team: 12‑month lock + 36‑month linear vesting
-  • Advisors: 6‑month lock + 36‑month linear vesting
-
-Building Partners: 7.6%
-  • 6‑month lock + 24‑month linear vesting
-
-Private Contributors (Consortium Members): 10.4%
-  • Includes Arbitrum Foundation, Circle, NEAR Foundation, Ripple Labs, Tezos Foundation, Radix Foundation, Gnosis, Aleph Zero Foundation (as listed).
-  • 6‑month lock + 12‑month linear vesting
-
-Private Contributors (VCs & Angels): 8.1%
-  • Lead contributor listed: Fabric Ventures.
-  • 6‑month lock + 12‑month linear vesting
-
-idOS Association — Listings & Liquidity Reserve: 9.5%
-  • Full unlock on launch; any unused amount goes to treasury per docs.
-
-idOS Association — Treasury: 12.2%
-  • 10% unlock on TDE; remaining 90% over 60 months linear vesting.
-
-6.3 Sale mechanics: “FADE” (Fair Allocation & Discovery Engine)
-The Community Sale used a mechanism called FADE:
-• Tokens in Community Sale: 25,000,000 IDOS (2.5% of total supply).
-• Price discovery range: contribution goal $500k up to max raise $2m.
-• Price scales linearly between $0.02 and $0.08 based on total contribution amount.
-• If oversubscribed above max raise, FADE finds an “individual cap” that maximizes distribution; excess above cap is returned.
-• If demand is low and goal not reached, contributions are returned.
-
-6.4 Community Sale results (reported by idOS)
-• Subscription period: Nov 24, 2025 1:00 PM UTC – Nov 28, 2025 1:00 PM UTC (extended from Nov 26).
-• Total tokens sold: 25,000,000 IDOS.
-• Total contributed: $536,172.46 USDC.
-• Participants: 871.
-• Goal reached: 107.2% of $500k; Max cap reached: 26.8% of $2m.
-• Oversubscription: No.
-• Token delivery: on TDE; the post states “expected mid Q1 2026”.
-
-Note on timeline consistency:
-• Token allocation docs reference a TDE “expected Q4 2025”, while the sale-results post says expected “mid Q1 2026”. Treat mid‑Q1 2026 as the newer public statement.
+Important nuance: this is uniqueness proof / duplicate prevention, not “identity” by itself.
 
 ===============================================================================
-7) Fees, incentives & the “data economy”
+7) Key management (password vs MPC)
 ===============================================================================
-In the developer FAQ docs:
-• Today: they claim no ongoing integration costs yet.
-• Planned: once the Economy Network is live, issuers/consumers pay gas to node operators for reads/writes, and fees for Access Grants.
-• The protocol intends to take a 25% cut of Access Grant fees, per developer FAQ.
-
-===============================================================================
-8) Product surface: apps, dashboard, and user journey
-===============================================================================
-8.1 idOS App (user-facing)
-The “idOS App is live” announcement describes:
-• Creating an idOS Profile (a “digital vault” storing encrypted credentials).
-• Wallet support: currently EVM wallets; NEAR and XRPL “coming soon” in that post.
-• Profile creation steps include:
-  1) Create private key (default recommendation: MPC key creation with PartisiaBlockchain; wallet signing, no extra passwords).
-  2) Verify identity uniqueness via basic video liveness check; says biometric images aren’t processed outside secured enclaves and aren’t stored.
-
-8.2 Dashboard & profile
-• There is a separate “User Dashboard” entry point (dashboard.idos.network) referenced on the website.
-• The “idos-profile” URL you shared appears to be an app route for profile management; some routes may require wallet connection / auth.
-
-8.3 Points / campaigns
-• The token allocation blog indicates active campaigns include “idOS App quests” and a Wallchain campaign measuring “Mindshare” (quality-weighted social engagement metric).
-• Legal disclaimers emphasize points have no monetary value, are non-transferable, and do not entitle users to tokens.
+- Per-user encryption keys; data encrypted to user key.
+- Options described:
+  - Password-based key derivation (earlier option).
+  - MPC-based key creation (recommended default in idOS App per blog),
+    built with PartisiaBlockchain; uses wallet signing without extra passwords.
 
 ===============================================================================
-9) Compliance, legal posture, and disclaimers (what they emphasize)
+8) Network model (today vs later)
 ===============================================================================
-9.1 MiCA framing
-• Their disclaimers page explicitly frames certain communications as “marketing communication” about crypto-assets, not reviewed/approved by EU authorities, and references a MiCA white paper.
-
-9.2 Restrictions
-• The disclaimers mention restricted jurisdictions and that UK persons are excluded from some token-related activities and programs; participation may require AML/KYC.
-
-9.3 Risk / no investment claims
-• The disclaimers say IDOS token does not grant equity/ownership/profit rights, and that nothing should be treated as investment advice.
-
-(Also note: the “Last update” on the disclaimers page shows “December 1, 2925”, which appears to be a typo on their site.)
+- Described as permissioned today (authorized operators).
+- Intends “progressive decentralization” later (KYB’d operators, stake-weighted, etc.).
 
 ===============================================================================
-10) Open-source / code footprint & transparency signals
+9) Token quick facts (IDOS)
 ===============================================================================
-10.1 GitHub
-The idos-network GitHub org lists multiple public repositories, including:
-• idos-sdk-js (TypeScript)
-• idos-access-grants (contracts)
-• idos-schema
-• nitro-enclave-experiment (example of Nitro Enclave networking/proxy pattern)
-
-10.2 What’s not public (yet)
-System design docs mention some relevant repos are “not yet public” (e.g., an idos-kwild repo and KGW repo).
+- ERC-20 on Arbitrum One.
+- Total supply: 1,000,000,000 IDOS.
+- Community allocation is large (docs mention ~41.3%).
+- Staking rewards: 15% over ~10 years (emissions schedule described in blog).
+- Timeline note: materials mention shifting TDE expectations (older: Q4 2025; newer: mid Q1 2026).
 
 ===============================================================================
-11) Audits & security posture (what they say)
+10) Fee model (planned)
 ===============================================================================
-• Developer FAQ says they engaged “Resonance” to audit their v1 release, scope limited to SDKs + their KwilDB implementation (not KwilDB itself), expected by end of May 2025 (per that doc section).
-• Security docs emphasize operator KYB, encrypted data with user keys, and defense-in-depth.
+- Docs/FAQ suggest future fees for reads/writes + Access Grants when Economy Network is live.
+- Protocol intends to take a cut of Access Grant fees (docs mention 25%).
 
 ===============================================================================
-12) Ecosystem positioning (partners, consortium)
+11) “Comment anchors” (use these words to sound real)
 ===============================================================================
-• idOS presents itself as an industry-wide effort founded and funded by a consortium of ecosystems/industry players.
-• In token allocation docs, they name multiple consortium contributors (Arbitrum Foundation, Circle, NEAR Foundation, Ripple Labs, Tezos Foundation, Radix Foundation, Gnosis, Aleph Zero Foundation, etc.).
-
-===============================================================================
-13) Competitive landscape (context, not exhaustive)
-===============================================================================
-Likely adjacent categories:
-• DID + verifiable credentials platforms
-• “Reusable KYC” networks and shared identity rails
-• Traditional KYC providers building credential re-use products
-• Privacy-preserving credential sharing in wallets (ZK credentials, selective disclosure)
-
-idOS differentiators they emphasize:
-• “Self-custodial” encrypted storage network + access grants.
-• Compliance posture and stablecoin/fintech initial market focus.
-• Enclave/MPC approach to key management and uniqueness verification.
+Use 1–2 of these in comments when relevant:
+- “digital vault / idOS Profile”
+- “encrypted credentials”
+- “Access Grants”
+- “reusable KYC”
+- “verifiable credentials”
+- “Kwil-based storage network”
+- “Economy Network (Arbitrum Orbit)”
+- “enclave boundary”
+- “Nitro Enclaves”
+- “MPC key creation (Partisia)”
+- “stablecoin onboarding”
 
 ===============================================================================
-14) Risks, unknowns, and diligence checklist
+12) Safe comment angles (high-signal patterns)
 ===============================================================================
-Technical / delivery risks
-• Economy Network “coming soon”: core token fee flows and decentralization are dependent on this launch.
-• Permissioned network today: decentralization roadmap matters for censorship resistance and trust assumptions.
-• Biometrics: reliance on specific vendor/engine and Nitro enclaves; future MPC migration is aspirational.
-
-Token / market risks
-• TDE timing: public materials indicate shifting expectations (Q4 2025 vs mid‑Q1 2026).
-• Unlocks/allocations: community-heavy distribution, but details like listings/liquidity reserve and treasury control matter for market dynamics.
-
-Compliance / geo restrictions
-• Restricted jurisdictions and KYC requirements limit participation.
-• Disclaimers are explicit about no investment advice and high risk.
-
-Diligence checklist (fast)
-□ Read system design + key flows in docs; map trust boundaries.
-□ Verify which repos are public and what code is actually shipped.
-□ Confirm audit reports and scope (Resonance; any additional audits).
-□ Track Economy Network timeline and whether access‑grant fee mechanics are live.
-□ Review token legal white paper (PDF download) + MiCA materials.
-□ Check app UX: profile creation, key recovery, access grant creation, and revocation flows.
+Pick ONE angle per comment:
+A) Implementation question:
+- “Curious how Access Grant revocation + expiry is handled in practice?”
+B) Tradeoff/assumption:
+- “Permissioned operators now makes sense for compliance—what’s the milestone for opening ops?”
+C) Architecture link:
+- “The enclave boundary is key here—helps prevent host apps from seeing plaintext.”
+D) Adoption insight:
+- “Reusable KYC is the real wedge for stablecoin UX; integration + issuer network is the moat.”
 
 ===============================================================================
-15) Source list (starting points)
+13) Don’t-say rules (avoid hallucination / cringe)
 ===============================================================================
-Official / primary
-• Docs: https://docs.idos.network/  (System design, key flows, security, token allocation)
-• Blog: https://www.idos.network/blog  (token allocation, community sale, app launch, sale results)
-• Legal disclaimers: https://www.idos.network/legal/disclaimers
-• GitHub: https://github.com/idos-network
-
-Third-party (use cautiously)
-• Tokenomics audit summary site (not official): https://audit.tokenomics.com/tokenomics/idos-network
+- Don’t mention token price, “moon”, “pump”, or trading calls.
+- Don’t claim partnerships/integrations unless the tweet explicitly states them.
+- Don’t say “launched” / “mainnet” / “live” unless the tweet states it clearly.
+- If uncertain, ask a precise question instead of asserting.
 
 ===============================================================================
-End of report
+14) Real-time signals (later upgrade list)
+===============================================================================
+Preferred (accurate, low-risk):
+- GitHub repo releases/commits (org: https://github.com/idos-network)
+- Blog/changelog updates (https://www.idos.network/blog)
+- Docs changes (https://docs.idos.network/)
+
+===============================================================================
+15) Links (reference)
+===============================================================================
+Docs: https://docs.idos.network/
+Blog: https://www.idos.network/blog
+App: https://app.idos.network/
+Legal: https://www.idos.network/legal/disclaimers
+GitHub org: https://github.com/idos-network
+X: https://x.com/idOS_network
 ===============================================================================
