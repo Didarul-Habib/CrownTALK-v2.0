@@ -41,7 +41,7 @@
     try {
       const proto = (location.protocol === "https:") ? "wss" : "ws";
       // default to same host, premium-node usually runs on :8081
-      window.CT_PREMIUM_WS_URL = "ws://localhost:8081/ws";
+      window.CT_PREMIUM_WS_URL = "wss://crowntalk-v2-0-premium-node.onrender.com/ws";
     } catch {}
   })();
 </script>
