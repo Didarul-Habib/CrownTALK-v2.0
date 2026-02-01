@@ -413,8 +413,7 @@ function parseURLs(raw) {
     m2.forEach((u) => hits.push(String(u).replace(/^[^a-z0-9]+/i, "")));
     const uniqHits = Array.from(new Set(hits)).filter(Boolean);
     if (uniqHits.length >= 2) {
-      raw = uniqHits.join("
-");
+      raw = uniqHits.join("\n");
     }
   } catch {}
 
