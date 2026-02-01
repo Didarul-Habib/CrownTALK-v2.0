@@ -1,151 +1,131 @@
 ---
-name: idOS Network
-symbol: IDOS
-category: Identity / Reusable KYC / Verifiable Credentials
-twitter: @idOS_network
-website: https://www.idos.network/
-docs: https://docs.idos.network/
-app: https://app.idos.network/
-dashboard: https://dashboard.idos.network/
-blog: https://www.idos.network/blog
-legal: https://www.idos.network/legal/disclaimers
-github_org: https://github.com/idos-network
-compiled_at: 2026-01-11 Asia/Dhaka
-confidence: medium-high (official docs + blog; timelines may shift)
+PROJECT_NAME: idOS Network
+PROJECT_HANDLE: @idOS_network
+SYMBOL: IDOS
+CATEGORY: Identity infra / Reusable KYC / Verifiable Credentials
+COMPILED_AT: 2026-01-11 (Asia/Dhaka)
+CONFIDENCE: HIGH for architecture + links; MEDIUM for timelines (can shift)
 ---
 
-===============================================================================
-1) One-liner (what it is)
-===============================================================================
-idOS is an “identity operating system” that lets users store encrypted credentials (starting with reusable KYC)
-in a self-controlled digital vault and share access with apps via permissioned “Access Grants”.
+[OFFICIAL_LINKS]
+WEBSITE=https://www.idos.network/
+DOCS=https://docs.idos.network/
+APP=https://app.idos.network/
+DASHBOARD=https://dashboard.idos.network/
+BLOG=https://www.idos.network/blog
+LEGAL=https://www.idos.network/legal/disclaimers
+GITHUB_ORG=https://github.com/idos-network
 
-===============================================================================
-2) Why it matters (human angle)
-===============================================================================
-Stablecoin/fintech apps repeatedly collect KYC in centralized silos. idOS pitches portable, privacy-preserving
-identity reuse: users keep encrypted credentials and selectively grant access instead of re-submitting data.
+[ONE_LINER]
+idOS is an identity “digital vault” network where users store encrypted credentials (starting with reusable KYC)
+and selectively share access with apps via onchain-like permissioned “Access Grants”.
 
-===============================================================================
-3) Core components (architecture summary)
-===============================================================================
-A) Storage Network (L1)
-- Decentralized data storage + retrieval layer.
-- Built on Kwil (decentralized database) with idOS-specific schema/extensions.
+[WHY_IT_MATTERS]
+Stablecoin/fintech apps repeatedly collect KYC into centralized silos. idOS aims to make identity portable:
+user-controlled encrypted credentials + selective disclosure → less re-onboarding, less data honeypots.
 
-B) Economy Network (planned / “coming soon”)
-- Planned as an Arbitrum Orbit chain.
-- Intended to meter usage + implement fee/incentive mechanics (“data economy”).
+[CORE_COMPONENTS]
+- Storage Network (L1): decentralized data storage/retrieval layer built on Kwil (decentralized database) + idOS schema/extensions.
+- Economy Network (PLANNED): Arbitrum Orbit chain intended to meter usage + implement fees/incentives (“data economy”).
+- SDKs + Apps: SDKs for issuers/consumers; idOS App + dashboards for users.
 
-C) SDKs + Apps
-- SDKs for issuers/consumers.
-- User-facing idOS App + dashboards.
+[ACTORS]
+- USER/OWNER: controls idOS Profile (digital vault) and grants access.
+- ISSUER: verifies info and issues signed credentials (VC-like).
+- CONSUMER: requests access; can read only after user grants permission.
 
-===============================================================================
-4) Key roles (who does what)
-===============================================================================
-- Owner/User: controls an idOS Profile (digital vault) and grants access.
-- Issuer: verifies user data and issues signed credentials (VC-like).
-- Consumer: requests credential access; can read only after user grants permission.
+[KEY_FLOWS]
+- Onboard: wallet connect → key setup (often MPC) → issuer writes signed credential to user vault.
+- View: dashboard fetches encrypted data → user decrypts via enclave boundary.
+- Share: consumer requests credential → user approves → Access Grant created → consumer reads permitted data.
 
-===============================================================================
-5) Privacy boundary (Enclave model)
-===============================================================================
-Sensitive ops (key derivation, encrypt/decrypt, viewing plaintext) occur inside an “idOS Enclave”
-(separate-origin secure environment) so host apps can’t access plaintext.
+[PRIVACY_SECURITY]
+- Enclave boundary: sensitive operations (key derivation, encrypt/decrypt, plaintext viewing) happen in separate-origin enclave so host apps can’t see plaintext.
+- Data encrypted to user keys; storage operators can’t read plaintext without user-granted access.
 
-===============================================================================
-6) Uniqueness / biometrics (FaceSign)
-===============================================================================
-FaceSign (Beta) aims to prevent duplicates:
-- Creates non-reversible face vectors.
-- Matching occurs inside AWS Nitro Enclaves (per docs).
-- Future plan mentioned: move compute from Nitro Enclaves to MPC network.
+[UNIQUENESS_FACESIGN]
+- FaceSign (Beta) focuses on duplicate prevention / uniqueness proof.
+- Uses non-reversible face vectors; matching runs inside AWS Nitro Enclaves (per docs).
+- Future plan mentioned: migrate compute from Nitro Enclaves to MPC network.
+NOTE: This is uniqueness/anti-duplication, not “identity” by itself.
 
-Important nuance: this is uniqueness proof / duplicate prevention, not “identity” by itself.
-
-===============================================================================
-7) Key management (password vs MPC)
-===============================================================================
-- Per-user encryption keys; data encrypted to user key.
+[KEY_MANAGEMENT]
+- Per-user encryption keypair; public key recorded on profile; credentials encrypted to user key.
 - Options described:
-  - Password-based key derivation (earlier option).
-  - MPC-based key creation (recommended default in idOS App per blog),
-    built with PartisiaBlockchain; uses wallet signing without extra passwords.
+  - Password-based derivation (older/alternative).
+  - MPC-based key creation (recommended default per blog) using PartisiaBlockchain; wallet signing, no extra passwords.
 
-===============================================================================
-8) Network model (today vs later)
-===============================================================================
+[NETWORK_STATUS]
 - Described as permissioned today (authorized operators).
-- Intends “progressive decentralization” later (KYB’d operators, stake-weighted, etc.).
+- Roadmap: progressive decentralization later (KYB’d operators, stake-weighting, potential sharding).
 
-===============================================================================
-9) Token quick facts (IDOS)
-===============================================================================
-- ERC-20 on Arbitrum One.
+[TOKEN_FACTS]
+- Token: IDOS (ERC-20) on Arbitrum One.
 - Total supply: 1,000,000,000 IDOS.
-- Community allocation is large (docs mention ~41.3%).
+- Community-heavy allocation (docs mention ~41.3%).
 - Staking rewards: 15% over ~10 years (emissions schedule described in blog).
-- Timeline note: materials mention shifting TDE expectations (older: Q4 2025; newer: mid Q1 2026).
+- Timeline note: materials suggest shifting expectations (older: Q4 2025; newer statement: mid Q1 2026).
 
-===============================================================================
-10) Fee model (planned)
-===============================================================================
-- Docs/FAQ suggest future fees for reads/writes + Access Grants when Economy Network is live.
-- Protocol intends to take a cut of Access Grant fees (docs mention 25%).
+[FEES_MODEL]
+- Today: integration costs described as limited/none (per FAQ context).
+- Planned: fees for reads/writes + Access Grants when Economy Network is live.
+- Docs mention protocol cut of Access Grant fees: 25%.
 
-===============================================================================
-11) “Comment anchors” (use these words to sound real)
-===============================================================================
-Use 1–2 of these in comments when relevant:
-- “digital vault / idOS Profile”
-- “encrypted credentials”
-- “Access Grants”
-- “reusable KYC”
-- “verifiable credentials”
-- “Kwil-based storage network”
-- “Economy Network (Arbitrum Orbit)”
-- “enclave boundary”
-- “Nitro Enclaves”
-- “MPC key creation (Partisia)”
-- “stablecoin onboarding”
+[ANCHORS]
+digital vault
+idOS Profile
+encrypted credentials
+reusable KYC
+verifiable credentials
+selective disclosure
+Access Grants
+Kwil-based storage network
+Economy Network
+Arbitrum Orbit
+enclave boundary
+AWS Nitro Enclaves
+FaceSign
+non-reversible face vectors
+MPC key creation
+PartisiaBlockchain
+stablecoin onboarding
+compliance-friendly identity reuse
 
-===============================================================================
-12) Safe comment angles (high-signal patterns)
-===============================================================================
-Pick ONE angle per comment:
-A) Implementation question:
-- “Curious how Access Grant revocation + expiry is handled in practice?”
-B) Tradeoff/assumption:
-- “Permissioned operators now makes sense for compliance—what’s the milestone for opening ops?”
-C) Architecture link:
-- “The enclave boundary is key here—helps prevent host apps from seeing plaintext.”
-D) Adoption insight:
-- “Reusable KYC is the real wedge for stablecoin UX; integration + issuer network is the moat.”
+[SAFE_ANGLES]
+ANGLE_IMPLEMENTATION_Q:
+Ask one precise implementation question about access grants, revocation, expiry, or issuer/consumer flows.
 
-===============================================================================
-13) Don’t-say rules (avoid hallucination / cringe)
-===============================================================================
-- Don’t mention token price, “moon”, “pump”, or trading calls.
-- Don’t claim partnerships/integrations unless the tweet explicitly states them.
-- Don’t say “launched” / “mainnet” / “live” unless the tweet states it clearly.
-- If uncertain, ask a precise question instead of asserting.
+ANGLE_TRADEOFF:
+Highlight one tradeoff: permissioned operators now vs decentralization later; enclave/MPC trust boundaries.
 
-===============================================================================
-14) Real-time signals (later upgrade list)
-===============================================================================
-Preferred (accurate, low-risk):
-- GitHub repo releases/commits (org: https://github.com/idos-network)
-- Blog/changelog updates (https://www.idos.network/blog)
-- Docs changes (https://docs.idos.network/)
+ANGLE_ARCH_LINK:
+Connect tweet to a concrete mechanism: enclave boundary, Access Grants, Kwil storage, MPC keys.
 
-===============================================================================
-15) Links (reference)
-===============================================================================
-Docs: https://docs.idos.network/
+ANGLE_ADOPTION:
+Comment on adoption wedge: reusable KYC for stablecoin UX; issuer network + integrations as moat.
+
+[DO_NOT_SAY]
+No token price, “moon”, “pump”, trading calls.
+No claiming partnerships/integrations unless tweet explicitly states it.
+No calling it “launched/mainnet/live” unless tweet clearly says so.
+No blanket praise (“awesome/great”) unless tied to a specific mechanism or product detail.
+If unsure: ask a sharp question instead of asserting.
+
+[COMMENT_RULES]
+- Must include 1–2 ANCHORS when relevant to tweet context.
+- Must reference something from the tweet OR a mechanism listed above (no generic compliments).
+- 10–28 words preferred; never cut mid-sentence.
+- If it’s a question, end with “?”.
+- One thought only (no multi-paragraph).
+- No emojis unless tweet tone is casual (max 1).
+
+[REALTIME_SIGNALS_LATER]
+GitHub org: https://github.com/idos-network (commits/releases)
 Blog: https://www.idos.network/blog
-App: https://app.idos.network/
-Legal: https://www.idos.network/legal/disclaimers
-GitHub org: https://github.com/idos-network
-X: https://x.com/idOS_network
-===============================================================================
+Docs: https://docs.idos.network/ (design/security/token pages)
+X: https://x.com/idOS_network (announcements)
+
+[NOTES_FOR_GENERATOR]
+If tweet is vague: choose ANGLE_IMPLEMENTATION_Q and ask about Access Grant lifecycle or issuer coverage.
+If tweet is technical: choose ANGLE_ARCH_LINK and mention enclave boundary / encryption / Kwil / MPC.
+If tweet is roadmap/launch: choose ANGLE_TRADEOFF or ANGLE_ADOPTION; keep claims strictly within tweet text.
