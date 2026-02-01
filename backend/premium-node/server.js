@@ -14,6 +14,8 @@ function broadcast(type, payload) {
   }
 }
 
+app.get("/health", (_req, res) => res.json({ ok: true }));
+
 app.post("/event", (req, res) => {
   const { type, payload } = req.body || {};
   if (!type) return res.status(400).json({ error: "missing type" });
@@ -21,8 +23,11 @@ app.post("/event", (req, res) => {
   res.json({ ok: true });
 });
 
-const server = app.listen(process.env.PREMIUM_NODE_PORT || 8081, () => {
-  console.log("Premium Node listening");
+// ✅ Render uses PORT. Keep PREMIUM_NODE_PORT as fallback for local.
+const PORT = process.env.PORT || process.env.PREMIUM_NODE_PORT || 8081;
+
+const server = app.listen(PORT, "0.0.0.0", () => {
+  console.log("Premium Node listening on", PORT);
 });
 
 server.on("upgrade", (request, socket, head) => {
