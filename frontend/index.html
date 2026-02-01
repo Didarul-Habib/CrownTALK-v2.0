@@ -20,7 +20,6 @@
       window.CT_PREMIUM_ENABLED = true; // set to false to disable
 
       // Optional: set this if your backend isn't same-origin.
-      // Example: window.CT_API_BASE = "https://crowntalk.onrender.com";
       window.CT_API_BASE = "https://crowntalk.onrender.com";
 
       // Feature-level toggles if you want finer control
@@ -33,19 +32,86 @@
         achievements: true,
       };
     </script>
-    <script>
-  // Optional: set window.CT_PREMIUM_WS_URL yourself.
-  // If not set, we try to derive a sensible default.
-  (function(){
-    if (window.CT_PREMIUM_WS_URL) return;
-    try {
-      const proto = (location.protocol === "https:") ? "wss" : "ws";
-      // default to same host, premium-node usually runs on :8081
-      window.CT_PREMIUM_WS_URL = "wss://crowntalk-v2-0-premium-node.onrender.com/ws";
-    } catch {}
-  })();
-</script>
 
+    <script>
+      // Optional: set window.CT_PREMIUM_WS_URL yourself.
+      // If not set, we try to derive a sensible default.
+      (function () {
+        if (window.CT_PREMIUM_WS_URL) return;
+        try {
+          // Your Render URL (best for Netlify)
+          window.CT_PREMIUM_WS_URL =
+            "wss://crowntalk-v2-0-premium-node.onrender.com/ws";
+        } catch {}
+      })();
+    </script>
+
+    <!-- Fix: menu dropdown visibility + readable colors + z-index above comments -->
+    <style>
+      /* Let dropdown escape card bounds */
+      #resultsCard {
+        overflow: visible !important;
+        position: relative;
+        z-index: 5;
+      }
+
+      /* Make toolbar always above results list */
+      .results-toolbar {
+        position: relative;
+        z-index: 9990;
+      }
+
+      /* Menu button readability (avoid white-on-white) */
+      #resultsMenuToggle,
+      .results-menu-toggle {
+        color: rgba(240, 245, 255, 0.95) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        backdrop-filter: blur(10px);
+      }
+
+      /* Dropdown popover */
+      .results-menu {
+        position: relative;
+        z-index: 9995;
+      }
+
+      .results-menu-pop {
+        position: absolute !important;
+        right: 0 !important;
+        top: calc(100% + 10px) !important;
+        z-index: 99999 !important;
+        min-width: 260px;
+        background: rgba(14, 16, 28, 0.92) !important;
+        color: rgba(240, 245, 255, 0.96) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+        box-shadow: 0 18px 60px rgba(0, 0, 0, 0.55);
+        backdrop-filter: blur(14px);
+      }
+
+      .results-menu-title {
+        color: rgba(240, 245, 255, 0.85) !important;
+      }
+
+      .results-menu-pop button.btn-xs {
+        color: rgba(240, 245, 255, 0.95) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.12) !important;
+      }
+
+      .results-menu-pop button.btn-xs:hover {
+        background: rgba(255, 255, 255, 0.14) !important;
+      }
+
+      /* Fix those top chips/bars being unreadable */
+      .badge-summary,
+      #sessionSummary,
+      .badge-run {
+        color: rgba(240, 245, 255, 0.95) !important;
+        background: rgba(255, 255, 255, 0.08) !important;
+        border: 1px solid rgba(255, 255, 255, 0.14) !important;
+      }
+    </style>
 
     <!-- Minimal overlay helpers (scoped to #adminGate only) -->
     <style>
@@ -192,7 +258,6 @@
           opacity: 0.9;
         }
       }
-      /* tiny shake effect used by script.js on wrong code (optional) */
       .ct-shake {
         animation: ctshake 0.35s ease;
       }
@@ -377,7 +442,6 @@
         <div class="theme-switcher">
           <span class="theme-label">Theme</span>
 
-          <!-- keep .theme-dots so the existing container styling still works -->
           <div class="theme-dots ct-theme-radios">
             <!-- White -->
             <div class="ct-theme-radio">
@@ -519,7 +583,7 @@
                 <textarea
                   id="urlInput"
                   class="main-input"
-                  rows="8"
+                  rows="4"
                   placeholder="Paste one or more X (Twitter) post links — one per line (e.g., https://x.com/user/status/123...)"
                   spellcheck="false"
                 ></textarea>
@@ -543,9 +607,7 @@
                       clip-rule="evenodd"
                     ></path>
                   </svg>
-                  <span
-                    >Press <kbd class="shortcut-key">Enter</kbd> for new line</span
-                  >
+                  <span>Press <kbd class="shortcut-key">Enter</kbd> for new line</span>
                 </div>
                 <div class="system-status">
                   <div class="system-indicator" aria-hidden="true"></div>
@@ -557,15 +619,12 @@
             </div>
           </div>
 
-          <!-- URL Tools row -->
+           <!-- URL Tools row -->
           <div class="url-tools-row">
             <div class="url-health">
               <span id="urlHealthBadge" class="url-health-badge">No URLs yet</span>
               <div class="url-health-meter" aria-hidden="true">
-                <div
-                  id="urlHealthMeterFill"
-                  class="url-health-meter-fill"
-                ></div>
+                <div id="urlHealthMeterFill" class="url-health-meter-fill"></div>
               </div>
             </div>
             <div class="url-tools-buttons">
@@ -603,9 +662,18 @@
               <input type="checkbox" id="langNativeToggle" checked />
               Native
             </label>
-            <select id="nativeLangSelect" class="native-lang-select" title="Native language override">
+
+            <!-- Expanded native language choices -->
+            <select
+              id="nativeLangSelect"
+              class="native-lang-select"
+              title="Native language override"
+            >
               <option value="">Auto</option>
               <option value="ko">Korean</option>
+              <option value="zh">Chinese</option>
+              <option value="hi">Hindi</option>
+              <option value="ja">Japanese</option>
             </select>
           </div>
 
@@ -695,16 +763,14 @@
           </div>
 
           <div class="progress-row">
-            <span id="progress" class="helper-text"></span><span id="progressPct" class="helper-text helper-text-pct">0%</span>
+            <span id="progress" class="helper-text"></span
+            ><span id="progressPct" class="helper-text helper-text-pct">0%</span>
             <div class="progress-bar-outer">
-              <div
-                id="progressBarFill"
-                class="progress-bar-inner"
-              ></div>
+              <div id="progressBarFill" class="progress-bar-inner"></div>
             </div>
-          </div>
+          </div>"
 
-          <!-- Premium: Live radar ring (desktop) -->
+                    <!-- Premium: Live radar ring (desktop) -->
           <div
             id="radarRing"
             class="radar-ring hide-on-mobile"
@@ -751,11 +817,7 @@
           </div>
 
           <!-- Visual queue of URLs in this batch -->
-          <div
-            id="urlQueue"
-            class="url-queue hide-on-mobile"
-            aria-hidden="true"
-          ></div>
+          <div id="urlQueue" class="url-queue hide-on-mobile" aria-hidden="true"></div>
 
           <!-- Premium: Pipeline view (desktop) -->
           <div
@@ -787,10 +849,7 @@
               <span class="value" id="analyticsTime">0s</span>
             </div>
 
-            <div
-              class="analytics-pill hide-on-mobile"
-              id="runHealthSpark"
-            >
+            <div class="analytics-pill hide-on-mobile" id="runHealthSpark">
               <span class="label">Latency</span>
               <span class="value" id="runHealthLatency">—</span>
               <svg
@@ -811,7 +870,6 @@
         <!-- ===== RESULTS ===== -->
         <section class="card" id="resultsCard">
           <div class="card-head">
-            <!-- left side: title + subtitle -->
             <div class="card-head-main">
               <h2>
                 Results <span id="resultCount" class="chip">0</span>
@@ -819,18 +877,15 @@
               <p class="muted">Human style smart comments ready to copy</p>
             </div>
 
-            <!-- right side: run badge + dropdown menu (desktop only) -->
             <div class="results-toolbar">
               <span class="badge badge-run"
                 >Run <span id="runCount">1</span></span
               >
 
-              <!-- NEW: session summary chip -->
               <span class="badge badge-summary" id="sessionSummary">
                 0 tweets • 0 comments • 0 failed
               </span>
 
-              <!-- Premium: day timeline (desktop) -->
               <div
                 id="runTimeline"
                 class="run-timeline hide-on-mobile"
@@ -847,36 +902,19 @@
                 </button>
 
                 <div class="results-menu-pop">
-                  <!-- group 1: bulk actions only -->
                   <div class="results-menu-group">
                     <div class="results-menu-title">Bulk actions</div>
                     <div class="results-menu-actions">
-                      <button
-                        type="button"
-                        class="btn-xs"
-                        id="exportAllBtn"
-                      >
+                      <button type="button" class="btn-xs" id="exportAllBtn">
                         Copy all
                       </button>
-                      <button
-                        type="button"
-                        class="btn-xs"
-                        id="exportEnBtn"
-                      >
+                      <button type="button" class="btn-xs" id="exportEnBtn">
                         Copy EN
                       </button>
-                      <button
-                        type="button"
-                        class="btn-xs"
-                        id="exportNativeBtn"
-                      >
+                      <button type="button" class="btn-xs" id="exportNativeBtn">
                         Copy native
                       </button>
-                      <button
-                        type="button"
-                        class="btn-xs"
-                        id="downloadTxtBtn"
-                      >
+                      <button type="button" class="btn-xs" id="downloadTxtBtn">
                         Download .txt
                       </button>
                     </div>
@@ -886,13 +924,9 @@
             </div>
           </div>
 
-          <!-- session tabs (history of runs in this page) -->
           <div id="sessionTabs" class="session-tabs"></div>
-
-          <!-- results list -->
           <div id="results" class="tweets"></div>
 
-          <!-- floating keyboard shortcut bubble -->
           <div class="keyboard-floating hide-on-mobile">
             <button
               type="button"
@@ -910,7 +944,7 @@
           </div>
         </section>
 
-        <!-- ===== FAILED ===== -->
+               <!-- ===== FAILED ===== -->
         <section class="card">
           <div class="card-head">
             <div class="card-head-main">
@@ -923,7 +957,6 @@
               </p>
             </div>
 
-            <!-- retry button for failed URLs -->
             <div class="chip-row">
               <button
                 id="retryFailedBtn"
@@ -953,7 +986,6 @@
                 <div class="star-layer"></div>
               </div>
 
-              <!-- optional nebula background -->
               <div class="nebula"></div>
 
               <div class="checkbox-container">
@@ -1002,26 +1034,16 @@
                 <div class="status-text"></div>
 
                 <div class="frequency-spectrum">
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
-                  <div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
+                  <div class="frequency-bar"></div><div class="frequency-bar"></div>
                 </div>
 
                 <div class="data-chips">
@@ -1086,39 +1108,47 @@
       aria-hidden="true"
     ></div>
 
-    <!-- Your main app JS (contains the single-gate + app logic) -->
+    <!-- Your main app JS -->
     <script src="static/script.v2.js"></script>
     <script src="static/premium.v1.js" defer></script>
-<script>
-  // Desktop-only loader for React + GSAP premium UI
-  (function () {
-    try {
-      const isDesktop = window.innerWidth >= 1024;
-      const reduced = window.matchMedia && window.matchMedia("(prefers-reduced-motion: reduce)").matches;
-      if (!window.CT_PREMIUM_ENABLED) return;
-      if (!isDesktop) return; // keep mobile light
-      // React UMD
-      const add = (src) => new Promise((resolve, reject) => {
-        const s = document.createElement("script");
-        s.src = src;
-        s.async = true;
-        s.onload = resolve;
-        s.onerror = reject;
-        document.head.appendChild(s);
-      });
 
-      const chain = [];
-      chain.push(add("https://unpkg.com/react@18/umd/react.production.min.js"));
-      chain.push(add("https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"));
+    <script>
+      // Desktop-only loader for React + GSAP premium UI
+      (function () {
+        try {
+          const isDesktop = window.innerWidth >= 1024;
+          const reduced =
+            window.matchMedia &&
+            window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+          if (!window.CT_PREMIUM_ENABLED) return;
+          if (!isDesktop) return; // keep mobile light
+          const add = (src) =>
+            new Promise((resolve, reject) => {
+              const s = document.createElement("script");
+              s.src = src;
+              s.async = true;
+              s.onload = resolve;
+              s.onerror = reject;
+              document.head.appendChild(s);
+            });
 
-      if (!reduced) {
-        // GSAP is optional (micro animations only)
-        chain.push(add("https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js"));
-      }
+          const chain = [];
+          chain.push(add("https://unpkg.com/react@18/umd/react.production.min.js"));
+          chain.push(
+            add("https://unpkg.com/react-dom@18/umd/react-dom.production.min.js")
+          );
 
-      Promise.all(chain).then(() => add("static/desktop-premium-react.js")).catch(() => {});
-    } catch {}
-  })();
-</script>
-  </body
+          if (!reduced) {
+            chain.push(
+              add("https://cdn.jsdelivr.net/npm/gsap@3.12.5/dist/gsap.min.js")
+            );
+          }
+
+          Promise.all(chain)
+            .then(() => add("static/desktop-premium-react.js"))
+            .catch(() => {});
+        } catch {}
+      })();
+    </script>
+  </body>
 </html>
