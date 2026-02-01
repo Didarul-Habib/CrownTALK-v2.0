@@ -2535,10 +2535,15 @@ button:focus-visible,
   border-radius: 999px;
   background: #22c55e;
   box-shadow: 0 0 10px rgba(34,197,94,.9);
-
-.helper-text-pct::before{ content: attr(data-pct); color: var(--text-muted); }
-.helper-text-pct::after{ display:none; }
 }
+
+/* percentage pill: show dataset percent; no dot */
+.helper-text-pct::before{
+  content: attr(data-pct);
+  color: var(--text-muted);
+}
+.helper-text-pct::after{ display:none; }
+
 
 /* generating state – warm accent */
 body.is-generating .helper-text{
@@ -2561,6 +2566,13 @@ body.is-generating .helper-text::after{
   background: #f97316;
   box-shadow: 0 0 10px rgba(249,115,22,.9);
 }
+
+/* keep percent pill as percent even while generating */
+body.is-generating .helper-text-pct::before{
+  content: attr(data-pct);
+  color: var(--text-muted);
+}
+body.is-generating .helper-text-pct::after{ display:none; }
 
 /* =====================================
    CrownTALK – Kill conic / orbit rings
