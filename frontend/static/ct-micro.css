@@ -1,0 +1,58 @@
+/* CrownTALK Micro-interactions (Drop-in) */
+
+:root{
+  --ct-ease-out: cubic-bezier(.2,.9,.2,1);
+  --ct-ease-in: cubic-bezier(.8,0,.2,1);
+}
+
+/* Button depth + hover lift */
+button, .btn-primary, .btn-secondary, .btn-xs{
+  transition: transform 160ms var(--ct-ease-out), box-shadow 160ms var(--ct-ease-out), filter 160ms var(--ct-ease-out);
+  will-change: transform;
+}
+button:hover, .btn-primary:hover, .btn-secondary:hover, .btn-xs:hover{
+  transform: translateY(-1px);
+}
+button:active, .btn-primary:active, .btn-secondary:active, .btn-xs:active{
+  transform: translateY(1px) scale(0.99);
+  filter: brightness(1.02);
+}
+
+/* Smooth list insert/remove */
+.ct-enter{
+  animation: ct-fade-up 240ms var(--ct-ease-out) both;
+}
+@keyframes ct-fade-up{
+  from{ opacity: 0; transform: translateY(8px); }
+  to{ opacity: 1; transform: translateY(0); }
+}
+
+/* Skeleton shimmer upgrade (works with your existing skeleton blocks) */
+@keyframes ct-shimmer{
+  0%{ background-position: 200% 0; }
+  100%{ background-position: -200% 0; }
+}
+.skeleton, .ct-skeleton{
+  background-image: linear-gradient(90deg,
+    rgba(255,255,255,0.06) 0%,
+    rgba(255,255,255,0.12) 45%,
+    rgba(255,255,255,0.06) 100%);
+  background-size: 240% 100%;
+  animation: ct-shimmer 1.05s linear infinite;
+}
+
+/* Virtualization-lite: let the browser skip offscreen rendering */
+#results .tweet, .tweet{
+  content-visibility: auto;
+  contain-intrinsic-size: 200px;
+}
+
+/* Respect reduced motion */
+@media (prefers-reduced-motion: reduce){
+  button, .btn-primary, .btn-secondary, .btn-xs{
+    transition: none !important;
+    transform: none !important;
+  }
+  .ct-enter{ animation: none !important; }
+  .skeleton, .ct-skeleton{ animation: none !important; }
+}

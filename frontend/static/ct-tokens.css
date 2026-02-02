@@ -1,0 +1,73 @@
+/* CrownTALK Design Tokens (Drop-in)
+   - Safe defaults: won't break existing styles, only enhances.
+*/
+
+:root{
+  /* spacing scale */
+  --ct-s-0: 0px;
+  --ct-s-1: 4px;
+  --ct-s-2: 8px;
+  --ct-s-3: 12px;
+  --ct-s-4: 16px;
+  --ct-s-5: 20px;
+  --ct-s-6: 24px;
+  --ct-s-7: 32px;
+  --ct-s-8: 40px;
+  --ct-s-9: 56px;
+
+  /* radii */
+  --ct-r-1: 10px;
+  --ct-r-2: 14px;
+  --ct-r-3: 18px;
+  --ct-r-4: 24px;
+
+  /* glass / borders */
+  --ct-glass-blur: 14px;
+  --ct-border-alpha: 0.14;
+
+  /* shadows */
+  --ct-shadow-sm: 0 10px 24px rgba(0,0,0,0.18);
+  --ct-shadow-md: 0 18px 50px rgba(0,0,0,0.28);
+  --ct-shadow-lg: 0 30px 90px rgba(0,0,0,0.42);
+
+  /* typography (fluid) */
+  --ct-font-xs: clamp(12px, 0.85vw, 13px);
+  --ct-font-sm: clamp(13px, 0.95vw, 14px);
+  --ct-font-md: clamp(14px, 1.05vw, 16px);
+  --ct-font-lg: clamp(16px, 1.35vw, 18px);
+  --ct-font-xl: clamp(18px, 1.8vw, 22px);
+  --ct-font-2xl: clamp(22px, 2.4vw, 30px);
+
+  /* theme slots (enhancement vars) */
+  --ct-accent: rgba(170, 120, 255, 1);
+  --ct-accent-2: rgba(70, 170, 255, 1);
+  --ct-bg: rgba(10, 10, 16, 1);
+  --ct-surface: rgba(255, 255, 255, 0.06);
+  --ct-surface-2: rgba(255, 255, 255, 0.09);
+  --ct-text: rgba(240, 245, 255, 0.92);
+  --ct-muted: rgba(240, 245, 255, 0.68);
+}
+
+html, body{
+  font-size: var(--ct-font-md);
+}
+
+h1{ font-size: var(--ct-font-2xl); }
+h2{ font-size: var(--ct-font-xl); }
+h3{ font-size: var(--ct-font-lg); }
+
+.card, .tweet, #resultsCard{
+  /* Container queries enable components to adapt to their own width */
+  container-type: inline-size;
+}
+
+/* Container query examples (non-destructive) */
+@container (max-width: 520px){
+  .results-toolbar{
+    gap: var(--ct-s-2) !important;
+    flex-wrap: wrap;
+  }
+  .results-toolbar .btn-xs{
+    padding: 8px 10px !important;
+  }
+}

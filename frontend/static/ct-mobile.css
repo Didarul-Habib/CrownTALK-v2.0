@@ -1,0 +1,106 @@
+/* CrownTALK Mobile UX + Status Pills (Drop-in) */
+
+/* Mobile Paste Bar + Chips */
+.ct-mobile-pastebar{
+  display: none;
+  gap: 8px;
+  margin-top: 10px;
+  flex-wrap: wrap;
+}
+.ct-mini-btn{
+  appearance: none;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(240,245,255,0.92);
+  border-radius: 999px;
+  padding: 10px 12px;
+  font-size: 13px;
+  line-height: 1;
+  backdrop-filter: blur(var(--ct-glass-blur));
+}
+
+.ct-url-chips{
+  display: none;
+  margin-top: 10px;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.ct-chip{
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  max-width: 100%;
+  padding: 8px 10px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(255,255,255,0.06);
+  color: rgba(240,245,255,0.92);
+  backdrop-filter: blur(var(--ct-glass-blur));
+  font-size: 12px;
+}
+.ct-chip .ct-chip-text{
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  max-width: 260px;
+}
+.ct-chip .ct-chip-x{
+  border: 0;
+  background: transparent;
+  color: rgba(240,245,255,0.85);
+  font-size: 14px;
+  padding: 0 2px;
+}
+
+@media (max-width: 840px){
+  .ct-mobile-pastebar{ display: flex; }
+  .ct-url-chips{ display: flex; }
+}
+
+/* Floating status pill bottom-right */
+.ct-status-fab{
+  position: fixed;
+  right: 14px;
+  bottom: 14px;
+  z-index: 99999;
+  display: flex;
+  gap: 8px;
+  pointer-events: none;
+}
+.ct-pill{
+  pointer-events: none;
+  display: inline-flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border-radius: 999px;
+  border: 1px solid rgba(255,255,255,0.14);
+  background: rgba(14,16,28,0.78);
+  color: rgba(240,245,255,0.92);
+  backdrop-filter: blur(var(--ct-glass-blur));
+  box-shadow: 0 18px 60px rgba(0,0,0,0.35);
+  font-size: 12px;
+  line-height: 1;
+  opacity: 0;
+  transform: translateY(8px);
+  transition: opacity 220ms cubic-bezier(.2,.9,.2,1), transform 220ms cubic-bezier(.2,.9,.2,1);
+}
+.ct-pill.is-on{
+  opacity: 1;
+  transform: translateY(0);
+}
+.ct-pill .dot{
+  width: 8px;
+  height: 8px;
+  border-radius: 999px;
+  background: rgba(120,255,190,0.95);
+  box-shadow: 0 0 0 3px rgba(120,255,190,0.12);
+}
+.ct-pill.offline .dot{
+  background: rgba(255,110,110,0.95);
+  box-shadow: 0 0 0 3px rgba(255,110,110,0.14);
+}
+.ct-pill.cached .dot{
+  background: rgba(150,180,255,0.95);
+  box-shadow: 0 0 0 3px rgba(150,180,255,0.14);
+}

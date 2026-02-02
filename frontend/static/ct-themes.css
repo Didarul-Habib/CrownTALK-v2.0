@@ -1,0 +1,71 @@
+/* CrownTALK Theme Packs (Drop-in)
+   Adds extra theme presets + custom theme slot.
+   Uses data-theme="..." on <html>.
+*/
+
+html[data-theme="aurora"]{
+  --ct-accent: rgba(102, 255, 204, 1);
+  --ct-accent-2: rgba(120, 160, 255, 1);
+  --ct-bg: rgba(6, 10, 16, 1);
+  --ct-surface: rgba(255, 255, 255, 0.06);
+  --ct-text: rgba(235, 248, 255, 0.92);
+  --ct-muted: rgba(235, 248, 255, 0.70);
+}
+
+html[data-theme="sakura"]{
+  --ct-accent: rgba(255, 128, 196, 1);
+  --ct-accent-2: rgba(255, 200, 120, 1);
+  --ct-bg: rgba(16, 8, 14, 1);
+  --ct-surface: rgba(255, 255, 255, 0.07);
+  --ct-text: rgba(255, 245, 252, 0.93);
+  --ct-muted: rgba(255, 245, 252, 0.72);
+}
+
+html[data-theme="mono"]{
+  --ct-accent: rgba(230, 230, 230, 1);
+  --ct-accent-2: rgba(160, 160, 160, 1);
+  --ct-bg: rgba(8, 9, 10, 1);
+  --ct-surface: rgba(255, 255, 255, 0.06);
+  --ct-text: rgba(245, 245, 245, 0.92);
+  --ct-muted: rgba(245, 245, 245, 0.70);
+}
+
+html[data-theme="custom"]{
+  --ct-custom-accent-h: 280; /* updated by Theme Studio */
+  --ct-custom-accent-s: 92%;
+  --ct-custom-accent-l: 60%;
+  --ct-custom-bg-l: 8%;
+  --ct-custom-radius: 18px;
+  --ct-custom-blur: 14px;
+  --ct-custom-border: 0.14;
+
+  --ct-accent: hsl(var(--ct-custom-accent-h) var(--ct-custom-accent-s) var(--ct-custom-accent-l));
+  --ct-accent-2: hsl(calc(var(--ct-custom-accent-h) + 40) 90% 62%);
+  --ct-bg: hsl(var(--ct-custom-accent-h) 20% var(--ct-custom-bg-l));
+  --ct-surface: rgba(255,255,255,0.07);
+  --ct-text: rgba(245, 248, 255, 0.92);
+  --ct-muted: rgba(245, 248, 255, 0.70);
+
+  --ct-r-3: var(--ct-custom-radius);
+  --ct-glass-blur: var(--ct-custom-blur);
+  --ct-border-alpha: var(--ct-custom-border);
+}
+
+/* Lightweight application of enhancement vars (non-breaking) */
+body{
+  color: var(--ct-text);
+}
+
+.card, .tweet, #resultsCard{
+  border-color: rgba(255,255,255, var(--ct-border-alpha)) !important;
+  box-shadow: var(--ct-shadow-sm);
+}
+
+.badge, .btn-secondary, .btn-xs{
+  border-color: rgba(255,255,255, var(--ct-border-alpha)) !important;
+}
+
+/* Accent hints */
+.btn-primary, #generateBtn{
+  box-shadow: 0 16px 40px rgba(0,0,0,0.28), 0 0 0 1px rgba(255,255,255,0.10) inset;
+}

@@ -2279,7 +2279,7 @@ async function handleReroll(tweetEl) {
 // Theme
 // ------------------------
 const THEME_STORAGE_KEY = "crowntalk_theme";
-const ALLOWED_THEMES = ["white","dark-purple","gold","blue","black","emerald","crimson"];
+const ALLOWED_THEMES = ["white","dark-purple","gold","blue","black","emerald","crimson","aurora","sakura","mono","custom"];
 function sanitizeThemeDots() {
   themeDots.forEach((dot) => {
     if (!dot?.dataset) return;
