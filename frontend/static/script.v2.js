@@ -372,46 +372,40 @@ function maybeWarmBackend() {
 /* ================================
     Abort-aware fetch timeout
    ================================ */
-let __activeAbortController = null;
-
-async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
-  if (typeof AbortController === "undefined") {
-    return fetch(url, options);
-  }
-  const controller = new AbortController();
-  __activeAbortController = controller;
-
-  const id = setTimeout(() => controller.abort(), timeoutMs);
-  try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
-  } finally {
-    clearTimeout(id);
-    if (__activeAbortController === controller) __activeAbortController = null;
-  }
-}
-
-// ------------------------
+let __activeAbortController = // ------------------------
 // Utilities
 // ------------------------
+
 function sleep(ms) {
   return new Promise(resolve => setTimeout(resolve, ms));
 }
 
-const CT_URL_EXTRACT_RE = /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)\/(?:i\/status\/\d+|[A-Za-z0-9_]{1,15}\/status\/\d+))/gi;
-const CT_URL_EXTRACT_NOSCHEME_RE = /((?:^|[^a-z0-9_])(?:(?:x|twitter)\.com)\/(?:i\/status\/\d+|[A-Za-z0-9_]{1,15}\/status\/\d+))/gi;
+// Extract full URLs (with scheme)
+const CT_URL_EXTRACT_RE =
+  /(https?:\/\/(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)\/(?:i\/status\/\d+|[A-Za-z0-9_]{1,15}\/status\/\d+))/gi;
+
+// Extract URLs WITHOUT scheme (x.com/... or twitter.com/...)
+const CT_URL_EXTRACT_NOSCHEME_RE =
+  /((?:^|[^a-z0-9_])(?:(?:x|twitter)\.com)\/(?:i\/status\/\d+|[A-Za-z0-9_]{1,15}\/status\/\d+))/gi;
 
 function parseURLs(raw) {
   if (!raw) return [];
 
-  // If the user pasted URLs back-to-back with no spaces/newlines, extract them.
+  // If user pasted URLs back-to-back with no spaces/newlines, extract them.
+  // NOTE: This can create "duplicates" like:
+  //   http://x.com/...   +   x.com/... -> https://x.com/...
+  // We fix this by forcing HTTPS + canonical hostname later.
   try {
     const hits = [];
     const m1 = raw.match(CT_URL_EXTRACT_RE) || [];
     m1.forEach((u) => hits.push(u));
+
     const m2 = raw.match(CT_URL_EXTRACT_NOSCHEME_RE) || [];
     m2.forEach((u) => hits.push(String(u).replace(/^[^a-z0-9]+/i, "")));
+
     const uniqHits = Array.from(new Set(hits)).filter(Boolean);
+
+    // Only rewrite the raw input if it looks like multiple URLs were pasted together
     if (uniqHits.length >= 2) {
       raw = uniqHits.join("\n");
     }
@@ -437,10 +431,18 @@ function parseURLs(raw) {
     try {
       const u = new URL(candidate);
 
-      // Normalize twitter → x
-      if (/^(?:www\.)?twitter\.com$/i.test(u.hostname)) {
+      // ✅ Canonicalize hostname to x.com
+      // twitter.com / mobile.twitter.com / m.twitter.com → x.com
+      if (/^(?:www\.)?(?:mobile\.)?twitter\.com$/i.test(u.hostname) || /^(?:www\.)?m\.twitter\.com$/i.test(u.hostname)) {
         u.hostname = "x.com";
       }
+      // www.x.com → x.com
+      if (/^www\.x\.com$/i.test(u.hostname)) {
+        u.hostname = "x.com";
+      }
+
+      // ✅ Force HTTPS (this is what fixes your auto-duplicate: http vs https)
+      u.protocol = "https:";
 
       // Remove query + hash + trailing slash
       u.search = "";
@@ -449,6 +451,7 @@ function parseURLs(raw) {
 
       return u.toString();
     } catch {
+      // If URL parsing fails, return the cleaned line (no extra transforms)
       return line;
     }
   });
@@ -463,7 +466,25 @@ function parseURLs(raw) {
     }
   }
   return unique;
+       }null;
+
+async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
+  if (typeof AbortController === "undefined") {
+    return fetch(url, options);
+  }
+  const controller = new AbortController();
+  __activeAbortController = controller;
+
+  const id = setTimeout(() => controller.abort(), timeoutMs);
+  try {
+    const res = await fetch(url, { ...options, signal: controller.signal });
+    return res;
+  } finally {
+    clearTimeout(id);
+    if (__activeAbortController === controller) __activeAbortController = null;
+  }
 }
+
 
 function setProgressText(text) {
   if (progressEl) progressEl.textContent = text || "";
