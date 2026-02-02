@@ -560,6 +560,16 @@
 
       <!-- ===== MAIN ===== -->
       <main class="main">
+        <div id="ctResumeBanner" class="ct-resume-banner" hidden>
+          <div class="ct-resume-left">
+            <div class="ct-resume-title">Resume last run</div>
+            <div class="ct-resume-sub">From <span id="ctResumeTime">recently</span></div>
+          </div>
+          <div class="ct-resume-actions">
+            <button type="button" id="ctResumeBtn" class="btn-secondary">Resume</button>
+            <button type="button" id="ctDismissResumeBtn" class="btn-secondary subtle">Dismiss</button>
+          </div>
+        </div>
         <!-- ===== TWEET URLS / INPUT CARD ===== -->
         <section class="card">
           <div class="card-head">
@@ -767,6 +777,19 @@
             ><span id="progressPct" class="helper-text helper-text-pct">0%</span>
             <div class="progress-bar-outer">
               <div id="progressBarFill" class="progress-bar-inner"></div>
+            </div>
+          </div>
+
+          <!-- Premium: Glass Pipeline (desktop) -->
+          <div id="glassPipeline" class="glass-pipeline hide-on-mobile" aria-hidden="true">
+            <div class="glass-pipeline-track">
+              <div id="glassPipelineFill" class="glass-pipeline-fill" style="width:0%"></div>
+            </div>
+            <div class="glass-pipeline-steps">
+              <span class="glass-step" data-step="fetch">Fetching</span>
+              <span class="glass-step" data-step="gen">Generating</span>
+              <span class="glass-step" data-step="polish">Polishing</span>
+              <span class="glass-step" data-step="final">Finalizing</span>
             </div>
           </div>
 
@@ -1060,6 +1083,16 @@
         <!-- ===== HISTORY ===== -->
         <section class="card">
           <div class="card-head">
+            <h2>Run History</h2>
+            <div class="chip-row">
+              <button id="ctClearRunsBtn" class="btn-secondary subtle" type="button">Clear runs</button>
+            </div>
+          </div>
+          <div id="ctRunHistoryPanel" class="ct-run-history"></div>
+        </section>
+
+        <section class="card">
+          <div class="card-head">
             <h2>Clipboard History</h2>
             <div class="chip-row">
               <button
@@ -1097,6 +1130,15 @@
       aria-pressed="false"
     >
       Low motion
+    </button>
+
+    <button
+      type="button"
+      id="liteModeToggle"
+      class="ct-lite-pill"
+      aria-pressed="false"
+    >
+      Lite mode
     </button>
 
     <div id="ctToasts" aria-live="polite" aria-atomic="true"></div>
