@@ -13,7 +13,13 @@
     <link rel="stylesheet" href="static/generate-button.css" />
     <link rel="stylesheet" href="static/inputbox.css" />
     <link rel="stylesheet" href="static/desktop-premium.css" />
-    <link rel="shortcut icon" href="static/logo.png" type="image/png" />
+    
+    <!-- CrownTALK Design System (drop-in) -->
+    <link rel="stylesheet" href="static/ct-tokens.css" />
+    <link rel="stylesheet" href="static/ct-themes.css" />
+    <link rel="stylesheet" href="static/ct-micro.css" />
+    <link rel="stylesheet" href="static/ct-mobile.css" />
+<link rel="shortcut icon" href="static/logo.png" type="image/png" />
 
     <script>
       // Global toggle to enable/disable heavy premium features
@@ -554,6 +560,71 @@
                 <span class="ct-theme-number">07</span>
               </div>
             </div>
+
+            <!-- Aurora -->
+            <div class="ct-theme-radio">
+              <input
+                type="radio"
+                name="ct-theme"
+                id="ct-theme-aurora"
+                class="ct-theme-input theme-dot"
+                data-theme="aurora"
+              />
+              <div class="ct-theme-btn">
+                <span aria-hidden="">_</span>AUR
+                <span aria-hidden="" class="ct-theme-glitch">_AURORA_</span>
+                <span class="ct-theme-number">08</span>
+              </div>
+            </div>
+
+            <!-- Sakura -->
+            <div class="ct-theme-radio">
+              <input
+                type="radio"
+                name="ct-theme"
+                id="ct-theme-sakura"
+                class="ct-theme-input theme-dot"
+                data-theme="sakura"
+              />
+              <div class="ct-theme-btn">
+                <span aria-hidden="">_</span>SAK
+                <span aria-hidden="" class="ct-theme-glitch">_SAKURA_</span>
+                <span class="ct-theme-number">09</span>
+              </div>
+            </div>
+
+            <!-- Mono -->
+            <div class="ct-theme-radio">
+              <input
+                type="radio"
+                name="ct-theme"
+                id="ct-theme-mono"
+                class="ct-theme-input theme-dot"
+                data-theme="mono"
+              />
+              <div class="ct-theme-btn">
+                <span aria-hidden="">_</span>MONO
+                <span aria-hidden="" class="ct-theme-glitch">_MONO_</span>
+                <span class="ct-theme-number">10</span>
+              </div>
+            </div>
+
+            <!-- Custom -->
+            <div class="ct-theme-radio">
+              <input
+                type="radio"
+                name="ct-theme"
+                id="ct-theme-custom"
+                class="ct-theme-input theme-dot"
+                data-theme="custom"
+              />
+              <div class="ct-theme-btn">
+                <span aria-hidden="">_</span>CSTM
+                <span aria-hidden="" class="ct-theme-glitch">_CUSTOM_</span>
+                <span class="ct-theme-number">11</span>
+              </div>
+            </div>
+
           </div>
         </div>
       </header>
@@ -598,6 +669,14 @@
                   spellcheck="false"
                 ></textarea>
                 <div class="gradient-overlay"></div>
+
+                <div class="ct-mobile-pastebar" aria-label="Quick actions">
+                  <button type="button" id="ctPasteBarPaste" class="ct-mini-btn">Paste</button>
+                  <button type="button" id="ctPasteBarLast" class="ct-mini-btn">Last</button>
+                  <button type="button" id="ctPasteBarClear" class="ct-mini-btn">Clear</button>
+                </div>
+                <div id="ctUrlChips" class="ct-url-chips" aria-live="polite"></div>
+
               </div>
 
               <!-- Input HUD -->
@@ -1149,6 +1228,9 @@
       class="ct-command-overlay hide-on-mobile"
       aria-hidden="true"
     ></div>
+
+    <!-- CrownTALK upgrades (drop-in, must load BEFORE main app JS) -->
+    <script src="static/ct-upgrades.v1.js"></script>
 
     <!-- Your main app JS -->
     <script src="static/script.v2.js"></script>
