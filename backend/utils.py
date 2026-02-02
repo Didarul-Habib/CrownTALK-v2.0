@@ -194,13 +194,21 @@ def _parse_payload(payload: dict) -> TweetData:
 
     user_name = (
         base.get("user", {}).get("name")
+        or base.get("user", {}).get("display_name")
+        or base.get("user", {}).get("displayName")
+        or base.get("user", {}).get("full_name")
+        or base.get("user", {}).get("fullName")
         or payload.get("user", {}).get("name")
+        or payload.get("user", {}).get("display_name")
+        or payload.get("user", {}).get("displayName")
+        or payload.get("user", {}).get("full_name")
+        or payload.get("user", {}).get("fullName")
     )
 
     # FixTweet/FXTwitter style: author object (name + screen_name)
     author_obj = base.get("author") if isinstance(base.get("author"), dict) else None
     if not user_name and author_obj:
-        user_name = author_obj.get("name") or user_name
+        user_name = author_obj.get("name") or author_obj.get("display_name") or author_obj.get("displayName") or user_name
 
 
     # Handle is very vendor-specific; try multiple common fields.

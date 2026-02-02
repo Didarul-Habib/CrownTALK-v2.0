@@ -1183,8 +1183,25 @@ _BAD_ENDINGS = {
     "the","a","an"
 }
 
+def _merge_spaced_acronyms(s: str) -> str:
+    """Fix LLM quirks like 'O G' -> 'OG' for short all-caps acronyms.
+    We only merge sequences of 2-6 single-letter uppercase tokens.
+    """
+    if not s:
+        return s
+    pat = re.compile(r"\b(?:[A-Z]\s){1,5}[A-Z]\b")
+    def _join(m: re.Match) -> str:
+        return m.group(0).replace(" ", "")
+    for _ in range(2):
+        s2 = pat.sub(_join, s)
+        if s2 == s:
+            break
+        s = s2
+    return s
+
 def _clean_spaces(s: str) -> str:
     s = re.sub(r"\s+", " ", (s or "").strip())
+    s = _merge_spaced_acronyms(s)
     s = re.sub(r"\s+([?.!,;:])", r"\1", s)
     return s
 
@@ -4209,11 +4226,15 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         "- Do NOT invent details not present in the tweet.\n"
         "- Anchor each comment in a concrete detail from the tweet (names, numbers, tickers, claims).\n"
         "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
+"- Preserve ratios and levels exactly (e.g., 1/3 stays 1/3, 0.618 stays 0.618, -70% stays -70%).\n"
+"- Do not insert spaces into acronyms (OG, KOL, CT, BTC).\n"
+"- Internal commas/ellipses are allowed; avoid terminal punctuation unless it is a question.\n"
         "- Do not mention that you are an AI, a bot, or a model.\n"
         "- Do not say 'this tweet', 'this thread', or 'thanks for sharing' - just respond naturally.\n"
         "\n"
         "Human style:\n"
-        "- Sound like a smart, grounded CT person (calm, specific, slightly opinionated).\n"
+        "- Sound like a smart, grounded CT KOL (calm, specific, slightly opinionated, professional).\n"
+"- Use CT vernacular naturally when relevant: confluence, levels, invalidation, scaling in, DCA, risk defined, liquidity/flow, timeframe.\n"
         "- Avoid hype/fanboy language and vague praise.\n"
         "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting, "
         "interesting take, great breakdown, nice summary, well said, thanks for sharing.\n"
@@ -5159,13 +5180,16 @@ def build_greeting_pair(tweet_text: str, author_name: Optional[str], handle: Opt
         ]
 
     if hint:
+        hint2 = str(hint).strip()
+        if hint2.startswith('@'):
+            hint2 = hint2[1:]
         return [
-            f"Gm {name} love the focus on {hint}",
-            f"Have a great day {name} keep building",
+            f"Gm {name}, love the focus on {hint2}",
+            f"Have a great day {name} — keep building",
         ]
     return [
-        f"Gm {name} hope your day starts strong",
-        f"Have a great day {name} keep building",
+        f"Gm {name}, hope your day starts strong",
+        f"Have a great day {name} — keep building",
     ]
 
 def generate_two_comments_with_providers(
