@@ -17,10 +17,15 @@
     if (msg.type === "run_progress" && msg.payload) {
       try {
         const pct = Math.max(0, Math.min(100, Number(msg.payload.percent || 0)));
-        const pctEl = document.getElementById("progressPct");
-        const fill = document.getElementById("progressBarFill");
-        if (pctEl) pctEl.textContent = `${pct}%`;
-        if (fill) fill.style.width = `${pct}%`;
+        // Let core script own progress updates (it also stops fake progress timers)
+        if (typeof window.ctProgressExternalUpdate === "function") {
+          window.ctProgressExternalUpdate(pct);
+        } else {
+          const pctEl = document.getElementById("progressPct");
+          const fill = document.getElementById("progressBarFill");
+          if (pctEl) pctEl.textContent = `${pct}%`;
+          if (fill) fill.style.width = `${pct}%`;
+        }
       } catch {}
       ctPremiumEmit("onProgress", msg.payload);
     }

@@ -510,6 +510,50 @@ function resetProgress() {
   setProgressText("");
   setProgressRatio(0);
 }
+
+// Fake progress driver (for batch mode where backend returns all results at once).
+// It smoothly increases toward ~99% during generation, then caller sets 100% on completion.
+let __ctFakeProgressStopper = null;
+window.__ctRealProgressSeen = false;
+
+function startFakeProgressTo100(totalItems) {
+  try { if (__ctFakeProgressStopper) __ctFakeProgressStopper(); } catch {}
+  window.__ctRealProgressSeen = false;
+
+  const total = Math.max(1, Number(totalItems) || 1);
+  const start = performance.now();
+  const baseTau = 10 + Math.min(42, total * 6); // larger batches feel slower
+  const tickMs = 140;
+
+  // start with a tiny visible fill so the UI looks alive immediately
+  setProgressRatio(0.02);
+
+  const timer = setInterval(() => {
+    if (window.__ctRealProgressSeen) return; // real WS progress takes over
+    if (!document.body.classList.contains("is-generating")) return;
+    const elapsed = Math.max(0, (performance.now() - start) / 1000);
+    // Exponential ease-out. Always increases, approaches 100 slowly.
+    const eased = 100 * (1 - Math.exp(-elapsed / baseTau));
+    const capped = Math.min(99.4, Math.max(2, eased));
+    setProgressRatio(capped / 100);
+  }, tickMs);
+
+  __ctFakeProgressStopper = function stopFakeProgress(reset = false) {
+    clearInterval(timer);
+    if (reset) setProgressRatio(0);
+  };
+  return __ctFakeProgressStopper;
+}
+
+// Allow premium WS (or any external source) to update progress deterministically.
+window.ctProgressExternalUpdate = function (pct) {
+  try {
+    window.__ctRealProgressSeen = true;
+    if (__ctFakeProgressStopper) __ctFakeProgressStopper(false);
+  } catch {}
+  const p = Math.max(0, Math.min(100, Number(pct) || 0));
+  setProgressRatio(p / 100);
+};
 function resetResults() {
   if (resultsEl) resultsEl.innerHTML = "";
   if (failedEl) failedEl.innerHTML = "";
@@ -1337,6 +1381,15 @@ function buildTweetBlock(result) {
 
 function appendResultBlock(result) {
   const block = buildTweetBlock(result);
+  // Premium entrance animation (subtle, not flashy)
+  try {
+    block.classList.add("ct-enter");
+    requestAnimationFrame(() => block.classList.add("ct-enter-active"));
+    setTimeout(() => {
+      block.classList.remove("ct-enter");
+      block.classList.remove("ct-enter-active");
+    }, 900);
+  } catch {}
   resultsEl.appendChild(block);
 
   ctPremiumEmit("onResultAppend", { result, element: block });
@@ -1486,6 +1539,9 @@ async function handleGenerate() {
   setProgressText(`Processing ${urls.length} URL${urls.length === 1 ? "" : "s"}…`);
   setProgressRatio(0);
 
+  // Batch-mode progress: smooth fake progress to 100% (real WS updates override this).
+  const stopFakeProgress = startFakeProgressTo100(urls.length);
+
   let totalResults    = 0;
   let totalFailed     = 0;
   let processedUrls   = 0;
@@ -1623,6 +1679,7 @@ async function handleGenerate() {
   }
 
   // Done
+  try { stopFakeProgress?.(false); } catch {}
   setProgressRatio(1);
   setProgressText("Done");
 
@@ -1641,6 +1698,7 @@ async function handleGenerate() {
     setProgressText("No comments returned.");
     setProgressRatio(1);
   } else {
+    processedUrls = totalResults + totalFailed;
     setProgressText(`Processed ${processedUrls} tweet${processedUrls === 1 ? "" : "s"}.`);
     setProgressRatio(1);
   }
@@ -1678,6 +1736,8 @@ function handleCancel() {
   cancelled = true;
 
   try { __activeAbortController?.abort(); } catch {}
+  try { if (__ctFakeProgressStopper) __ctFakeProgressStopper(true); } catch {}
+  try { window.__ctRealProgressSeen = false; } catch {}
 
   document.body.classList.remove("is-generating");
   document.documentElement.classList.remove('ultralite-on');

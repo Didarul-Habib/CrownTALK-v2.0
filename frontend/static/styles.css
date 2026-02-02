@@ -536,6 +536,22 @@ button{ font-family:inherit; }
 /* ---------- RESULTS / FAILED / HISTORY ---------- */
 .results-list{ display:flex; flex-direction:column; gap:10px; max-height:360px; overflow-y:auto; padding-right:4px; }
 .tweet{ border-radius:14px; border:1px solid rgba(148,163,184,.38); background: linear-gradient(135deg, rgba(9,17,35,.98), rgba(9,17,35,.86)); padding:10px 10px 8px; display:flex; flex-direction:column; gap:6px; }
+
+/* Premium result entrance: subtle fade + lift (fixes "weird" feel on mobile/desktop) */
+.tweet.ct-enter{
+  opacity: 0;
+  transform: translateY(10px) scale(.992);
+  filter: blur(2px);
+}
+.tweet.ct-enter.ct-enter-active{
+  opacity: 1;
+  transform: translateY(0) scale(1);
+  filter: blur(0);
+  transition:
+    opacity .42s cubic-bezier(.2,.8,.2,1),
+    transform .42s cubic-bezier(.2,.8,.2,1),
+    filter .42s ease;
+}
 .tweet-header{ display:flex; align-items:center; justify-content:space-between; gap:8px; }
 .tweet-link{ font-size:11px; color:#e5e7eb; text-decoration:none; word-break:break-all; position:relative; padding-right:14px; text-underline-offset:3px; text-decoration-style:dotted; opacity:.92; transition: color .15s, opacity .15s, filter .15s; }
 .tweet-link:hover{ color:var(--accent); opacity:1; filter: drop-shadow(0 0 10px rgba(129,140,248,.25)); }
@@ -679,6 +695,19 @@ button{ font-family:inherit; }
 @keyframes ctPulse{
   0%,100%{ opacity:.55; }
   50%{ opacity:1; }
+}
+
+/* Mobile / low-power: avoid the "big sweep band" that can look glitchy on small screens */
+@media (pointer:coarse){
+  .tweet-skeleton::before{
+    animation: none;
+    opacity: .55;
+    inset: 0;
+    transform: none;
+    background: linear-gradient(90deg, rgba(255,255,255,0.05) 0%, rgba(129,140,248,0.10) 50%, rgba(255,255,255,0.05) 100%);
+  }
+  .tweet-skeleton::after{ animation: none; opacity: .75; }
+  body.is-generating .tweet-skeleton-line::before{ animation: none; opacity: .55; }
 }
 
 
