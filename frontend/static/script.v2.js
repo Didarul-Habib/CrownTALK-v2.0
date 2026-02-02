@@ -229,7 +229,13 @@ if (val === ACCESS_CODE) {
 // ------------------------
 // Backend endpoints
 // ------------------------
-const backendBase = "https://crowntalk.onrender.com";
+const backendBase = (() => {
+  try {
+    if (window.CT_API_BASE && String(window.CT_API_BASE).trim()) return String(window.CT_API_BASE).trim().replace(/\/$/, "");
+    if (window.CT_API && String(window.CT_API).trim()) return String(window.CT_API).trim().replace(/\/$/, "");
+  } catch {}
+  return "https://crowntalk.onrender.com";
+})();
 const commentURL  = `${backendBase}/comment`;
 const rerollURL   = `${backendBase}/reroll`;
 
@@ -348,10 +354,10 @@ const PER_URL_TIMEOUT_MS = 60000;
 
 function warmBackendOnce() {
   try {
-    fetch(backendBase + "/", {
+    fetch(backendBase + "/ping", {
       method: "GET",
       cache: "no-store",
-      mode: "no-cors",
+      mode: "cors",
       keepalive: true,
     }).catch(() => {});
   } catch (err) {
@@ -1492,155 +1498,134 @@ async function handleGenerate() {
   // Fire-and-forget warmup
   maybeWarmBackend();
 
-  for (let i = 0; i < urls.length; i++) {
-    if (cancelled) break;
-    const oneUrl = urls[i];
+  // Mark all as processing at start (progress updates will come via Premium WS if enabled)
+  for (let i = 0; i < urlQueueState.length; i++) {
+    urlQueueState[i].status = "processing";
+  }
+  renderUrlQueue();
 
-    if (!oneUrl) continue;
+  const headers = {
+    "Content-Type": "application/json",
+  };
+  if (window.CROWNTALK?.getAccessToken && window.CROWNTALK.TOKEN_HEADER) {
+    const t = window.CROWNTALK.getAccessToken();
+    if (t) headers[window.CROWNTALK.TOKEN_HEADER] = t;
+  }
 
-    if (urlQueueState[i]) {
-      urlQueueState[i].status = "processing";
-      renderUrlQueue();
-      // (optional) PREMIUM: per-step queue update
-      // ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
-    }
+  const payload = {
+    urls, // ✅ send the whole batch in ONE request
+    lang_en: !!(langEnToggle && langEnToggle.checked),
+    lang_native: !!(langNativeToggle && langNativeToggle.checked),
+    native_lang: (nativeLangSelect && nativeLangSelect.value) || "",
+    safe_mode: !!(safeModeToggle && safeModeToggle.checked),
+    preset: presetSelect?.value || "",
+  };
 
-    const headers = {
-      "Content-Type": "application/json",
-    };
-    if (window.CROWNTALK?.getAccessToken && window.CROWNTALK.TOKEN_HEADER) {
-      const t = window.CROWNTALK.getAccessToken();
-      if (t) headers[window.CROWNTALK.TOKEN_HEADER] = t;
-    }
+  const requestOptions = {
+    method: "POST",
+    headers,
+    body: JSON.stringify(payload),
+  };
 
-    const payload = {
-      urls: [oneUrl],
-      lang_en: !!(langEnToggle && langEnToggle.checked),
-      lang_native: !!(langNativeToggle && langNativeToggle.checked),
-      native_lang: (nativeLangSelect && nativeLangSelect.value) || "",
-      safe_mode: !!(safeModeToggle && safeModeToggle.checked),
-      preset: presetSelect?.value || "",
-    };
+  // Timeout scales with batch size (but caps so it doesn't get absurd)
+  const RUN_TIMEOUT_MS = Math.min(12 * 60 * 1000, Math.max(PER_URL_TIMEOUT_MS, urls.length * PER_URL_TIMEOUT_MS));
 
-    const requestOptions = {
-      method: "POST",
-      headers,
-      body: JSON.stringify(payload),
-    };
-
+  try {
+    let res;
     try {
-      let res;
-      try {
-        res = await fetchWithTimeout(commentURL, requestOptions, PER_URL_TIMEOUT_MS);
-      } catch (firstErr) {
-        console.warn("Generate attempt failed, warming backend then retrying once…", firstErr);
-        setProgressText("Waking CrownTALK engine… retrying once.");
-        warmBackendOnce();
-        res = await fetchWithTimeout(commentURL, requestOptions, PER_URL_TIMEOUT_MS);
-      }
+      res = await fetchWithTimeout(commentURL, requestOptions, RUN_TIMEOUT_MS);
+    } catch (firstErr) {
+      console.warn("Generate attempt failed, warming backend then retrying once…", firstErr);
+      setProgressText("Waking CrownTALK engine… retrying once");
+      warmBackendOnce();
+      res = await fetchWithTimeout(commentURL, requestOptions, RUN_TIMEOUT_MS);
+    }
 
-      let data = {};
-      try { data = await res.json(); } catch {}
+    let data = {};
+    try { data = await res.json(); } catch {}
 
-      if (!res.ok) {
-        if (!clearedSkeletons) {
-          resultsEl.innerHTML = "";
-          failedEl.innerHTML  = "";
-          clearedSkeletons = true;
-        }
-        const failure = {
-          url: oneUrl,
-          reason: data?.error || `Backend error: ${res.status}`,
-          code: data?.code || `http_${res.status}`,
-        };
-        appendFailedItem(failure);
-        totalFailed += 1;
-        failedCountEl.textContent = String(totalFailed);
+    if (!clearedSkeletons) {
+      resultsEl.innerHTML = "";
+      failedEl.innerHTML  = "";
+      clearedSkeletons = true;
+    }
 
-        // NEW: remember this failed URL
-        if (failure.url && !failedUrlList.includes(failure.url)) {
-          failedUrlList.push(failure.url);
-        }
-      } else {
-        const results = Array.isArray(data.results) ? data.results : [];
-        const failed  = Array.isArray(data.failed)  ? data.failed  : [];
-        try { window.__CT_RESULTS = results; window.__CT_FAILED = failed; } catch {}
-
-        if (!clearedSkeletons) {
-          resultsEl.innerHTML = "";
-          failedEl.innerHTML  = "";
-          clearedSkeletons = true;
-        }
-
-        for (const item of results) {
-          appendResultBlock(item);
-          totalResults += 1;
-          if (item && Array.isArray(item.comments)) {
-            totalComments += item.comments.length;
-          }
-        }
-        for (const f of failed) {
-          appendFailedItem(f);
-          totalFailed += 1;
-
-          // NEW: remember these backend-reported failed URLs
-          if (f && f.url && !failedUrlList.includes(f.url)) {
-            failedUrlList.push(f.url);
-          }
-        }
-
-        resultCountEl.textContent = formatTweetCount(totalResults);
-        failedCountEl.textContent = String(totalFailed);
-
-        // update queue chip status for this URL
-        if (urlQueueState[i]) {
-          const hadFailed = failed && failed.length > 0;
-          urlQueueState[i].status = hadFailed ? "failed" : "done";
-          renderUrlQueue();
-          // (optional) PREMIUM: per-step queue update
-          // ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
-        }
-      }
-    } catch (err) {
-      if (cancelled) break;
-
-      if (!clearedSkeletons) {
-        resultsEl.innerHTML = "";
-        failedEl.innerHTML  = "";
-        clearedSkeletons = true;
-      }
-
+    if (!res.ok) {
+      // Whole-run failure
       const failure = {
-        url: oneUrl,
-        reason: String(err),
-        code: "client_timeout_or_network",
+        url: "(batch)",
+        reason: data?.error || `Backend error: ${res.status}`,
+        code: data?.code || `http_${res.status}`,
       };
       appendFailedItem(failure);
       totalFailed += 1;
       failedCountEl.textContent = String(totalFailed);
 
-      // update queue chip
-      if (urlQueueState[i]) {
+      // Mark all as failed in queue
+      for (let i = 0; i < urlQueueState.length; i++) {
         urlQueueState[i].status = "failed";
-        renderUrlQueue();
-        // (optional) PREMIUM: per-step queue update
-        // ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
+      }
+      renderUrlQueue();
+    } else {
+      const results = Array.isArray(data.results) ? data.results : [];
+      const failed  = Array.isArray(data.failed)  ? data.failed  : [];
+      try { window.__CT_RESULTS = results; window.__CT_FAILED = failed; } catch {}
+
+      // Render results
+      for (const item of results) {
+        appendResultBlock(item);
+        totalResults += 1;
+        if (item && Array.isArray(item.comments)) {
+          totalComments += item.comments.length;
+        }
       }
 
-      // NEW: remember this client-side failure URL
-      if (failure.url && !failedUrlList.includes(failure.url)) {
-        failedUrlList.push(failure.url);
+      // Render failed
+      for (const f of failed) {
+        appendFailedItem(f);
+        totalFailed += 1;
+        if (f && f.url && !failedUrlList.includes(f.url)) failedUrlList.push(f.url);
       }
-    }
 
-    processedUrls = i + 1;
-    setProgressText(`Processed ${processedUrls}/${urls.length} tweets…`);
-    setProgressRatio(processedUrls / Math.max(1, urls.length));
+      resultCountEl.textContent = formatTweetCount(totalResults);
+      failedCountEl.textContent = String(totalFailed);
 
-    if (i < urls.length - 1 && !cancelled) {
-      await sleep(200);
+      // Update queue statuses based on response
+      const failedSet = new Set((failed || []).map((x) => String(x?.url || "")));
+      const okSet = new Set((results || []).map((x) => String(x?.url || "")));
+
+      for (let i = 0; i < urlQueueState.length; i++) {
+        const u = urlQueueState[i]?.url || "";
+        // Some URLs may be normalized by backend; treat "contains tweet id" match as ok
+        const isFailed = failedSet.has(u);
+        const isOk = okSet.has(u);
+        urlQueueState[i].status = isFailed ? "failed" : (isOk ? "done" : "done");
+      }
+      renderUrlQueue();
     }
+  } catch (err) {
+    if (!clearedSkeletons) {
+      resultsEl.innerHTML = "";
+      failedEl.innerHTML  = "";
+      clearedSkeletons = true;
+    }
+    const failure = {
+      url: "(batch)",
+      reason: String(err),
+      code: "client_timeout_or_network",
+    };
+    appendFailedItem(failure);
+    totalFailed += 1;
+    failedCountEl.textContent = String(totalFailed);
+
+    for (let i = 0; i < urlQueueState.length; i++) urlQueueState[i].status = "failed";
+    renderUrlQueue();
   }
+
+  // Done
+  setProgressRatio(1);
+  setProgressText("Done");
+
 
   if (cancelled) return;
 
