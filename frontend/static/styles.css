@@ -185,6 +185,125 @@
   --ct-sheen: hsl(158 80% 58%);
 }
 
+/* === New Theme Pack === */
+[data-theme="aurora"]{
+  --bg: radial-gradient(circle at 50% -25%, #145a63 0, #07121a 55%, #04070c 100%);
+  --card-bg: rgba(7, 14, 20, 0.94);
+  --card-border: rgba(102, 255, 204, 0.28);
+  --text-main: #eafff8;
+  --text-muted: rgba(234, 255, 248, 0.70);
+  --accent: #66ffcc;
+  --accent-soft: rgba(102, 255, 204, 0.18);
+  --accent-soft-strong: rgba(120, 160, 255, 0.26);
+  --chip-bg: rgba(6, 16, 20, 0.92);
+  --hero-glow-from: rgba(102, 255, 204, 0.62);
+  --hero-glow-to: rgba(120, 160, 255, 0.45);
+  --reroll-primary: 102, 255, 204;
+  --reroll-secondary: 120, 160, 255;
+  --btn-base: #12d6a3;
+  --btn-edge: #0b3b2f;
+  --btn-glow: 102, 255, 204;
+
+  --ct-text: hsl(170 40% 96%);
+  --ct-paragraph: hsl(170 20% 78%);
+  --ct-line: hsl(200 25% 22%);
+  --ct-bg: hsl(200 35% 10%);
+  --ct-primary: hsl(168 90% 55%);
+  --ct-accent1: hsl(170 100% 80%);
+  --ct-accent2: hsl(220 100% 70%);
+  --ct-sheen: hsl(168 95% 60%);
+}
+
+[data-theme="sakura"]{
+  --bg: radial-gradient(circle at 50% -25%, #6b2148 0, #160812 55%, #070308 100%);
+  --card-bg: rgba(20, 10, 18, 0.94);
+  --card-border: rgba(255, 128, 196, 0.30);
+  --text-main: rgba(255, 245, 252, 0.94);
+  --text-muted: rgba(255, 245, 252, 0.72);
+  --accent: #ff80c4;
+  --accent-soft: rgba(255, 128, 196, 0.18);
+  --accent-soft-strong: rgba(255, 200, 120, 0.22);
+  --chip-bg: rgba(22, 10, 20, 0.92);
+  --hero-glow-from: rgba(255, 128, 196, 0.62);
+  --hero-glow-to: rgba(255, 200, 120, 0.46);
+  --reroll-primary: 255, 128, 196;
+  --reroll-secondary: 255, 200, 120;
+  --btn-base: #ff4fa8;
+  --btn-edge: #7a1f4b;
+  --btn-glow: 255, 128, 196;
+
+  --ct-text: hsl(330 35% 96%);
+  --ct-paragraph: hsl(330 20% 80%);
+  --ct-line: hsl(330 18% 22%);
+  --ct-bg: hsl(330 30% 10%);
+  --ct-primary: hsl(330 90% 65%);
+  --ct-accent1: hsl(330 100% 86%);
+  --ct-accent2: hsl(38 100% 74%);
+  --ct-sheen: hsl(330 95% 65%);
+}
+
+[data-theme="mono"]{
+  --bg: radial-gradient(circle at 50% -25%, #3b3b3b 0, #0f1115 55%, #07080a 100%);
+  --card-bg: rgba(14, 16, 20, 0.95);
+  --card-border: rgba(229, 231, 235, 0.22);
+  --text-main: rgba(245, 245, 245, 0.94);
+  --text-muted: rgba(245, 245, 245, 0.70);
+  --accent: #e5e7eb;
+  --accent-soft: rgba(229, 231, 235, 0.16);
+  --accent-soft-strong: rgba(160, 160, 160, 0.22);
+  --chip-bg: rgba(12, 14, 16, 0.92);
+  --hero-glow-from: rgba(229, 231, 235, 0.48);
+  --hero-glow-to: rgba(156, 163, 175, 0.36);
+  --reroll-primary: 229, 231, 235;
+  --reroll-secondary: 156, 163, 175;
+  --btn-base: #374151;
+  --btn-edge: #111827;
+  --btn-glow: 209, 213, 219;
+
+  --ct-text: hsl(0 0% 96%);
+  --ct-paragraph: hsl(0 0% 78%);
+  --ct-line: hsl(0 0% 20%);
+  --ct-bg: hsl(0 0% 8%);
+  --ct-primary: hsl(0 0% 92%);
+  --ct-accent1: hsl(0 0% 92%);
+  --ct-accent2: hsl(0 0% 70%);
+  --ct-sheen: hsl(0 0% 90%);
+}
+
+[data-theme="custom"]{
+  /* Theme Studio controls live in ct-themes.css; we map them into the legacy vars used across the app */
+  --accent: hsl(var(--ct-custom-accent-h, 280) var(--ct-custom-accent-s, 92%) var(--ct-custom-accent-l, 60%));
+  --bg: radial-gradient(
+    circle at 50% -25%,
+    hsla(var(--ct-custom-accent-h, 280) 70% 38% / 0.55) 0,
+    hsl(var(--ct-custom-accent-h, 280) 28% var(--ct-custom-bg-l, 8%)) 55%,
+    #06040a 100%
+  );
+  --card-bg: rgba(16, 10, 20, 0.94);
+  --card-border: hsla(var(--ct-custom-accent-h, 280) 80% 72% / 0.24);
+  --text-main: rgba(245, 248, 255, 0.94);
+  --text-muted: rgba(245, 248, 255, 0.72);
+  --accent-soft: hsla(var(--ct-custom-accent-h, 280) 75% 60% / 0.18);
+  --accent-soft-strong: hsla(var(--ct-custom-accent-h, 280) 85% 62% / 0.30);
+  --chip-bg: rgba(16, 10, 20, 0.92);
+  --hero-glow-from: hsla(var(--ct-custom-accent-h, 280) 85% 62% / 0.62);
+  --hero-glow-to: hsla(calc(var(--ct-custom-accent-h, 280) + 40) 90% 62% / 0.45);
+  --reroll-primary: 167, 139, 250;  /* static fallback (RGB vars require numeric triples) */
+  --reroll-secondary: 88, 28, 135;
+  --btn-base: var(--accent);
+  --btn-edge: hsl(var(--ct-custom-accent-h, 280) 55% 20%);
+  --btn-glow: 167, 139, 250;
+
+  --ct-text: hsl(0 0% 98%);
+  --ct-paragraph: hsl(0 0% 78%);
+  --ct-line: hsl(270 20% 22%);
+  --ct-bg: hsl(var(--ct-custom-accent-h, 280) 20% var(--ct-custom-bg-l, 8%));
+  --ct-primary: var(--accent);
+  --ct-accent1: hsl(calc(var(--ct-custom-accent-h, 280) + 10) 100% 84%);
+  --ct-accent2: hsl(calc(var(--ct-custom-accent-h, 280) + 40) 90% 62%);
+  --ct-sheen: hsl(calc(var(--ct-custom-accent-h, 280) + 6) 95% 60%);
+}
+
 /* ---------- GLOBAL LAYOUT ---------- */
 *,*::before,*::after{ box-sizing:border-box; }
 html,body{
@@ -334,6 +453,16 @@ body{
 .theme-dot[data-theme="black"]::before{ content:"Nebula Black"; }
 .theme-dot[data-theme="crimson"]{ --dot-grad: radial-gradient(circle at 35% 25%, #fecdd3 12%, #f43f5e 55%, #7f1d1d 100%); --glow:255,64,96; }
 .theme-dot[data-theme="crimson"]::before{ content:"Crimson Nova"; }
+
+/* new dots */
+.theme-dot[data-theme="aurora"]{ --dot-grad: radial-gradient(circle at 35% 25%, #b9fff1 12%, #66ffcc 52%, #123b3f 100%); --glow:102,255,204; }
+.theme-dot[data-theme="aurora"]::before{ content:"Aurora Drift"; }
+.theme-dot[data-theme="sakura"]{ --dot-grad: radial-gradient(circle at 35% 25%, #ffd1ea 12%, #ff80c4 52%, #6b2148 100%); --glow:255,128,196; }
+.theme-dot[data-theme="sakura"]::before{ content:"Sakura Bloom"; }
+.theme-dot[data-theme="mono"]{ --dot-grad: radial-gradient(circle at 35% 25%, #ffffff 10%, #d1d5db 55%, #111827 100%); --glow:209,213,219; }
+.theme-dot[data-theme="mono"]::before{ content:"Mono Steel"; }
+.theme-dot[data-theme="custom"]{ --dot-grad: radial-gradient(circle at 35% 25%, hsl(var(--ct-custom-accent-h, 280) 100% 86%) 12%, hsl(var(--ct-custom-accent-h, 280) 92% 60%) 52%, #1a1024 100%); --glow:167,139,250; }
+.theme-dot[data-theme="custom"]::before{ content:"Custom"; }
 
 /* ---------- MAIN LAYOUT ---------- */
 .app-main{ display:grid; grid-template-columns:1fr; gap:12px; }
@@ -3416,10 +3545,24 @@ body .ai-chat-input .main-input:focus{
 [data-theme="white"] .chip,
 [data-theme="white"] .comment-line { border-color: rgba(37,99,235,.35); }
 
+/* new theme pack accents */
+[data-theme="aurora"] .chip,
+[data-theme="aurora"] .comment-line { border-color: rgba(102,255,204,.40); }
+[data-theme="sakura"] .chip,
+[data-theme="sakura"] .comment-line { border-color: rgba(255,128,196,.40); }
+[data-theme="mono"] .chip,
+[data-theme="mono"] .comment-line { border-color: rgba(229,231,235,.30); }
+[data-theme="custom"] .chip,
+[data-theme="custom"] .comment-line { border-color: hsla(var(--ct-custom-accent-h, 280) 80% 70% / .34); }
+
 /* progress gradient nudges per theme */
 [data-theme="emerald"] #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(16,185,129,.65); }
 [data-theme="gold"]    #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(251,191,36,.65); }
 [data-theme="crimson"] #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(244,63,94,.65); }
+[data-theme="aurora"]  #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(102,255,204,.55); }
+[data-theme="sakura"]  #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px rgba(255,128,196,.55); }
+[data-theme="mono"]    #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.12), 0 0 18px rgba(229,231,235,.35); }
+[data-theme="custom"]  #progressBarFill { box-shadow: 0 0 0 1px rgba(255,255,255,.14), 0 0 18px hsla(var(--ct-custom-accent-h, 280) 85% 62% / .55); }
 
 /* ---------- [3] Dense toggle styles ---------- */
 .ct-density-toggle{

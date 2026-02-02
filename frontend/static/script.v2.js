@@ -2307,7 +2307,11 @@ async function handleReroll(tweetEl) {
 // ------------------------
 // Theme
 // ------------------------
-const THEME_STORAGE_KEY = "crowntalk_theme";
+// Theme persistence
+// Back-compat: earlier builds stored under "crowntalk_theme".
+// This build stores under "theme" while still reading/writing the legacy key.
+const THEME_STORAGE_KEY = "theme";
+const THEME_STORAGE_KEY_LEGACY = "crowntalk_theme";
 const ALLOWED_THEMES = ["white","dark-purple","gold","blue","black","emerald","crimson","aurora","sakura","mono","custom"];
 function sanitizeThemeDots() {
   themeDots.forEach((dot) => {
@@ -2324,7 +2328,8 @@ function sanitizeThemeDots() {
 function applyTheme(themeName) {
   const html = document.documentElement;
   const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
-  html.setAttribute("data-theme", t);
+  // Keep CSS in sync (styles target [data-theme="..."] on <html>)
+  html.dataset.theme = t;
   themeDots.forEach((dot) => {
     const isActive = dot?.dataset?.theme === t;
     // These are <input type="radio"> so ensure the checked state is kept in sync.
@@ -2333,16 +2338,22 @@ function applyTheme(themeName) {
   });
   try {
     localStorage.setItem(THEME_STORAGE_KEY, t);
+    localStorage.setItem(THEME_STORAGE_KEY_LEGACY, t);
   } catch {}
 }
 function initTheme() {
   sanitizeThemeDots();
   let theme = "dark-purple";
   try {
-    const stored = localStorage.getItem(THEME_STORAGE_KEY);
+    const stored =
+      localStorage.getItem(THEME_STORAGE_KEY) ||
+      localStorage.getItem(THEME_STORAGE_KEY_LEGACY);
     if (stored) {
       theme = stored === "neon" ? "crimson" : stored;
-      if (stored === "neon") localStorage.setItem(THEME_STORAGE_KEY, "crimson");
+      if (stored === "neon") {
+        localStorage.setItem(THEME_STORAGE_KEY, "crimson");
+        localStorage.setItem(THEME_STORAGE_KEY_LEGACY, "crimson");
+      }
     }
     if (!ALLOWED_THEMES.includes(theme)) theme = "dark-purple";
   } catch {}

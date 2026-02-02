@@ -432,12 +432,15 @@
 
   function setTheme(theme){
     try{
-      document.documentElement.setAttribute("data-theme", theme);
+      // Keep theme application consistent with the main app
+      document.documentElement.dataset.theme = theme;
       // update theme radios if present
       var inputs = document.querySelectorAll(".ct-theme-input[data-theme]");
       for(var i=0;i<inputs.length;i++){
         if(inputs[i].getAttribute("data-theme") === theme) inputs[i].checked = true;
       }
+      // Persist under the new key, while keeping legacy back-compat
+      localStorage.setItem("theme", theme);
       localStorage.setItem("crowntalk_theme", theme);
     }catch(e){}
   }
