@@ -519,15 +519,27 @@ function setProgressText(text) {
   if (progressEl) progressEl.textContent = text || "";
 }
 function setProgressRatio(ratio) {
-  if (!progressBarFill) return;
   const clamped = Math.max(0, Math.min(1, Number.isFinite(ratio) ? ratio : 0));
-  // drive only via CSS variables (progress bar CSS uses --ct-progress-frac)
-  document.documentElement.style.setProperty('--ct-progress-frac', String(clamped));
-  document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(clamped*100)));
-  updateGlassPipeline(clamped);
+  const pct = Math.round(clamped * 100);
+
+  // Drive progress via CSS variables (new bar uses scaleX(var(--ct-progress-frac))).
   try {
-    const pct = Math.round(clamped * 100);
-    if (progressPctEl) progressPctEl.dataset.pct = `${pct}%`;
+    document.documentElement.style.setProperty('--ct-progress-frac', String(clamped));
+    document.documentElement.style.setProperty('--ct-progress-pct', String(pct));
+  } catch {}
+
+  // Back-compat: if we still have a direct width-driven bar, set it too.
+  try { if (progressBarFill) progressBarFill.style.width = `${pct}%`; } catch {}
+
+  // Update premium pipeline (if present)
+  try { updateGlassPipeline(clamped); } catch {}
+
+  // Update % label (both data-attr and text as fallback)
+  try {
+    if (progressPctEl) {
+      progressPctEl.dataset.pct = `${pct}%`;
+      progressPctEl.textContent = `${pct}%`;
+    }
   } catch {}
 }
 function resetProgress() {
@@ -2086,7 +2098,10 @@ async function handleGenerate() {
   try { stopFakeProgress?.(false); } catch {}
   setProgressRatio(1);
   setProgressText("Done");
-
+  try {
+    document.body.classList.add("ct-progress-done");
+    setTimeout(() => document.body.classList.remove("ct-progress-done"), 450);
+  } catch {}
 
   if (cancelled) return;
 
@@ -2797,3 +2812,41 @@ function toggleNativeLangSelect() {
 }
 
 
+
+
+/* =========================================================
+   Safety: prevent UI from getting stuck in "Generating"
+   on unexpected JS errors.
+   ========================================================= */
+function ctFatalResetUI(reason) {
+  try { if (__ctFakeProgressStopper) __ctFakeProgressStopper(true); } catch {}
+  try { stopQueueSimulator(); } catch {}
+  try { window.__ctRealProgressSeen = false; } catch {}
+  try { __activeAbortController?.abort(); } catch {}
+
+  try { document.body.classList.remove("is-generating"); } catch {}
+  try { document.documentElement.classList.remove("ultralite-on"); } catch {}
+  try { if (generateBtn) generateBtn.disabled = false; } catch {}
+  try { if (cancelBtn) cancelBtn.disabled = true; } catch {}
+  try { setEngineStatus("error"); } catch {}
+  try { setProgressText(reason || "Error"); } catch {}
+  try { setProgressRatio(1); } catch {}
+}
+
+window.addEventListener("error", (e) => {
+  try {
+    if (document.body.classList.contains("is-generating")) {
+      const msg = (e && (e.message || (e.error && e.error.message))) || "Unexpected error";
+      ctFatalResetUI(`Error: ${msg}`);
+    }
+  } catch {}
+});
+
+window.addEventListener("unhandledrejection", (e) => {
+  try {
+    if (document.body.classList.contains("is-generating")) {
+      const msg = (e && e.reason && (e.reason.message || String(e.reason))) || "Unexpected error";
+      ctFatalResetUI(`Error: ${msg}`);
+    }
+  } catch {}
+});
