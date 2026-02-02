@@ -387,7 +387,9 @@ function maybeWarmBackend() {
 /* ================================
     Abort-aware fetch timeout
    ================================ */
-let __activeAbortController = // ------------------------
+let __activeAbortController = null;
+
+// ------------------------
 // Utilities
 // ------------------------
 
@@ -481,7 +483,8 @@ function parseURLs(raw) {
     }
   }
   return unique;
-       }null;
+}
+
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
   if (typeof AbortController === "undefined") {
@@ -1209,7 +1212,8 @@ function stopQueueSimulator() {
   __ctQueueSimTimer = null;
 }
 
- + export helpers ===============
+/* =========================================================
+   Export helpers
    ========================================================= */
 function updateAnalytics(meta) {
   const summaryEl       = document.getElementById("analyticsSummary");
