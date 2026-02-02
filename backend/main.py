@@ -186,8 +186,8 @@ BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onr
 
 # -------------------------------------------------------------------
 # Batch & pacing (env-tunable)
-BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "1"))                 # ← process N at a time
-PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "2.0"))  # ← sleep after every URL
+BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "25"))                 # ← process N at a time
+PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.0"))  # ← sleep after every URL
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← hard cap per request
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
@@ -658,7 +658,7 @@ if USE_GROQ:
         USE_GROQ = False
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 # Groq pacing / backoff (to avoid falling back too quickly)
-GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "5.0"))  # spacing between calls
+GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "1.0"))  # spacing between calls
 GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "4"))               # how many times to retry one call
 GROQ_BACKOFF_SECONDS = float(os.getenv("GROQ_BACKOFF_SECONDS", "10"))   # extra wait on 429/rate-limit
 _GROQ_LAST_CALL_TS: float = 0.0
@@ -690,32 +690,90 @@ def _is_rate_limit_error(e: Exception) -> bool:
     msg = str(e).lower()
     return ("429" in msg) or ("too many requests" in msg) or ("rate" in msg) or ("quota" in msg)
 
+def _groq_state_lock_path() -> str:
+    return (GROQ_STATE_PATH or "/tmp/groq_state.json") + ".lock"
+
+
+def _with_file_lock(lock_path: str):
+    """Cross-process file lock (best-effort)."""
+    if fcntl is None:
+        # threads-only fallback
+        _local = threading.Lock()
+        return _local
+    class _F:
+        def __enter__(self_inner):
+            self_inner.fp = open(lock_path, "w")  # noqa: SIM115
+            try:
+                fcntl.flock(self_inner.fp.fileno(), fcntl.LOCK_EX)
+            except Exception:
+                pass
+            return self_inner
+        def __exit__(self_inner, exc_type, exc, tb):
+            try:
+                if getattr(self_inner, "fp", None):
+                    try:
+                        fcntl.flock(self_inner.fp.fileno(), fcntl.LOCK_UN)
+                    except Exception:
+                        pass
+                    try:
+                        self_inner.fp.close()
+                    except Exception:
+                        pass
+            except Exception:
+                pass
+            return False
+    return _F()
+
+
+GROQ_MAX_CONCURRENCY = int(os.getenv("GROQ_MAX_CONCURRENCY", "2"))
+# Global in-process limiter: caps concurrent Groq calls per worker
+_GROQ_SEM = threading.Semaphore(max(1, GROQ_MAX_CONCURRENCY))
+
+
 def groq_chat_limited(*, messages, max_tokens: int, temperature: float, n: int = 1, model: str | None = None):
     """
     SINGLE entry-point for Groq calls.
-    - Serialized across workers (same instance) by using the URL lock file.
-    - Enforces GROQ_MIN_INTERVAL spacing globally.
-    - On 429: waits (backoff) and retries up to GROQ_MAX_RETRIES.
+
+    Goals:
+    - Avoid rate-limits (429) without making the app feel "stuck"
+    - Allow limited parallelism (so batches don't take forever)
+    - Coordinate spacing across gunicorn workers on the same instance (best-effort)
+
+    Controls (env):
+      GROQ_MAX_CONCURRENCY            default 2   (parallel calls per worker)
+      GROQ_MIN_INTERVAL_SECONDS      default 1.0 (min gap between call STARTS across the instance)
+      GROQ_MAX_RETRIES               default 4
+      GROQ_BACKOFF_SECONDS           default 10  (base backoff on 429)
     """
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
-    for attempt in range(1, GROQ_MAX_RETRIES + 1):
-        # Reuse the same global URL lock so no other URL/Groq runs concurrently
-        with global_url_lock():
-            state = _load_groq_state()
-            now = time.time()
-
-            # If we are in cooldown, WAIT (you asked for wait system)
-            if now < state["disabled_until"]:
-                time.sleep(state["disabled_until"] - now)
+    # Cap concurrent calls in this worker
+    with _GROQ_SEM:
+        for attempt in range(1, GROQ_MAX_RETRIES + 1):
+            # Cross-process spacing & cooldown lives in the shared state file.
+            # We lock only around state checks + spacing waits (not around the full API call),
+            # so multiple calls can run concurrently up to GROQ_MAX_CONCURRENCY.
+            lock_path = _groq_state_lock_path()
+            with _with_file_lock(lock_path):
+                state = _load_groq_state()
                 now = time.time()
 
-            # Enforce spacing between ANY two Groq calls (global)
-            delta = now - state["last_call_ts"]
-            if delta < GROQ_MIN_INTERVAL:
-                time.sleep(GROQ_MIN_INTERVAL - delta)
+                # If we are in cooldown, wait here (shared across workers)
+                if now < state["disabled_until"]:
+                    time.sleep(max(0.0, state["disabled_until"] - now))
+                    now = time.time()
 
+                # Enforce min spacing between STARTS of any two Groq calls
+                delta = now - state["last_call_ts"]
+                if delta < GROQ_MIN_INTERVAL:
+                    time.sleep(max(0.0, GROQ_MIN_INTERVAL - delta))
+
+                # Update "last start" timestamp before releasing the lock
+                state["last_call_ts"] = time.time()
+                _save_groq_state(state)
+
+            # Now perform the API call without holding the global lock
             try:
                 resp = _groq_client.chat.completions.create(
                     model=model or GROQ_MODEL,
@@ -724,18 +782,26 @@ def groq_chat_limited(*, messages, max_tokens: int, temperature: float, n: int =
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
-                state["last_call_ts"] = time.time()
-                state["disabled_until"] = 0.0
-                _save_groq_state(state)
+                # Clear cooldown on success (best-effort)
+                try:
+                    with _with_file_lock(lock_path):
+                        state = _load_groq_state()
+                        state["disabled_until"] = 0.0
+                        _save_groq_state(state)
+                except Exception:
+                    pass
                 return resp
 
             except Exception as e:  # noqa: BLE001
                 if _is_rate_limit_error(e):
-                    # Backoff grows per attempt (15s, 30s, 45s...)
                     backoff = GROQ_BACKOFF_SECONDS * attempt
-                    state["disabled_until"] = time.time() + backoff
-                    _save_groq_state(state)
-                    # loop retry (will WAIT next iteration)
+                    try:
+                        with _with_file_lock(lock_path):
+                            state = _load_groq_state()
+                            state["disabled_until"] = time.time() + backoff
+                            _save_groq_state(state)
+                    except Exception:
+                        pass
                     continue
                 raise
 
@@ -1332,6 +1398,35 @@ def sanitize_comment(raw: str) -> str:
     return txt
 
 
+def enforce_terminal_punctuation(text: str, is_question: bool = False) -> str:
+    """
+    User requirement:
+      - No terminal punctuation for normal comments
+      - Only use "?" for question-type comments
+      - Avoid "Name: ..." (colon looks AI)
+    """
+    t = (text or "").strip()
+
+    # Remove leading "Name: " patterns
+    t = re.sub(r"^([A-Za-z0-9_]{2,20})\s*:\s+", r"\1 ", t)
+
+    # Strip terminal punctuation (keep ? only if is_question)
+    t = re.sub(r"[\s\u2014\u2013\-–—]+$", "", t)  # trailing dashes/spaces
+    t = re.sub(r"[\s"'”’]+$", "", t)
+
+    if is_question:
+        # remove any trailing punctuation then add single '?'
+        t = re.sub(r"[\.!,:;…]+$", "", t).strip()
+        t = re.sub(r"\?+$", "", t).strip()
+        if t:
+            return t + "?"
+        return "?"
+    else:
+        # remove all punctuation at the end (including '?')
+        t = re.sub(r"[\.!\?,:;…]+$", "", t).strip()
+        return t
+
+
 def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
     txt = sanitize_comment(raw)
     toks = words(txt)
@@ -1365,10 +1460,15 @@ def postprocess_comment(text: str, source: str) -> str:
 
     # LLM output: allow a bit more room and try hard not to cut mid-sentence.
     if source == "llm":
-        return smart_trim_words(text, 6, 18, soft_max=22)
+        out = smart_trim_words(text, 6, 18, soft_max=22)
+        # best-effort: keep ? only if it looks like a question
+        is_q = bool(re.search(r"\?\s*$", out))
+        return enforce_terminal_punctuation(out, is_question=is_q)
 
     # Offline/template: shorter is fine
-    return smart_trim_words(text, 6, 15, soft_max=18)
+    out = smart_trim_words(text, 6, 15, soft_max=18)
+    is_q = bool(re.search(r"\?\s*$", out))
+    return enforce_terminal_punctuation(out, is_question=is_q)
 
 def postprocess_comment_with_reaction(
     text: str,
@@ -1395,7 +1495,9 @@ def postprocess_comment_with_reaction(
             pass
 
     # For now we treat all scripts the same here; CJK already handled elsewhere.
-    return smart_trim_words(text, min_words=min_w, max_words=max_w, soft_max=soft_max)
+    out = smart_trim_words(text, min_words=min_w, max_words=max_w, soft_max=soft_max)
+    is_q = (reaction or "").strip().lower() == "question"
+    return enforce_terminal_punctuation(out, is_question=is_q)
 
 
 # ------------------------------------------------------------------------------
@@ -5019,41 +5121,50 @@ def _extract_project_hint(txt: str) -> Optional[str]:
     return " ".join(words_[:5])
 
 def _name_for_greeting(author_name: Optional[str], handle: Optional[str]) -> str:
+    """
+    Prefer display name (author_name) over username/handle.
+
+    The frontend requested: call out by display name, not username.
+    """
     if author_name:
-        nm = re.sub(r"\\s+", " ", author_name).strip()
-        parts = nm.split(" ")
-        if parts and len(parts[0]) >= 2:
-            return parts[0]
-        return nm[:18]
+        nm = re.sub(r"\s+", " ", str(author_name)).strip()
+        # Keep up to 2 words for readability (e.g., "Crypto Josh")
+        parts = [p for p in nm.split(" ") if p]
+        if len(parts) >= 2:
+            nm2 = " ".join(parts[:2])
+            return nm2[:24].strip()
+        return nm[:24].strip()
     if handle:
-        return re.sub(r"^@", "", handle).strip()[:18]
-    return "fam"
+        return re.sub(r"^@", "", str(handle)).strip()[:18]
+    return "friend"
 
 def build_greeting_pair(tweet_text: str, author_name: Optional[str], handle: Optional[str], lang_code: str = "en") -> list[str]:
-    """Build two short greeting replies."""
+    """Build two short greeting replies in a human style (no AI-ish punctuation)."""
     name = _name_for_greeting(author_name, handle)
     hint = _extract_project_hint(tweet_text or "")
     lang_code = (lang_code or "en").lower().strip()
 
+    # NOTE: User request: avoid punctuation unless the comment is a question.
+    # Greetings are not questions, so we intentionally avoid terminal punctuation.
     if lang_code.startswith("ko"):
         if hint:
             return [
-                f"좋은 아침 {name}님, {hint} 흐름 좋아 보이네요.",
-                f"오늘도 화이팅이에요 {name}님 — 좋은 하루 보내세요.",
+                f"좋은 아침 {name}님 {hint} 흐름 좋아 보이네요",
+                f"오늘도 화이팅이에요 {name}님 좋은 하루 보내세요",
             ]
         return [
-            f"좋은 아침 {name}님, 오늘도 좋은 하루 되세요.",
-            f"{name}님 화이팅! 컨디션 좋게 시작해봐요.",
+            f"좋은 아침 {name}님 오늘도 좋은 하루 되세요",
+            f"{name}님 화이팅 컨디션 좋게 시작해봐요",
         ]
 
     if hint:
         return [
-            f"Gm {name}, love the focus on {hint}.",
-            f"Have a great day {name} — keep building.",
+            f"Gm {name} love the focus on {hint}",
+            f"Have a great day {name} keep building",
         ]
     return [
-        f"Gm {name}, hope your day starts strong.",
-        f"Have a great one {name} — stay sharp and healthy.",
+        f"Gm {name} hope your day starts strong",
+        f"Have a great day {name} keep building",
     ]
 
 def generate_two_comments_with_providers(
@@ -5358,46 +5469,72 @@ def comment_endpoint():
 
     done = 0
 
-    for batch in chunked(cleaned, BATCH_SIZE):
-        for url in batch:
+    # Concurrency: process multiple URLs in parallel, but keep it safe for rate limits.
+    # - URL_PROCESS_CONCURRENCY controls how many tweets we fetch/generate at once.
+    # - Groq has its own limiter (GROQ_MAX_CONCURRENCY + GROQ_MIN_INTERVAL).
+    URL_PROCESS_CONCURRENCY = int(os.getenv("URL_PROCESS_CONCURRENCY", "3"))
+    URL_PROCESS_CONCURRENCY = max(1, min(8, URL_PROCESS_CONCURRENCY))
+
+    from concurrent.futures import ThreadPoolExecutor, as_completed
+
+    done_lock = threading.Lock()
+
+    def _process_one(url: str) -> tuple[str, dict | None, dict | None]:
+        """Return (input_url, result_item_or_none, failed_item_or_none)."""
+        try:
             try:
-                try:
-                    set_request_nonce(url)
-                except Exception:
-                    pass
+                set_request_nonce(url)
+            except Exception:
+                pass
 
-                emit_premium_event("item_stage", {"url": url, "stage": "fetching"})
-                t = fetch_tweet_data(url)
-                emit_premium_event("item_stage", {"url": url, "stage": "generating"})
+            emit_premium_event("item_stage", {"url": url, "stage": "fetching"})
+            t = fetch_tweet_data(url)
+            emit_premium_event("item_stage", {"url": url, "stage": "generating"})
 
-                # Per-request context: thread, research, voice
-                try:
-                    thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
-                except Exception:
-                    thread_ctx = None
-                REQUEST_THREAD_CTX.set(thread_ctx)
+            # Per-request context: thread, research, voice
+            try:
+                thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
+            except Exception:
+                thread_ctx = None
+            REQUEST_THREAD_CTX.set(thread_ctx)
 
-                try:
-                    research_ctx = build_research_context_for_tweet(t.text or "") if ENABLE_RESEARCH else {"status": "disabled"}
-                except Exception:
-                    research_ctx = {"status": "error"}
-                REQUEST_RESEARCH_CTX.set(research_ctx)
+            try:
+                research_ctx = build_research_context_for_tweet(t.text or "") if ENABLE_RESEARCH else {"status": "disabled"}
+            except Exception:
+                research_ctx = {"status": "error"}
+            REQUEST_RESEARCH_CTX.set(research_ctx)
 
-                try:
-                    set_request_voice(t.text or "")
-                except Exception:
-                    pass
+            try:
+                set_request_voice(t.text or "")
+            except Exception:
+                pass
 
-                handle = t.handle or _extract_handle_from_url(url)
+            handle = t.handle or _extract_handle_from_url(url)
 
-                # Requested output languages (frontend toggles)
-                want_en = bool(payload.get("lang_en", True))
-                want_native = bool(payload.get("lang_native", False))
-                native_override = (payload.get("native_lang") or "").strip().lower() or None
+            want_en = bool(payload.get("lang_en", True))
+            want_native = bool(payload.get("lang_native", False))
+            native_override = (payload.get("native_lang") or "").strip().lower() or None
 
-                comments_all: list[dict] = []
+            comments_all: list[dict] = []
 
-                if want_en:
+            if want_en:
+                comments_all.extend(
+                    generate_two_comments_with_providers(
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
+                        url=url,
+                        target_lang="en",
+                        out_lang_tag="en",
+                    )
+                )
+
+            if want_native:
+                native_lang = native_override or (t.lang or "en")
+                native_lang = str(native_lang).strip().lower() if native_lang else "en"
+                if not native_lang.startswith("en") or not want_en:
+                    out_tag = native_lang if not native_lang.startswith("en") else "native"
                     comments_all.extend(
                         generate_two_comments_with_providers(
                             t.text or "",
@@ -5405,78 +5542,82 @@ def comment_endpoint():
                             handle,
                             t.lang or None,
                             url=url,
-                            target_lang="en",
-                            out_lang_tag="en",
+                            target_lang=native_lang,
+                            out_lang_tag=out_tag,
                         )
                     )
 
-                if want_native:
-                    native_lang = native_override or (t.lang or "en")
-                    native_lang = str(native_lang).strip().lower() if native_lang else "en"
-                    if not native_lang.startswith("en") or not want_en:
-                        out_tag = native_lang if not native_lang.startswith("en") else "native"
-                        comments_all.extend(
-                            generate_two_comments_with_providers(
-                                t.text or "",
-                                t.author_name or None,
-                                handle,
-                                t.lang or None,
-                                url=url,
-                                target_lang=native_lang,
-                                out_lang_tag=out_tag,
-                            )
-                        )
+            two = comments_all or generate_two_comments_with_providers(
+                t.text or "",
+                t.author_name or None,
+                handle,
+                t.lang or None,
+                url=url,
+            )
 
-                two = comments_all or generate_two_comments_with_providers(
-                    t.text or "",
-                    t.author_name or None,
-                    handle,
-                    t.lang or None,
-                    url=url,
-                )
+            display_url = _canonical_x_url_from_tweet(url, t)
+            used_research = bool(research_ctx and research_ctx.get("status") == "ok")
 
-                display_url = _canonical_x_url_from_tweet(url, t)
-                used_research = bool(research_ctx and research_ctx.get("status") == "ok")
-                results.append({
-                    "url": display_url,
-                    "comments": two,
-                    "used_research": used_research,
-                })
+            item = {
+                "url": display_url,
+                "comments": two,
+                "used_research": used_research,
+            }
 
-                try:
-                    emit_premium_event("item_stage", {"url": display_url, "stage": "done"})
-                except Exception:
-                    pass
-
-            except CrownTALKError as e:
-                try:
-                    emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": getattr(e, "code", "error")})
-                except Exception:
-                    pass
-
-                failed.append({"url": url, "reason": str(e), "code": e.code})
-            except Exception:
-                logger.exception("Unhandled error while processing %s", url)
-                try:
-                    emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": "internal_error"})
-                except Exception:
-                    pass
-
-                failed.append({"url": url, "reason": "internal_error", "code": "internal_error"})
-
-            done += 1
             try:
-                percent = int(round((done * 100.0) / float(total))) if total else 100
-                emit_premium_event("run_progress", {"done": done, "total": total, "percent": max(0, min(100, percent))})
+                emit_premium_event("item_stage", {"url": display_url, "stage": "done"})
             except Exception:
                 pass
 
+            return (url, item, None)
 
-            # ✅ Sleep only if there are more URLs left (no sleep after last)
-            if done < total and PER_URL_SLEEP and PER_URL_SLEEP > 0:
-                time.sleep(PER_URL_SLEEP)
+        except CrownTALKError as e:
+            try:
+                emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": getattr(e, "code", "error")})
+            except Exception:
+                pass
+            return (url, None, {"url": url, "reason": str(e), "code": e.code})
+
+        except Exception:
+            logger.exception("Unhandled error while processing %s", url)
+            try:
+                emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": "internal_error"})
+            except Exception:
+                pass
+            return (url, None, {"url": url, "reason": "internal_error", "code": "internal_error"})
+
+    # Process in chunks so super large batches don't explode threads
+    for batch in chunked(cleaned, BATCH_SIZE):
+        if not batch:
+            continue
+
+        with ThreadPoolExecutor(max_workers=min(URL_PROCESS_CONCURRENCY, len(batch))) as ex:
+            futs = [ex.submit(_process_one, u) for u in batch]
+
+            for fut in as_completed(futs):
+                in_url, item, fail = fut.result()
+
+                if item:
+                    results.append(item)
+                if fail:
+                    failed.append(fail)
+
+                with done_lock:
+                    done += 1
+                    try:
+                        percent = int(round((done * 100.0) / float(total))) if total else 100
+                        emit_premium_event("run_progress", {"done": done, "total": total, "percent": max(0, min(100, percent))})
+                    except Exception:
+                        pass
+
+                # Optional spacing between URL items (defaults to 0 now)
+                if done < total and PER_URL_SLEEP and PER_URL_SLEEP > 0:
+                    time.sleep(PER_URL_SLEEP)
+
+
 
     # -------- PREMIUM: run_finish telemetry --------
+
     duration_sec = time.monotonic() - started_at
     emit_premium_event("run_finish", {
         "tweets": len(results),

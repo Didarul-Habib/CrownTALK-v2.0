@@ -3,7 +3,7 @@ import os
 #
 # Workers & threading (safe defaults for small Render instances)
 #
-workers = int(os.getenv("WEB_CONCURRENCY", "2"))
+workers = int(os.getenv("WEB_CONCURRENCY", "1"))
 worker_class = "gthread"
 threads = int(os.getenv("WEB_THREADS", "2"))
 
