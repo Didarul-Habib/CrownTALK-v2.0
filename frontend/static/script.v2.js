@@ -487,18 +487,29 @@ function parseURLs(raw) {
 
 
 async function fetchWithTimeout(url, options = {}, timeoutMs = 45000) {
-  if (typeof AbortController === "undefined") {
-    return fetch(url, options);
-  }
-  const controller = new AbortController();
-  __activeAbortController = controller;
+  // Some mobile/browser/network edge cases can leave `fetch()` pending forever.
+  // We enforce a hard timeout with Promise.race so the UI never gets stuck.
+  const hardTimeoutMs = Math.max(1000, Number(timeoutMs) || 45000);
 
-  const id = setTimeout(() => controller.abort(), timeoutMs);
+  // If AbortController exists, we still use it so the underlying request is cancelled.
+  const controller = (typeof AbortController !== "undefined") ? new AbortController() : null;
+  if (controller) __activeAbortController = controller;
+
+  let timeoutId = null;
+  const hardTimeout = new Promise((_, reject) => {
+    timeoutId = setTimeout(() => {
+      try { controller?.abort(); } catch {}
+      reject(new Error("Request timed out"));
+    }, hardTimeoutMs);
+  });
+
   try {
-    const res = await fetch(url, { ...options, signal: controller.signal });
-    return res;
+    return await Promise.race([
+      fetch(url, { ...options, ...(controller ? { signal: controller.signal } : {}) }),
+      hardTimeout,
+    ]);
   } finally {
-    clearTimeout(id);
+    try { clearTimeout(timeoutId); } catch {}
     if (__activeAbortController === controller) __activeAbortController = null;
   }
 }
@@ -1971,6 +1982,9 @@ async function handleGenerate() {
     method: "POST",
     headers,
     body: JSON.stringify(payload),
+    // Explicitly set cors + no-store so mobile browsers don't get weird caching/hanging behavior.
+    mode: "cors",
+    cache: "no-store",
   };
 
   // Timeout scales with batch size (but caps so it doesn't get absurd)
@@ -2296,9 +2310,12 @@ function applyTheme(themeName) {
   const html = document.documentElement;
   const t = ALLOWED_THEMES.includes(themeName) ? themeName : "dark-purple";
   html.setAttribute("data-theme", t);
-  themeDots.forEach((dot) =>
-    dot.classList.toggle("is-active", dot.dataset.theme === t)
-  );
+  themeDots.forEach((dot) => {
+    const isActive = dot?.dataset?.theme === t;
+    // These are <input type="radio"> so ensure the checked state is kept in sync.
+    try { dot.checked = isActive; } catch {}
+    dot.classList.toggle("is-active", isActive);
+  });
   try {
     localStorage.setItem(THEME_STORAGE_KEY, t);
   } catch {}
@@ -2315,6 +2332,32 @@ function initTheme() {
     if (!ALLOWED_THEMES.includes(theme)) theme = "dark-purple";
   } catch {}
   applyTheme(theme);
+
+  // Bind theme click/keyboard actions.
+  // NOTE: The visual button next to the <input> is a <div>, not a <label>,
+  // so we wire it manually.
+  themeDots.forEach((dot) => {
+    if (!dot?.dataset) return;
+    const t = (dot.dataset.theme || "").trim();
+    if (!t) return;
+
+    const apply = () => applyTheme(t);
+
+    // Radio input change (keyboard / accessibility)
+    dot.addEventListener("change", () => {
+      if (dot.checked) apply();
+    });
+
+    // Click on the adjacent visual button
+    const btn = dot.nextElementSibling;
+    if (btn && btn.classList.contains("ct-theme-btn")) {
+      btn.addEventListener("click", (e) => {
+        e.preventDefault();
+        try { dot.checked = true; } catch {}
+        apply();
+      });
+    }
+  });
 }
 
 /* ---------- Results menu: wrap preset + export into dropdown ---------- */

@@ -6353,6 +6353,28 @@ html.ct-engine-on .card.card-holo .holo-system{
   --shadow-primary: #9f1239;
 }
 
+/* New theme pack tabs (keep each tab visually unique) */
+.ct-theme-input.theme-dot[data-theme="aurora"] + .ct-theme-btn {
+  --primary: #66ffcc;      /* aurora mint */
+  --shadow-primary: #0b3b2f;
+}
+
+.ct-theme-input.theme-dot[data-theme="sakura"] + .ct-theme-btn {
+  --primary: #ff80c4;      /* sakura pink */
+  --shadow-primary: #7a1f4b;
+}
+
+.ct-theme-input.theme-dot[data-theme="mono"] + .ct-theme-btn {
+  --primary: #e5e7eb;      /* mono silver */
+  --shadow-primary: #111827;
+}
+
+.ct-theme-input.theme-dot[data-theme="custom"] + .ct-theme-btn {
+  /* Use the custom accent if available; fall back to purple */
+  --primary: var(--ct-accent, #a855f7);
+  --shadow-primary: rgba(0,0,0,.65);
+}
+
 /* Smooth focus highlight for scrolled tweets */
 .tweet.ct-highlight{
   box-shadow:0 0 0 2px rgba(56,189,248,.95), 0 14px 32px rgba(15,23,42,.9);
