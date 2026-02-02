@@ -1412,7 +1412,8 @@ def enforce_terminal_punctuation(text: str, is_question: bool = False) -> str:
 
     # Strip terminal punctuation (keep ? only if is_question)
     t = re.sub(r"[\s\u2014\u2013\-–—]+$", "", t)  # trailing dashes/spaces
-    t = re.sub(r"[\s"'”’]+$", "", t)
+    # NOTE: use single-quoted Python string so the character class can include both " and '
+    t = re.sub(r'[\s"\'”’]+$', "", t)
 
     if is_question:
         # remove any trailing punctuation then add single '?'
