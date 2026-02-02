@@ -286,6 +286,15 @@ const langNativeToggle      = document.getElementById("langNativeToggle");
 const nativeLangSelect     = document.getElementById("nativeLangSelect");
 const runCountEl            = document.getElementById("runCount");
 const safeModeToggle        = document.getElementById("safeModeToggle");
+const liteModeToggle        = document.getElementById("liteModeToggle");
+const glassPipelineEl       = document.getElementById("glassPipeline");
+const glassPipelineFillEl   = document.getElementById("glassPipelineFill");
+const runHistoryPanelEl     = document.getElementById("ctRunHistoryPanel");
+const clearRunsBtn          = document.getElementById("ctClearRunsBtn");
+const resumeBannerEl        = document.getElementById("ctResumeBanner");
+const resumeTimeEl          = document.getElementById("ctResumeTime");
+const resumeBtn             = document.getElementById("ctResumeBtn");
+const dismissResumeBtn      = document.getElementById("ctDismissResumeBtn");
 const holoCheckEl = document.getElementById("holo-check");
 const holoCardEl  = document.querySelector(".card-holo");
 
@@ -501,6 +510,7 @@ function setProgressRatio(ratio) {
   // drive only via CSS variables (progress bar CSS uses --ct-progress-frac)
   document.documentElement.style.setProperty('--ct-progress-frac', String(clamped));
   document.documentElement.style.setProperty('--ct-progress-pct', String(Math.round(clamped*100)));
+  updateGlassPipeline(clamped);
   try {
     const pct = Math.round(clamped * 100);
     if (progressPctEl) progressPctEl.dataset.pct = `${pct}%`;
@@ -742,6 +752,248 @@ function renderSessionTabs() {
     sessionTabsEl.appendChild(btn);
   });
 }
+
+/* =========================================================
+   === Persistent Run History (IndexedDB with fallback) ======
+   ========================================================= */
+const CT_RUN_DB_NAME = "crowntalk_runs_db_v1";
+const CT_RUN_DB_STORE = "runs";
+const CT_RUN_FALLBACK_KEY = "ct_runs_v1";
+let __ctRunsCache = [];
+
+function ctIsIdbSupported() {
+  try { return !!window.indexedDB; } catch { return false; }
+}
+
+function ctOpenRunDb() {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = indexedDB.open(CT_RUN_DB_NAME, 1);
+      req.onupgradeneeded = () => {
+        const db = req.result;
+        try {
+          const store = db.createObjectStore(CT_RUN_DB_STORE, { keyPath: "id" });
+          store.createIndex("ts", "ts", { unique: false });
+        } catch {}
+      };
+      req.onsuccess = () => resolve(req.result);
+      req.onerror = () => reject(req.error);
+    } catch (e) { reject(e); }
+  });
+}
+
+async function ctPersistRun(run) {
+  if (!run || !run.id) return;
+  // keep cache small
+  try {
+    if (ctIsIdbSupported()) {
+      const db = await ctOpenRunDb();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(CT_RUN_DB_STORE, "readwrite");
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+        tx.objectStore(CT_RUN_DB_STORE).put(run);
+      });
+      try { db.close(); } catch {}
+    } else {
+      const arr = ctLoadRunsFromLocal();
+      arr.unshift(run);
+      const trimmed = arr.slice(0, 8);
+      localStorage.setItem(CT_RUN_FALLBACK_KEY, JSON.stringify(trimmed));
+    }
+  } catch {
+    // fallback
+    try {
+      const arr = ctLoadRunsFromLocal();
+      arr.unshift(run);
+      const trimmed = arr.slice(0, 6);
+      localStorage.setItem(CT_RUN_FALLBACK_KEY, JSON.stringify(trimmed));
+    } catch {}
+  }
+}
+
+function ctLoadRunsFromLocal() {
+  try {
+    const raw = localStorage.getItem(CT_RUN_FALLBACK_KEY);
+    const arr = raw ? JSON.parse(raw) : [];
+    return Array.isArray(arr) ? arr : [];
+  } catch { return []; }
+}
+
+async function ctLoadRuns(limit=8) {
+  try {
+    if (ctIsIdbSupported()) {
+      const db = await ctOpenRunDb();
+      const items = await new Promise((resolve, reject) => {
+        try {
+          const tx = db.transaction(CT_RUN_DB_STORE, "readonly");
+          const store = tx.objectStore(CT_RUN_DB_STORE);
+          const idx = store.index("ts");
+          const out = [];
+          idx.openCursor(null, "prev").onsuccess = (ev) => {
+            const cursor = ev.target.result;
+            if (cursor) {
+              out.push(cursor.value);
+              if (out.length >= limit) return resolve(out);
+              cursor.continue();
+            } else resolve(out);
+          };
+          tx.onerror = () => reject(tx.error);
+        } catch (e) { reject(e); }
+      });
+      try { db.close(); } catch {}
+      return items || [];
+    }
+    return ctLoadRunsFromLocal().slice(0, limit);
+  } catch {
+    return ctLoadRunsFromLocal().slice(0, limit);
+  }
+}
+
+async function ctDeleteRun(id) {
+  if (!id) return;
+  try {
+    if (ctIsIdbSupported()) {
+      const db = await ctOpenRunDb();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(CT_RUN_DB_STORE, "readwrite");
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+        tx.objectStore(CT_RUN_DB_STORE).delete(id);
+      });
+      try { db.close(); } catch {}
+    } else {
+      const arr = ctLoadRunsFromLocal().filter(r => r.id !== id);
+      localStorage.setItem(CT_RUN_FALLBACK_KEY, JSON.stringify(arr));
+    }
+  } catch {
+    const arr = ctLoadRunsFromLocal().filter(r => r.id !== id);
+    try { localStorage.setItem(CT_RUN_FALLBACK_KEY, JSON.stringify(arr)); } catch {}
+  }
+}
+
+async function ctClearRuns() {
+  try {
+    if (ctIsIdbSupported()) {
+      const db = await ctOpenRunDb();
+      await new Promise((res, rej) => {
+        const tx = db.transaction(CT_RUN_DB_STORE, "readwrite");
+        tx.oncomplete = () => res();
+        tx.onerror = () => rej(tx.error);
+        tx.objectStore(CT_RUN_DB_STORE).clear();
+      });
+      try { db.close(); } catch {}
+    }
+  } catch {}
+  try { localStorage.removeItem(CT_RUN_FALLBACK_KEY); } catch {}
+}
+
+function ctApplyRunSnapshot(run) {
+  if (!run) return;
+  if (urlInput && typeof run.input === "string") urlInput.value = run.input;
+  try { urlInput.dispatchEvent(new Event("input", {bubbles:true})); } catch {}
+  if (resultsEl && typeof run.resultsHTML === "string") resultsEl.innerHTML = run.resultsHTML;
+  if (failedEl && typeof run.failedHTML === "string") failedEl.innerHTML = run.failedHTML;
+  if (resultCountEl) resultCountEl.textContent = run.rc || "";
+  if (failedCountEl) failedCountEl.textContent = run.fc || "";
+  try { updateAnalytics(run.meta || {}); } catch {}
+  try { setEngineStatus("idle"); } catch {}
+  ctToast("Loaded run from history.", "ok");
+}
+
+function ctFormatRunTime(ts) {
+  try {
+    const d = new Date(ts);
+    return d.toLocaleString([], { month: "short", day: "2-digit", hour: "2-digit", minute: "2-digit" });
+  } catch { return "recently"; }
+}
+
+function renderRunHistoryPanel() {
+  if (!runHistoryPanelEl) return;
+  runHistoryPanelEl.innerHTML = "";
+  const runs = (__ctRunsCache || []).slice(0, 8);
+  if (!runs.length) {
+    const empty = document.createElement("div");
+    empty.className = "helper-text";
+    empty.textContent = "Your recent runs will appear here.";
+    runHistoryPanelEl.appendChild(empty);
+    return;
+  }
+
+  runs.forEach((run) => {
+    const row = document.createElement("div");
+    row.className = "ct-run-item";
+
+    const meta = document.createElement("div");
+    meta.className = "ct-run-meta";
+
+    const title = document.createElement("div");
+    title.className = "ct-run-title";
+    title.textContent = run.label || "Run";
+
+    const sub = document.createElement("div");
+    sub.className = "ct-run-sub";
+    const stats = run.meta ? `${run.meta.tweets||0} tweets • ${run.meta.comments||0} comments • ${run.meta.failed||0} failed` : "";
+    sub.textContent = `${ctFormatRunTime(run.ts)}${stats ? " • " + stats : ""}`;
+
+    meta.appendChild(title);
+    meta.appendChild(sub);
+
+    const actions = document.createElement("div");
+    actions.className = "ct-run-actions";
+
+    const replay = document.createElement("button");
+    replay.type = "button";
+    replay.className = "btn-xs";
+    replay.textContent = "Replay";
+    replay.addEventListener("click", () => ctApplyRunSnapshot(run));
+
+    const del = document.createElement("button");
+    del.type = "button";
+    del.className = "btn-xs";
+    del.textContent = "Delete";
+    del.addEventListener("click", async () => {
+      await ctDeleteRun(run.id);
+      __ctRunsCache = await ctLoadRuns(8);
+      renderRunHistoryPanel();
+      ctToast("Deleted run.", "ok");
+    });
+
+    actions.appendChild(replay);
+    actions.appendChild(del);
+
+    row.appendChild(meta);
+    row.appendChild(actions);
+    runHistoryPanelEl.appendChild(row);
+  });
+}
+
+async function maybeShowResumeLastRun() {
+  if (!resumeBannerEl) return;
+  try {
+    const runs = (__ctRunsCache || []);
+    if (!runs.length) return;
+    const latest = runs[0];
+    const ts = Number(latest.ts) || 0;
+    const now = Date.now();
+    const within = (now - ts) <= (24 * 60 * 60 * 1000);
+    if (!within) return;
+
+    // user dismissal guard
+    const dismissed = Number(localStorage.getItem("ct_resume_dismissed_ts") || 0);
+    if (dismissed && dismissed >= ts) return;
+
+    if (resumeTimeEl) resumeTimeEl.textContent = ctFormatRunTime(ts);
+    resumeBannerEl.hidden = false;
+
+    if (resumeBtn) resumeBtn.onclick = () => ctApplyRunSnapshot(latest);
+    if (dismissResumeBtn) dismissResumeBtn.onclick = () => {
+      resumeBannerEl.hidden = true;
+      try { localStorage.setItem("ct_resume_dismissed_ts", String(Date.now())); } catch {}
+    };
+  } catch {}
+}
+
 function addSessionSnapshot(meta) {
   if (!resultsEl || !failedEl) return;
   const id = `run_${Date.now()}_${++ctSessionCounter}`;
@@ -767,6 +1019,24 @@ function addSessionSnapshot(meta) {
   ctSessions.push({ id, label, createdAt, snapshot });
   ctActiveSessionId = id;
   renderSessionTabs();
+  // persist run (premium)
+  try {
+    const run = {
+      id,
+      ts: Date.now(),
+      label,
+      createdAt,
+      input: urlInput ? (urlInput.value || "") : "",
+      preset: presetSelect?.value || "",
+      resultsHTML: snapshot.resultsHTML,
+      failedHTML: snapshot.failedHTML,
+      rc: snapshot.rc,
+      fc: snapshot.fc,
+      meta: snapshot.meta || {},
+    };
+    ctPersistRun(run);
+    (async ()=>{ __ctRunsCache = await ctLoadRuns(8); renderRunHistoryPanel(); maybeShowResumeLastRun(); })();
+  } catch {}
 }
 function restoreSessionSnapshot(id) {
   const s = getSessionById(id);
@@ -848,6 +1118,10 @@ function renderUrlQueue() {
     const chip = document.createElement("button");
     chip.type = "button";
     chip.className = "url-chip";
+    chip.dataset.stage = item.stage || item.status || "queued";
+
+    const dot = document.createElement("span");
+    dot.className = "url-chip-dot";
 
     if (item.status === "processing") chip.classList.add("is-processing");
     else if (item.status === "done") chip.classList.add("is-done");
@@ -861,9 +1135,17 @@ function renderUrlQueue() {
     labelSpan.className = "url-chip-label";
     const short = item.shortLabel || item.url.replace(/^https?:\/\//, "");
     labelSpan.textContent = short.slice(0, 40);
+    chip.title = `${item.url}\nStage: ${item.stage || item.status || "queued"}`;
 
+    chip.appendChild(dot);
     chip.appendChild(indexSpan);
     chip.appendChild(labelSpan);
+
+    const stageSpan = document.createElement("span");
+    stageSpan.className = "url-chip-stage";
+    const stageLabel = (item.status === "done") ? "Done" : (item.status === "failed") ? "Failed" : (item.stage ? item.stage.charAt(0).toUpperCase() + item.stage.slice(1) : "Queued");
+    stageSpan.textContent = stageLabel;
+    chip.appendChild(stageSpan);
 
     chip.addEventListener("click", () => {
       if (!resultsEl) return;
@@ -882,7 +1164,52 @@ function renderUrlQueue() {
   ctPremiumEmit("onQueueRender", { urlQueueState: urlQueueState.slice() });
 }
 
-/* ============================================================ Analytics HUD + export helpers ===============
+/* ============================================================ Analytics HUD
+
+/* =========================================================
+   === Queue Simulator (believable live experience) ==========
+   ========================================================= */
+let __ctQueueSimTimer = null;
+let __ctQueueSimStartedAt = 0;
+
+function startQueueSimulator() {
+  stopQueueSimulator();
+  __ctQueueSimStartedAt = performance.now();
+  __ctQueueSimTimer = setInterval(() => {
+    try {
+      if (!urlQueueState || !urlQueueState.length) return;
+      const now = performance.now();
+      const base = __ctQueueSimStartedAt;
+      const per = Math.max(180, Math.min(520, 420 - Math.min(10, urlQueueState.length)*18));
+      const fetchDur = 750;
+      const genDur   = 1600;
+      const procDur  = 900;
+
+      for (let i = 0; i < urlQueueState.length; i++) {
+        const it = urlQueueState[i];
+        if (!it || it.status === "done" || it.status === "failed") continue;
+
+        const t = now - base - (i * per);
+        let stage = "queued";
+        if (t >= 0 && t < fetchDur) stage = "fetching";
+        else if (t >= fetchDur && t < fetchDur + genDur) stage = "generating";
+        else if (t >= fetchDur + genDur) stage = "processing";
+
+        it.stage = stage;
+        // keep status loosely mapped (backend final will override)
+        it.status = (stage === "processing" || stage === "generating" || stage === "fetching") ? "processing" : "queued";
+      }
+      renderUrlQueue();
+    } catch {}
+  }, 320);
+}
+
+function stopQueueSimulator() {
+  try { if (__ctQueueSimTimer) clearInterval(__ctQueueSimTimer); } catch {}
+  __ctQueueSimTimer = null;
+}
+
+ + export helpers ===============
    ========================================================= */
 function updateAnalytics(meta) {
   const summaryEl       = document.getElementById("analyticsSummary");
@@ -1046,6 +1373,66 @@ function applySafeMode() {
     safeModeToggle.setAttribute("aria-pressed", safeModeOn ? "true" : "false");
     safeModeToggle.textContent = safeModeOn ? "Low motion: ON" : "Low motion: OFF";
     safeModeToggle.style.display = "inline-block";
+  }
+}
+
+
+/* =========================================================
+   === Lite Mode (persistent performance toggle) ============
+   ========================================================= */
+let liteModeOn = false;
+
+function detectLiteDefault() {
+  try {
+    const coarse = matchMedia("(pointer:coarse)").matches;
+    const reduced = matchMedia("(prefers-reduced-motion: reduce)").matches;
+    const mem = navigator.deviceMemory ? Number(navigator.deviceMemory) : null;
+    const lowMem = (mem != null && mem <= 4);
+    const small = Math.min(window.innerWidth || 0, window.innerHeight || 0) <= 520;
+    return coarse || reduced || lowMem || small;
+  } catch {
+    return false;
+  }
+}
+
+function loadLiteModeFromStorage() {
+  try {
+    const v = localStorage.getItem("ct_lite_mode_v1");
+    if (v === "1") { liteModeOn = true; return; }
+    if (v === "0") { liteModeOn = false; return; }
+    liteModeOn = detectLiteDefault();
+  } catch {
+    liteModeOn = detectLiteDefault();
+  }
+}
+
+function persistLiteMode() {
+  try { localStorage.setItem("ct_lite_mode_v1", liteModeOn ? "1" : "0"); } catch {}
+}
+
+function applyLiteMode() {
+  const html = document.documentElement;
+  if (!html) return;
+  if (liteModeOn) html.classList.add("lite-mode");
+  else html.classList.remove("lite-mode");
+
+  if (liteModeToggle) {
+    liteModeToggle.setAttribute("aria-pressed", liteModeOn ? "true" : "false");
+    liteModeToggle.textContent = liteModeOn ? "Lite mode: ON" : "Lite mode: OFF";
+    liteModeToggle.style.display = "inline-block";
+  }
+}
+
+function initLiteModeToggle() {
+  loadLiteModeFromStorage();
+  applyLiteMode();
+  if (liteModeToggle) {
+    liteModeToggle.addEventListener("click", () => {
+      liteModeOn = !liteModeOn;
+      persistLiteMode();
+      applyLiteMode();
+      ctToast(liteModeOn ? "Lite mode enabled" : "Lite mode disabled", "ok");
+    });
   }
 }
 
@@ -1511,16 +1898,19 @@ async function handleGenerate() {
   document.body.classList.add("is-generating");
   setEngineStatus("running");
 
-  // Ultra-Lite mode if phone/low-motion
-  if (matchMedia("(pointer:coarse)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) {
-    document.documentElement.classList.add("ultralite-on");
-  }
+  // Ultra-Lite mode while generating (extra guard on very small devices / reduced motion)
+  try {
+    if (liteModeOn || matchMedia("(pointer:coarse)").matches || matchMedia("(prefers-reduced-motion: reduce)").matches) {
+      document.documentElement.classList.add("ultralite-on");
+    }
+  } catch {}
 
   generateBtn.disabled = true;
   cancelBtn.disabled   = false;
   resetResults();
   resetProgress();
   resetUrlQueue();
+  try { stopQueueSimulator(); } catch {}
 
   // PREMIUM: notify run start
   ctPremiumEmit("onRunStart", { urls, preset: presetSelect?.value || "" });
@@ -1553,12 +1943,8 @@ async function handleGenerate() {
 
   // Fire-and-forget warmup
   maybeWarmBackend();
-
-  // Mark all as processing at start (progress updates will come via Premium WS if enabled)
-  for (let i = 0; i < urlQueueState.length; i++) {
-    urlQueueState[i].status = "processing";
-  }
-  renderUrlQueue();
+  // Premium: believable per-link progress
+  startQueueSimulator();
 
   const headers = {
     "Content-Type": "application/json",
@@ -1573,7 +1959,7 @@ async function handleGenerate() {
     lang_en: !!(langEnToggle && langEnToggle.checked),
     lang_native: !!(langNativeToggle && langNativeToggle.checked),
     native_lang: (nativeLangSelect && nativeLangSelect.value) || "",
-    safe_mode: !!(safeModeToggle && safeModeToggle.checked),
+    safe_mode: !!safeModeOn,
     preset: presetSelect?.value || "",
   };
 
@@ -1723,6 +2109,7 @@ async function handleGenerate() {
 
   updateAnalytics(meta);
   addSessionSnapshot(meta);
+  stopQueueSimulator();
 
   // PREMIUM: notify run finish
   ctPremiumEmit("onRunFinish", meta);
@@ -1737,6 +2124,7 @@ function handleCancel() {
 
   try { __activeAbortController?.abort(); } catch {}
   try { if (__ctFakeProgressStopper) __ctFakeProgressStopper(true); } catch {}
+  try { stopQueueSimulator(); } catch {}
   try { window.__ctRealProgressSeen = false; } catch {}
 
   document.body.classList.remove("is-generating");
@@ -1746,6 +2134,7 @@ function handleCancel() {
   setProgressText("Cancelled.");
   setProgressRatio(0);
   resetUrlQueue();
+  try { stopQueueSimulator(); } catch {}
   setEngineStatus("idle");
 }
 function handleClear() {
@@ -1786,6 +2175,7 @@ function handleClear() {
   resetResults();
   resetProgress();
   resetUrlQueue();
+  try { stopQueueSimulator(); } catch {}
   autoResizeTextarea();
 }
 function hideUndoSnackSoon(){
@@ -2051,6 +2441,7 @@ function bootAppUI() {
   initLanguageToggles();
   initRunCounter();
   initSafeModeToggle();
+  initLiteModeToggle();
   initPresetFromStorage();
   initKeyboardHud();
   renderCopyQueue();
@@ -2061,6 +2452,24 @@ function bootAppUI() {
   initShortcutFab();
   initWelcomeCard();
   setEngineStatus("idle");
+
+  // Premium: hydrate run history
+  try {
+    ctLoadRuns(8).then((runs)=>{
+      __ctRunsCache = Array.isArray(runs) ? runs : [];
+      renderRunHistoryPanel();
+      maybeShowResumeLastRun();
+    }).catch(()=>{});
+  } catch {}
+
+  if (clearRunsBtn) {
+    clearRunsBtn.addEventListener("click", async ()=>{
+      await ctClearRuns();
+      __ctRunsCache = [];
+      renderRunHistoryPanel();
+      ctToast("Cleared run history.", "ok");
+    });
+  }
 
   setTimeout(() => { maybeWarmBackend(); }, 4000);
 

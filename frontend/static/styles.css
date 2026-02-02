@@ -3484,6 +3484,19 @@ body:not(.is-generating) .card.is-ambient-progress::after{ display:none; }
 }
 body.low-motion .ct-lowmotion-pill{ display:inline-block; }
 
+.ct-lite-pill{
+  display:inline-block; position:fixed; bottom:12px; left:110px; z-index:20;
+  font-size:11px; color:#111; background:#e5e7eb; border-radius:999px; padding:4px 8px;
+  box-shadow:0 6px 16px rgba(0,0,0,.35);
+}
+html.lite-mode .ct-lite-pill{
+  background:#dbeafe;
+}
+@media (max-width: 520px){
+  .ct-lowmotion-pill{ left:12px; bottom:12px; }
+  .ct-lite-pill{ left:12px; bottom:44px; }
+}
+
 /* ---------- [13] URL “compact view” mirror ---------- */
 .ai-chat-input{ position:relative; }
 #ctUrlCompactToggle{
@@ -6611,3 +6624,113 @@ html.ct-engine-on .card.card-holo .holo-system{
 }
 
 
+
+/* === Premium: Glass Pipeline (desktop) === */
+.glass-pipeline{
+  margin-top:10px;
+  padding:10px 12px;
+  border-radius:16px;
+  border:1px solid rgba(255,255,255,.12);
+  background: linear-gradient(180deg, rgba(255,255,255,.07), rgba(255,255,255,.03));
+  box-shadow: 0 10px 30px rgba(0,0,0,.22);
+}
+.glass-pipeline-track{
+  height:10px;
+  border-radius:999px;
+  background: rgba(255,255,255,.10);
+  overflow:hidden;
+}
+.glass-pipeline-fill{
+  height:100%;
+  width:0%;
+  border-radius:999px;
+  background: linear-gradient(90deg, rgba(99,102,241,.95), rgba(236,72,153,.85), rgba(34,197,94,.85));
+  filter: saturate(1.1);
+  transition: width 220ms ease;
+}
+.glass-pipeline-steps{
+  margin-top:8px;
+  display:flex;
+  justify-content:space-between;
+  gap:10px;
+  font-size:11px;
+  letter-spacing:.2px;
+  opacity:.92;
+}
+.glass-step{
+  position:relative;
+  padding-left:12px;
+  color: rgba(240,245,255,.85);
+  white-space:nowrap;
+}
+.glass-step::before{
+  content:"";
+  position:absolute;
+  left:0;
+  top:50%;
+  transform:translateY(-50%);
+  width:7px;
+  height:7px;
+  border-radius:50%;
+  background: rgba(255,255,255,.25);
+  box-shadow: 0 0 0 2px rgba(0,0,0,.18);
+}
+.glass-step.is-active{ color: rgba(255,255,255,.98); }
+.glass-step.is-active::before{ background: rgba(255,255,255,.95); }
+.glass-step.is-done{ color: rgba(255,255,255,.92); opacity:.9; }
+.glass-step.is-done::before{ background: rgba(34,197,94,.95); }
+
+/* === Premium: Run History + Resume Banner === */
+.ct-resume-banner{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:12px;
+  margin: 0 0 14px 0;
+  padding: 12px 14px;
+  border-radius: 18px;
+  border: 1px solid rgba(255,255,255,.14);
+  background: linear-gradient(180deg, rgba(255,255,255,.08), rgba(255,255,255,.03));
+  box-shadow: 0 10px 28px rgba(0,0,0,.22);
+}
+.ct-resume-title{ font-weight: 750; letter-spacing:.2px; }
+.ct-resume-sub{ font-size: 12px; opacity:.85; margin-top:2px; }
+.ct-resume-actions{ display:flex; gap:8px; flex-wrap:wrap; }
+.ct-run-history{
+  display:flex;
+  flex-direction:column;
+  gap:8px;
+}
+.ct-run-item{
+  display:flex;
+  align-items:center;
+  justify-content:space-between;
+  gap:10px;
+  padding:10px 10px;
+  border-radius:14px;
+  border:1px solid rgba(255,255,255,.12);
+  background: rgba(255,255,255,.04);
+}
+.ct-run-meta{ display:flex; flex-direction:column; gap:2px; min-width: 0; }
+.ct-run-title{ font-weight:650; font-size:13px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ct-run-sub{ font-size:11px; opacity:.82; white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+.ct-run-actions{ display:flex; gap:6px; flex-shrink:0; }
+.ct-run-actions .btn-xs{ padding:6px 10px; }
+
+/* === Premium: Queue stage dot === */
+.url-chip{ gap:8px; }
+.url-chip-dot{
+  width:8px; height:8px; border-radius:50%;
+  background: rgba(255,255,255,.25);
+  flex-shrink:0;
+}
+.url-chip[data-stage="queued"] .url-chip-dot{ background: rgba(255,255,255,.18); }
+.url-chip[data-stage="fetching"] .url-chip-dot{ background: rgba(99,102,241,.95); }
+.url-chip[data-stage="generating"] .url-chip-dot{ background: rgba(236,72,153,.92); }
+.url-chip[data-stage="processing"] .url-chip-dot{ background: rgba(245,158,11,.92); }
+.url-chip.is-done .url-chip-dot{ background: rgba(34,197,94,.95); }
+.url-chip.is-failed .url-chip-dot{ background: rgba(239,68,68,.95); }
+.url-chip-stage{
+  font-size:10px;
+  opacity:.78;
+}
