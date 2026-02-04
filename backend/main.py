@@ -6,7 +6,7 @@ try:
 except Exception:  # noqa: BLE001
     fcntl = None
 
-import json, os, re, time, random, hashlib, logging, sqlite3, threading
+import json, os, re, time, random, hashlib, logging, sqlite3, threading, secrets, hmac
 from collections import Counter
 from contextvars import ContextVar
 from datetime import datetime
@@ -15,7 +15,7 @@ from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 
 import requests
-from flask import Flask, request, jsonify, make_response
+from flask import Flask, request, jsonify, make_response, g
 
 
 # Helpers from utils.py (already deployed)
@@ -163,6 +163,359 @@ def verify_access():
 
     token = _compute_access_token(code)
     return jsonify({"ok": True, "token": token})
+
+# ------------------------------------------------------------------------------
+# Server-side login (users + sessions)
+# ------------------------------------------------------------------------------
+AUTH_DISABLED = os.getenv("CROWNTALK_DISABLE_AUTH", "").lower() in ("1", "true", "yes")
+SESSION_TTL_DAYS = int(os.getenv("CROWNTALK_SESSION_TTL_DAYS", "30"))
+AUTH_TOKEN_BYTES = int(os.getenv("CROWNTALK_AUTH_TOKEN_BYTES", "32"))
+
+_DB_INIT_DONE = False
+_DB_INIT_LOCK = threading.Lock()
+
+@app.before_request
+def _ensure_db_initialized():
+    """Ensure DB schema exists even when running via gunicorn (main() not called)."""
+    global _DB_INIT_DONE
+    if _DB_INIT_DONE:
+        return None
+    with _DB_INIT_LOCK:
+        if _DB_INIT_DONE:
+            return None
+        try:
+            init_db()
+        except Exception as e:  # noqa: BLE001
+            logger.warning("DB init failed: %s", e)
+        _DB_INIT_DONE = True
+    return None
+
+
+def normalize_x_profile_link(raw: str) -> str:
+    """Normalize input into a canonical X profile URL: https://x.com/<handle>."""
+    v = (raw or "").strip()
+    if not v:
+        return ""
+
+    # Accept @handle, handle
+    if v.startswith("@"):
+        v = v[1:].strip()
+
+    # If it's not a URL, treat as handle or domain/path.
+    if "://" not in v:
+        low = v.lower()
+        if low.startswith(("x.com/", "twitter.com/", "www.x.com/", "www.twitter.com/")):
+            v = "https://" + v
+        else:
+            handle = v.split("/")[0].strip()
+            handle = re.sub(r"[^A-Za-z0-9_]", "", handle)
+            if not handle:
+                return ""
+            return f"https://x.com/{handle}"
+
+    try:
+        p = urlparse(v)
+        host = (p.netloc or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+
+        if host.endswith("twitter.com") or host.endswith("x.com"):
+            parts = [x for x in (p.path or "").split("/") if x]
+            handle = parts[0] if parts else ""
+            handle = handle.strip().lstrip("@")
+            handle = re.sub(r"[^A-Za-z0-9_]", "", handle)
+            if not handle:
+                return ""
+            return f"https://x.com/{handle}"
+    except Exception:
+        return ""
+
+    return ""
+
+
+def _hash_password(password: str, salt_hex: str | None = None) -> tuple[str, str]:
+    """PBKDF2-SHA256 password hashing. Returns (salt_hex, hash_hex)."""
+    pw = (password or "").encode("utf-8")
+    if not pw:
+        return ("", "")
+    salt = secrets.token_bytes(16) if not salt_hex else bytes.fromhex(salt_hex)
+    # Tune iterations as needed; 200k is a reasonable default for small apps.
+    dk = hashlib.pbkdf2_hmac("sha256", pw, salt, 200_000)
+    return (salt.hex(), dk.hex())
+
+
+def _verify_password(password: str, salt_hex: str, hash_hex: str) -> bool:
+    if not (salt_hex and hash_hex):
+        return False
+    _, cand = _hash_password(password, salt_hex=salt_hex)
+    try:
+        return hmac.compare_digest(cand, hash_hex)
+    except Exception:
+        return cand == hash_hex
+
+
+def _make_session_token() -> str:
+    # AUTH_TOKEN_BYTES is "bytes of entropy" for urlsafe token generation.
+    # 32 bytes => ~43 chars token, strong enough for sessions.
+    n = max(16, min(64, int(AUTH_TOKEN_BYTES)))
+    return secrets.token_urlsafe(n)
+
+
+def _token_hash(token: str) -> str:
+    return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
+
+
+def _create_session(conn: sqlite3.Connection, user_id: int) -> tuple[str, int]:
+    token = _make_session_token()
+    th = _token_hash(token)
+    now = int(time.time())
+    exp = now + (max(1, int(SESSION_TTL_DAYS)) * 86400)
+
+    ua = (request.headers.get("User-Agent") or "")[:300]
+    ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:120]
+
+    conn.execute(
+        """
+        INSERT OR REPLACE INTO user_sessions(token_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip, revoked_at)
+        VALUES(?,?,?,?,?,?,?,NULL)
+        """,
+        (th, int(user_id), now, exp, now, ua, ip),
+    )
+    return token, exp
+
+
+def _get_auth_token_from_request() -> str:
+    auth = (request.headers.get("Authorization") or "").strip()
+    if auth.lower().startswith("bearer "):
+        return auth[7:].strip()
+    alt = (request.headers.get("X-Crowntalk-Auth") or "").strip()
+    if alt:
+        return alt
+    return ""
+
+
+def _require_user_or_unauthorized():
+    """Require a valid session token, attach user to flask.g, else return (resp, code)."""
+    if AUTH_DISABLED:
+        g.user = None
+        return None
+
+    token = _get_auth_token_from_request()
+    if not token:
+        return jsonify({"error": "unauthorized", "code": "missing_auth"}), 401
+
+    th = _token_hash(token)
+    now = int(time.time())
+
+    try:
+        with get_conn() as conn:
+            srow = conn.execute(
+                "SELECT user_id, expires_at, revoked_at FROM user_sessions WHERE token_hash=? LIMIT 1",
+                (th,),
+            ).fetchone()
+
+            if not srow:
+                return jsonify({"error": "unauthorized", "code": "bad_auth"}), 401
+
+            user_id, expires_at, revoked_at = srow
+            if revoked_at:
+                return jsonify({"error": "unauthorized", "code": "revoked_auth"}), 401
+
+            if expires_at and now > int(expires_at):
+                try:
+                    conn.execute("UPDATE user_sessions SET revoked_at=? WHERE token_hash=?", (now, th))
+                except Exception:
+                    pass
+                return jsonify({"error": "unauthorized", "code": "expired_auth"}), 401
+
+            urow = conn.execute(
+                "SELECT id, name, x_link, is_active FROM users WHERE id=? LIMIT 1",
+                (int(user_id),),
+            ).fetchone()
+
+            if not urow:
+                return jsonify({"error": "unauthorized", "code": "unknown_user"}), 401
+
+            if int(urow[3] or 0) != 1:
+                return jsonify({"error": "unauthorized", "code": "inactive_user"}), 401
+
+            try:
+                conn.execute("UPDATE user_sessions SET last_seen_at=? WHERE token_hash=?", (now, th))
+            except Exception:
+                pass
+
+            g.user = {"id": int(urow[0]), "name": urow[1], "x_link": urow[2]}
+            g.user_id = int(urow[0])
+
+    except Exception as e:  # noqa: BLE001
+        logger.warning("Auth check failed: %s", e)
+        return jsonify({"error": "unauthorized", "code": "auth_error"}), 401
+
+    return None
+
+
+@app.route("/signup", methods=["POST", "OPTIONS"])
+def signup_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    # Require site access gate to sign up (keeps the site private).
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+
+    name = (data.get("name") or "").strip()
+    x_link = normalize_x_profile_link(data.get("x_link") or data.get("xUrl") or data.get("x_url") or "")
+    password = (data.get("password") or "").strip()
+
+    if len(name) < 2:
+        return jsonify({"error": "invalid_name", "code": "invalid_name"}), 400
+    if not x_link:
+        return jsonify({"error": "invalid_x_link", "code": "invalid_x_link"}), 400
+    if len(password) < 6:
+        return jsonify({"error": "weak_password", "code": "weak_password"}), 400
+
+    salt_hex, hash_hex = _hash_password(password)
+    if not salt_hex or not hash_hex:
+        return jsonify({"error": "invalid_password", "code": "invalid_password"}), 400
+
+    now = int(time.time())
+
+    try:
+        with get_conn() as conn:
+            try:
+                cur = conn.execute(
+                    """
+                    INSERT INTO users(name, x_link, password_salt, password_hash, created_at, last_login_at, is_active)
+                    VALUES(?,?,?,?,?,?,1)
+                    """,
+                    (name, x_link, salt_hex, hash_hex, now, None),
+                )
+                user_id = int(cur.lastrowid)
+            except sqlite3.IntegrityError:
+                return jsonify({"error": "user_exists", "code": "user_exists"}), 409
+
+            token, exp = _create_session(conn, user_id)
+
+        return jsonify(
+            {
+                "ok": True,
+                "user": {"id": user_id, "name": name, "x_link": x_link},
+                "token": token,
+                "expires_at": exp,
+            }
+        )
+
+    except Exception as e:  # noqa: BLE001
+        logger.exception("Signup failed")
+        return jsonify({"error": "signup_failed", "code": "signup_failed"}), 500
+
+
+@app.route("/login", methods=["POST", "OPTIONS"])
+def login_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    # Require site access gate to log in (keeps the site private).
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    try:
+        data = request.get_json(force=True, silent=True) or {}
+    except Exception:
+        data = {}
+
+    x_link = normalize_x_profile_link(data.get("x_link") or data.get("xUrl") or data.get("x_url") or "")
+    password = (data.get("password") or "").strip()
+
+    if not x_link or not password:
+        return jsonify({"error": "missing_fields", "code": "missing_fields"}), 400
+
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                """
+                SELECT id, name, x_link, password_salt, password_hash, is_active
+                FROM users
+                WHERE x_link=?
+                LIMIT 1
+                """,
+                (x_link,),
+            ).fetchone()
+
+            if not row or int(row[5] or 0) != 1:
+                time.sleep(0.8)
+                return jsonify({"error": "invalid_credentials", "code": "invalid_credentials"}), 401
+
+            user_id, name, x_link_db, salt_hex, hash_hex, _active = row
+
+            if not _verify_password(password, salt_hex, hash_hex):
+                time.sleep(0.8)
+                return jsonify({"error": "invalid_credentials", "code": "invalid_credentials"}), 401
+
+            now = int(time.time())
+            try:
+                conn.execute("UPDATE users SET last_login_at=? WHERE id=?", (now, int(user_id)))
+            except Exception:
+                pass
+
+            token, exp = _create_session(conn, int(user_id))
+
+        return jsonify(
+            {
+                "ok": True,
+                "user": {"id": int(user_id), "name": name, "x_link": x_link_db},
+                "token": token,
+                "expires_at": exp,
+            }
+        )
+    except Exception:
+        logger.exception("Login failed")
+        return jsonify({"error": "login_failed", "code": "login_failed"}), 500
+
+
+@app.route("/logout", methods=["POST", "OPTIONS"])
+def logout_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
+    token = _get_auth_token_from_request()
+    if not token:
+        return jsonify({"ok": True}), 200
+
+    th = _token_hash(token)
+    now = int(time.time())
+
+    try:
+        with get_conn() as conn:
+            conn.execute("UPDATE user_sessions SET revoked_at=? WHERE token_hash=?", (now, th))
+    except Exception:
+        pass
+
+    return jsonify({"ok": True}), 200
+
+
+@app.route("/me", methods=["GET", "OPTIONS"])
+def me_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
+    return jsonify({"ok": True, "user": g.user}), 200
+
 
 @app.route("/stats", methods=["GET"])
 def stats_endpoint():
@@ -1022,6 +1375,32 @@ def _do_init() -> None:
                 thash TEXT PRIMARY KEY,
                 created_at INTEGER
             );
+
+            -- Users / sessions (server-side login)
+            CREATE TABLE IF NOT EXISTS users (
+                id INTEGER PRIMARY KEY AUTOINCREMENT,
+                name TEXT NOT NULL,
+                x_link TEXT NOT NULL UNIQUE,
+                password_salt TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at INTEGER NOT NULL,
+                last_login_at INTEGER,
+                is_active INTEGER NOT NULL DEFAULT 1
+            );
+
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id INTEGER NOT NULL,
+                created_at INTEGER NOT NULL,
+                expires_at INTEGER NOT NULL,
+                last_seen_at INTEGER,
+                user_agent TEXT,
+                ip TEXT,
+                revoked_at INTEGER,
+                FOREIGN KEY(user_id) REFERENCES users(id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
+
             """
         )
 
@@ -1381,7 +1760,7 @@ def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
 def add_cors_headers(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth"
     return response
 
 @app.route("/", methods=["GET"])
@@ -5748,7 +6127,7 @@ def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
 def add_cors_headers_v2(response):
     response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth"
     return response
 
 
@@ -5768,6 +6147,11 @@ def comment_endpoint():
     guard = _require_access_or_forbidden()
     if guard is not None:
         return guard
+
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
     try:
         payload = request.get_json(force=True, silent=True) or {}
     except Exception:
@@ -5989,6 +6373,10 @@ def reroll_endpoint():
     guard = _require_access_or_forbidden()
     if guard is not None:
         return guard
+
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
 
     url = ""
     try:
