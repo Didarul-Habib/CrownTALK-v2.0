@@ -1403,6 +1403,89 @@ TOKEN_RE = re.compile(
 def _words_basic(text: str) -> list[str]:
     return TOKEN_RE.findall(text or "")
 
+
+
+# --- Script-aware tokenization (important for non-Latin languages) -----------
+# The legacy TOKEN_RE only matches Latin-ish tokens, which breaks native output
+# (bn/hi/ar/zh/ja/ko/etc). We keep TOKEN_RE for English quality heuristics,
+# but use script-aware counting/trimming for other scripts.
+
+def script_from_lang_code(lang_code: Optional[str]) -> str:
+    l = (lang_code or "").strip().lower()
+    if l.startswith("zh"):
+        return "zh"
+    if l.startswith("ja") or l.startswith("jp"):
+        return "ja"
+    if l.startswith("ko"):
+        return "ko"
+    if l.startswith("bn"):
+        return "bn"
+    if l.startswith("hi"):
+        return "hi"
+    if l.startswith("ar"):
+        return "ar"
+    if l.startswith("ur"):
+        return "ur"
+    if l.startswith("ta"):
+        return "ta"
+    if l.startswith("te"):
+        return "te"
+    return "latn"
+
+_CJK_RANGES = [
+    (0x4E00, 0x9FFF),   # CJK Unified Ideographs
+    (0x3040, 0x30FF),   # Hiragana + Katakana
+    (0xAC00, 0xD7AF),   # Hangul
+]
+
+def _is_cjk_char(ch: str) -> bool:
+    if not ch:
+        return False
+    o = ord(ch)
+    for a, b in _CJK_RANGES:
+        if a <= o <= b:
+            return True
+    return False
+
+def tokenize_by_script(text: str, script: str = "latn") -> list[str]:
+    t = (text or "").strip()
+    if not t:
+        return []
+    script = (script or "latn").lower()
+
+    # CJK: treat each ideograph/kana/hangul as a unit for "length"
+    if script in ("zh", "ja"):
+        return [ch for ch in t if _is_cjk_char(ch)]
+
+    # Most non-Latin scripts still separate words with spaces on X
+    if script in ("bn", "hi", "ar", "ur", "ta", "te", "ko"):
+        return [w for w in re.split(r"\s+", t) if w]
+
+    # Latin default (English + mixed): keep robust TOKEN_RE behaviour
+    return TOKEN_RE.findall(t)
+
+def trim_cjk_length(text: str, max_chars: int = 42) -> str:
+    t = _clean_spaces(text)
+    if not t:
+        return ""
+    chars = [ch for ch in t if _is_cjk_char(ch)]
+    if not chars:
+        # if it's not really CJK, fall back to whitespace trimming
+        return smart_trim_words(t, 3, 18, soft_max=22)
+    if len(chars) <= max_chars:
+        return t
+    # Keep the first max_chars CJK units, but preserve punctuation/spaces around them
+    kept = 0
+    out = []
+    for ch in t:
+        if _is_cjk_char(ch):
+            kept += 1
+            if kept > max_chars:
+                break
+        out.append(ch)
+    return _clean_spaces("".join(out))
+
+
 def sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
     txt = re.sub(r"[@#]\S+", "", txt)
@@ -1445,21 +1528,22 @@ def enforce_terminal_punctuation(text: str, is_question: bool = False) -> str:
         return t
 
 
-def enforce_word_count_natural(raw: str, min_w=6, max_w=13) -> str:
+def enforce_word_count_natural(raw: str, min_w=6, max_w=13, script: str = "latn") -> str:
     txt = sanitize_comment(raw)
-    toks = words(txt)
+    if not txt:
+        return ""
+
+    # Do NOT pad with filler words — short-but-good comments are more human.
+    if (script or "latn").lower() in ("zh", "ja"):
+        return trim_cjk_length(txt, max_chars=42)
+
+    toks = tokenize_by_script(txt, script=script)
     if not toks:
         return ""
     if len(toks) > max_w:
         toks = toks[:max_w]
-    while len(toks) < min_w:
-        for filler in ["honestly","tbh","still","though","right"]:
-            if len(toks) >= min_w:
-                break
-            toks.append(filler)
-        if len(toks) < min_w:
-            break
     return " ".join(toks).strip()
+
 
 
 def enforce_word_count_llm(raw: str, min_w: int = 6, max_w: int = 18, soft_max: int = 22) -> str:
@@ -3126,7 +3210,7 @@ def _build_comment_user_prompt(
         "- Comment #2 should read like a natural follow-up to YOUR OWN comment #1 "
         "(it still stays grounded in the same tweet, but should feel like you continued your own thought).\n"
         "- Do NOT make #2 look like a totally separate, unrelated comment.\n"
-        "Each on its own line, no quotes, no hashtags unless they clearly fit the tweet."
+        "Each on its own line, no quotes, no hashtags."
     )
 
     return "\n\n".join(p for p in parts if p)
@@ -3143,7 +3227,12 @@ generator = OfflineCommentGenerator()
 
 # --- Minimal helpers used by Groq path ---
 def words(text: str) -> list[str]:
-    return TOKEN_RE.findall(text or "")
+    # Primary: Latin-ish tokens (fast + consistent for English heuristics)
+    toks = TOKEN_RE.findall(text or "")
+    if toks:
+        return toks
+    # Fallback: whitespace tokenization for non-Latin scripts
+    return [w for w in re.split(r"\s+", (text or "").strip()) if w]
 
 def _sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
@@ -3677,73 +3766,256 @@ def is_meaningless_comment(comment: str, tweet_text: str = '') -> bool:
             return True
 
     return False
+def _persist_comment_memory(text: str) -> None:
+    """Persist a chosen comment into the anti-repeat memory tables."""
+    try:
+        remember_comment(text)
+        remember_template(text)
+        remember_opener(_openers(text))
+        remember_ngrams(text)
+    except Exception:
+        pass
+
+
 def enforce_unique(
     candidates: list[str],
     tweet_text: Optional[str] = None,
-    **_ignored_kwargs,  # allows url=..., lang=... without crashing
+    url: Optional[str] = None,
+    lang: Optional[str] = None,
+    target_lang: Optional[str] = None,
+    max_keep: int = 50,
+    persist: bool = False,
+    research_ctx: Optional[dict] = None,
+    script: Optional[str] = None,
+    **_ignored_kwargs,
 ) -> list[str]:
     """
-    - sanitize + enforce 6-13 words
-    - drop generic phrases
-    - skip past repeats / templates / trigram overlaps
-    - finally: pick two diverse comments (statement + question if possible)
-    """
-    out: list[str] = []
+    Filter + dedupe candidate comments.
 
-    for c in candidates:
-        c = enforce_word_count_natural(c)
+    Key design change (v2.1):
+    - We no longer force-return only 2 items here. We keep a larger candidate pool
+      (max_keep) so a later judge/ranker can select the best pair.
+    - We only persist anti-repeat memory for the FINAL chosen comments (persist=True).
+
+    Behaviour:
+    - sanitize + enforce length (script-aware)
+    - drop hallucinations (tickers/numbers) using tweet OR research context
+    - apply English-only generic/slop/similarity heuristics only when target is English
+    - skip previously seen comments/templates/openers/ngrams
+    """
+    tweet_text = tweet_text or ""
+    lang_code = (lang or target_lang or "en").strip().lower()
+    script = (script or script_from_lang_code(lang_code)).strip().lower()
+    is_english = lang_code.startswith("en") and script == "latn"
+
+    if research_ctx is None:
+        try:
+            research_ctx = REQUEST_RESEARCH_CTX.get()
+        except Exception:
+            research_ctx = None
+
+    out: list[str] = []
+    for c in candidates or []:
+        c = enforce_word_count_natural(c, 6, 18, script=script)
         c = ensure_question_mark(c)
+        c = _clean_spaces(c)
         if not c:
             continue
 
         # Pro strict gate (context-aware)
-        if PRO_KOL_STRICT and (not pro_kol_ok(c, tweet_text=tweet_text or "")):
+        if PRO_KOL_STRICT and (not pro_kol_ok(c, tweet_text=tweet_text)):
             continue
 
-        # Anti-hallucination: no new tickers / large numbers
-        if tweet_text and not hallucination_safe(c, tweet_text):
+        # Anti-hallucination: no new tickers / large numbers unless present in tweet OR research
+        if tweet_text and not hallucination_safe(c, tweet_text, research_ctx=research_ctx):
             continue
 
         # Block repeated sentence skeletons (structure-level repetition)
-        if template_burned(c):
+        if is_english and template_burned(c):
             continue
 
-        # kill very generic / overused phrases
-        if contains_generic_phrase(c):
+        # English-only generic phrase filtering
+        if is_english and contains_generic_phrase(c):
             continue
 
-        # reject vague/meaningless replies
-        if is_meaningless_comment(c, tweet_text or ''):
+        # reject vague/meaningless replies (works reasonably across scripts)
+        if is_meaningless_comment(c, tweet_text):
             continue
 
-        # structural repetition guards
-        if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
+        # structural repetition guards (English only; non-Latin tokenization differs)
+        if is_english:
+            if opener_seen(_openers(c)) or trigram_overlap_bad(c, threshold=2) or too_similar_to_recent(c):
+                continue
+
+        if comment_seen(c):
             continue
 
-        if not comment_seen(c):
-            remember_comment(c)
-            remember_template(c)
-            remember_opener(_openers(c))
-            remember_ngrams(c)
-            out.append(c)
-        else:
-            # small tweak path to rescue near-duplicate if it's short
-            toks = words(c)
-            if len(toks) < 13:
-                alt = enforce_word_count_natural(c + " today")
-                alt = ensure_question_mark(alt)
-                if alt and not comment_seen(alt) and (not contains_generic_phrase(alt)) and (not is_meaningless_comment(alt, tweet_text or '')):
-                    remember_comment(alt)
-                    remember_template(alt)
-                    remember_opener(_openers(alt))
-                    remember_ngrams(alt)
-                    out.append(alt)
+        out.append(c)
 
-    # final hybrid pairing: maximize vibe diversity
-    if len(out) >= 2:
-        out = pick_two_diverse_text(out)
+        # Keep pool bounded
+        if len(out) >= max_keep:
+            break
 
-    return out[:2]
+    # Persist memory only for final selections
+    if persist:
+        for c in out:
+            _persist_comment_memory(c)
+
+    return out
+
+
+
+def _keyword_pool_for_relevance(tweet_text: str, research_ctx: Optional[dict] = None) -> set[str]:
+    pool: set[str] = set()
+    try:
+        ents = extract_entities(tweet_text or "")
+        for x in (ents.get("cashtags") or []):
+            pool.add(x.lower())
+        for x in (ents.get("handles") or []):
+            pool.add(x.lower().lstrip("@"))
+        for x in (ents.get("numbers") or []):
+            pool.add(x.lower())
+    except Exception:
+        pass
+    try:
+        for k in (extract_keywords(tweet_text or "") or [])[:20]:
+            if k and len(k) >= 3:
+                pool.add(k.lower())
+    except Exception:
+        pass
+
+    # Add a light set of tokens from research context (best effort)
+    try:
+        if research_ctx:
+            rtxt = json.dumps(research_ctx, ensure_ascii=False).lower()
+            for x in re.findall(r"\$\w{2,15}", rtxt):
+                pool.add(x.lower())
+            for x in re.findall(r"\b[a-z]{3,}\b", rtxt):
+                if x not in STYLE_STOPWORDS and len(x) >= 4:
+                    pool.add(x)
+    except Exception:
+        pass
+    return pool
+
+
+def score_candidate_comment(
+    comment: str,
+    tweet_text: str,
+    lang_code: str = "en",
+    script: str = "latn",
+    research_ctx: Optional[dict] = None,
+) -> float:
+    """Cheap-but-effective judge score: relevance + specificity - slop - risk."""
+    c = (comment or "").strip()
+    if not c:
+        return -999.0
+    low = c.lower()
+    lang_code = (lang_code or "en").lower()
+    script = (script or "latn").lower()
+    is_english = lang_code.startswith("en") and script == "latn"
+
+    score = 0.0
+
+    # relevance: mentions at least one key token/entity
+    pool = _keyword_pool_for_relevance(tweet_text, research_ctx=research_ctx)
+    if pool:
+        hits = 0
+        for tok in list(pool)[:60]:
+            if tok and tok in low:
+                hits += 1
+                if hits >= 2:
+                    break
+        if hits >= 1:
+            score += 2.0
+        if hits >= 2:
+            score += 1.0
+
+    # specificity: a concrete question or operator language
+    if "?" in c:
+        score += 1.0
+    if any(w in low for w in PRO_OPERATOR_WORDS):
+        score += 1.0
+    if re.search(r"\d", c):
+        score += 0.5
+
+    # penalize generic slop (English only)
+    if is_english and contains_generic_phrase(low):
+        score -= 3.0
+
+    # risk: hallucination guard (tweet + research)
+    if tweet_text and not hallucination_safe(c, tweet_text, research_ctx=research_ctx):
+        score -= 3.0
+
+    # repetition penalty (English only)
+    if is_english and (template_burned(c) or too_similar_to_recent(c)):
+        score -= 1.5
+
+    # length preference: keep it tight but not tiny
+    try:
+        n = len(tokenize_by_script(c, script=script)) if script not in ("zh","ja") else len([ch for ch in c if _is_cjk_char(ch)])
+        if 6 <= n <= 18:
+            score += 0.5
+        elif n < 4:
+            score -= 0.5
+        elif n > 26:
+            score -= 0.5
+    except Exception:
+        pass
+
+    return score
+
+
+def pick_best_pair(
+    candidates: list[str],
+    tweet_text: str,
+    lang_code: str = "en",
+    script: str = "latn",
+    research_ctx: Optional[dict] = None,
+    want_alternates: bool = False,
+) -> tuple[list[str], list[str]]:
+    """Return (best_pair, alternates)."""
+    if not candidates:
+        return ([], [])
+    scored = []
+    for c in candidates:
+        scored.append((score_candidate_comment(c, tweet_text, lang_code=lang_code, script=script, research_ctx=research_ctx), c))
+    scored.sort(key=lambda x: x[0], reverse=True)
+
+    ranked = [c for _, c in scored if c]
+    best = ranked[0]
+
+    # Choose a second that isn't too similar; prefer question-vs-statement diversity
+    best_is_q = "?" in best
+    second = None
+    for c in ranked[1:]:
+        if c == best:
+            continue
+        if script == "latn" and _pair_too_similar(best, c, threshold=0.45):
+            continue
+        c_is_q = "?" in c
+        if c_is_q != best_is_q:
+            second = c
+            break
+        if second is None:
+            second = c
+
+    if second is None:
+        second = best
+
+    pair = [best, second]
+
+    alternates: list[str] = []
+    if want_alternates:
+        for c in ranked[1:]:
+            if c in pair:
+                continue
+            if script == "latn" and any(_pair_too_similar(c, p, threshold=0.45) for p in pair):
+                continue
+            alternates.append(c)
+            if len(alternates) >= 2:
+                break
+
+    return (pair, alternates)
 
 PRO_BAD_PHRASES = {
     "wow", "exciting", "huge", "insane", "amazing", "awesome",
@@ -3914,36 +4186,54 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
 
     return ctx
 
-def hallucination_safe(comment: str, tweet_text: str) -> bool:
+def hallucination_safe(comment: str, tweet_text: str, research_ctx: Optional[dict] = None) -> bool:
     """
     Anti-hallucination guard:
-    - Reject new $TICKERs not present in the tweet.
-    - Reject large numbers (>10) that are not present in the tweet (string match).
+    - Reject new $TICKERs not present in the tweet OR approved research context.
+    - Reject large numbers (>10) that are not present in the tweet OR approved research context.
+
+    Notes:
+    - Research context may include TVL/price/users/etc; we allow those numbers only
+      if they appear verbatim in the research context text payload.
     """
     c = comment or ""
     t = tweet_text or ""
     if not c:
         return False
 
-    # 1) cashtags: comment ⊆ tweet
+    # Build an "allowed text pool" from research context (best effort)
+    rtxt = ""
+    try:
+        if research_ctx:
+            rtxt = json.dumps(research_ctx, ensure_ascii=False)
+    except Exception:
+        rtxt = ""
+
+    # 1) cashtags: comment ⊆ (tweet ∪ research)
     comment_tags = set(re.findall(r"\$\w{2,15}", c))
     tweet_ents = extract_entities(t)
     tweet_tags = set(tweet_ents.get("cashtags") or [])
-    if comment_tags - tweet_tags:
+    research_tags = set(re.findall(r"\$\w{2,15}", rtxt)) if rtxt else set()
+    allowed_tags = tweet_tags | research_tags
+    if comment_tags - allowed_tags:
         return False
 
-    # 2) large numbers
+    # 2) large numbers: allow if present in tweet OR research text
     comment_nums = re.findall(r"\d+(?:\.\d+)?", c)
     tweet_nums = set(re.findall(r"\d+(?:\.\d+)?", t))
+    research_nums = set(re.findall(r"\d+(?:\.\d+)?", rtxt)) if rtxt else set()
+    allowed_nums = tweet_nums | research_nums
+
     for ns in comment_nums:
         try:
             val = float(ns)
         except ValueError:
             continue
-        if val > 10 and ns not in tweet_nums:
+        if val > 10 and ns not in allowed_nums:
             return False
 
     return True
+
 
 
 
@@ -5200,6 +5490,7 @@ def generate_two_comments_with_providers(
     url: Optional[str] = None,
     target_lang: Optional[str] = None,
     out_lang_tag: Optional[str] = None,
+    include_alternates: bool = False,
 ) -> List[Dict[str, Any]]:
     """
     Working cascade:
@@ -5280,6 +5571,9 @@ def generate_two_comments_with_providers(
                     tweet_text=tweet_text,
                     url=url,
                     lang=lang_out,
+                    target_lang=gen_lang,
+                    max_keep=MAX_CANDIDATES_FOR_SELECTION,
+                    persist=False,
                 )
         except Exception as e:  # noqa: BLE001
             logger.warning("%s provider failed: %s", name, e)
@@ -5297,6 +5591,9 @@ def generate_two_comments_with_providers(
                     tweet_text=tweet_text,
                     url=url,
                     lang=lang_out,
+                    target_lang=gen_lang,
+                    max_keep=MAX_CANDIDATES_FOR_SELECTION,
+                    persist=False,
                 )
         except Exception as e:  # noqa: BLE001
             logger.warning("offline fallback failed: %s", e)
@@ -5308,16 +5605,31 @@ def generate_two_comments_with_providers(
             tweet_text=tweet_text,
             url=url,
             lang=lang_out,
+            target_lang=gen_lang,
+            max_keep=MAX_CANDIDATES_FOR_SELECTION,
+            persist=False,
         )
 
     if len(candidates) < 2:
         raise CrownTALKError("Could not generate two comments")
+    # Judge + select best pair (curated, more professional)
+    script = script_from_lang_code(lang_out)
+    try:
+        research_ctx = REQUEST_RESEARCH_CTX.get()
+    except Exception:
+        research_ctx = None
 
-    # Ensure we only keep two, with diversity pairing
-    if len(candidates) > 2:
-        candidates = pick_two_diverse_text(candidates)
+    want_alts = bool(include_alternates) or (str(os.getenv("INCLUDE_ALTERNATES", "0")).strip() == "1")
+    pair, alternates = pick_best_pair(
+        candidates,
+        tweet_text=tweet_text,
+        lang_code=lang_out,
+        script=script,
+        research_ctx=research_ctx,
+        want_alternates=want_alts,
+    )
 
-    base_pair = candidates[:2]
+    base_pair = pair
 
     # --- 4) Optional Pro KOL rewrite ----------------------------------------
     final_pair = base_pair[:]
@@ -5349,6 +5661,10 @@ def generate_two_comments_with_providers(
 
     final_pair = processed_texts
 
+    # Persist anti-repeat memory ONLY for the final chosen comments
+    for _c in final_pair:
+        _persist_comment_memory(_c)
+
     # --- 6) Build structured outputs with thread tagging ---------------------
     delays = (plan or {}).get("delays") or []
     thread_flag = bool(THREAD_PAIR_MODE)
@@ -5371,6 +5687,13 @@ def generate_two_comments_with_providers(
         if thread_flag and idx == 1:
             item["follow_up"] = True
         out.append(item)
+
+    # Optional: provide alternates (power users)
+    try:
+        if want_alts and alternates and out:
+            out[0]["alternates"] = [{"lang": lang_out, "text": a} for a in alternates]
+    except Exception:
+        pass
 
     # Safety: always exactly two items
     if len(out) != 2:
@@ -5552,6 +5875,7 @@ def comment_endpoint():
                         url=url,
                         target_lang="en",
                         out_lang_tag="en",
+                        include_alternates=bool(payload.get("include_alternates", False)),
                     )
                 )
 
@@ -5569,6 +5893,7 @@ def comment_endpoint():
                             url=url,
                             target_lang=native_lang,
                             out_lang_tag=out_tag,
+                            include_alternates=bool(payload.get("include_alternates", False)),
                         )
                     )
 
@@ -5578,6 +5903,7 @@ def comment_endpoint():
                 handle,
                 t.lang or None,
                 url=url,
+                include_alternates=bool(payload.get("include_alternates", False)),
             )
 
             display_url = _canonical_x_url_from_tweet(url, t)
