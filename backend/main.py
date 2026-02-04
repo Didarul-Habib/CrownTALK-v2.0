@@ -17,6 +17,15 @@ from urllib.parse import urlparse
 import requests
 from flask import Flask, request, jsonify, make_response, g
 
+# Optional Postgres auth storage (Supabase). We keep the rest of the app on SQLite
+# because it's used for caching/anti-repeat and can remain ephemeral on Render Free.
+try:
+    import psycopg2
+    from psycopg2 import errors as pg_errors
+except Exception:  # noqa: BLE001
+    psycopg2 = None
+    pg_errors = None
+
 
 # Helpers from utils.py (already deployed)
 from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
@@ -171,6 +180,127 @@ AUTH_DISABLED = os.getenv("CROWNTALK_DISABLE_AUTH", "").lower() in ("1", "true",
 SESSION_TTL_DAYS = int(os.getenv("CROWNTALK_SESSION_TTL_DAYS", "30"))
 AUTH_TOKEN_BYTES = int(os.getenv("CROWNTALK_AUTH_TOKEN_BYTES", "32"))
 
+# If DATABASE_URL is set, we store users/sessions in Postgres (Supabase) so
+# they persist on Render Free. Everything else can remain on SQLite.
+AUTH_DATABASE_URL = (
+    os.getenv("DATABASE_URL", "").strip()
+    or os.getenv("SUPABASE_DATABASE_URL", "").strip()
+    or os.getenv("SUPABASE_DB_URL", "").strip()
+)
+USE_POSTGRES_AUTH = bool(AUTH_DATABASE_URL)
+
+# For Supabase Postgres, keep a small pool per Gunicorn worker.
+# This reduces connection churn and avoids hitting Supabase connection limits.
+PG_POOL_MAX_CONN = int(os.getenv("PG_POOL_MAX_CONN", "5"))
+_PG_POOL = None
+_PG_POOL_LOCK = threading.Lock()
+
+
+def _get_pg_pool():
+    global _PG_POOL
+    if _PG_POOL is not None:
+        return _PG_POOL
+    with _PG_POOL_LOCK:
+        if _PG_POOL is not None:
+            return _PG_POOL
+        if not USE_POSTGRES_AUTH:
+            return None
+        if psycopg2 is None:
+            raise RuntimeError("psycopg2 is not installed (required for Postgres auth)")
+        from psycopg2.pool import SimpleConnectionPool
+
+        maxc = max(1, min(20, int(PG_POOL_MAX_CONN)))
+        dsn = _ensure_pg_sslmode(AUTH_DATABASE_URL)
+        _PG_POOL = SimpleConnectionPool(1, maxc, dsn)
+        return _PG_POOL
+
+
+def _ensure_pg_sslmode(dsn: str) -> str:
+    """Supabase requires SSL. If the DSN doesn't specify sslmode, force require."""
+    dsn = (dsn or "").strip()
+    if not dsn:
+        return dsn
+    # URL form: postgresql://.../db?param=...  (most common)
+    if "sslmode=" in dsn.lower():
+        return dsn
+    if dsn.startswith("postgres://") or dsn.startswith("postgresql://"):
+        if "?" in dsn:
+            return dsn + "&sslmode=require"
+        return dsn + "?sslmode=require"
+    # keyword DSN form: "dbname=... user=..." -> add sslmode=require
+    return dsn + " sslmode=require"
+
+
+@contextmanager
+def auth_db_conn():
+    """Context manager for the auth DB.
+
+    - Postgres (Supabase) when AUTH_DATABASE_URL is set.
+    - Otherwise falls back to SQLite (useful for local/dev).
+    """
+    if USE_POSTGRES_AUTH:
+        pool = _get_pg_pool()
+        if pool is None:
+            raise RuntimeError("Postgres auth enabled but pool is not available")
+        conn = pool.getconn()
+        try:
+            # Ensure autocommit for simple transactional behavior.
+            conn.autocommit = True
+            yield conn
+        finally:
+            try:
+                pool.putconn(conn)
+            except Exception:
+                try:
+                    conn.close()
+                except Exception:
+                    pass
+    else:
+        with get_conn() as conn:
+            yield conn
+
+
+def init_auth_db() -> None:
+    """Create users/sessions tables in the auth DB (Postgres on Supabase)."""
+    if not USE_POSTGRES_AUTH:
+        return
+    with auth_db_conn() as conn:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS users (
+                id BIGSERIAL PRIMARY KEY,
+                name TEXT NOT NULL,
+                x_link TEXT NOT NULL UNIQUE,
+                password_salt TEXT NOT NULL,
+                password_hash TEXT NOT NULL,
+                created_at BIGINT NOT NULL,
+                last_login_at BIGINT,
+                is_active BOOLEAN NOT NULL DEFAULT TRUE
+            );
+            """
+        )
+        cur.execute(
+            """
+            CREATE TABLE IF NOT EXISTS user_sessions (
+                token_hash TEXT PRIMARY KEY,
+                user_id BIGINT NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+                created_at BIGINT NOT NULL,
+                expires_at BIGINT NOT NULL,
+                last_seen_at BIGINT,
+                user_agent TEXT,
+                ip TEXT,
+                revoked_at BIGINT
+            );
+            """
+        )
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);")
+        cur.execute("CREATE INDEX IF NOT EXISTS idx_users_x_link ON users(x_link);")
+        try:
+            cur.close()
+        except Exception:
+            pass
+
 _DB_INIT_DONE = False
 _DB_INIT_LOCK = threading.Lock()
 
@@ -185,6 +315,7 @@ def _ensure_db_initialized():
             return None
         try:
             init_db()
+            init_auth_db()
         except Exception as e:  # noqa: BLE001
             logger.warning("DB init failed: %s", e)
         _DB_INIT_DONE = True
@@ -265,7 +396,7 @@ def _token_hash(token: str) -> str:
     return hashlib.sha256((token or "").encode("utf-8")).hexdigest()
 
 
-def _create_session(conn: sqlite3.Connection, user_id: int) -> tuple[str, int]:
+def _create_session(conn, user_id: int) -> tuple[str, int]:
     token = _make_session_token()
     th = _token_hash(token)
     now = int(time.time())
@@ -274,13 +405,35 @@ def _create_session(conn: sqlite3.Connection, user_id: int) -> tuple[str, int]:
     ua = (request.headers.get("User-Agent") or "")[:300]
     ip = (request.headers.get("X-Forwarded-For") or request.remote_addr or "")[:120]
 
-    conn.execute(
-        """
-        INSERT OR REPLACE INTO user_sessions(token_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip, revoked_at)
-        VALUES(?,?,?,?,?,?,?,NULL)
-        """,
-        (th, int(user_id), now, exp, now, ua, ip),
-    )
+    if USE_POSTGRES_AUTH:
+        cur = conn.cursor()
+        cur.execute(
+            """
+            INSERT INTO user_sessions(token_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip, revoked_at)
+            VALUES(%s,%s,%s,%s,%s,%s,%s,NULL)
+            ON CONFLICT (token_hash) DO UPDATE SET
+                user_id = EXCLUDED.user_id,
+                created_at = EXCLUDED.created_at,
+                expires_at = EXCLUDED.expires_at,
+                last_seen_at = EXCLUDED.last_seen_at,
+                user_agent = EXCLUDED.user_agent,
+                ip = EXCLUDED.ip,
+                revoked_at = NULL
+            """,
+            (th, int(user_id), now, exp, now, ua, ip),
+        )
+        try:
+            cur.close()
+        except Exception:
+            pass
+    else:
+        conn.execute(
+            """
+            INSERT OR REPLACE INTO user_sessions(token_hash, user_id, created_at, expires_at, last_seen_at, user_agent, ip, revoked_at)
+            VALUES(?,?,?,?,?,?,?,NULL)
+            """,
+            (th, int(user_id), now, exp, now, ua, ip),
+        )
     return token, exp
 
 
@@ -308,11 +461,19 @@ def _require_user_or_unauthorized():
     now = int(time.time())
 
     try:
-        with get_conn() as conn:
-            srow = conn.execute(
-                "SELECT user_id, expires_at, revoked_at FROM user_sessions WHERE token_hash=? LIMIT 1",
-                (th,),
-            ).fetchone()
+        with auth_db_conn() as conn:
+            if USE_POSTGRES_AUTH:
+                cur = conn.cursor()
+                cur.execute(
+                    "SELECT user_id, expires_at, revoked_at FROM user_sessions WHERE token_hash=%s LIMIT 1",
+                    (th,),
+                )
+                srow = cur.fetchone()
+            else:
+                srow = conn.execute(
+                    "SELECT user_id, expires_at, revoked_at FROM user_sessions WHERE token_hash=? LIMIT 1",
+                    (th,),
+                ).fetchone()
 
             if not srow:
                 return jsonify({"error": "unauthorized", "code": "bad_auth"}), 401
@@ -323,15 +484,25 @@ def _require_user_or_unauthorized():
 
             if expires_at and now > int(expires_at):
                 try:
-                    conn.execute("UPDATE user_sessions SET revoked_at=? WHERE token_hash=?", (now, th))
+                    if USE_POSTGRES_AUTH:
+                        cur.execute("UPDATE user_sessions SET revoked_at=%s WHERE token_hash=%s", (now, th))
+                    else:
+                        conn.execute("UPDATE user_sessions SET revoked_at=? WHERE token_hash=?", (now, th))
                 except Exception:
                     pass
                 return jsonify({"error": "unauthorized", "code": "expired_auth"}), 401
 
-            urow = conn.execute(
-                "SELECT id, name, x_link, is_active FROM users WHERE id=? LIMIT 1",
-                (int(user_id),),
-            ).fetchone()
+            if USE_POSTGRES_AUTH:
+                cur.execute(
+                    "SELECT id, name, x_link, is_active FROM users WHERE id=%s LIMIT 1",
+                    (int(user_id),),
+                )
+                urow = cur.fetchone()
+            else:
+                urow = conn.execute(
+                    "SELECT id, name, x_link, is_active FROM users WHERE id=? LIMIT 1",
+                    (int(user_id),),
+                ).fetchone()
 
             if not urow:
                 return jsonify({"error": "unauthorized", "code": "unknown_user"}), 401
@@ -340,9 +511,18 @@ def _require_user_or_unauthorized():
                 return jsonify({"error": "unauthorized", "code": "inactive_user"}), 401
 
             try:
-                conn.execute("UPDATE user_sessions SET last_seen_at=? WHERE token_hash=?", (now, th))
+                if USE_POSTGRES_AUTH:
+                    cur.execute("UPDATE user_sessions SET last_seen_at=%s WHERE token_hash=%s", (now, th))
+                else:
+                    conn.execute("UPDATE user_sessions SET last_seen_at=? WHERE token_hash=?", (now, th))
             except Exception:
                 pass
+
+            if USE_POSTGRES_AUTH:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
 
             g.user = {"id": int(urow[0]), "name": urow[1], "x_link": urow[2]}
             g.user_id = int(urow[0])
@@ -387,18 +567,42 @@ def signup_endpoint():
     now = int(time.time())
 
     try:
-        with get_conn() as conn:
-            try:
-                cur = conn.execute(
-                    """
-                    INSERT INTO users(name, x_link, password_salt, password_hash, created_at, last_login_at, is_active)
-                    VALUES(?,?,?,?,?,?,1)
-                    """,
-                    (name, x_link, salt_hex, hash_hex, now, None),
-                )
-                user_id = int(cur.lastrowid)
-            except sqlite3.IntegrityError:
-                return jsonify({"error": "user_exists", "code": "user_exists"}), 409
+        with auth_db_conn() as conn:
+            if USE_POSTGRES_AUTH:
+                cur = conn.cursor()
+                try:
+                    cur.execute(
+                        """
+                        INSERT INTO users(name, x_link, password_salt, password_hash, created_at, last_login_at, is_active)
+                        VALUES(%s,%s,%s,%s,%s,%s,TRUE)
+                        RETURNING id
+                        """,
+                        (name, x_link, salt_hex, hash_hex, now, None),
+                    )
+                    user_id = int(cur.fetchone()[0])
+                except Exception as e:  # noqa: BLE001
+                    # Unique violation => user already exists
+                    if getattr(e, "pgcode", None) == "23505":
+                        return jsonify({"error": "user_exists", "code": "user_exists"}), 409
+                    # psycopg2 raises IntegrityError with .pgcode in many cases
+                    raise
+                finally:
+                    try:
+                        cur.close()
+                    except Exception:
+                        pass
+            else:
+                try:
+                    cur = conn.execute(
+                        """
+                        INSERT INTO users(name, x_link, password_salt, password_hash, created_at, last_login_at, is_active)
+                        VALUES(?,?,?,?,?,?,1)
+                        """,
+                        (name, x_link, salt_hex, hash_hex, now, None),
+                    )
+                    user_id = int(cur.lastrowid)
+                except sqlite3.IntegrityError:
+                    return jsonify({"error": "user_exists", "code": "user_exists"}), 409
 
             token, exp = _create_session(conn, user_id)
 
@@ -438,18 +642,31 @@ def login_endpoint():
         return jsonify({"error": "missing_fields", "code": "missing_fields"}), 400
 
     try:
-        with get_conn() as conn:
-            row = conn.execute(
-                """
-                SELECT id, name, x_link, password_salt, password_hash, is_active
-                FROM users
-                WHERE x_link=?
-                LIMIT 1
-                """,
-                (x_link,),
-            ).fetchone()
+        with auth_db_conn() as conn:
+            if USE_POSTGRES_AUTH:
+                cur = conn.cursor()
+                cur.execute(
+                    """
+                    SELECT id, name, x_link, password_salt, password_hash, is_active
+                    FROM users
+                    WHERE x_link=%s
+                    LIMIT 1
+                    """,
+                    (x_link,),
+                )
+                row = cur.fetchone()
+            else:
+                row = conn.execute(
+                    """
+                    SELECT id, name, x_link, password_salt, password_hash, is_active
+                    FROM users
+                    WHERE x_link=?
+                    LIMIT 1
+                    """,
+                    (x_link,),
+                ).fetchone()
 
-            if not row or int(row[5] or 0) != 1:
+            if not row or not bool(row[5]):
                 time.sleep(0.8)
                 return jsonify({"error": "invalid_credentials", "code": "invalid_credentials"}), 401
 
@@ -461,11 +678,20 @@ def login_endpoint():
 
             now = int(time.time())
             try:
-                conn.execute("UPDATE users SET last_login_at=? WHERE id=?", (now, int(user_id)))
+                if USE_POSTGRES_AUTH:
+                    cur.execute("UPDATE users SET last_login_at=%s WHERE id=%s", (now, int(user_id)))
+                else:
+                    conn.execute("UPDATE users SET last_login_at=? WHERE id=?", (now, int(user_id)))
             except Exception:
                 pass
 
             token, exp = _create_session(conn, int(user_id))
+
+            if USE_POSTGRES_AUTH:
+                try:
+                    cur.close()
+                except Exception:
+                    pass
 
         return jsonify(
             {
@@ -497,8 +723,16 @@ def logout_endpoint():
     now = int(time.time())
 
     try:
-        with get_conn() as conn:
-            conn.execute("UPDATE user_sessions SET revoked_at=? WHERE token_hash=?", (now, th))
+        with auth_db_conn() as conn:
+            if USE_POSTGRES_AUTH:
+                cur = conn.cursor()
+                cur.execute("UPDATE user_sessions SET revoked_at=%s WHERE token_hash=%s", (now, th))
+                try:
+                    cur.close()
+                except Exception:
+                    pass
+            else:
+                conn.execute("UPDATE user_sessions SET revoked_at=? WHERE token_hash=?", (now, th))
     except Exception:
         pass
 
