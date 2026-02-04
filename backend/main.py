@@ -2386,6 +2386,8 @@ try:
 except re.error:
     EMOJI_PATTERN = re.compile(r"[\u2600-\u27BF]+", flags=re.UNICODE)
 
+# Tweet-context router: infer a coarse "topic" from the actual tweet text (gm/airdrop/chart/bug/thread/meme)
+# so downstream comment generation picks the right reaction/template instead of generic filler.
 def detect_topic(text: str) -> str:
     t = (text or "").lower()
     if any(k in t for k in ("gm ", "gn ", "good morning", "good night")):
@@ -2406,6 +2408,8 @@ def detect_topic(text: str) -> str:
         return "one_liner"
     return "generic"
 
+# Tweet-context steering: generate a short "mode" instruction from the tweet's keywords (dev/trader/NFT/etc)
+# to keep replies anchored to what the tweet is about and avoid random praise/AI-sounding lines.
 def llm_mode_hint(tweet_text: str) -> str:
     """
     Small, dynamic steering line for the LLM.
