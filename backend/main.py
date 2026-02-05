@@ -5106,7 +5106,16 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
         )
 
     if len(candidates) < 2:
-        raise RuntimeError("Could not produce two valid comments")
+        # Last resort: do not fail the whole request just because strict filters
+        # (anti-repeat, word-count, parsing) reduced the pool below 2.
+        # Returning 2 reasonable offline comments is better than returning an
+        # error and showing nothing on the frontend.
+        fallback = safe_offline_two_comments(tweet_text, author)
+        # Ensure we always return exactly two strings.
+        if isinstance(fallback, (list, tuple)) and len(fallback) >= 2:
+            return [str(fallback[0]), str(fallback[1])]
+        # Extremely defensive final fallback
+        return ["Solid point", "What changed your mind on this?"]
 
     # If the pair is too similar, try to diversify by mixing in offline ones
     if _pair_too_similar(candidates[0], candidates[1]):
@@ -6297,6 +6306,8 @@ def generate_two_comments_with_providers(
             "reaction": reaction_kind,
             "delay_sec": delay_sec,
             "mode": guess_mode(text),
+            # Compatibility: UI labels this field as `provider`.
+            "provider": guess_mode(text),
             "thread_pair": thread_flag,   # 2.1: tag the pair as 'thread' from backend
             "thread_index": idx,
         }
@@ -6308,7 +6319,8 @@ def generate_two_comments_with_providers(
     # Optional: provide alternates (power users)
     try:
         if want_alts and alternates and out:
-            out[0]["alternates"] = [{"lang": lang_out, "text": a} for a in alternates]
+            # Frontend expects `alternates` as a simple string array.
+            out[0]["alternates"] = [str(a) for a in alternates]
     except Exception:
         pass
 
