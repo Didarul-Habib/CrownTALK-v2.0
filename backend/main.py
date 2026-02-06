@@ -6,7 +6,7 @@ try:
 except Exception:  # noqa: BLE001
     fcntl = None
 
-import json, os, re, time, random, hashlib, logging, sqlite3, threading, secrets, hmac
+import json, os, re, time, random, hashlib, logging, sqlite3, threading, secrets, hmac, socket, ipaddress
 from collections import Counter
 from contextvars import ContextVar
 from datetime import datetime
@@ -62,7 +62,198 @@ METRICS: dict[str, object] = {
     "total_comment_calls": 0,
     "total_reroll_calls": 0,
     "total_errors": 0,
+    "last_error": None,
 }
+
+# ------------------------------------------------------------------------------
+# Request tracing / structured logging (JSON) + basic abuse protection
+# ------------------------------------------------------------------------------
+
+# Rate limit (best-effort, in-memory, per-process). Good enough for Render Free.
+# Defaults are conservative; tune via env vars.
+RATE_LIMIT_WINDOW_SECONDS = int(os.getenv("CROWNTALK_RATE_LIMIT_WINDOW_SECONDS", "60"))
+RATE_LIMIT_MAX_REQUESTS = int(os.getenv("CROWNTALK_RATE_LIMIT_MAX_REQUESTS", "120"))
+RATE_LIMIT_SENSITIVE_MAX_REQUESTS = int(os.getenv("CROWNTALK_RATE_LIMIT_SENSITIVE_MAX_REQUESTS", "30"))
+_rate_state: dict[str, dict[str, object]] = {}
+
+SENSITIVE_PATH_PREFIXES = (
+    "/comment",
+    "/comment/stream",
+    "/reroll",
+    "/comment_from_url",
+    "/comment_from_url/stream",
+    "/source_preview",
+    "/login",
+    "/signup",
+)
+
+def _client_ip() -> str:
+    # Render sets X-Forwarded-For; we use left-most (original client).
+    xff = (request.headers.get("X-Forwarded-For") or "").split(",")[0].strip()
+    return xff or (request.remote_addr or "unknown")
+
+def _rate_allow(ip: str, is_sensitive: bool) -> bool:
+    now = time.time()
+    st = _rate_state.get(ip)
+    if not st or now - float(st.get("t0", 0.0)) > RATE_LIMIT_WINDOW_SECONDS:
+        st = {"t0": now, "n": 0}
+        _rate_state[ip] = st
+    st["n"] = int(st.get("n", 0)) + 1
+    limit = RATE_LIMIT_SENSITIVE_MAX_REQUESTS if is_sensitive else RATE_LIMIT_MAX_REQUESTS
+    return int(st["n"]) <= int(limit)
+
+@app.before_request
+def _start_timer_and_limits():
+    # Capture start time for latency logs
+    g._t0 = time.time()
+
+    # Hard payload size guard (MAX_CONTENT_LENGTH mostly handles this, but this
+    # adds an explicit JSON-friendly error).
+    if request.method in ("POST", "PUT", "PATCH"):
+        clen = request.content_length
+        if clen is not None:
+            max_len = int(app.config.get("MAX_CONTENT_LENGTH") or 0)
+            if max_len and clen > max_len:
+                return api_error("payload_too_large", "Payload too large", 413, details={"max_bytes": max_len})
+
+    # Rate-limit sensitive routes per IP
+    path = request.path or ""
+    is_sensitive = any(path.startswith(p) for p in SENSITIVE_PATH_PREFIXES)
+    ip = _client_ip()
+    if is_sensitive:
+        if not _rate_allow(ip, True):
+            return api_error("rate_limited", "Too many requests. Please slow down.", 429, details={"window_sec": RATE_LIMIT_WINDOW_SECONDS})
+    else:
+        # still count but allow higher limit
+        _rate_allow(ip, False)
+
+@app.after_request
+def _add_request_id_and_log(resp):
+    # Correlation id always returned
+    rid = getattr(g, "request_id", "") or ""
+    if rid:
+        resp.headers["X-Request-Id"] = rid
+
+    # JSON structured logs (single-line)
+    try:
+        latency_ms = int(max(0.0, (time.time() - float(getattr(g, "_t0", time.time()))) * 1000.0))
+        payload = {
+            "ts": datetime.now(tz=ZoneInfo("UTC")).isoformat(),
+            "request_id": rid,
+            "ip": _client_ip(),
+            "method": request.method,
+            "path": request.path,
+            "status": resp.status_code,
+            "latency_ms": latency_ms,
+        }
+        # Optional provider / cache hints (best-effort)
+        prov = getattr(g, "provider_used", None)
+        if prov:
+            payload["provider"] = prov
+        fb = getattr(g, "provider_fallbacks", None)
+        if fb:
+            payload["provider_fallbacks"] = fb
+        payload["cache"] = {
+            "page_hit": bool(getattr(g, "page_cache_hit", False)),
+            "gen_hit": bool(getattr(g, "gen_cache_hit", False)),
+        }
+        logger.info(json.dumps(payload, ensure_ascii=False))
+    except Exception:
+        pass
+    return resp
+
+
+# ------------------------------------------------------------------------------
+# SSRF-safe URL validation + extracted-page cache for URL mode
+# ------------------------------------------------------------------------------
+
+PAGE_CACHE_TTL_SECONDS = int(os.getenv("CROWNTALK_PAGE_CACHE_TTL_SECONDS", "600"))
+_page_cache: dict[str, tuple[float, dict]] = {}
+
+def _ttl_get(cache: dict, key: str):
+    try:
+        exp, val = cache.get(key, (0.0, None))
+        if exp and exp > time.time():
+            return val
+        if key in cache:
+            cache.pop(key, None)
+    except Exception:
+        pass
+    return None
+
+def _ttl_set(cache: dict, key: str, val: dict, ttl: int):
+    try:
+        cache[key] = (time.time() + int(ttl), val)
+    except Exception:
+        pass
+
+# Optional allowlist: comma-separated domains or suffixes (e.g. "medium.com,substack.com")
+URL_ALLOWLIST = [x.strip().lower() for x in os.getenv("CROWNTALK_URL_ALLOWLIST", "").split(",") if x.strip()]
+URL_DENYLIST = [x.strip().lower() for x in os.getenv("CROWNTALK_URL_DENYLIST", "").split(",") if x.strip()]
+
+def _host_allowed(host: str) -> bool:
+    h = (host or "").lower().strip().strip(".")
+    if not h:
+        return False
+    # explicit deny takes precedence
+    if any(h == d or h.endswith("." + d) for d in URL_DENYLIST):
+        return False
+    if URL_ALLOWLIST:
+        return any(h == a or h.endswith("." + a) for a in URL_ALLOWLIST)
+    return True
+
+def _ip_is_public(ip: str) -> bool:
+    try:
+        addr = ipaddress.ip_address(ip)
+        return not (
+            addr.is_private
+            or addr.is_loopback
+            or addr.is_link_local
+            or addr.is_multicast
+            or addr.is_reserved
+            or addr.is_unspecified
+        )
+    except Exception:
+        return False
+
+def _resolve_host_ips(host: str) -> list[str]:
+    ips: list[str] = []
+    try:
+        for fam, _, _, _, sockaddr in socket.getaddrinfo(host, None):
+            if fam in (socket.AF_INET, socket.AF_INET6):
+                ip = sockaddr[0]
+                ips.append(ip)
+    except Exception:
+        pass
+    # de-dupe
+    out = []
+    for ip in ips:
+        if ip not in out:
+            out.append(ip)
+    return out
+
+def validate_public_http_url(u: str) -> str:
+    parsed = urlparse((u or "").strip())
+    if parsed.scheme not in ("http", "https"):
+        raise CrownTALKError("bad_url", "Only http/https URLs are allowed.")
+    if not parsed.netloc:
+        raise CrownTALKError("bad_url", "URL must include a hostname.")
+    host = parsed.hostname or ""
+    if not _host_allowed(host):
+        raise CrownTALKError("bad_url", "This domain is not allowed.")
+    # block obvious localhost names
+    if host in ("localhost",) or host.endswith(".localhost"):
+        raise CrownTALKError("bad_url", "Localhost URLs are not allowed.")
+    # Resolve and block private/internal nets
+    ips = _resolve_host_ips(host)
+    if not ips:
+        raise CrownTALKError("bad_url", "Could not resolve hostname.")
+    if not all(_ip_is_public(ip) for ip in ips):
+        raise CrownTALKError("bad_url", "Internal/private network targets are not allowed.")
+    # normalized (strip fragments)
+    clean = parsed._replace(fragment="").geturl()
+    return clean
+
 
 
 # Simple in-memory login throttling (free-tier friendly).
@@ -6537,6 +6728,12 @@ def ping():
         "ts": int(time.time()),
     }), 200
 
+@app.route("/health", methods=["GET"])
+def health():
+    # liveness: process up
+    return api_success({"ok": True, "time": time.time()})
+
+
 @app.route("/ready", methods=["GET"])
 def ready():
     # readiness: DB initialized and basic config loaded
@@ -6558,14 +6755,27 @@ def _strip_and_squash_ws(s: str) -> str:
 def fetch_source_preview(source_url: str) -> dict:
     """Fetch a URL and extract a small preview + cleaned text.
 
-    Works for generic articles and (best-effort) for X threads.
-    We keep it lightweight for Render free tier (no heavy parsers).
+    - SSRF-safe: blocks localhost/private networks.
+    - Cached in-memory (TTL) to avoid repeated fetch/extract work.
+    - Lightweight extraction heuristics (Render Free friendly).
     """
+    # Normalize + validate (SSRF protection)
+    safe_url = validate_public_http_url(source_url)
+
+    cache_key = f"page::{safe_url}"
+    cached = _ttl_get(_page_cache, cache_key)
+    if cached:
+        try:
+            g.page_cache_hit = True
+        except Exception:
+            pass
+        return cached
+
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; CrownTALK/2.0; +https://example.com)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
-    r = requests.get(source_url, headers=headers, timeout=12)
+    r = requests.get(safe_url, headers=headers, timeout=12, allow_redirects=True)
     r.raise_for_status()
     html = r.text or ""
     soup = BeautifulSoup(html, "html.parser")
@@ -6585,20 +6795,66 @@ def fetch_source_preview(source_url: str) -> dict:
         if meta_desc and meta_desc.get("content"):
             desc = meta_desc.get("content").strip()
 
-    # strip non-content
-    for tag in soup(["script", "style", "noscript", "svg"]):
-        tag.decompose()
-    text = _strip_and_squash_ws(soup.get_text(" "))
-    # keep it bounded
-    text = text[:12000]
-    excerpt = desc or text[:280]
-    excerpt = excerpt[:400]
+    # strip obvious non-content
+    for tag in soup(["script", "style", "noscript", "svg", "canvas", "form", "iframe"]):
+        try:
+            tag.decompose()
+        except Exception:
+            pass
 
-    return {
-        "title": title or "Untitled",
-        "excerpt": excerpt,
-        "content": text,
-    }
+    def _text_len(el) -> int:
+        try:
+            return len(_strip_and_squash_ws(el.get_text(" ")))
+        except Exception:
+            return 0
+
+    def _link_density(el) -> float:
+        try:
+            txt_all = _strip_and_squash_ws(el.get_text(" ")) or ""
+            if not txt_all:
+                return 1.0
+            link_txt = " ".join([_strip_and_squash_ws(a.get_text(" ")) for a in el.find_all("a")]) if hasattr(el, "find_all") else ""
+            return min(1.0, len(link_txt) / max(1, len(txt_all)))
+        except Exception:
+            return 1.0
+
+    # Candidate containers prioritized by semantics
+    candidates = []
+    for sel in ["article", "main", "[role=main]"]:
+        for el in soup.select(sel):
+            candidates.append(el)
+    # Fallback: longer div/section blocks
+    if not candidates:
+        for el in soup.find_all(["div", "section"], limit=120):
+            if _text_len(el) >= 400:
+                candidates.append(el)
+
+    best = None
+    best_score = -1.0
+    for el in candidates[:80]:
+        tl = _text_len(el)
+        if tl < 120:
+            continue
+        ld = _link_density(el)
+        # score: prefer longer text, penalize high link density
+        score = float(tl) * (1.0 - (ld * 0.85))
+        if score > best_score:
+            best_score = score
+            best = el
+
+    if best is None:
+        best = soup
+
+    text = _strip_and_squash_ws(best.get_text(" "))
+
+    # keep bounded; longer content makes LLMs worse + slower on free tier
+    text = text[:18000]
+    excerpt = (desc or text[:320]).strip()
+
+    out = {"url": safe_url, "title": title, "excerpt": excerpt, "content": text}
+    _ttl_set(_page_cache, cache_key, out, PAGE_CACHE_TTL_SECONDS)
+    return out
+
 
 
 @app.route("/source_preview", methods=["POST", "OPTIONS"])
@@ -6682,6 +6938,15 @@ def comment_from_url_endpoint():
         # minimal wrapper: call the same single-comment helper used elsewhere
         # We generate 2 comments (like your normal mode) and return as a single item.
         gen_lang = (req.output_language or "en").strip().lower()
+        cache_key = hashlib.sha256(f"urlmode::{req.source_url}::{gen_lang}::{bool(req.fast)}::{quote_mode}".encode("utf-8")).hexdigest()
+        cached_payload = _dedupe_cache_get(cache_key)
+        if isinstance(cached_payload, dict):
+            try:
+                g.gen_cache_hit = True
+            except Exception:
+                pass
+            return api_success(cached_payload)
+
         pair = generate_two_comments_with_providers(
             tweet_text=synthetic_tweet,
             author=None,
@@ -6694,7 +6959,7 @@ def comment_from_url_endpoint():
         )
         comments = [p.get("text", "").strip() for p in pair if p.get("text")]
         _audit("comment_from_url", {"ok": True, "url": req.source_url})
-        return api_success({
+        payload = {
             "item": {
                 "url": req.source_url,
                 "title": prev.get("title"),
@@ -6703,11 +6968,116 @@ def comment_from_url_endpoint():
                 "status": "ok",
                 "citations": [{"url": req.source_url, "title": prev.get("title")}] if quote_mode else [],
             }
-        })
+        }
+        _dedupe_cache_set(cache_key, payload)
+        return api_success(payload)
     except Exception as e:
         return api_error("generation_failed", "Failed to generate comments", 500, {"detail": str(e)})
 
 
+
+
+@app.route("/comment_from_url/stream", methods=["POST", "OPTIONS"])
+def comment_from_url_stream_endpoint():
+    """SSE streaming: fetch/extract URL content and generate comments."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        req = UrlCommentRequest(**payload)
+    except Exception as e:
+        return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
+
+    def gen():
+        try:
+            # stage 1: validate + fetch/extract (cached)
+            yield sse_event("status", {"stage": "fetching"})
+            try:
+                safe_url = validate_public_http_url(req.source_url)
+            except CrownTALKError as e:
+                yield sse_event("error", {"code": e.code, "message": str(e)})
+                return
+
+            yield sse_event("status", {"stage": "extracting"})
+            try:
+                prev = fetch_source_preview(safe_url)
+            except Exception as e:
+                yield sse_event("error", {"code": "fetch_failed", "message": "Failed to fetch URL"})
+                return
+
+            content = (prev.get("content") or "").strip()
+            if not content:
+                yield sse_event("error", {"code": "no_content", "message": "Could not extract content from URL"})
+                return
+
+            looks_claimy = bool(re.search(r"\b\d+(?:[\.,]\d+)?%\b|\b\d{4}\b|\$\d+", content))
+            quote_mode = bool(req.quote_mode or looks_claimy)
+
+            gen_lang = (req.output_language or "en").strip().lower()
+            context_block = content[:5000]
+            prompt_prefix = (
+                "You are writing a reply comment to content from a URL (article or thread). "
+                "Be concise, natural, and high-quality for X (Twitter).\n"
+                "Use the author/content as context, but do not hallucinate facts.\n"
+            )
+            if quote_mode:
+                prompt_prefix += (
+                    "If there are stats/claims, either quote the exact phrasing briefly and ask for a source, "
+                    "or respond with a careful caveat. Prefer one short quote.\n"
+                )
+
+            synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
+
+            # stage 2: generation (dedupe cache)
+            yield sse_event("status", {"stage": "generating"})
+            cache_key = hashlib.sha256(f"urlmode::{safe_url}::{gen_lang}::{bool(req.fast)}::{quote_mode}".encode("utf-8")).hexdigest()
+            cached = _dedupe_cache_get(cache_key)
+            if cached:
+                try:
+                    g.gen_cache_hit = True
+                except Exception:
+                    pass
+                result_item = cached
+            else:
+                pair = generate_two_comments_with_providers(
+                    tweet_text=synthetic_tweet,
+                    author=None,
+                    handle=None,
+                    lang=gen_lang,
+                    url=safe_url,
+                    target_lang=gen_lang,
+                    out_lang_tag=gen_lang,
+                    include_alternates=False,
+                )
+                comments = [p.get("text", "").strip() for p in pair if p.get("text")]
+                result_item = {
+                    "url": safe_url,
+                    "title": prev.get("title"),
+                    "excerpt": prev.get("excerpt"),
+                    "status": "ok",
+                    "comments": [{"text": c} for c in comments],
+                    "citations": [{"url": safe_url, "title": prev.get("title")}] if quote_mode else [],
+                }
+                _dedupe_cache_set(cache_key, result_item)
+
+            yield sse_event("result", {"type": "result", "item": result_item})
+            yield sse_event("status", {"stage": "finalizing"})
+            yield sse_event("done", {"ok": True})
+        except Exception as e:
+            yield sse_event("error", {"code": "internal_error", "message": "Unexpected error"})
+
+    resp = make_response(gen())
+    resp.headers["Content-Type"] = "text/event-stream"
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
