@@ -60,6 +60,13 @@ MAX_OUTPUT_CHARS = int(os.getenv("CROWNTALK_MAX_OUTPUT_CHARS", "6000"))
 
 # Fetch guardrails for URL mode
 MAX_FETCH_BYTES = int(os.getenv("CROWNTALK_MAX_FETCH_BYTES", str(2 * 1024 * 1024)))  # 2MB
+
+# ------------------------------------------------------------------------------
+# Adaptive timeout (shorter for streaming; longer for non-stream)
+# ------------------------------------------------------------------------------
+URL_FETCH_TIMEOUT_STREAM_SEC = float(os.getenv("URL_FETCH_TIMEOUT_STREAM_SEC", "8"))
+URL_FETCH_TIMEOUT_NONSTREAM_SEC = float(os.getenv("URL_FETCH_TIMEOUT_NONSTREAM_SEC", "14"))
+
 URL_FETCH_TIMEOUT_SEC = float(os.getenv("CROWNTALK_URL_FETCH_TIMEOUT_SEC", "10"))
 
 # Password policy (auth endpoints)
@@ -203,6 +210,7 @@ def _rate_allow(ip: str, is_sensitive: bool) -> bool:
 
 @app.before_request
 def _start_timer_and_limits():
+    _maybe_prune_db()
     # Capture start time for latency logs
     g._t0 = time.time()
 
@@ -283,21 +291,66 @@ def _add_request_id_and_log(resp):
     except Exception:
         pass
 
+    
+    # Dev request ring buffer (lightweight)
+    if (os.getenv("DEV_MODE","").lower() in ("1","true","yes")):
+        try:
+            item = {
+                "requestId": getattr(g, "request_id", ""),
+                "method": request.method,
+                "path": request.path,
+                "status_code": resp.status_code,
+                "latency_ms": latency_ms,
+                "provider": getattr(g, "provider", None),
+                "cache": {"page_hit": bool(getattr(g, "page_cache_hit", False)), "gen_hit": bool(getattr(g, "gen_cache_hit", False))},
+                "ts": datetime.utcnow().isoformat() + "Z",
+            }
+            with _METRICS_LOCK:
+                _METRICS_RECENT.appendleft(item)
+        except Exception:
+            pass
+
     return resp
 
+
+
+# ------------------------------------------------------------------------------
+# Load-shed mode: auto switch to fast mode when latency is high
+# ------------------------------------------------------------------------------
+LOAD_SHED_P95_MS = int(os.getenv("LOAD_SHED_P95_MS", "5500"))
+
+def _should_load_shed(path_key: str) -> bool:
+    try:
+        with _METRICS_LOCK:
+            m = _METRICS.get(path_key) or {}
+        lat = list(m.get("lat") or [])
+        p95 = _percentile(lat, 95) if lat else 0
+        return bool(p95 and p95 >= LOAD_SHED_P95_MS)
+    except Exception:
+        return False
 
 # ------------------------------------------------------------------------------
 # Metrics-lite (in-memory rolling stats; free-tier friendly)
 # ------------------------------------------------------------------------------
 
 _METRICS_LOCK = threading.Lock()
-_METRICS = {}  # key -> {"count": int, "err": int, "avg_ms": float}
+_METRICS = {}  # key -> {count, err, avg_ms, latencies[list], cache_hit, cache_total}
+_METRICS_LAT_MAX = int(os.getenv("METRICS_LAT_MAX", "240"))
+_METRICS_RECENT = collections.deque(maxlen=50)  # dev viewer (filled when DEV_MODE)
 
-def _metrics_update(path: str, latency_ms: int, status_code: int) -> None:
+def _metrics_update(path: str, latency_ms: int, status_code: int, cache_hit: bool = False) -> None:
     key = f"{request.method} {path}"
     with _METRICS_LOCK:
-        m = _METRICS.get(key) or {"count": 0, "err": 0, "avg_ms": 0.0}
+        m = _METRICS.get(key) or {"count": 0, "err": 0, "avg_ms": 0.0, "lat": [], "cache_total": 0, "cache_hit": 0}
         m["count"] += 1
+        m["cache_total"] += 1
+        if cache_hit:
+            m["cache_hit"] += 1
+        mlat = m.get("lat") or []
+        mlat.append(int(latency_ms))
+        if len(mlat) > _METRICS_LAT_MAX:
+            mlat = mlat[-_METRICS_LAT_MAX:]
+        m["lat"] = mlat
         if status_code >= 400:
             m["err"] += 1
         # EWMA (fast + stable)
@@ -305,14 +358,52 @@ def _metrics_update(path: str, latency_ms: int, status_code: int) -> None:
         m["avg_ms"] = (latency_ms if m["count"] == 1 else (alpha * float(latency_ms) + (1 - alpha) * float(m["avg_ms"])))
         _METRICS[key] = m
 
+
+def _percentile(vals: list[int], pct: float) -> int:
+    if not vals:
+        return 0
+    vs = sorted(int(x) for x in vals)
+    if pct <= 0:
+        return vs[0]
+    if pct >= 100:
+        return vs[-1]
+    k = (len(vs)-1) * (pct/100.0)
+    f = int(k)
+    c = min(f+1, len(vs)-1)
+    if f == c:
+        return vs[f]
+    return int(vs[f] + (vs[c]-vs[f]) * (k-f))
+
 @app.get("/metrics-lite")
 def metrics_lite():
     """Lightweight rolling averages; no Prometheus required."""
     with _METRICS_LOCK:
         snap = {k: dict(v) for k, v in _METRICS.items()}
-    return api_success({"metrics": snap})
+    out = {}
+    for k, v in snap.items():
+        lat = list(v.get("lat") or [])
+        out[k] = {
+            "count": v.get("count", 0),
+            "err": v.get("err", 0),
+            "error_rate": (float(v.get("err",0)) / float(max(1, v.get("count",1)))),
+            "avg_ms": v.get("avg_ms", 0.0),
+            "p50_ms": _percentile(lat, 50),
+            "p95_ms": _percentile(lat, 95),
+            "cache_hit_rate": (float(v.get("cache_hit",0)) / float(max(1, v.get("cache_total",1)))),
+        }
+    return api_success({"metrics": out})
 
 
+
+
+@app.get("/dev/requests")
+def dev_requests():
+    """Dev-only: view last ~50 request summaries."""
+    if not (os.getenv("DEV_MODE","").lower() in ("1","true","yes")):
+        return api_error("forbidden", "DEV_MODE is not enabled", 403)
+    with _METRICS_LOCK:
+        items = list(_METRICS_RECENT)
+    return api_success({"items": items})
 
 @app.get("/docs-lite")
 def docs_lite():
@@ -443,8 +534,124 @@ def validate_public_http_url(u: str) -> str:
     if not all(_ip_is_public(ip) for ip in ips):
         raise CrownTALKError("bad_url", "Internal/private network targets are not allowed.")
     # normalized (strip fragments)
-    clean = parsed._replace(fragment="").geturl()
+    clean = canonicalize_url(parsed.geturl())
     return clean
+
+
+
+# ------------------------------------------------------------------------------
+# Canonical URL normalization (strip trackers/fragments to improve cache hits)
+# ------------------------------------------------------------------------------
+
+_TRACKER_PARAMS = {
+    # common trackers
+    "utm_source","utm_medium","utm_campaign","utm_term","utm_content","utm_id",
+    "gclid","dclid","gbraid","wbraid","fbclid","igshid","mc_cid","mc_eid",
+    "ref","ref_src","ref_url","spm","si","mkt_tok","_hsenc","_hsmi",
+}
+
+def canonicalize_url(u: str) -> str:
+    """Normalize URL for caching and safety (no fragments + strip common trackers)."""
+    try:
+        p = urlparse((u or "").strip())
+        # keep scheme/netloc/path, filter query params
+        from urllib.parse import parse_qsl, urlencode
+        q = []
+        for k, v in parse_qsl(p.query, keep_blank_values=True):
+            if (k or "").lower() in _TRACKER_PARAMS:
+                continue
+            # Some trackers are prefix-based
+            if (k or "").lower().startswith("utm_"):
+                continue
+            q.append((k, v))
+        new_query = urlencode(q, doseq=True)
+        return p._replace(query=new_query, fragment="").geturl()
+    except Exception:
+        # best-effort
+        try:
+            return urlparse((u or "").strip())._replace(fragment="").geturl()
+        except Exception:
+            return (u or "").strip()
+
+
+# ------------------------------------------------------------------------------
+# Lightweight language detection (no extra deps)
+# ------------------------------------------------------------------------------
+_LANG_STOPWORDS = {
+    "en": {"the","and","to","of","in","for","on","with","is","are","was","were","this","that"},
+    "es": {"el","la","y","de","que","en","para","con","es","una","un"},
+    "fr": {"le","la","et","de","des","en","pour","avec","est","une","un"},
+    "de": {"der","die","und","zu","das","ist","ein","eine","mit","für","auf"},
+    "pt": {"o","a","e","de","que","em","para","com","é","uma","um"},
+    "it": {"il","lo","la","e","di","che","in","per","con","è","una","un"},
+    "bn": {"এবং","এই","এক","যে","করে","না","থেকে","কিছু","আমি","আপনি"},
+    "hi": {"और","यह","एक","कि","के","में","से","पर","नहीं","है"},
+    "ar": {"و","في","على","من","إلى","التي","هذا","هذه","أن","لا"},
+}
+
+def _detect_lang_light(text: str) -> str:
+    """Return a short lang code (en/bn/hi/ar/...) best-effort."""
+    t = (text or "").strip()
+    if not t:
+        return "en"
+    # script heuristics
+    for ch in t[:2000]:
+        o = ord(ch)
+        if 0x0980 <= o <= 0x09FF:
+            return "bn"
+        if 0x0900 <= o <= 0x097F:
+            return "hi"
+        if 0x0600 <= o <= 0x06FF:
+            return "ar"
+        if 0x4E00 <= o <= 0x9FFF:
+            return "zh"
+        if 0x3040 <= o <= 0x30FF:
+            return "ja"
+        if 0xAC00 <= o <= 0xD7AF:
+            return "ko"
+    # stopword scoring on latin scripts
+    low = re.sub(r"[^a-zA-Z\s]", " ", t.lower())
+    toks = [x for x in low.split() if x]
+    if not toks:
+        return "en"
+    scores = {}
+    sample = toks[:400]
+    for lang, sw in _LANG_STOPWORDS.items():
+        if lang in ("bn","hi","ar"):
+            continue
+        scores[lang] = sum(1 for w in sample if w in sw)
+    best = max(scores.items(), key=lambda kv: kv[1])
+    if best[1] >= 3:
+        return best[0]
+    return "en"
+
+
+# ------------------------------------------------------------------------------
+# Citation anchors (short quotes) for URL mode
+# ------------------------------------------------------------------------------
+def _citation_snippets(text: str, url: str, title: str = "") -> list[dict]:
+    t = _strip_and_squash_ws(text or "")
+    if not t:
+        return [{"url": url, "title": title, "quote": ""}]
+    quotes = []
+    # pick up to 3 short snippets from different parts
+    parts = [t[:240], t[len(t)//2:len(t)//2+240], t[-240:]]
+    seen=set()
+    for p in parts:
+        p = p.strip()
+        if not p:
+            continue
+        # trim to sentence-ish end
+        cut = re.split(r"(?<=[\.!\?])\s+", p)
+        q = (cut[0] if cut else p).strip()
+        q = q[:220]
+        if q and q not in seen:
+            seen.add(q)
+            quotes.append({"url": url, "title": title, "quote": q})
+    if not quotes:
+        quotes=[{"url": url, "title": title, "quote": t[:200]}]
+    return quotes
+
 
 
 
@@ -2011,6 +2218,27 @@ try:
     _HAS_FCNTL = True
 except Exception:
     _HAS_FCNTL = False
+
+
+# ------------------------------------------------------------------------------
+# Retention policy (keep SQLite small on free-tier)
+# ------------------------------------------------------------------------------
+HISTORY_RETENTION_DAYS = int(os.getenv("HISTORY_RETENTION_DAYS", "30"))
+_AUDIT_RETENTION_DAYS = int(os.getenv("AUDIT_RETENTION_DAYS", str(HISTORY_RETENTION_DAYS)))
+
+def _maybe_prune_db() -> None:
+    # best-effort; run at most once per process per ~6 hours
+    last = getattr(_maybe_prune_db, "_last_ts", 0.0)
+    if time.time() - float(last) < 6 * 3600:
+        return
+    _maybe_prune_db._last_ts = time.time()
+    try:
+        with get_conn() as c:
+            c.execute("DELETE FROM generation_history WHERE created_at < datetime('now', ?)", (f"-{HISTORY_RETENTION_DAYS} days",))
+            c.execute("DELETE FROM audit_log WHERE ts < datetime('now', ?)", (f"-{_AUDIT_RETENTION_DAYS} days",))
+            c.commit()
+    except Exception:
+        pass
 
 def get_conn() -> sqlite3.Connection:
     return sqlite3.connect(DB_PATH, timeout=30, isolation_level=None, check_same_thread=False)
@@ -7249,8 +7477,12 @@ def fetch_source_preview(source_url: str) -> dict:
     }
     
     # Stream download with a hard byte cap (robots/timeout respectful)
-    r = requests.get(safe_url, headers=headers, timeout=URL_FETCH_TIMEOUT_SEC, allow_redirects=True, stream=True)
+    timeout_sec = URL_FETCH_TIMEOUT_STREAM_SEC if request.path.endswith("/stream") else URL_FETCH_TIMEOUT_NONSTREAM_SEC
+    r = requests.get(safe_url, headers=headers, timeout=timeout_sec, allow_redirects=True, stream=True)
     r.raise_for_status()
+    ctype = (r.headers.get("Content-Type") or "").lower()
+    if ctype and ("text/html" not in ctype and "application/xhtml+xml" not in ctype):
+        raise CrownTALKError("bad_content_type", f"Only HTML pages are allowed (got: {ctype.split(';')[0] or 'unknown'}).")
     buf = bytearray()
     for chunk in r.iter_content(chunk_size=65536):
         if not chunk:
@@ -7355,9 +7587,83 @@ def fetch_source_preview(source_url: str) -> dict:
     out = {"url": safe_url, "title": title, "excerpt": excerpt,
         "author": author,
         "published": published,
-        "language": _detect_lang_light(content), "content": text}
+        "language": _detect_lang_light(text), "content": text, "citations": _citation_snippets(text, safe_url, title)}
     _ttl_set(_page_cache, cache_key, out, PAGE_CACHE_TTL_SECONDS)
     return out
+
+
+
+# ------------------------------------------------------------------------------
+# Chunking + summarization for long articles (sync; free-tier friendly)
+# ------------------------------------------------------------------------------
+URL_SUMMARY_CHUNK_CHARS = int(os.getenv("URL_SUMMARY_CHUNK_CHARS", "4500"))
+URL_SUMMARY_MAX_CHUNKS = int(os.getenv("URL_SUMMARY_MAX_CHUNKS", "6"))
+URL_SUMMARY_TARGET_CHARS = int(os.getenv("URL_SUMMARY_TARGET_CHARS", "3200"))
+
+def _chunk_text(text: str, max_chars: int) -> list[str]:
+    t = (text or "").strip()
+    if len(t) <= max_chars:
+        return [t]
+    out=[]
+    i=0
+    while i < len(t) and len(out) < URL_SUMMARY_MAX_CHUNKS:
+        out.append(t[i:i+max_chars])
+        i += max_chars
+    return out
+
+def _llm_summarize(provider_order: list[str], text_block: str, lang: str) -> str:
+    sys_prompt = (
+        "You summarize article content for downstream generation.\n"
+        "Rules: be factual, do not invent details, keep names/numbers as-is.\n"
+        f"Write in language: {lang}.\n"
+        "Output 6-10 bullet points, then 2 key takeaways.\n"
+    )
+    user_prompt = "CONTENT:\n" + (text_block or "")
+    # We reuse existing provider clients; minimal retry behavior already exists in other calls.
+    last_err = None
+    for provider in provider_order:
+        try:
+            if provider == "groq" and USE_GROQ and _groq_client:
+                resp = groq_chat_limited(
+                    messages=[{"role":"system","content":sys_prompt},{"role":"user","content":user_prompt}],
+                    max_tokens=900,
+                    temperature=0.2,
+                )
+                return (resp.choices[0].message.content or "").strip()
+            if provider == "openai" and USE_OPENAI and _openai_client:
+                resp = _openai_client.chat.completions.create(
+                    model=OPENAI_MODEL,
+                    messages=[{"role":"system","content":sys_prompt},{"role":"user","content":user_prompt}],
+                    max_tokens=900,
+                    temperature=0.2,
+                )
+                return (resp.choices[0].message.content or "").strip()
+            if provider == "gemini" and USE_GEMINI and _gemini_model:
+                resp = _gemini_model.generate_content(sys_prompt + "\n\n" + user_prompt)
+                raw = getattr(resp, "text", None)
+                return (raw or str(resp) or "").strip()
+        except Exception as e:
+            last_err = e
+            continue
+    raise RuntimeError(f"All providers failed to summarize: {last_err}")
+
+def _summarize_long_text(text: str, preferred_lang: str) -> dict:
+    t = _strip_and_squash_ws(text or "")
+    if not t:
+        return {"summary": "", "used_summary": False}
+    if len(t) <= URL_SUMMARY_TARGET_CHARS:
+        return {"summary": t, "used_summary": False}
+    lang = (preferred_lang or "en").strip().lower()
+    order = _pick_rewrite_provider_order()  # good-enough: enabled providers + circuit breaker
+    chunks = _chunk_text(t, URL_SUMMARY_CHUNK_CHARS)
+    partials = []
+    for ch in chunks:
+        partials.append(_llm_summarize(order, ch, lang))
+    combined = "\n\n".join(partials)
+    if len(combined) > URL_SUMMARY_TARGET_CHARS:
+        combined = combined[:URL_SUMMARY_TARGET_CHARS]
+    return {"summary": combined, "used_summary": True}
+
 
 
 
@@ -7408,6 +7714,14 @@ def comment_from_url_endpoint():
     except Exception as e:
         return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
 
+    # Load-shed: if endpoint is slow, default to fast mode
+    try:
+        if _should_load_shed("POST /comment_from_url"):
+            req.fast = True
+    except Exception:
+        pass
+
+
     cached_idem = _idem_lookup("url")
     if isinstance(cached_idem, dict):
         try:
@@ -7423,6 +7737,16 @@ def comment_from_url_endpoint():
         return api_error("fetch_failed", "Failed to fetch URL", 400, {"detail": str(e)})
 
     content = prev.get("content") or ""
+
+    # Auto language from extracted content if not provided
+    auto_lang = (prev.get("language") or "").strip().lower() or "en"
+    if not (req.output_language or "").strip():
+        req.output_language = auto_lang
+
+    # Chunk+summarize if content is long (keeps latency sane)
+    sumres = _summarize_long_text(content, req.output_language or auto_lang)
+    content_for_prompt = sumres.get("summary") or content
+
     if not content.strip():
         return api_error("no_content", "Could not extract content from URL", 400)
 
@@ -7431,7 +7755,7 @@ def comment_from_url_endpoint():
     quote_mode = bool(req.quote_mode or looks_claimy)
 
     # build a pseudo "tweet" text for your existing generator
-    context_block = content[:5000]
+    context_block = (content_for_prompt or "")[:7000]
     prompt_prefix = (
         "You are writing a reply comment to content from a URL (article or thread). "
         "Be concise, natural, and high-quality for X (Twitter).\n"
@@ -7450,7 +7774,7 @@ def comment_from_url_endpoint():
         # minimal wrapper: call the same single-comment helper used elsewhere
         # We generate 2 comments (like your normal mode) and return as a single item.
         gen_lang = (req.output_language or "en").strip().lower()
-        cache_key = hashlib.sha256(f"urlmode::{req.source_url}::{gen_lang}::{bool(req.fast)}::{quote_mode}".encode("utf-8")).hexdigest()
+        cache_key = hashlib.sha256(f"urlmode::{(prev.get('url') or req.source_url)}::{gen_lang}::{bool(req.fast)}::{quote_mode}".encode("utf-8")).hexdigest()
         cached_payload = _dedupe_cache_get(cache_key)
         if isinstance(cached_payload, dict):
             try:
@@ -7479,7 +7803,7 @@ def comment_from_url_endpoint():
                 "excerpt": prev.get("excerpt"),
                 "comments": comments,
                 "status": "ok",
-                "citations": [{"url": req.source_url, "title": prev.get("title")}] if quote_mode else [],
+                "citations": prev.get("citations") or [{"url": req.source_url, "title": prev.get("title"), "quote": prev.get("excerpt","")[:200]}],
             }
         }
         _dedupe_cache_set(cache_key, payload)
@@ -7508,6 +7832,14 @@ def comment_from_url_stream_endpoint():
         req = UrlCommentRequest(**payload)
     except Exception as e:
         return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
+
+    # Load-shed: if endpoint is slow, default to fast mode
+    try:
+        if _should_load_shed("POST /comment_from_url/stream"):
+            req.fast = True
+    except Exception:
+        pass
+
 
     def gen():
         try:
