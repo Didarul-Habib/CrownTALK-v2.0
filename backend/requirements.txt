@@ -5,6 +5,9 @@ gunicorn==21.2.0
 # HTTP & utils
 requests==2.32.5
 
+# Validation / schemas
+pydantic==2.9.2
+
 # Auth persistence on Render Free via Supabase Postgres
 psycopg2-binary==2.9.9
 

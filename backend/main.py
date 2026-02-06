@@ -17,6 +17,9 @@ from urllib.parse import urlparse
 import requests
 from flask import Flask, request, jsonify, make_response, g
 
+from api import api_success, api_error, sse_event
+from schemas import CommentRequest, StreamCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest
+
 # Optional Postgres auth storage (Supabase). We keep the rest of the app on SQLite
 # because it's used for caching/anti-repeat and can remain ephemeral on Render Free.
 try:
@@ -34,6 +37,19 @@ from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
 # App / Logging / Config
 # ------------------------------------------------------------------------------
 app = Flask(__name__)
+# Max request payload size (bytes) to mitigate abuse on free-tier hosting.
+# Default: 64KB. Override via CROWNTALK_MAX_PAYLOAD_BYTES.
+try:
+    app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("CROWNTALK_MAX_PAYLOAD_BYTES", "65536"))
+except Exception:
+    app.config["MAX_CONTENT_LENGTH"] = 65536
+
+# Session cookie security (works for Flask session cookies)
+app.config["SESSION_COOKIE_HTTPONLY"] = True
+app.config["SESSION_COOKIE_SAMESITE"] = os.getenv("CROWNTALK_SESSION_SAMESITE", "Lax")
+# Set Secure cookie when running behind HTTPS (Render uses HTTPS for custom domains)
+app.config["SESSION_COOKIE_SECURE"] = os.getenv("CROWNTALK_SESSION_SECURE", "true").lower() in ("1","true","yes")
+
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("crowntalk")
 
@@ -46,6 +62,42 @@ METRICS: dict[str, object] = {
     "total_reroll_calls": 0,
     "total_errors": 0,
 }
+
+
+# Simple in-memory login throttling (free-tier friendly).
+# Not perfect across multiple instances, but provides basic protection.
+LOGIN_WINDOW_SECONDS = int(os.getenv("CROWNTALK_LOGIN_WINDOW_SECONDS", "900"))  # 15m
+LOGIN_MAX_ATTEMPTS = int(os.getenv("CROWNTALK_LOGIN_MAX_ATTEMPTS", "10"))
+LOGIN_LOCK_SECONDS = int(os.getenv("CROWNTALK_LOGIN_LOCK_SECONDS", "900"))
+_login_state = {}  # key -> {"fails":[ts...], "locked_until": ts}
+
+def _login_key():
+    return f"{request.remote_addr}|{(request.json or {}).get('email','')}".lower()
+
+def _check_login_throttle():
+    k = _login_key()
+    st = _login_state.get(k, {"fails": [], "locked_until": 0})
+    now = time.time()
+    if st.get("locked_until", 0) > now:
+        return api_error("too_many_attempts", "Too many failed attempts. Try again later.", 429, details={"retry_after": int(st["locked_until"]-now)})
+    # prune
+    st["fails"] = [t for t in st.get("fails", []) if now - t < LOGIN_WINDOW_SECONDS]
+    _login_state[k] = st
+    return None
+
+def _record_login_fail():
+    k = _login_key()
+    st = _login_state.get(k, {"fails": [], "locked_until": 0})
+    now = time.time()
+    st["fails"] = [t for t in st.get("fails", []) if now - t < LOGIN_WINDOW_SECONDS] + [now]
+    if len(st["fails"]) >= LOGIN_MAX_ATTEMPTS:
+        st["locked_until"] = now + LOGIN_LOCK_SECONDS
+    _login_state[k] = st
+
+def _record_login_success():
+    k = _login_key()
+    if k in _login_state:
+        _login_state.pop(k, None)
 
 PREMIUM_EVENTS_URL = os.getenv("PREMIUM_EVENTS_URL", "").strip()
 import requests  # already imported above
@@ -112,6 +164,28 @@ def _require_access_or_none():
     return None
 
 
+
+# In-memory TTL cache for deduping expensive generations (free-tier friendly).
+_DEDUPE_TTL_SECONDS = int(os.getenv("CROWNTALK_DEDUPE_TTL_SECONDS", "300"))
+_dedupe_cache = {}  # key -> (expires_ts, value)
+
+def _dedupe_cache_get(key: str):
+    try:
+        exp, val = _dedupe_cache.get(key, (0, None))
+        if exp and exp > time.time():
+            return val
+        if key in _dedupe_cache:
+            _dedupe_cache.pop(key, None)
+    except Exception:
+        pass
+    return None
+
+def _dedupe_cache_set(key: str, value):
+    try:
+        _dedupe_cache[key] = (time.time() + _DEDUPE_TTL_SECONDS, value)
+    except Exception:
+        pass
+
 def bump_metric(name: str, amount: int = 1) -> None:
     try:
         METRICS[name] = METRICS.get(name, 0) + int(amount)
@@ -119,6 +193,15 @@ def bump_metric(name: str, amount: int = 1) -> None:
         # metrics are best-effort only; never break main flow
         pass
 
+
+
+import uuid
+
+@app.before_request
+def _set_request_id():
+    # request correlation id
+    rid = request.headers.get("X-Request-Id") or uuid.uuid4().hex
+    g.request_id = rid
 
 @app.before_request
 def _track_basic_metrics():
@@ -137,7 +220,7 @@ def _handle_unexpected_error(exc: Exception):
     bump_metric("total_errors")
     METRICS["last_error"] = repr(exc)
     logger.exception("Unhandled error in request", exc_info=exc)
-    return jsonify({"error": "internal_server_error"}), 500
+    return api_error(code=\"internal_server_error\", message=\"Unexpected server error\", status=500)
 
 
 
@@ -764,7 +847,7 @@ def stats_endpoint():
         if k == "start_time":
             continue
         payload[k] = v
-    return jsonify(payload)
+    return api_success(payload)
 
 
 PORT = int(os.environ.get("PORT", "10000"))
@@ -1590,6 +1673,17 @@ def _do_init() -> None:
                 PRIMARY KEY(kind, k)
             );
 
+            CREATE TABLE IF NOT EXISTS audit_log(
+                id INTEGER PRIMARY KEY,
+                event TEXT NOT NULL,
+                payload TEXT,
+                ip TEXT,
+                user_id INTEGER,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP
+            );
+            CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
+
+
             -- OTP pattern guards
             CREATE TABLE IF NOT EXISTS comments_openers_seen(
                 opener TEXT PRIMARY KEY,
@@ -1649,6 +1743,35 @@ def init_db() -> None:
             else:
                 raise
     _locked_init(_safe) if _HAS_FCNTL else _safe()
+
+
+def _audit(event: str, payload: dict | None = None):
+    """Best-effort audit logging (SQLite + logs)."""
+    try:
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO audit_log(event, payload, ip, user_id) VALUES (?, ?, ?, ?)",
+                (
+                    event,
+                    json.dumps(payload or {}, ensure_ascii=False),
+                    request.remote_addr if request else None,
+                    getattr(g, "user_id", None),
+                ),
+            )
+            conn.commit()
+    except Exception:
+        pass
+    try:
+        logger.info(json.dumps({
+            "type": "audit",
+            "event": event,
+            "payload": payload or {},
+            "ip": request.remote_addr if request else None,
+            "user_id": getattr(g, "user_id", None),
+            "request_id": getattr(g, "request_id", None),
+        }, ensure_ascii=False))
+    except Exception:
+        pass
 
 # ------------------------------------------------------------------------------
 # Light memory / OTP guards (anti-pattern, anti-repeat)
@@ -1992,7 +2115,29 @@ def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
 # ------------------------------------------------------------------------------
 @app.after_request
 def add_cors_headers(response):
-    response.headers["Access-Control-Allow-Origin"] = "*"
+    # CORS: lock down to configured frontend origins when provided.
+    allow_origin = os.getenv("CROWNTALK_ALLOWED_ORIGINS", "").strip()
+    origin = request.headers.get("Origin")
+    if allow_origin:
+        allowed = {o.strip() for o in allow_origin.split(",") if o.strip()}
+        if origin in allowed:
+            response.headers["Access-Control-Allow-Origin"] = origin
+            response.headers["Vary"] = "Origin"
+        else:
+            # don't reflect arbitrary origins
+            response.headers["Access-Control-Allow-Origin"] = next(iter(allowed), "")
+            response.headers["Vary"] = "Origin"
+    else:
+        response.headers["Access-Control-Allow-Origin"] = "*"
+    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth, X-Request-Id"
+    response.headers["Access-Control-Expose-Headers"] = "X-Request-Id"
+    try:
+        rid = getattr(g, "request_id", "")
+        if rid:
+            response.headers["X-Request-Id"] = rid
+    except Exception:
+        pass
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth"
     return response
@@ -2004,6 +2149,7 @@ def health():
     We delegate to `ping()` so `/` and `/ping` stay in sync.
     """
     return ping()
+
 
 
 # ------------------------------------------------------------------------------
@@ -6390,6 +6536,17 @@ def ping():
         "ts": int(time.time()),
     }), 200
 
+@app.route("/ready", methods=["GET"])
+def ready():
+    # readiness: DB initialized and basic config loaded
+    try:
+        init_db()
+    except Exception as e:
+        return api_error("not_ready", "Database not ready", 503)
+    return api_success({"ready": True, "time": time.time()})
+
+
+
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
     if request.method == "OPTIONS":
@@ -6615,6 +6772,72 @@ def comment_endpoint():
 
     return jsonify({"results": results, "failed": failed}), 200
 
+
+@app.route("/comment/stream", methods=["POST", "OPTIONS"])
+def comment_stream_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
+    payload = request.get_json(silent=True) or {}
+    try:
+        req = StreamCommentRequest.model_validate(payload)
+    except Exception:
+        return api_error("bad_request", "Invalid request body", 400, details={"hint": "Expected {url: string}"} )
+
+    url = req.url.strip()
+    preset = (req.preset or "").strip()
+    output_language = (req.output_language or "").strip().lower() or None
+    fast = bool(req.fast)
+
+    def gen():
+        # progress: fetching
+        yield sse_event("status", {"stage": "fetching"})
+        try:
+            t = fetch_tweet_data(url)
+        except CrownTALKError as e:
+            yield sse_event("error", {"code": e.code, "message": str(e)})
+            return
+        except Exception:
+            yield sse_event("error", {"code": "fetch_error", "message": "Failed to fetch tweet"})
+            return
+
+        yield sse_event("status", {"stage": "generating"})
+        handle = t.handle or _extract_handle_from_url(url)
+        target = output_language or "en"
+        try:
+            # Generate english + optional native if requested language differs
+            comments = []
+            if target == "en":
+                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=url, target_lang="en", out_lang_tag="en")
+            else:
+                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=url, target_lang=target, out_lang_tag=target)
+            # stream as chunks (coarse-grained)
+            for i, c in enumerate(comments):
+                yield sse_event("item", {"index": i, "lang": c.get("lang"), "text": c.get("text")})
+            yield sse_event("status", {"stage": "finalizing"})
+            # best-effort save
+            try:
+                for c in comments:
+                    _save_comment(url, c.get("lang"), c.get("text"))
+            except Exception:
+                pass
+            yield sse_event("done", {"ok": True})
+        except Exception:
+            yield sse_event("error", {"code": "generation_error", "message": "Failed to generate comment"})
+
+    resp = make_response(gen())
+    resp.headers["Content-Type"] = "text/event-stream"
+    resp.headers["Cache-Control"] = "no-cache"
+    resp.headers["X-Accel-Buffering"] = "no"
+    return resp
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
     if request.method == "OPTIONS":
