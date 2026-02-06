@@ -6,6 +6,7 @@ try:
 except Exception:  # noqa: BLE001
     fcntl = None
 
+import collections
 import json, os, re, time, random, hashlib, logging, sqlite3, threading, secrets, hmac, socket, ipaddress
 from collections import Counter
 from contextvars import ContextVar
