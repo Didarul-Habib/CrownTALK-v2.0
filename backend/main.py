@@ -56,9 +56,8 @@ except Exception:
 def _env_bool(name: str, default: str = "false") -> bool:
     return (os.getenv(name, default) or "").strip().lower() in ("1", "true", "yes", "y", "on")
 
-CROWNTALK_HMAC_ENFORCE = _env_bool("CROWNTALK_HMAC_ENFORCE", "false")
-
 CROWNTALK_HMAC_SECRET = os.getenv("CROWNTALK_HMAC_SECRET", "").encode("utf-8")
+CROWNTALK_HMAC_ENFORCE = (os.getenv("CROWNTALK_HMAC_ENFORCE", "false").lower() == "true")
 CROWNTALK_HMAC_WINDOW_SEC = int(os.getenv("CROWNTALK_HMAC_WINDOW_SEC", "300"))  # 5 minutes
 
 # Output truncation safety (avoid extremely long responses)
@@ -142,8 +141,7 @@ def _verify_hmac_signature(body: bytes) -> bool:
     if not CROWNTALK_HMAC_ENFORCE:
         return True
     if not CROWNTALK_HMAC_SECRET:
-        return False
-
+        return True
     ts = (request.headers.get("X-CT-Timestamp") or "").strip()
     sig = (request.headers.get("X-CT-Signature") or "").strip()
     if not ts or not sig:
