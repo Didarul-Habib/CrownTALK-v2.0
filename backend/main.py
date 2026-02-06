@@ -52,7 +52,12 @@ except Exception:
 # ------------------------------------------------------------------------------
 
 # Simple request signature (HMAC) for sensitive routes. This is NOT a substitute for auth,
-# but it reduces casual bot abuse. If CROWNTALK_HMAC_SECRET is unset, signature checks are disabled.
+# but it reduces casual bot abuse. To enforce signatures, set CROWNTALK_HMAC_ENFORCE=true (and provide CROWNTALK_HMAC_SECRET).
+def _env_bool(name: str, default: str = "false") -> bool:
+    return (os.getenv(name, default) or "").strip().lower() in ("1", "true", "yes", "y", "on")
+
+CROWNTALK_HMAC_ENFORCE = _env_bool("CROWNTALK_HMAC_ENFORCE", "false")
+
 CROWNTALK_HMAC_SECRET = os.getenv("CROWNTALK_HMAC_SECRET", "").encode("utf-8")
 CROWNTALK_HMAC_WINDOW_SEC = int(os.getenv("CROWNTALK_HMAC_WINDOW_SEC", "300"))  # 5 minutes
 
@@ -131,8 +136,14 @@ def _truncate_output(s: str) -> str:
     return s
 
 def _verify_hmac_signature(body: bytes) -> bool:
-    if not CROWNTALK_HMAC_SECRET:
+    # Signature verification is OFF by default (even if CROWNTALK_HMAC_SECRET is set),
+    # so production doesn't break when the frontend isn't configured to sign requests.
+    # To enforce signatures, set: CROWNTALK_HMAC_ENFORCE=true
+    if not CROWNTALK_HMAC_ENFORCE:
         return True
+    if not CROWNTALK_HMAC_SECRET:
+        return False
+
     ts = (request.headers.get("X-CT-Timestamp") or "").strip()
     sig = (request.headers.get("X-CT-Signature") or "").strip()
     if not ts or not sig:
