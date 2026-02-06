@@ -59,9 +59,11 @@ class TweetData:
 # VX/FX URL templates
 _VX_FMT = "https://api.vxtwitter.com/{handle}/status/{status_id}"
 _FX_FMT = "https://api.fxtwitter.com/{handle}/status/{status_id}"
+_VX_STATUS_FMT = "https://api.vxtwitter.com/Twitter/status/{status_id}"
+_FX_STATUS_FMT = "https://api.fxtwitter.com/Twitter/status/{status_id}"
 
 
-def _extract_handle_and_id(url: str) -> Tuple[str, str]:
+def _extract_handle_and_id(url: str) -> Tuple[Optional[str], str]:
     """
     Extract handle and status_id from a Twitter/X URL.
 
@@ -69,11 +71,11 @@ def _extract_handle_and_id(url: str) -> Tuple[str, str]:
       - https://x.com/handle/status/1234567890
       - https://twitter.com/handle/status/1234567890
       - https://mobile.twitter.com/handle/status/123...
-      - https://x.com/i/status/1234567890
+      - https://x.com/i/status/1234567890 (handle will be None)
       - With or without query params (?s=20 etc.)
       - Bare "x.com/handle/status/..." without scheme (http/https auto-added)
 
-    If the path is /i/status/123..., handle will be "i" and status_id is "123".
+    If the path is /i/status/123..., handle will be None and status_id is "123".
     """
     try:
         u = url.strip()
@@ -102,15 +104,21 @@ def _extract_handle_and_id(url: str) -> Tuple[str, str]:
         if len(parts) >= 3 and parts[-2] == "status":
             handle = parts[-3]
             status_id = parts[-1]
+            if handle == "i":
+                handle = None
         elif len(parts) >= 4 and parts[-2] == "status":
             handle = parts[-4]
             status_id = parts[-1]
+            if handle == "i":
+                handle = None
         else:
             raise ValueError("couldn't parse status path")
 
         status_id = re.sub(r"[^\d]", "", status_id)
-        if not handle or not status_id:
-            raise ValueError("missing handle or id")
+        if not status_id:
+            raise ValueError("missing id")
+        if handle is not None and not handle:
+            raise ValueError("missing handle")
 
         return handle, status_id
     except Exception as e:
@@ -271,16 +279,29 @@ def _parse_payload(payload: dict) -> TweetData:
     )
 
 
+def _derive_handle_from_url(url: Optional[str]) -> Optional[str]:
+    if not url:
+        return None
+    try:
+        parsed = urlparse(url if url.startswith(("http://", "https://")) else f"https://{url}")
+        parts = [p for p in parsed.path.split("/") if p]
+        if len(parts) >= 3 and parts[-2] == "status":
+            return parts[-3] or None
+    except Exception:
+        return None
+    return None
+
+
 # ------------------------------------------------------------------------------
 # Small in-process cache
 # ------------------------------------------------------------------------------
 
 _TWEET_CACHE_TTL = float(os.environ.get("TWEET_CACHE_TTL_SECONDS", "120"))
-_TWEET_CACHE: dict[tuple[str, str], tuple[float, TweetData]] = {}
+_TWEET_CACHE: dict[tuple[Optional[str], str], tuple[float, TweetData]] = {}
 _TWEET_CACHE_LOCK = threading.Lock()
 
 
-def _cache_get(handle: str, status_id: str) -> Optional[TweetData]:
+def _cache_get(handle: Optional[str], status_id: str) -> Optional[TweetData]:
     key = (handle, status_id)
     now = time.time()
     with _TWEET_CACHE_LOCK:
@@ -292,7 +313,7 @@ def _cache_get(handle: str, status_id: str) -> Optional[TweetData]:
     return None
 
 
-def _cache_set(handle: str, status_id: str, data: TweetData) -> None:
+def _cache_set(handle: Optional[str], status_id: str, data: TweetData) -> None:
     key = (handle, status_id)
     now = time.time()
     with _TWEET_CACHE_LOCK:
@@ -320,78 +341,158 @@ def fetch_tweet_data(x_url: str) -> TweetData:
 
     last_status = None
 
-    # Try VXTwitter
-    vx_url = _VX_FMT.format(handle=handle, status_id=status_id)
-    for attempt in range(1, 4):
-        try:
-            logger.info("Fetching VXTwitter data for %s -> %s", x_url, vx_url)
-            r = _do_get_json(vx_url)
-            last_status = r.status_code
-            if r.status_code == 200:
-                payload = _read_json_payload(r)
-                data = _parse_payload(payload)
-                _cache_set(handle, status_id, data)
-                return data
-            elif r.status_code in (401, 403, 404):
-                raise CrownTALKError(
-                    "Tweet not accessible via VXTwitter",
-                    code="tweet_not_accessible",
+    if handle is None:
+        vx_url = _VX_STATUS_FMT.format(status_id=status_id)
+        for attempt in range(1, 4):
+            try:
+                logger.info("Fetching VXTwitter data for %s -> %s", x_url, vx_url)
+                r = _do_get_json(vx_url)
+                last_status = r.status_code
+                if r.status_code == 200:
+                    payload = _read_json_payload(r)
+                    data = _parse_payload(payload)
+                    if data.handle is None:
+                        data.handle = _derive_handle_from_url(data.canonical_url)
+                    _cache_set(handle, status_id, data)
+                    if data.handle is not None:
+                        _cache_set(data.handle, status_id, data)
+                    return data
+                elif r.status_code in (401, 403, 404):
+                    raise CrownTALKError(
+                        "Tweet not accessible via VXTwitter",
+                        code="tweet_not_accessible",
+                    )
+                elif r.status_code in (429, 500, 502, 503):
+                    time.sleep(1 + attempt)
+                    continue
+                else:
+                    raise CrownTALKError(
+                        f"VXTwitter unexpected status {r.status_code}",
+                        code="upstream_error",
+                    )
+            except CrownTALKError:
+                # Controlled, no retry here
+                raise
+            except Exception as e:
+                logger.warning(
+                    "VXTwitter error on attempt %s for %s: %s",
+                    attempt,
+                    x_url,
+                    e,
                 )
-            elif r.status_code in (429, 500, 502, 503):
                 time.sleep(1 + attempt)
-                continue
-            else:
-                raise CrownTALKError(
-                    f"VXTwitter unexpected status {r.status_code}",
-                    code="upstream_error",
-                )
-        except CrownTALKError:
-            # Controlled, no retry here
-            raise
-        except Exception as e:
-            logger.warning(
-                "VXTwitter error on attempt %s for %s: %s",
-                attempt,
-                x_url,
-                e,
-            )
-            time.sleep(1 + attempt)
 
-    # Fallback: FXTwitter
-    fx_url = _FX_FMT.format(handle=handle, status_id=status_id)
-    for attempt in range(1, 4):
-        try:
-            logger.info("Fetching FXTwitter data for %s -> %s", x_url, fx_url)
-            r = _do_get_json(fx_url)
-            last_status = r.status_code
-            if r.status_code == 200:
-                payload = _read_json_payload(r)
-                data = _parse_payload(payload)
-                _cache_set(handle, status_id, data)
-                return data
-            elif r.status_code in (401, 403, 404):
-                raise CrownTALKError(
-                    "Tweet not accessible via FXTwitter",
-                    code="tweet_not_accessible",
+        fx_url = _FX_STATUS_FMT.format(status_id=status_id)
+        for attempt in range(1, 4):
+            try:
+                logger.info("Fetching FXTwitter data for %s -> %s", x_url, fx_url)
+                r = _do_get_json(fx_url)
+                last_status = r.status_code
+                if r.status_code == 200:
+                    payload = _read_json_payload(r)
+                    data = _parse_payload(payload)
+                    if data.handle is None:
+                        data.handle = _derive_handle_from_url(data.canonical_url)
+                    _cache_set(handle, status_id, data)
+                    if data.handle is not None:
+                        _cache_set(data.handle, status_id, data)
+                    return data
+                elif r.status_code in (401, 403, 404):
+                    raise CrownTALKError(
+                        "Tweet not accessible via FXTwitter",
+                        code="tweet_not_accessible",
+                    )
+                elif r.status_code in (429, 500, 502, 503):
+                    time.sleep(1 + attempt)
+                    continue
+                else:
+                    raise CrownTALKError(
+                        f"FXTwitter unexpected status {r.status_code}",
+                        code="upstream_error",
+                    )
+            except CrownTALKError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    "FXTwitter error on attempt %s for %s: %s",
+                    attempt,
+                    x_url,
+                    e,
                 )
-            elif r.status_code in (429, 500, 502, 503):
                 time.sleep(1 + attempt)
-                continue
-            else:
-                raise CrownTALKError(
-                    f"FXTwitter unexpected status {r.status_code}",
-                    code="upstream_error",
+    else:
+        # Try VXTwitter
+        vx_url = _VX_FMT.format(handle=handle, status_id=status_id)
+        for attempt in range(1, 4):
+            try:
+                logger.info("Fetching VXTwitter data for %s -> %s", x_url, vx_url)
+                r = _do_get_json(vx_url)
+                last_status = r.status_code
+                if r.status_code == 200:
+                    payload = _read_json_payload(r)
+                    data = _parse_payload(payload)
+                    _cache_set(handle, status_id, data)
+                    return data
+                elif r.status_code in (401, 403, 404):
+                    raise CrownTALKError(
+                        "Tweet not accessible via VXTwitter",
+                        code="tweet_not_accessible",
+                    )
+                elif r.status_code in (429, 500, 502, 503):
+                    time.sleep(1 + attempt)
+                    continue
+                else:
+                    raise CrownTALKError(
+                        f"VXTwitter unexpected status {r.status_code}",
+                        code="upstream_error",
+                    )
+            except CrownTALKError:
+                # Controlled, no retry here
+                raise
+            except Exception as e:
+                logger.warning(
+                    "VXTwitter error on attempt %s for %s: %s",
+                    attempt,
+                    x_url,
+                    e,
                 )
-        except CrownTALKError:
-            raise
-        except Exception as e:
-            logger.warning(
-                "FXTwitter error on attempt %s for %s: %s",
-                attempt,
-                x_url,
-                e,
-            )
-            time.sleep(1 + attempt)
+                time.sleep(1 + attempt)
+
+        # Fallback: FXTwitter
+        fx_url = _FX_FMT.format(handle=handle, status_id=status_id)
+        for attempt in range(1, 4):
+            try:
+                logger.info("Fetching FXTwitter data for %s -> %s", x_url, fx_url)
+                r = _do_get_json(fx_url)
+                last_status = r.status_code
+                if r.status_code == 200:
+                    payload = _read_json_payload(r)
+                    data = _parse_payload(payload)
+                    _cache_set(handle, status_id, data)
+                    return data
+                elif r.status_code in (401, 403, 404):
+                    raise CrownTALKError(
+                        "Tweet not accessible via FXTwitter",
+                        code="tweet_not_accessible",
+                    )
+                elif r.status_code in (429, 500, 502, 503):
+                    time.sleep(1 + attempt)
+                    continue
+                else:
+                    raise CrownTALKError(
+                        f"FXTwitter unexpected status {r.status_code}",
+                        code="upstream_error",
+                    )
+            except CrownTALKError:
+                raise
+            except Exception as e:
+                logger.warning(
+                    "FXTwitter error on attempt %s for %s: %s",
+                    attempt,
+                    x_url,
+                    e,
+                )
+                time.sleep(1 + attempt)
 
     raise CrownTALKError(
         f"Tweet could not be fetched (last status={last_status})",
