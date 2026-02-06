@@ -19,7 +19,7 @@ from flask import Flask, request, jsonify, make_response, g
 from bs4 import BeautifulSoup
 
 from api import api_success, api_error, sse_event
-from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest
+from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest, ApiEnvelope, ApiError
 
 # Optional Postgres auth storage (Supabase). We keep the rest of the app on SQLite
 # because it's used for caching/anti-repeat and can remain ephemeral on Render Free.
@@ -44,6 +44,105 @@ try:
     app.config["MAX_CONTENT_LENGTH"] = int(os.getenv("CROWNTALK_MAX_PAYLOAD_BYTES", "65536"))
 except Exception:
     app.config["MAX_CONTENT_LENGTH"] = 65536
+
+
+# ------------------------------------------------------------------------------
+# Additional Security / Abuse Protection (v3)
+# ------------------------------------------------------------------------------
+
+# Simple request signature (HMAC) for sensitive routes. This is NOT a substitute for auth,
+# but it reduces casual bot abuse. If CROWNTALK_HMAC_SECRET is unset, signature checks are disabled.
+CROWNTALK_HMAC_SECRET = os.getenv("CROWNTALK_HMAC_SECRET", "").encode("utf-8")
+CROWNTALK_HMAC_WINDOW_SEC = int(os.getenv("CROWNTALK_HMAC_WINDOW_SEC", "300"))  # 5 minutes
+
+# Output truncation safety (avoid extremely long responses)
+MAX_OUTPUT_CHARS = int(os.getenv("CROWNTALK_MAX_OUTPUT_CHARS", "6000"))
+
+# Fetch guardrails for URL mode
+MAX_FETCH_BYTES = int(os.getenv("CROWNTALK_MAX_FETCH_BYTES", str(2 * 1024 * 1024)))  # 2MB
+URL_FETCH_TIMEOUT_SEC = float(os.getenv("CROWNTALK_URL_FETCH_TIMEOUT_SEC", "10"))
+
+# Password policy (auth endpoints)
+PASSWORD_MIN_LEN = int(os.getenv("CROWNTALK_PASSWORD_MIN_LEN", "8"))
+# Local common-password blocklist (small, offline, free-tier friendly)
+COMMON_PASSWORDS = set(
+    x.strip().lower()
+    for x in [
+        "password","password1","123456","12345678","123456789","qwerty","qwerty123","111111","000000",
+        "letmein","admin","iloveyou","welcome","monkey","dragon","sunshine","princess","football",
+        "abc123","passw0rd","1q2w3e4r","zaq12wsx","trustno1"
+    ]
+)
+
+# Basic circuit breaker (in-memory, per-process)
+_CB_FAIL_WINDOW_SEC = int(os.getenv("CROWNTALK_CB_FAIL_WINDOW_SEC", "120"))  # 2 minutes
+_CB_FAIL_THRESHOLD = int(os.getenv("CROWNTALK_CB_FAIL_THRESHOLD", "5"))
+_CB_OPEN_SEC = int(os.getenv("CROWNTALK_CB_OPEN_SEC", "120"))
+_cb_state = {}  # provider -> {"fails":[ts...], "open_until": ts}
+
+def _cb_is_open(provider: str) -> bool:
+    st = _cb_state.get(provider) or {}
+    try:
+        return float(st.get("open_until", 0) or 0) > time.time()
+    except Exception:
+        return False
+
+def _cb_record_failure(provider: str):
+    now = time.time()
+    st = _cb_state.setdefault(provider, {"fails": [], "open_until": 0})
+    fails = [t for t in (st.get("fails") or []) if (now - float(t)) <= _CB_FAIL_WINDOW_SEC]
+    fails.append(now)
+    st["fails"] = fails
+    if len(fails) >= _CB_FAIL_THRESHOLD:
+        st["open_until"] = now + _CB_OPEN_SEC
+
+def _cb_record_success(provider: str):
+    st = _cb_state.setdefault(provider, {"fails": [], "open_until": 0})
+    st["fails"] = []
+    st["open_until"] = 0
+
+def _normalize_ws(s: str) -> str:
+    return re.sub(r"\s+", " ", (s or "").strip())
+
+def _normalize_url_for_cache(u: str) -> str:
+    try:
+        p = urlparse((u or "").strip())
+        scheme = (p.scheme or "").lower()
+        host = (p.hostname or "").lower().strip(".")
+        path = p.path or "/"
+        # drop fragments, keep query (affects content)
+        q = ("?" + p.query) if p.query else ""
+        return f"{scheme}://{host}{path}{q}"
+    except Exception:
+        return (u or "").strip()
+
+def _truncate_output(s: str) -> str:
+    s = s or ""
+    if MAX_OUTPUT_CHARS and len(s) > MAX_OUTPUT_CHARS:
+        return s[:MAX_OUTPUT_CHARS].rstrip() + "\n\n[truncated]"
+    return s
+
+def _verify_hmac_signature(body: bytes) -> bool:
+    if not CROWNTALK_HMAC_SECRET:
+        return True
+    ts = (request.headers.get("X-CT-Timestamp") or "").strip()
+    sig = (request.headers.get("X-CT-Signature") or "").strip()
+    if not ts or not sig:
+        return False
+    try:
+        ts_int = int(ts)
+    except Exception:
+        return False
+    now = int(time.time())
+    if abs(now - ts_int) > CROWNTALK_HMAC_WINDOW_SEC:
+        return False
+    msg = (f"{ts}.{body.decode('utf-8', errors='replace')}").encode("utf-8")
+    digest = hmac.new(CROWNTALK_HMAC_SECRET, msg, hashlib.sha256).hexdigest()
+    try:
+        return hmac.compare_digest(digest, sig)
+    except Exception:
+        return False
+
 
 # Session cookie security (works for Flask session cookies)
 app.config["SESSION_COOKIE_HTTPONLY"] = True
@@ -116,6 +215,23 @@ def _start_timer_and_limits():
             if max_len and clen > max_len:
                 return api_error("payload_too_large", "Payload too large", 413, details={"max_bytes": max_len})
 
+
+    # Reject "null" Origin in production to harden CORS (common in abuse scenarios).
+    env = (os.getenv("CROWNTALK_ENV") or os.getenv("FLASK_ENV") or "").lower()
+    origin = (request.headers.get("Origin") or "").strip()
+    if env == "production" and origin.lower() == "null" and request.path not in ("/health", "/ready"):
+        return api_error("forbidden_origin", "Origin not allowed.", 403)
+
+    # Optional request signature for sensitive routes (HMAC). Enabled when CROWNTALK_HMAC_SECRET is set.
+    if request.method in ("POST", "PUT", "PATCH"):
+        if any((request.path or "").startswith(p) for p in SENSITIVE_PATH_PREFIXES):
+            body = request.get_data(cache=True) or b""
+            if not _verify_hmac_signature(body):
+                return api_error("bad_signature", "Invalid request signature.", 403)
+
+    # Idempotency key (best-effort): used by cache keying for safe retries.
+    g.idempotency_key = (request.headers.get("Idempotency-Key") or "").strip()[:128]
+
     # Rate-limit sensitive routes per IP
     path = request.path or ""
     is_sensitive = any(path.startswith(p) for p in SENSITIVE_PATH_PREFIXES)
@@ -157,10 +273,86 @@ def _add_request_id_and_log(resp):
             "page_hit": bool(getattr(g, "page_cache_hit", False)),
             "gen_hit": bool(getattr(g, "gen_cache_hit", False)),
         }
-        logger.info(json.dumps(payload, ensure_ascii=False))
+        sample_rate = float(os.getenv("LOG_SAMPLE_RATE", "0.15"))
+        if resp.status_code >= 400 or random.random() < max(0.0, min(sample_rate, 1.0)):
+            logger.info(json.dumps(payload, ensure_ascii=False))
+        try:
+            _metrics_update(request.path, latency_ms, resp.status_code)
+        except Exception:
+            pass
+    except Exception:
+        pass
+
+    return resp
+
+
+# ------------------------------------------------------------------------------
+# Metrics-lite (in-memory rolling stats; free-tier friendly)
+# ------------------------------------------------------------------------------
+
+_METRICS_LOCK = threading.Lock()
+_METRICS = {}  # key -> {"count": int, "err": int, "avg_ms": float}
+
+def _metrics_update(path: str, latency_ms: int, status_code: int) -> None:
+    key = f"{request.method} {path}"
+    with _METRICS_LOCK:
+        m = _METRICS.get(key) or {"count": 0, "err": 0, "avg_ms": 0.0}
+        m["count"] += 1
+        if status_code >= 400:
+            m["err"] += 1
+        # EWMA (fast + stable)
+        alpha = 0.15
+        m["avg_ms"] = (latency_ms if m["count"] == 1 else (alpha * float(latency_ms) + (1 - alpha) * float(m["avg_ms"])))
+        _METRICS[key] = m
+
+@app.get("/metrics-lite")
+def metrics_lite():
+    """Lightweight rolling averages; no Prometheus required."""
+    with _METRICS_LOCK:
+        snap = {k: dict(v) for k, v in _METRICS.items()}
+    return api_success({"metrics": snap})
+
+
+
+@app.get("/docs-lite")
+def docs_lite():
+    """Tiny OpenAPI-like docs without extra deps."""
+    routes = []
+    for rule in app.url_map.iter_rules():
+        if rule.endpoint == "static":
+            continue
+        methods = sorted([m for m in rule.methods if m in {"GET","POST","PUT","PATCH","DELETE"}])
+        routes.append({"path": str(rule), "methods": methods, "endpoint": rule.endpoint})
+    routes = sorted(routes, key=lambda x: (x["path"], ",".join(x["methods"])))
+    return api_success({
+        "routes": routes,
+        "schemas": {
+            "CommentRequest": CommentRequest.model_json_schema(),
+            "StreamCommentRequest": StreamCommentRequest.model_json_schema(),
+            "UrlCommentRequest": UrlCommentRequest.model_json_schema(),
+            "ApiEnvelope": ApiEnvelope.model_json_schema(),
+            "ApiError": ApiError.model_json_schema(),
+        },
+    })
+
+
+
+@app.after_request
+def _security_headers(resp):
+    # Security headers (basic, free-tier friendly)
+    try:
+        resp.headers.setdefault("X-Content-Type-Options", "nosniff")
+        resp.headers.setdefault("Referrer-Policy", "strict-origin-when-cross-origin")
+        resp.headers.setdefault("Permissions-Policy", "camera=(), microphone=(), geolocation=()")
+        # Basic CSP: allow API + same-origin assets; frontend should serve its own scripts/styles.
+        resp.headers.setdefault(
+            "Content-Security-Policy",
+            "default-src 'self'; img-src 'self' data:; style-src 'self' 'unsafe-inline'; script-src 'self' 'unsafe-inline'; connect-src 'self' https:; frame-ancestors 'none'; base-uri 'self';"
+        )
     except Exception:
         pass
     return resp
+
 
 
 # ------------------------------------------------------------------------------
@@ -832,7 +1024,7 @@ def signup_endpoint():
         return jsonify({"error": "invalid_name", "code": "invalid_name"}), 400
     if not x_link:
         return jsonify({"error": "invalid_x_link", "code": "invalid_x_link"}), 400
-    if len(password) < 6:
+    if len(password) < PASSWORD_MIN_LEN or password.lower() in COMMON_PASSWORDS:
         return jsonify({"error": "weak_password", "code": "weak_password"}), 400
 
     salt_hex, hash_hex = _hash_password(password)
@@ -1876,6 +2068,34 @@ def _do_init() -> None:
             CREATE INDEX IF NOT EXISTS idx_audit_created ON audit_log(created_at);
 
 
+            CREATE TABLE IF NOT EXISTS generation_history(
+                id INTEGER PRIMARY KEY,
+                mode TEXT NOT NULL,
+                idempotency_key TEXT,
+                request_json TEXT NOT NULL,
+                response_json TEXT NOT NULL,
+                user_id INTEGER,
+                ip TEXT,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                deleted_at DATETIME
+            );
+            CREATE INDEX IF NOT EXISTS idx_genhist_created ON generation_history(created_at);
+            CREATE INDEX IF NOT EXISTS idx_genhist_user ON generation_history(user_id);
+            CREATE INDEX IF NOT EXISTS idx_genhist_ip ON generation_history(ip);
+            CREATE INDEX IF NOT EXISTS idx_genhist_idem ON generation_history(idempotency_key);
+
+            CREATE TABLE IF NOT EXISTS presets(
+                id INTEGER PRIMARY KEY,
+                user_id INTEGER,
+                name TEXT NOT NULL,
+                prompt TEXT NOT NULL,
+                created_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                updated_at DATETIME DEFAULT CURRENT_TIMESTAMP,
+                UNIQUE(user_id, name)
+            );
+            CREATE INDEX IF NOT EXISTS idx_presets_user ON presets(user_id);
+
+
             -- OTP pattern guards
             CREATE TABLE IF NOT EXISTS comments_openers_seen(
                 opener TEXT PRIMARY KEY,
@@ -1925,6 +2145,13 @@ def _do_init() -> None:
         )
 
 def init_db() -> None:
+    # Ensure SQLite path is writable (Render free tier: prefer /tmp or app dir).
+    try:
+        db_dir = os.path.dirname(DB_PATH)
+        if db_dir:
+            os.makedirs(db_dir, exist_ok=True)
+    except Exception:
+        pass
     def _safe():
         try:
             _do_init()
@@ -2320,9 +2547,11 @@ def add_cors_headers(response):
             response.headers["Access-Control-Allow-Origin"] = next(iter(allowed), "")
             response.headers["Vary"] = "Origin"
     else:
-        response.headers["Access-Control-Allow-Origin"] = "*"
+        env = (os.getenv("CROWNTALK_ENV") or os.getenv("FLASK_ENV") or "").lower()
+        if env != "production":
+            response.headers["Access-Control-Allow-Origin"] = "*"
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth, X-Request-Id"
+    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth, X-Request-Id, X-CT-Timestamp, X-CT-Signature, Idempotency-Key"
     response.headers["Access-Control-Expose-Headers"] = "X-Request-Id"
     try:
         rid = getattr(g, "request_id", "")
@@ -2334,8 +2563,247 @@ def add_cors_headers(response):
     response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth"
     return response
 
+def _require_admin() -> bool:
+    tok = (request.headers.get("X-Admin-Token") or "").strip()
+    expected = (os.getenv("CROWNTALK_ADMIN_TOKEN", "") or "").strip()
+    return bool(expected) and secrets.compare_digest(tok, expected)
+
+@app.get("/admin/audit")
+def admin_audit():
+    if not _require_admin():
+        return api_error("forbidden", "Admin token required", status=403)
+    limit = int(request.args.get("limit", "50"))
+    limit = max(1, min(limit, 500))
+    event = (request.args.get("event") or "").strip()
+    user_id = request.args.get("user_id")
+    with get_conn() as conn:
+        q = "SELECT id, event, payload, ip, user_id, created_at FROM audit_log"
+        wh=[]
+        params=[]
+        if event:
+            wh.append("event = ?")
+            params.append(event)
+        if user_id:
+            wh.append("user_id = ?")
+            params.append(int(user_id))
+        if wh:
+            q += " WHERE " + " AND ".join(wh)
+        q += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(q, params).fetchall()
+    out=[]
+    for r in rows:
+        out.append({
+            "id": r[0],
+            "event": r[1],
+            "payload": json.loads(r[2]) if r[2] else {},
+            "ip": r[3],
+            "user_id": r[4],
+            "created_at": r[5],
+        })
+    return api_success({"items": out})
+
+
+
+def _current_user_id() -> int | None:
+    return getattr(g, "user_id", None)
+
+def _idem_lookup(mode: str):
+    idem = (request.headers.get("Idempotency-Key") or "").strip()
+    if not idem:
+        return None
+    try:
+        with get_conn() as conn:
+            row = conn.execute(
+                "SELECT response_json FROM generation_history WHERE deleted_at IS NULL AND mode = ? AND idempotency_key = ? ORDER BY id DESC LIMIT 1",
+                (mode, idem),
+            ).fetchone()
+        if row and row[0]:
+            return json.loads(row[0])
+    except Exception:
+        return None
+    return None
+
+def _persist_generation(mode: str, request_obj: dict, response_obj: dict) -> None:
+    try:
+        idem = (request.headers.get("Idempotency-Key") or "").strip() or None
+        with get_conn() as conn:
+            conn.execute(
+                "INSERT INTO generation_history(mode, idempotency_key, request_json, response_json, user_id, ip) VALUES (?, ?, ?, ?, ?, ?)",
+                (
+                    mode,
+                    idem,
+                    json.dumps(request_obj, ensure_ascii=False),
+                    json.dumps(response_obj, ensure_ascii=False),
+                    _current_user_id(),
+                    _client_ip(),
+                ),
+            )
+            conn.commit()
+    except Exception:
+        pass
+
+@app.get("/history")
+def history_list():
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+    limit = int(request.args.get("limit", "30"))
+    limit = max(1, min(limit, 200))
+    mode = (request.args.get("mode") or "").strip()
+    uid = _current_user_id()
+    ip = _client_ip()
+    with get_conn() as conn:
+        q = "SELECT id, mode, idempotency_key, request_json, response_json, created_at FROM generation_history WHERE deleted_at IS NULL"
+        params=[]
+        if uid is not None:
+            q += " AND user_id = ?"
+            params.append(uid)
+        else:
+            q += " AND ip = ?"
+            params.append(ip)
+        if mode:
+            q += " AND mode = ?"
+            params.append(mode)
+        q += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(q, params).fetchall()
+    items=[]
+    for r in rows:
+        items.append({
+            "id": r[0],
+            "mode": r[1],
+            "idempotency_key": r[2],
+            "request": json.loads(r[3]) if r[3] else {},
+            "response": json.loads(r[4]) if r[4] else {},
+            "created_at": r[5],
+        })
+    return api_success({"items": items})
+
+@app.get("/history/export")
+def history_export():
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+    fmt = (request.args.get("format") or "json").strip().lower()
+    if fmt not in {"json", "csv", "txt"}:
+        return api_error("validation_error", "format must be one of: json,csv,txt", status=400)
+    uid = _current_user_id()
+    ip = _client_ip()
+    limit = int(request.args.get("limit", "1000"))
+    limit = max(1, min(limit, 5000))
+    with get_conn() as conn:
+        q = "SELECT id, mode, request_json, response_json, created_at FROM generation_history WHERE deleted_at IS NULL"
+        params=[]
+        if uid is not None:
+            q += " AND user_id = ?"
+            params.append(uid)
+        else:
+            q += " AND ip = ?"
+            params.append(ip)
+        q += " ORDER BY id DESC LIMIT ?"
+        params.append(limit)
+        rows = conn.execute(q, params).fetchall()
+
+    if fmt == "json":
+        out=[{"id":r[0],"mode":r[1],"request":json.loads(r[2]) if r[2] else {}, "response":json.loads(r[3]) if r[3] else {}, "created_at":r[4]} for r in rows]
+        return Response(json.dumps({"items": out}, ensure_ascii=False, indent=2), mimetype="application/json",
+                        headers={"Content-Disposition": "attachment; filename=crowntalk-history.json"})
+    if fmt == "csv":
+        import csv, io
+        buf=io.StringIO()
+        w=csv.writer(buf)
+        w.writerow(["id","mode","created_at","request_json","response_json"])
+        for r in rows:
+            w.writerow([r[0], r[1], r[4], r[2], r[3]])
+        return Response(buf.getvalue(), mimetype="text/csv",
+                        headers={"Content-Disposition": "attachment; filename=crowntalk-history.csv"})
+    # txt
+    lines=[]
+    for r in rows:
+        lines.append(f"#{r[0]} [{r[4]}] mode={r[1]}")
+        try:
+            req=json.loads(r[2]) if r[2] else {}
+            resp=json.loads(r[3]) if r[3] else {}
+        except Exception:
+            req={}
+            resp={}
+        lines.append(json.dumps(req, ensure_ascii=False))
+        lines.append(json.dumps(resp, ensure_ascii=False))
+        lines.append("")
+    return Response("\n".join(lines), mimetype="text/plain; charset=utf-8",
+                    headers={"Content-Disposition": "attachment; filename=crowntalk-history.txt"})
+
+@app.post("/presets")
+def presets_upsert():
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+    body = request.get_json(silent=True) or {}
+    name = (body.get("name") or "").strip()
+    prompt = (body.get("prompt") or "").strip()
+    if not name or len(name) > 64:
+        return api_error("validation_error", "name is required (<=64 chars)", status=400)
+    if not prompt or len(prompt) > 5000:
+        return api_error("validation_error", "prompt is required (<=5000 chars)", status=400)
+    uid = _current_user_id()
+    with get_conn() as conn:
+        conn.execute(
+            "INSERT INTO presets(user_id, name, prompt) VALUES(?, ?, ?) ON CONFLICT(user_id, name) DO UPDATE SET prompt=excluded.prompt, updated_at=CURRENT_TIMESTAMP",
+            (uid, name, prompt),
+        )
+        conn.commit()
+    _audit("preset_upsert", {"name": name})
+    return api_success({"name": name})
+
+@app.get("/presets")
+def presets_list():
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+    uid = _current_user_id()
+    with get_conn() as conn:
+        rows = conn.execute(
+            "SELECT name, prompt, updated_at FROM presets WHERE user_id IS ? ORDER BY updated_at DESC LIMIT 200",
+            (uid,),
+        ).fetchall()
+    items=[{"name": r[0], "prompt": r[1], "updated_at": r[2]} for r in rows]
+    return api_success({"items": items})
+
+@app.delete("/presets/<name>")
+def presets_delete(name: str):
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+    uid = _current_user_id()
+    name=(name or "").strip()
+    if not name:
+        return api_error("validation_error", "name required", status=400)
+    with get_conn() as conn:
+        conn.execute("DELETE FROM presets WHERE user_id IS ? AND name = ?", (uid, name))
+        conn.commit()
+    _audit("preset_delete", {"name": name})
+    return api_success({"deleted": name})
+
+
+
 @app.route("/", methods=["GET"])
-def health():
+def index():
     """Basic healthcheck used by Render and Docker health probe.
 
     We delegate to `ping()` so `/` and `/ping` stay in sync.
@@ -6219,6 +6687,10 @@ def _pick_rewrite_provider_order() -> list[str]:
     if not CROWNTALK_LLM_ORDER:
         random.shuffle(out)
 
+
+    # Circuit breaker: skip providers temporarily if they're in an "open" state.
+    out = [name for name in out if not _cb_is_open(name)]
+
     return out
 
 
@@ -6775,13 +7247,42 @@ def fetch_source_preview(source_url: str) -> dict:
         "User-Agent": "Mozilla/5.0 (compatible; CrownTALK/2.0; +https://example.com)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
-    r = requests.get(safe_url, headers=headers, timeout=12, allow_redirects=True)
+    
+    # Stream download with a hard byte cap (robots/timeout respectful)
+    r = requests.get(safe_url, headers=headers, timeout=URL_FETCH_TIMEOUT_SEC, allow_redirects=True, stream=True)
     r.raise_for_status()
-    html = r.text or ""
+    buf = bytearray()
+    for chunk in r.iter_content(chunk_size=65536):
+        if not chunk:
+            continue
+        buf.extend(chunk)
+        if len(buf) > MAX_FETCH_BYTES:
+            break
+    html = buf.decode(r.encoding or "utf-8", errors="replace")
     soup = BeautifulSoup(html, "html.parser")
 
     # basic metadata
-    title = (soup.title.string if soup.title and soup.title.string else "").strip()
+
+    author = ""
+    try:
+        author = (
+            (soup.find("meta", attrs={"name": "author"}) or {}).get("content")
+            or (soup.find("meta", attrs={"property": "article:author"}) or {}).get("content")
+            or ""
+        ).strip()
+    except Exception:
+        author = ""
+
+    published = ""
+    try:
+        published = (
+            (soup.find("meta", attrs={"property": "article:published_time"}) or {}).get("content")
+            or (soup.find("meta", attrs={"name": "date"}) or {}).get("content")
+            or ""
+        ).strip()
+    except Exception:
+        published = ""
+
     og_title = soup.find("meta", property="og:title")
     if og_title and og_title.get("content"):
         title = og_title.get("content").strip() or title
@@ -6851,7 +7352,10 @@ def fetch_source_preview(source_url: str) -> dict:
     text = text[:18000]
     excerpt = (desc or text[:320]).strip()
 
-    out = {"url": safe_url, "title": title, "excerpt": excerpt, "content": text}
+    out = {"url": safe_url, "title": title, "excerpt": excerpt,
+        "author": author,
+        "published": published,
+        "language": _detect_lang_light(content), "content": text}
     _ttl_set(_page_cache, cache_key, out, PAGE_CACHE_TTL_SECONDS)
     return out
 
@@ -6904,6 +7408,14 @@ def comment_from_url_endpoint():
     except Exception as e:
         return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
 
+    cached_idem = _idem_lookup("url")
+    if isinstance(cached_idem, dict):
+        try:
+            g.gen_cache_hit = True
+        except Exception:
+            pass
+        return api_success(cached_idem)
+
     # fetch + extract
     try:
         prev = fetch_source_preview(req.source_url)
@@ -6945,6 +7457,7 @@ def comment_from_url_endpoint():
                 g.gen_cache_hit = True
             except Exception:
                 pass
+            _persist_generation("url", payload, cached_payload)
             return api_success(cached_payload)
 
         pair = generate_two_comments_with_providers(
@@ -6970,6 +7483,7 @@ def comment_from_url_endpoint():
             }
         }
         _dedupe_cache_set(cache_key, payload)
+        _persist_generation("url", payload, payload)
         return api_success(payload)
     except Exception as e:
         return api_error("generation_failed", "Failed to generate comments", 500, {"detail": str(e)})
@@ -7037,7 +7551,7 @@ def comment_from_url_stream_endpoint():
 
             # stage 2: generation (dedupe cache)
             yield sse_event("status", {"stage": "generating"})
-            cache_key = hashlib.sha256(f"urlmode::{safe_url}::{gen_lang}::{bool(req.fast)}::{quote_mode}".encode("utf-8")).hexdigest()
+            cache_key = hashlib.sha256(f"urlmode::{_normalize_url_for_cache(safe_url)}::{gen_lang}::{bool(req.fast)}::{quote_mode}::{getattr(g, 'idempotency_key', '')}".encode("utf-8")).hexdigest()
             cached = _dedupe_cache_get(cache_key)
             if cached:
                 try:
@@ -7057,6 +7571,18 @@ def comment_from_url_stream_endpoint():
                     include_alternates=False,
                 )
                 comments = [p.get("text", "").strip() for p in pair if p.get("text")]
+
+                # "Chunk" events (best-effort): emit progressive chunks per comment so the client UI can stream.
+                # Note: providers may not support true token streaming across all SDKs on free tier; this still
+                # provides progressive rendering for UX consistency.
+                for ci, ctext in enumerate(comments):
+                    ctext = _truncate_output(ctext)
+                    for off in range(0, len(ctext), 200):
+                        yield sse_event("chunk", {"index": ci, "text": ctext[off:off+200]})
+                        # heartbeat (proxy keep-alive)
+                        if int(time.time()) % 15 == 0:
+                            yield sse_event("ping", {"t": int(time.time())})
+
                 result_item = {
                     "url": safe_url,
                     "title": prev.get("title"),
@@ -7070,6 +7596,9 @@ def comment_from_url_stream_endpoint():
             yield sse_event("result", {"type": "result", "item": result_item})
             yield sse_event("status", {"stage": "finalizing"})
             yield sse_event("done", {"ok": True})
+        except GeneratorExit:
+            # Client disconnected (best-effort)
+            return
         except Exception as e:
             yield sse_event("error", {"code": "internal_error", "message": "Unexpected error"})
 
@@ -7095,6 +7624,10 @@ def comment_endpoint():
         payload = request.get_json(force=True, silent=True) or {}
     except Exception:
         return jsonify({"error": "Invalid JSON body", "code": "invalid_json"}), 400
+
+    cached_idem = _idem_lookup("urls")
+    if isinstance(cached_idem, dict):
+        return jsonify(cached_idem), 200
 
     urls = payload.get("urls")
     if not isinstance(urls, list) or not urls:
@@ -7302,7 +7835,9 @@ def comment_endpoint():
     })
     # ----------------------------------------------
 
-    return jsonify({"results": results, "failed": failed}), 200
+    response_obj = {"results": results, "failed": failed}
+    _persist_generation("urls", payload, response_obj)
+    return jsonify(response_obj), 200
 
 
 @app.route("/comment/stream", methods=["POST", "OPTIONS"])

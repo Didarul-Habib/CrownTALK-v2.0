@@ -108,12 +108,32 @@ def prune_aux_tables(conn: sqlite3.Connection) -> None:
             logger.warning("Skipping table %s due to error: %s", tbl, e)
 
 
+
+def prune_history_tables(conn: sqlite3.Connection) -> None:
+    """Prune generation_history + audit_log to keep DB small."""
+    if DB_RETENTION_DAYS <= 0:
+        return
+    cutoff_iso = time.strftime("%Y-%m-%d %H:%M:%S", time.gmtime(time.time() - DB_RETENTION_DAYS * 86400))
+    cur = conn.cursor()
+    for tbl in ["generation_history", "audit_log", "presets"]:
+        try:
+            if tbl == "presets":
+                # presets are small; keep them
+                continue
+            logger.info("Pruning %s rows older than %s ...", tbl, cutoff_iso)
+            cur.execute(f"DELETE FROM {tbl} WHERE created_at < ?;", (cutoff_iso,))
+            logger.info("Table %s: %s rows deleted", tbl, conn.total_changes)
+        except sqlite3.OperationalError as e:
+            logger.warning("Skipping table %s due to error: %s", tbl, e)
+
+
 def main() -> None:
     logger.info("Starting DB cleanup against %s", DB_PATH)
     conn = get_conn()
     try:
         prune_comments(conn)
         prune_aux_tables(conn)
+        prune_history_tables(conn)
         logger.info("DB cleanup completed successfully.")
     finally:
         conn.close()
