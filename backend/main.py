@@ -6982,8 +6982,15 @@ def comment_stream_endpoint():
             else:
                 comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=url, target_lang=target, out_lang_tag=target)
             # stream as chunks (coarse-grained)
-            for i, c in enumerate(comments):
-                yield sse_event("item", {"index": i, "lang": c.get("lang"), "text": c.get("text")})
+            # stream a single result item compatible with frontend parser
+            result_item = {
+                "url": url,
+                "status": "ok",
+                "comments": [
+                    {k: v for k, v in c.items() if k in ("text", "provider", "alternates")} for c in comments
+                ],
+            }
+            yield sse_event("result", {"type": "result", "item": result_item})
             yield sse_event("status", {"stage": "finalizing"})
             # best-effort save
             try:
@@ -7244,4 +7251,3 @@ def main() -> None:
 
 if __name__ == "__main__":
     main()
-
