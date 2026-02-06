@@ -52,10 +52,7 @@ except Exception:
 # ------------------------------------------------------------------------------
 
 # Simple request signature (HMAC) for sensitive routes. This is NOT a substitute for auth,
-# but it reduces casual bot abuse. To enforce signatures, set CROWNTALK_HMAC_ENFORCE=true (and provide CROWNTALK_HMAC_SECRET).
-def _env_bool(name: str, default: str = "false") -> bool:
-    return (os.getenv(name, default) or "").strip().lower() in ("1", "true", "yes", "y", "on")
-
+# but it reduces casual bot abuse. If CROWNTALK_HMAC_SECRET is unset, signature checks are disabled.
 CROWNTALK_HMAC_SECRET = os.getenv("CROWNTALK_HMAC_SECRET", "").encode("utf-8")
 CROWNTALK_HMAC_ENFORCE = (os.getenv("CROWNTALK_HMAC_ENFORCE", "false").lower() == "true")
 CROWNTALK_HMAC_WINDOW_SEC = int(os.getenv("CROWNTALK_HMAC_WINDOW_SEC", "300"))  # 5 minutes
@@ -135,9 +132,7 @@ def _truncate_output(s: str) -> str:
     return s
 
 def _verify_hmac_signature(body: bytes) -> bool:
-    # Signature verification is OFF by default (even if CROWNTALK_HMAC_SECRET is set),
-    # so production doesn't break when the frontend isn't configured to sign requests.
-    # To enforce signatures, set: CROWNTALK_HMAC_ENFORCE=true
+    # Only enforce HMAC when explicitly enabled.
     if not CROWNTALK_HMAC_ENFORCE:
         return True
     if not CROWNTALK_HMAC_SECRET:
@@ -2772,24 +2767,47 @@ def _pair_too_similar(a: str, b: str, threshold: float = 0.45) -> bool:
 # ------------------------------------------------------------------------------
 @app.after_request
 def add_cors_headers(response):
-    # CORS: lock down to configured frontend origins when provided.
+    # CORS:
+    # - If CROWNTALK_ALLOWED_ORIGINS is provided, allow only those origins (supports wildcard '*.domain').
+    # - Otherwise, reflect the request Origin (or '*' if missing). This avoids "Failed to fetch" in production.
     allow_origin = os.getenv("CROWNTALK_ALLOWED_ORIGINS", "").strip()
     origin = request.headers.get("Origin")
+
+    def _origin_allowed(ori: str, rule: str) -> bool:
+        rule = (rule or "").strip()
+        if not rule or not ori:
+            return False
+        if rule == "*":
+            return True
+        if rule.startswith("*."):
+            # wildcard subdomain match, e.g. *.netlify.app
+            return ori.endswith(rule[1:])  # ".netlify.app"
+        return ori == rule
+
     if allow_origin:
-        allowed = {o.strip() for o in allow_origin.split(",") if o.strip()}
-        if origin in allowed:
+        rules = [o.strip() for o in allow_origin.split(",") if o.strip()]
+        if origin and any(_origin_allowed(origin, r) for r in rules):
             response.headers["Access-Control-Allow-Origin"] = origin
             response.headers["Vary"] = "Origin"
         else:
-            # don't reflect arbitrary origins
-            response.headers["Access-Control-Allow-Origin"] = next(iter(allowed), "")
+            # don't reflect arbitrary origins; pick the first explicit rule (non-wildcard) if possible
+            chosen = ""
+            for r in rules:
+                if r and not r.startswith("*.") and r != "*":
+                    chosen = r
+                    break
+            response.headers["Access-Control-Allow-Origin"] = chosen or ""
             response.headers["Vary"] = "Origin"
     else:
-        env = (os.getenv("CROWNTALK_ENV") or os.getenv("FLASK_ENV") or "").lower()
-        if env != "production":
-            response.headers["Access-Control-Allow-Origin"] = "*"
+        # Default: reflect Origin if present, else allow all.
+        response.headers["Access-Control-Allow-Origin"] = origin or "*"
+        response.headers["Vary"] = "Origin" if origin else "Origin"
+
     response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth, X-Request-Id, X-CT-Timestamp, X-CT-Signature, Idempotency-Key"
+    response.headers["Access-Control-Allow-Headers"] = (
+        "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth, "
+        "X-Request-Id, X-CT-Timestamp, X-CT-Signature, Idempotency-Key"
+    )
     response.headers["Access-Control-Expose-Headers"] = "X-Request-Id"
     try:
         rid = getattr(g, "request_id", "")
@@ -2797,8 +2815,6 @@ def add_cors_headers(response):
             response.headers["X-Request-Id"] = rid
     except Exception:
         pass
-    response.headers["Access-Control-Allow-Methods"] = "GET,POST,OPTIONS"
-    response.headers["Access-Control-Allow-Headers"] = "Content-Type, X-Crowntalk-Token, Authorization, X-Crowntalk-Auth"
     return response
 
 def _require_admin() -> bool:
