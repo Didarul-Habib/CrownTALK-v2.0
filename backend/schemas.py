@@ -41,6 +41,26 @@ class StreamCommentRequest(BaseModel):
     output_language: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN)
     fast: Optional[bool] = False
 
+
+class UrlCommentRequest(BaseModel):
+    """Generate comments from a single URL (X thread, article, blog, etc.)."""
+
+    source_url: str = Field(..., min_length=4, max_length=2048)
+    preset: Optional[str] = Field(default=None, max_length=MAX_PRESET_LEN)
+    output_language: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN)
+    fast: Optional[bool] = Field(default=False)
+    quote_mode: Optional[bool] = Field(default=False, description="If true, prefer quoting/citing claims")
+
+    @field_validator("source_url")
+    @classmethod
+    def validate_source_url(cls, v: str) -> str:
+        v = (v or "").strip()
+        if not v:
+            raise ValueError("source_url is required")
+        if not (v.startswith("http://") or v.startswith("https://")):
+            raise ValueError("source_url must start with http:// or https://")
+        return v
+
 class VerifyAccessRequest(BaseModel):
     code: str = Field(..., min_length=1, max_length=128)
 

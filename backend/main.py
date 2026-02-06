@@ -16,9 +16,10 @@ from urllib.parse import urlparse
 
 import requests
 from flask import Flask, request, jsonify, make_response, g
+from bs4 import BeautifulSoup
 
 from api import api_success, api_error, sse_event
-from schemas import CommentRequest, StreamCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest
+from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest
 
 # Optional Postgres auth storage (Supabase). We keep the rest of the app on SQLite
 # because it's used for caching/anti-repeat and can remain ephemeral on Render Free.
@@ -220,7 +221,7 @@ def _handle_unexpected_error(exc: Exception):
     bump_metric("total_errors")
     METRICS["last_error"] = repr(exc)
     logger.exception("Unhandled error in request", exc_info=exc)
-    return api_error(code=\"internal_server_error\", message=\"Unexpected server error\", status=500)
+    return api_error(code="internal_server_error", message="Unexpected server error", status=500)
 
 
 
@@ -232,7 +233,7 @@ def verify_access():
 
     if GATE_DISABLED:
         # Gate is effectively off; let the frontend proceed without a token.
-        return jsonify({"ok": True, "token": ""})
+        return api_success({"ok": True, "token": ""})
 
     try:
         payload = request.get_json(silent=True) or {}
@@ -243,18 +244,18 @@ def verify_access():
 
     if not ACCESS_CODE_ENV:
         # No configured access code -> accept any code but return empty token.
-        return jsonify({"ok": True, "token": ""})
+        return api_success({"ok": True, "token": ""})
 
     if not code:
-        return jsonify({"error": "missing_code"}), 400
+        return api_error(code="missing_code", message="Missing access code", status=400)
 
     if code != ACCESS_CODE_ENV:
         # Small delay to make brute forcing a bit less pleasant.
         time.sleep(0.8)
-        return jsonify({"error": "invalid_code"}), 401
+        return api_error(code="invalid_code", message="Invalid access code", status=401)
 
     token = _compute_access_token(code)
-    return jsonify({"ok": True, "token": token})
+    return api_success({"ok": True, "token": token})
 
 # ------------------------------------------------------------------------------
 # Server-side login (users + sessions)
@@ -6544,6 +6545,167 @@ def ready():
     except Exception as e:
         return api_error("not_ready", "Database not ready", 503)
     return api_success({"ready": True, "time": time.time()})
+
+
+# ------------------------------------------------------------------------------
+# Source URL helpers (Thread + Article mode)
+# ------------------------------------------------------------------------------
+
+def _strip_and_squash_ws(s: str) -> str:
+    return " ".join((s or "").split())
+
+
+def fetch_source_preview(source_url: str) -> dict:
+    """Fetch a URL and extract a small preview + cleaned text.
+
+    Works for generic articles and (best-effort) for X threads.
+    We keep it lightweight for Render free tier (no heavy parsers).
+    """
+    headers = {
+        "User-Agent": "Mozilla/5.0 (compatible; CrownTALK/2.0; +https://example.com)",
+        "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    }
+    r = requests.get(source_url, headers=headers, timeout=12)
+    r.raise_for_status()
+    html = r.text or ""
+    soup = BeautifulSoup(html, "html.parser")
+
+    # basic metadata
+    title = (soup.title.string if soup.title and soup.title.string else "").strip()
+    og_title = soup.find("meta", property="og:title")
+    if og_title and og_title.get("content"):
+        title = og_title.get("content").strip() or title
+
+    desc = ""
+    og_desc = soup.find("meta", property="og:description")
+    if og_desc and og_desc.get("content"):
+        desc = og_desc.get("content").strip()
+    if not desc:
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        if meta_desc and meta_desc.get("content"):
+            desc = meta_desc.get("content").strip()
+
+    # strip non-content
+    for tag in soup(["script", "style", "noscript", "svg"]):
+        tag.decompose()
+    text = _strip_and_squash_ws(soup.get_text(" "))
+    # keep it bounded
+    text = text[:12000]
+    excerpt = desc or text[:280]
+    excerpt = excerpt[:400]
+
+    return {
+        "title": title or "Untitled",
+        "excerpt": excerpt,
+        "content": text,
+    }
+
+
+@app.route("/source_preview", methods=["POST", "OPTIONS"])
+def source_preview_endpoint():
+    """Preview content for a thread/article URL.
+
+    Request: { "source_url": "https://..." }
+    Response: standardized envelope with {title, excerpt}
+    """
+    if request.method == "OPTIONS":
+        return ("", 204)
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        src = UrlCommentRequest(source_url=payload.get("source_url", ""))
+    except Exception as e:
+        return api_error("bad_request", "Invalid source_url", 400, {"detail": str(e)})
+
+    try:
+        prev = fetch_source_preview(src.source_url)
+        return api_success({"title": prev["title"], "excerpt": prev["excerpt"], "source_url": src.source_url})
+    except Exception as e:
+        return api_error("fetch_failed", "Failed to fetch URL", 400, {"detail": str(e)})
+
+
+@app.route("/comment_from_url", methods=["POST", "OPTIONS"])
+def comment_from_url_endpoint():
+    """Generate comments from a single URL (thread/article mode)."""
+    if request.method == "OPTIONS":
+        return ("", 204)
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
+    try:
+        payload = request.get_json(force=True, silent=True) or {}
+        req = UrlCommentRequest(**payload)
+    except Exception as e:
+        return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
+
+    # fetch + extract
+    try:
+        prev = fetch_source_preview(req.source_url)
+    except Exception as e:
+        return api_error("fetch_failed", "Failed to fetch URL", 400, {"detail": str(e)})
+
+    content = prev.get("content") or ""
+    if not content.strip():
+        return api_error("no_content", "Could not extract content from URL", 400)
+
+    # quote-mode: if content looks like it has claims/stats
+    looks_claimy = bool(re.search(r"\b\d+(?:[\.,]\d+)?%\b|\b\d{4}\b|\$\d+", content))
+    quote_mode = bool(req.quote_mode or looks_claimy)
+
+    # build a pseudo "tweet" text for your existing generator
+    context_block = content[:5000]
+    prompt_prefix = (
+        "You are writing a reply comment to content from a URL (article or thread). "
+        "Be concise, natural, and high-quality for X (Twitter).\n"
+        "Use the author/content as context, but do not hallucinate facts.\n"
+    )
+    if quote_mode:
+        prompt_prefix += (
+            "If there are stats/claims, either quote the exact phrasing briefly and ask for a source, "
+            "or respond with a careful caveat. Prefer one short quote.\n"
+        )
+
+    synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','') }\nSOURCE_EXCERPT: {prev.get('excerpt','') }\nSOURCE_CONTENT: {context_block}"
+
+    # Use existing comment generator: generate_comments_for_single_tweet expects TweetData. We'll reuse lower-level LLM call.
+    try:
+        # minimal wrapper: call the same single-comment helper used elsewhere
+        # We generate 2 comments (like your normal mode) and return as a single item.
+        gen_lang = (req.output_language or "en").strip().lower()
+        pair = generate_two_comments_with_providers(
+            tweet_text=synthetic_tweet,
+            author=None,
+            handle=None,
+            lang=gen_lang,
+            url=req.source_url,
+            target_lang=gen_lang,
+            out_lang_tag=gen_lang,
+            include_alternates=False,
+        )
+        comments = [p.get("text", "").strip() for p in pair if p.get("text")]
+        _audit("comment_from_url", {"ok": True, "url": req.source_url})
+        return api_success({
+            "item": {
+                "url": req.source_url,
+                "title": prev.get("title"),
+                "excerpt": prev.get("excerpt"),
+                "comments": comments,
+                "status": "ok",
+                "citations": [{"url": req.source_url, "title": prev.get("title")}] if quote_mode else [],
+            }
+        })
+    except Exception as e:
+        return api_error("generation_failed", "Failed to generate comments", 500, {"detail": str(e)})
 
 
 

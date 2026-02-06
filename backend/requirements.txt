@@ -22,3 +22,4 @@ huggingface-hub>=0.23.0
 
 # Optional: local .env support (Render env vars work without this too)
 python-dotenv==1.0.1
+beautifulsoup4==4.12.3
