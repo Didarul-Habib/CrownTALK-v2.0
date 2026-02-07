@@ -9,7 +9,7 @@ except Exception:  # noqa: BLE001
 import collections
 import json, os, re, time, random, hashlib, logging, sqlite3, threading, secrets, hmac, socket, ipaddress
 from collections import Counter
-from contextvars import ContextVar
+from contextvars import https://portal.deltahash.ai?ref=DELTA-95E0DDhttps://portal.deltahash.ai?ref=DELTA-95E0DD
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict, Any
@@ -789,8 +789,6 @@ def bump_metric(name: str, amount: int = 1) -> None:
         # metrics are best-effort only; never break main flow
         pass
 
-
-
 import uuid
 
 @app.before_request
@@ -1212,7 +1210,7 @@ def _require_user_or_unauthorized():
 
     return None
 
-
+    
 @app.route("/signup", methods=["POST", "OPTIONS"])
 def signup_endpoint():
     if request.method == "OPTIONS":
@@ -1656,7 +1654,6 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 
     return results
 
-
 # Request-scoped context (per tweet request)
 REQUEST_THREAD_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_THREAD_CTX", default=None)
 REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_CTX", default=None)
@@ -1909,7 +1906,6 @@ def _coingecko_price(coin_id: str) -> Optional[dict]:
     except Exception:
         return None
 
-
 # ------------------------------------------------------------------------------
 # Optional Groq (free-tier). If not set, we run fully offline.
 # ------------------------------------------------------------------------------
@@ -1922,7 +1918,7 @@ if USE_GROQ:
     except Exception:
         _groq_client = None
         USE_GROQ = False
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
 # Groq pacing / backoff (to avoid falling back too quickly)
 GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "1.0"))  # spacing between calls
 GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "4"))               # how many times to retry one call
@@ -2109,7 +2105,7 @@ if USE_GEMINI:
 # ------------------------------------------------------------------------------
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "").strip()
 USE_MISTRAL = bool(MISTRAL_API_KEY)
-MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "open-mixtral-8x7b")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-2506")
 MISTRAL_API_BASE = os.getenv("MISTRAL_API_BASE", "https://api.mistral.ai/v1")
 
 # ------------------------------------------------------------------------------
@@ -2375,7 +2371,8 @@ def _do_init() -> None:
             CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
 
             """
-        )
+    )
+
 
 def init_db() -> None:
     # Ensure SQLite path is writable (Render free tier: prefer /tmp or app dir).
@@ -3448,25 +3445,102 @@ except re.error:
 
 # Tweet-context router: infer a coarse "topic" from the actual tweet text (gm/airdrop/chart/bug/thread/meme)
 # so downstream comment generation picks the right reaction/template instead of generic filler.
+
+
+
 def detect_topic(text: str) -> str:
-    t = (text or "").lower()
-    if any(k in t for k in ("gm ", "gn ", "good morning", "good night")):
+    t_raw = text or ""
+    t = t_raw.lower()
+
+    # Follower / growth / milestone tweets (hit 2k, 10k fam, etc.)
+    if t:
+        import re as _re_topic
+        if (
+            "follower" in t
+            or "followers" in t
+            or "subs" in t
+            or "subscribers" in t
+            or "milestone" in t
+            or "holders" in t
+        ):
+            if any(
+                kw in t
+                for kw in (
+                    "hit",
+                    "reached",
+                    "crossed",
+                    "just hit",
+                    "just crossed",
+                    "finally hit",
+                    "milestone",
+                    "thank you",
+                    "thanks for",
+                    "grateful for",
+                )
+            ):
+                return "milestone"
+            if _re_topic.search(r"\b\d{2,}\s*(k|m)?\s*(followers|follower|subs|subscribers|fam|holders)\b", t):
+                return "milestone"
+
+    # Support / sad / personal low moments
+    if any(k in t for k in ("sad", "depressed", "heartbroken", "grief", "lost my", "rip", "rest in peace", "passed away", "can't do this", "i'm tired", "im tired", "burnt out", "anxious", "panic")):
+        return "support"
+
+    # Loss / liquidation / rekt
+    if any(k in t for k in ("liquidated", "liq'd", "liqd", "got liq", "rekt", "blew up", "margin call", "stopped out", "down bad", "lost it all", "wiped")):
+        return "loss"
+
+    # Scam / hack / rug / exploit
+    if any(k in t for k in ("scam", "rug", "rugged", "phishing", "hacked", "drained", "exploit", "malware", "fake link", "wallet drained", "approval scam")):
+        return "scam"
+
+    # Builder / shipping / product progress
+    if any(k in t for k in ("shipped", "shipping", "built", "building", "deploy", "deployed", "release", "launched", "v1", "v2", "devlog", "open sourced", "open-sourced", "commit", "pull request", "frontend", "backend")):
+        return "builder"
+
+    # DeFi yields / LP / TVL / vaults
+    if any(k in t for k in ("tvl", "apy", "apr", "yield", "vault", "lp", "liquidity pool", "farm", "emissions", "fees", "rebalance", "pool", "curve", "aave", "compound", "lending", "borrow")):
+        return "defi"
+
+    # Perps / derivatives
+    if any(k in t for k in ("perps", "perp", "funding", "open interest", "oi", "leverage", "longs", "shorts", "liq", "liquidation", "basis", "mark price")):
+        return "perps"
+
+    # Greetings
+    if any(k in t for k in ("gm ", "gn ", "good morning", "good night", "gmgm", "gm!", "gn!")):
         return "greeting"
-    if any(k in t for k in ("airdrop", "whitelist", "wl spot", "mint is live")):
+
+    # Airdrops / giveaway / mints
+    if any(k in t for k in ("airdrop", "whitelist", "wl spot", "mint is live", "claim", "claimed", "allocation")):
         return "giveaway"
+
+    # Charts / trading posts
     if any(k in t for k in ("chart", "support", "resistance", "ath", "price target", "%", "market cap", "mc")):
         return "chart"
+
+    # Complaints / outages
     if any(k in t for k in ("bug", "issue", "broken", "down again", "wtf", "why is", "tired of")):
         return "complaint"
+
+    # Announcements
     if any(k in t for k in ("announcing", "announcement", "we're live", "we are live", "launching", "we shipped")):
         return "announcement"
+
+    # Memes
     if any(k in t for k in ("meme", "shitpost", "ratioed", "memeing")) or "lol" in t:
         return "meme"
-    if "🧵" in text or len(text) > 220:
+
+    # Threads / long posts
+    if "🧵" in t_raw or len(t_raw) > 220:
         return "thread"
-    if len(text) < 80:
+
+    if len(t_raw) < 80:
         return "one_liner"
+
     return "generic"
+
+
+
 
 # Tweet-context steering: generate a short "mode" instruction from the tweet's keywords (dev/trader/NFT/etc)
 # to keep replies anchored to what the tweet is about and avoid random praise/AI-sounding lines.
@@ -3526,6 +3600,7 @@ def detect_sentiment(text: str) -> str:
         return "bearish"
     return "neutral"
 
+
 # ------------------------------------------------------------------------------
 # Reaction engine: types, profiles, heat score, familiarity & pacing
 # ------------------------------------------------------------------------------
@@ -3576,16 +3651,62 @@ REACTION_CONFIG: dict[str, dict] = {
     },
 }
 
+
+
+
 REACTION_MATRIX: dict[str, dict] = {
     "greeting": {
         "bullish": ["congrats", "agree_plus", "banter"],
         "neutral": ["agree_plus", "banter"],
         "bearish": ["question"],
     },
+    # Airdrops / giveaways: usually congrats + light hype
     "giveaway": {
-        "bullish": ["agree_plus", "banter"],
-        "neutral": ["agree_plus"],
+        "bullish": ["congrats", "agree_plus", "banter"],
+        "neutral": ["congrats", "agree_plus"],
         "bearish": ["question"],
+    },
+    # Follower / growth milestones (2k, 10k, 20k, etc.)
+    "milestone": {
+        "bullish": ["congrats", "agree_plus"],
+        "neutral": ["congrats", "agree_plus"],
+        "bearish": ["question"],
+    },
+    # Emotional / personal posts
+    "support": {
+        "bullish": ["support", "question"],
+        "neutral": ["support", "question"],
+        "bearish": ["support", "question"],
+    },
+    # Loss / liquidation
+    "loss": {
+        "bullish": ["support", "question"],
+        "neutral": ["support", "question"],
+        "bearish": ["support", "question"],
+    },
+    # Scam / hack warnings
+    "scam": {
+        "bullish": ["agree_plus", "question"],
+        "neutral": ["agree_plus", "question"],
+        "bearish": ["soft_pushback", "question"],
+    },
+    # Builders shipping
+    "builder": {
+        "bullish": ["congrats", "agree_plus"],
+        "neutral": ["agree_plus", "question"],
+        "bearish": ["question"],
+    },
+    # DeFi yields / mechanics
+    "defi": {
+        "bullish": ["agree_plus", "question"],
+        "neutral": ["question"],
+        "bearish": ["soft_pushback", "question"],
+    },
+    # Perps / derivatives
+    "perps": {
+        "bullish": ["agree_plus", "question"],
+        "neutral": ["question"],
+        "bearish": ["soft_pushback", "question"],
     },
     "chart": {
         "bullish": ["agree_plus", "question"],
@@ -3803,7 +3924,6 @@ REACTION_MODE_SPECS = {
         "force_skip": True,
     },
 }
-
 
 def apply_reaction_mode_to_plan(plan: dict, mode: str | None = None) -> dict:
     # Post-process a reaction plan based on the configured mode.
@@ -4289,12 +4409,92 @@ class OfflineCommentGenerator:
                 P(f"Nice to see someone admit {focus_slot} is exhausting"),
                 P(f"Feels like no one in charge understands {focus_slot}"),
             ]
-        elif topic in ("announcement", "update"):
+        elif topic == "support":
+            buckets["support"] = [
+                P(f"Sorry you are going through {focus_slot}, genuinely"),
+                P(f"Hope you get some peace around {focus_slot} soon"),
+                P(f"Sending strength — {focus_slot} is heavy"),
+                P(f"Take it one step at a time with {focus_slot}"),
+            ]
+            buckets["support_q"] = [
+                P(f"Anything we can do to help with {focus_slot}?"),
+                P(f"Do you want advice or just space on {focus_slot}?"),
+                P(f"Hope you have someone to talk to about {focus_slot}"),
+            ]
+        elif topic == "loss":
+            buckets["loss"] = [
+                P(f"That is rough — {focus_slot} wipes happen fast"),
+                P(f"Sorry bro, {focus_slot} is a brutal lesson"),
+                P(f"Respect for sharing {focus_slot}, most people hide it"),
+                P(f"Hope you recover from {focus_slot}, one trade at a time"),
+            ]
+            buckets["loss_risk"] = [
+                P(f"After {focus_slot}, size down and breathe"),
+                P(f"Risk management > revenge trading after {focus_slot}"),
+                P(f"{focus_slot} hurts but you can reset clean"),
+            ]
+        elif topic == "scam":
+            buckets["scam"] = [
+                P(f"Good looking out — {focus_slot} scams are everywhere"),
+                P(f"Appreciate the warning on {focus_slot}, saving people money"),
+                P(f"Anyone seeing {focus_slot}, double-check links and approvals"),
+                P(f"Wild how constant {focus_slot} phishing is lately"),
+            ]
+            buckets["scam_action"] = [
+                P(f"Revoke approvals if {focus_slot} touched your wallet"),
+                P(f"Report + mute whoever pushes {focus_slot} links"),
+                P(f"Bookmark official domains to avoid {focus_slot} traps"),
+            ]
+        elif topic == "builder":
+            buckets["builder"] = [
+                P(f"Shipping {focus_slot} quietly is the real flex"),
+                P(f"Love the builder energy on {focus_slot}"),
+                P(f"{focus_slot} looks clean — nice execution"),
+                P(f"Keep cooking on {focus_slot}, this is useful"),
+            ]
+            buckets["builder_q"] = [
+                P(f"Any docs or demo link for {focus_slot}?"),
+                P(f"What stack are you using for {focus_slot}?"),
+                P(f"Any lessons learned building {focus_slot}?"),
+            ]
+        elif topic == "defi":
+            buckets["defi"] = [
+                P(f"{focus_slot} is interesting — mechanics > APY banners"),
+                P(f"Where does {focus_slot} yield actually come from?"),
+                P(f"Fees + emissions decide {focus_slot}, not vibes"),
+                P(f"TVL is nice but {focus_slot} risk is the real story"),
+            ]
+            buckets["defi_risk"] = [
+                P(f"Smart contract + liquidity risk matter for {focus_slot}"),
+                P(f"Watch unlocks and incentives around {focus_slot}"),
+                P(f"{focus_slot} looks good if exit liquidity stays real"),
+            ]
+        elif topic == "perps":
+            buckets["perps"] = [
+                P(f"Funding/OI around {focus_slot} tells the real story"),
+                P(f"{focus_slot} looks like positioning, not just narrative"),
+                P(f"If funding flips, {focus_slot} mood changes fast"),
+                P(f"Perps can punish {focus_slot} when everyone leans same way"),
+            ]
+            buckets["perps_risk"] = [
+                P(f"Size small until {focus_slot} perps calm down"),
+                P(f"Liquidations around {focus_slot} can cascade quick"),
+                P(f"Spot + perps alignment matters for {focus_slot}"),
+            ]
+
+        elif topic in ("announcement", "update", "milestone"):
             buckets["announcement"] = [
                 P(f"Ship first talk later energy around {focus_slot} is nice"),
                 P(f"Concrete steps on {focus_slot} beat teasers"),
                 P(f"Real update on {focus_slot} > vague roadmap"),
             ]
+            if topic == "milestone":
+                buckets["milestone"] = [
+                    P(f"Big congrats on {focus_slot}, that kind of growth is earned"),
+                    P(f"Nice to see {focus_slot} compounding instead of stalling"),
+                    P(f"Milestones like {focus_slot} hit different when it is organic"),
+                    P(f"Crazy to think how far {focus_slot} has come already"),
+                ]
         elif topic == "thread":
             buckets["thread"] = [
                 P(f"Thread layers context on {focus_slot} well"),
@@ -4345,7 +4545,27 @@ class OfflineCommentGenerator:
             out = _combinator(ctx, key)
         else:
             buckets = self._fixed_buckets(ctx, topic, crypto, sentiment)
-            kind = random.choice(list(buckets.keys()))
+            # Prefer topic-specific buckets when present (more human / less generic)
+            preferred_keys = []
+            if topic == "support":
+                preferred_keys = [k for k in ("support","support_q") if k in buckets]
+            elif topic == "loss":
+                preferred_keys = [k for k in ("loss","loss_risk") if k in buckets]
+            elif topic == "scam":
+                preferred_keys = [k for k in ("scam","scam_action") if k in buckets]
+            elif topic == "builder":
+                preferred_keys = [k for k in ("builder","builder_q") if k in buckets]
+            elif topic == "defi":
+                preferred_keys = [k for k in ("defi","defi_risk") if k in buckets]
+            elif topic == "perps":
+                preferred_keys = [k for k in ("perps","perps_risk") if k in buckets]
+            elif topic == "milestone":
+                preferred_keys = [k for k in ("milestone",) if k in buckets]
+
+            if preferred_keys and random.random() < 0.75:
+                kind = random.choice(preferred_keys)
+            else:
+                kind = random.choice(list(buckets.keys()))
             tmpl = random.choice(buckets[kind])
             if template_burned(tmpl):
                 return None
@@ -4436,7 +4656,6 @@ class OfflineCommentGenerator:
                 break
 
         return out[:2]
-
 
 # Utilities used by the generator
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
@@ -5372,7 +5591,6 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
     return [a, b]
 
 
-
 def ensure_question_mark(text: str) -> str:
     """If a comment *reads* like a question, ensure it ends with '?'"""
     t = (text or '').strip()
@@ -5542,6 +5760,144 @@ def enforce_unique(
 
 
 
+
+
+# ---------------------------------------------------------------------------
+# Provider output hardening (avoid empty/bad-format replies from Gemini/etc.)
+# ---------------------------------------------------------------------------
+
+_AI_BAD_PHRASES = [
+    "as an ai", "i can't", "i cannot", "i’m an ai", "i am an ai",
+    "here are", "below are", "i will", "sure!", "certainly",
+    "i don't have access", "i do not have access", "i can't browse",
+]
+_BAD_META_PHRASES = [
+    "comment 1", "comment 2", "reply 1", "reply 2", "option 1", "option 2",
+    "tweet:", "analysis:", "explanation:",
+]
+
+def _strip_wrappers(line: str) -> str:
+    t = (line or "").strip()
+    # drop bullets/numbering
+    t = re.sub(r"^\s*[-*•]+\s*", "", t)
+    t = re.sub(r"^\s*\(?\d+\)?[\.:\)]\s*", "", t)  # 1. / (1) / 1)
+    t = t.strip().strip('"').strip("'").strip()
+    t = re.sub(r"\s+", " ", t).strip()
+    return t
+
+def _split_to_lines(text: str) -> list[str]:
+    if not text:
+        return []
+    raw = str(text)
+    # Normalize newlines
+    raw = raw.replace("\r\n", "\n").replace("\r", "\n")
+    lines = [l.strip() for l in raw.split("\n") if l.strip()]
+    # If the model returned a single paragraph with separators, split lightly.
+    if len(lines) < 2:
+        parts = re.split(r"\s*(?:\|\||\|\s|\s/\s|\s—\s|\s-\s)\s*", raw)
+        parts = [p.strip() for p in parts if p.strip()]
+        if len(parts) >= 2:
+            lines = parts
+    return lines
+
+def _looks_like_comment(line: str, tweet_text: str = "") -> bool:
+    t = (line or "").strip()
+    if not t:
+        return False
+    low = t.lower()
+
+    # Block meta / instruction-y outputs
+    if any(p in low for p in _AI_BAD_PHRASES):
+        return False
+    if any(p in low for p in _BAD_META_PHRASES):
+        return False
+
+    # Too short or too long
+    if len(t) < 12:
+        return False
+    if len(t) > 240:
+        return False
+
+    # Avoid copying tweet verbatim
+    if tweet_text:
+        tw = (tweet_text or "").strip().lower()
+        if tw and low == tw:
+            return False
+
+    # Avoid multiple sentences / essays
+    # (Allow 2 short sentences max)
+    if t.count(".") + t.count("!") + t.count("?") > 3:
+        return False
+
+    return True
+
+def _postprocess_candidates(items: Any, tweet_text: str = "") -> list[str]:
+    out: list[str] = []
+    if not items:
+        return out
+
+    # Accept list/tuple or a single string
+    if isinstance(items, (list, tuple)):
+        raw_list = list(items)
+    else:
+        raw_list = [items]
+
+    for it in raw_list:
+        if it is None:
+            continue
+        if not isinstance(it, str):
+            it = str(it)
+        for line in _split_to_lines(it):
+            line = _strip_wrappers(line)
+            if not _looks_like_comment(line, tweet_text=tweet_text):
+                continue
+            out.append(line)
+
+    # De-dupe while keeping order
+    out2: list[str] = []
+    seen = set()
+    for x in out:
+        key = x.strip().lower()
+        if key in seen:
+            continue
+        seen.add(key)
+        out2.append(x)
+
+    return out2[:8]
+
+def _ensure_pair_via_groq(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    """
+    Hard fallback: force Groq to output exactly two natural replies.
+    Used when other providers return empty / invalid format.
+    """
+    if not groq_enabled():
+        return []
+    try:
+        # Keep prompt tight so it succeeds even under provider issues
+        sys_msg = (
+            "You write short, human Twitter replies. Output ONLY two replies, "
+            "each on its own line. No numbering, no quotes, no extra text."
+        )
+        user_msg = (
+            f"Tweet: {tweet_text}\n"
+            + (f"Author: {author}\n" if author else "")
+            + (f"Context URL: {url}\n" if url else "")
+            + "Write two replies now."
+        )
+        resp = groq_chat_limited(
+            messages=[
+                {"role": "system", "content": sys_msg},
+                {"role": "user", "content": user_msg},
+            ],
+            temperature=0.6,
+            max_tokens=220,
+        )
+        text = (resp.choices[0].message.content or "").strip() if resp else ""
+        return _postprocess_candidates(text, tweet_text=tweet_text)
+    except Exception as e:  # noqa: BLE001
+        logger.warning("_ensure_pair_via_groq failed: %s", e)
+        return []
+
 def _keyword_pool_for_relevance(tweet_text: str, research_ctx: Optional[dict] = None) -> set[str]:
     pool: set[str] = set()
     try:
@@ -5573,73 +5929,6 @@ def _keyword_pool_for_relevance(tweet_text: str, research_ctx: Optional[dict] = 
     except Exception:
         pass
     return pool
-
-
-def score_candidate_comment(
-    comment: str,
-    tweet_text: str,
-    lang_code: str = "en",
-    script: str = "latn",
-    research_ctx: Optional[dict] = None,
-) -> float:
-    """Cheap-but-effective judge score: relevance + specificity - slop - risk."""
-    c = (comment or "").strip()
-    if not c:
-        return -999.0
-    low = c.lower()
-    lang_code = (lang_code or "en").lower()
-    script = (script or "latn").lower()
-    is_english = lang_code.startswith("en") and script == "latn"
-
-    score = 0.0
-
-    # relevance: mentions at least one key token/entity
-    pool = _keyword_pool_for_relevance(tweet_text, research_ctx=research_ctx)
-    if pool:
-        hits = 0
-        for tok in list(pool)[:60]:
-            if tok and tok in low:
-                hits += 1
-                if hits >= 2:
-                    break
-        if hits >= 1:
-            score += 2.0
-        if hits >= 2:
-            score += 1.0
-
-    # specificity: a concrete question or operator language
-    if "?" in c:
-        score += 1.0
-    if any(w in low for w in PRO_OPERATOR_WORDS):
-        score += 1.0
-    if re.search(r"\d", c):
-        score += 0.5
-
-    # penalize generic slop (English only)
-    if is_english and contains_generic_phrase(low):
-        score -= 3.0
-
-    # risk: hallucination guard (tweet + research)
-    if tweet_text and not hallucination_safe(c, tweet_text, research_ctx=research_ctx):
-        score -= 3.0
-
-    # repetition penalty (English only)
-    if is_english and (template_burned(c) or too_similar_to_recent(c)):
-        score -= 1.5
-
-    # length preference: keep it tight but not tiny
-    try:
-        n = len(tokenize_by_script(c, script=script)) if script not in ("zh","ja") else len([ch for ch in c if _is_cjk_char(ch)])
-        if 6 <= n <= 18:
-            score += 0.5
-        elif n < 4:
-            score -= 0.5
-        elif n > 26:
-            score -= 0.5
-    except Exception:
-        pass
-
-    return score
 
 
 def pick_best_pair(
@@ -5862,6 +6151,7 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
         _research_cache_set(cache_key, ctx)
 
     return ctx
+
 
 def hallucination_safe(comment: str, tweet_text: str, research_ctx: Optional[dict] = None) -> bool:
     """
@@ -6269,8 +6559,7 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
     mode_line = (mode_line or "").strip()
     if mode_line:
         base += "\n" + mode_line + "\n"
-    return base
-
+    return _postprocess_candidates(base, tweet_text=text)
 def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     if not (USE_OPENAI and _openai_client):
         raise RuntimeError("OpenAI disabled or client not available")
@@ -6852,17 +7141,14 @@ def _available_providers() -> list[tuple[str, callable]]:
             is_on, fn = all_providers.get(name, (False, None))
             if is_on and fn is not None:
                 providers.append((name, fn))
-        return providers
-
+        return _postprocess_candidates(providers, tweet_text=text)
     # Fallback: no env override → use default order of all enabled providers
     for name in ["groq", "openai", "gemini", "mistral", "cohere", "huggingface", "openrouter", "deepseek", "offline"]:
         is_on, fn = all_providers.get(name, (False, None))
         if is_on and fn is not None:
             providers.append((name, fn))
 
-    return providers
-
-
+    return _postprocess_candidates(providers, tweet_text=text)
 def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
     """
     Fix common LLM/tokenization artifacts:
@@ -6901,8 +7187,7 @@ def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
             c = re.sub(rf"\b{re.escape(no_commas)}\b", comma_num, c)
 
 
-    return c
-
+    return _postprocess_candidates(c, tweet_text=text)
 def _maybe_llm_variety_snippet(url: str, tweet_text: str) -> str:
     """
     Some builds include _build_llm_variety_snippet(), some don't.
@@ -6945,9 +7230,7 @@ def _pick_rewrite_provider_order() -> list[str]:
     # Circuit breaker: skip providers temporarily if they're in an "open" state.
     out = [name for name in out if not _cb_is_open(name)]
 
-    return out
-
-
+    return _postprocess_candidates(out, tweet_text=text)
 def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
     witty = (topic == "meme" and PRO_KOL_ALLOW_WIT)
     return (
@@ -6982,6 +7265,7 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "\n"
         "Return a JSON array of two strings: [\"...\", \"...\"].\n"
     )
+
 
 def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]) -> Optional[list[str]]:
     topic = detect_topic(tweet_text or "")
@@ -7078,8 +7362,7 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
             except Exception as e:
                 logger.warning("pro rewrite provider %s failed: %s", provider, e)
 
-    return None
-
+    return _postprocess_candidates(None, tweet_text=text)
 MAX_CANDIDATES_FOR_SELECTION = int(os.getenv("CROWNTALK_MAX_CANDIDATES", "6"))
 
 
@@ -7095,10 +7378,10 @@ _GREETING_RE = re.compile(
 def _is_greeting_tweet(txt: str) -> bool:
     t = (txt or "").strip()
     if not t:
-        return False
+        return _postprocess_candidates(False, tweet_text=text)
     m = _GREETING_RE.search(t[:80])
     if not m:
-        return False
+        return _postprocess_candidates(False, tweet_text=text)
     return len(t) <= 180 or (m.start() <= 12)
 
 def _extract_project_hint(txt: str) -> Optional[str]:
@@ -7172,6 +7455,8 @@ def build_greeting_pair(tweet_text: str, author_name: Optional[str], handle: Opt
         f"Have a great day {name} — keep building",
     ]
 
+
+
 def generate_two_comments_with_providers(
     tweet_text: str,
     author: Optional[str],
@@ -7185,35 +7470,9 @@ def generate_two_comments_with_providers(
     """
     Working cascade:
     - Build a reaction plan (reaction types + delays + skip hints).
-    - Try enabled providers in order, collecting multiple candidates.
-    - Run uniqueness / diversity selection to pick a strong pair.
-    - Fallback to offline + rescue.
-    - Optional Pro KOL rewrite pass.
-    - Optionally inject CT slang depending on vibe/reaction.
-    - Always return exactly two dicts:
-        [
-          {
-            "lang": "...",
-            "text": "...",
-            "reaction": "...",
-            "delay_sec": <int>,
-            "mode": "...",
-            "thread_pair": <bool>,
-            "thread_index": 0,
-          },
-          {
-            "lang": "...",
-            "text": "...",
-            "reaction": "...",
-            "delay_sec": <int>,
-            "mode": "...",
-            "thread_pair": <bool>,
-            "thread_index": 1,
-            "follow_up": true/false,
-          },
-        ]
-    When THREAD_PAIR_MODE=1, the caller can treat index 0 as reply to the tweet
-    and index 1 as a follow-up reply to comment 0 (thread behaviour).
+    - Try Groq first (primary, large-context provider).
+    - Use other enabled providers *only as needed* for diversity or rescue.
+    - Fallback to offline + ultra-safe rescue so we always return two comments.
     """
     url = url or ""
 
@@ -7231,11 +7490,24 @@ def generate_two_comments_with_providers(
     if _is_greeting_tweet(tweet_text) and (gen_lang.startswith("en") or gen_lang.startswith("ko")):
         pair = build_greeting_pair(tweet_text, author, handle, lang_code=gen_lang)
         return [
-            {"lang": lang_out, "text": pair[0], "reaction": "greeting", "delay_sec": 0, "mode": "greeting", "thread_pair": bool(THREAD_PAIR_MODE), "thread_index": 0},
-            {"lang": lang_out, "text": pair[1], "reaction": "greeting", "delay_sec": 2, "mode": "greeting", "thread_pair": bool(THREAD_PAIR_MODE), "thread_index": 1, "follow_up": bool(THREAD_PAIR_MODE)},
+            {
+                "lang": lang_out,
+                "text": pair[0],
+                "reaction": "greeting",
+                "thread_pair": bool(THREAD_PAIR_MODE),
+                "thread_index": 0,
+            },
+            {
+                "lang": lang_out,
+                "text": pair[1],
+                "reaction": "greeting",
+                "thread_pair": bool(THREAD_PAIR_MODE),
+                "thread_index": 1,
+                "follow_up": bool(THREAD_PAIR_MODE),
+            },
         ]
 
-    # --- Build + store reaction plan for this tweet ---------------------------
+    # --- 1) Build + store reaction plan for this tweet -----------------------
     try:
         plan = build_reaction_plan_with_modes(tweet_text, handle, lang_hint=gen_lang)
     except Exception:
@@ -7247,62 +7519,75 @@ def generate_two_comments_with_providers(
 
     candidates: list[str] = []
 
+    # --- 2) Provider ordering: Groq first, others after ----------------------
     providers = _available_providers()
-    if not CROWNTALK_LLM_ORDER:
-        random.shuffle(providers)
-
-    # --- 1) Collect candidates from all enabled providers --------------------
+    groq_providers: list[tuple[str, callable]] = []
+    other_providers: list[tuple[str, callable]] = []
     for name, fn in providers:
+        if name == "groq":
+            groq_providers.append((name, fn))
+        else:
+            other_providers.append((name, fn))
+
+    ordered_providers: list[tuple[str, callable]] = groq_providers + other_providers
+    if not CROWNTALK_LLM_ORDER and other_providers:
+        import random as _rand_mod
+        rest = other_providers[:]
+        _rand_mod.shuffle(rest)
+        ordered_providers = groq_providers + rest
+
+    got_from_groq = False
+
+    # --- 3) Collect candidates from providers --------------------------------
+    for name, fn in ordered_providers:
+        if got_from_groq and len(candidates) >= 2 and not include_alternates:
+            break
+
         try:
             more = fn(tweet_text, author, url=url)
             if more:
-                candidates = enforce_unique(
-                    candidates + more,
-                    tweet_text=tweet_text,
-                    url=url,
-                    lang=lang_out,
-                    target_lang=gen_lang,
-                    max_keep=MAX_CANDIDATES_FOR_SELECTION,
-                    persist=False,
-                )
+                if name == "groq":
+                    got_from_groq = True
+                candidates = enforce_unique(candidates + more, tweet_text=tweet_text, lang_code=gen_lang)
+        except CrownTALKError as e:  # noqa: BLE001
+            logger.warning("LLM provider %s failed with CrownTALKError: %s", name, e)
+            continue
         except Exception as e:  # noqa: BLE001
-            logger.warning("%s provider failed: %s", name, e)
+            logger.warning("LLM provider %s failed: %s", name, e)
+            continue
 
         if len(candidates) >= MAX_CANDIDATES_FOR_SELECTION:
             break
 
-    # --- 2) Offline/template fallback if still thin --------------------------
+
+    # --- 4) Second-chance Groq if providers returned empty/bad formats --------
     if len(candidates) < 2:
         try:
-            more = safe_offline_two_comments(tweet_text, author)
-            if more:
-                candidates = enforce_unique(
-                    candidates + more,
-                    tweet_text=tweet_text,
-                    url=url,
-                    lang=lang_out,
-                    target_lang=gen_lang,
-                    max_keep=MAX_CANDIDATES_FOR_SELECTION,
-                    persist=False,
-                )
+            forced = _ensure_pair_via_groq(tweet_text, author, url=url)
+        except Exception:
+            forced = []
+        if forced:
+            candidates = enforce_unique(candidates + forced, tweet_text=tweet_text, lang_code=gen_lang)
+    # --- 4) Fallback: offline + ultra-safe rescue ----------------------------
+    if len(candidates) < 2:
+        try:
+            offline = safe_offline_two_comments(tweet_text, author, handle, lang, url=url)
         except Exception as e:  # noqa: BLE001
-            logger.warning("offline fallback failed: %s", e)
+            logger.warning("safe_offline_two_comments failed: %s", e)
+            offline = []
 
-    # --- 3) Last-resort short templates -------------------------------------
-    if len(candidates) < 2:
-        candidates = enforce_unique(
-            candidates + _rescue_two(tweet_text),
-            tweet_text=tweet_text,
-            url=url,
-            lang=lang_out,
-            target_lang=gen_lang,
-            max_keep=MAX_CANDIDATES_FOR_SELECTION,
-            persist=False,
-        )
+        if offline:
+            candidates = enforce_unique(candidates + offline, tweet_text=tweet_text, lang_code=gen_lang)
+
+        if len(candidates) < 2:
+            rescue = _rescue_two(tweet_text)
+            candidates = enforce_unique(candidates + rescue, tweet_text=tweet_text, lang_code=gen_lang)
 
     if len(candidates) < 2:
-        raise CrownTALKError("Could not generate two comments")
-    # Judge + select best pair (curated, more professional)
+        rescue = _rescue_two(tweet_text)
+        candidates = [c for c in rescue if c][:2]
+
+    # --- 5) Judge + select best pair -----------------------------------------
     script = script_from_lang_code(lang_out)
     try:
         research_ctx = REQUEST_RESEARCH_CTX.get()
@@ -7321,7 +7606,7 @@ def generate_two_comments_with_providers(
 
     base_pair = pair
 
-    # --- 4) Optional Pro KOL rewrite ----------------------------------------
+    # --- 6) Optional Pro KOL rewrite -----------------------------------------
     final_pair = base_pair[:]
     if PRO_KOL_REWRITE:
         try:
@@ -7333,64 +7618,52 @@ def generate_two_comments_with_providers(
         if rewritten and len(rewritten) == 2:
             final_pair = rewritten
 
-    # --- 5) Optional CT slang injection (late-night/weekend + banter etc.) ---
-    ct_vibe = None
-    if isinstance(plan, dict):
-        ct_vibe = plan.get("ct_vibe")
-
-    reactions = (plan or {}).get("comment_reactions") or []
-    processed_texts: list[str] = []
-    for idx, text in enumerate(final_pair):
-        reaction_kind = reactions[idx] if idx < len(reactions) else None
-        text = maybe_inject_ct_slang(
-            text,
-            reaction_kind=reaction_kind,
-            ct_vibe=ct_vibe,
-        )
-        processed_texts.append(text)
-
-    final_pair = processed_texts
-
-    # Persist anti-repeat memory ONLY for the final chosen comments
-    for _c in final_pair:
-        _persist_comment_memory(_c)
-
-    # --- 6) Build structured outputs with thread tagging ---------------------
-    delays = (plan or {}).get("delays") or []
-    thread_flag = bool(THREAD_PAIR_MODE)
+    # --- 7) Build final structured output ------------------------------------
     out: List[Dict[str, Any]] = []
 
-    for idx, text in enumerate(final_pair):
-        reaction_kind = reactions[idx] if idx < len(reactions) else None
-        delay_sec = delays[idx] if idx < len(delays) else None
+    for idx, text in enumerate(final_pair[:2]):
+        if not isinstance(text, str):
+            continue
+        out.append(
+            {
+                "lang": lang_out,
+                "text": text,
+                "reaction": plan.reactions[idx] if plan and idx < len(plan.reactions) else None,
+                "delay_sec": plan.delays[idx] if plan and idx < len(plan.delays) else 0,
+                "mode": plan.modes[idx] if plan and idx < len(plan.modes) else None,
+                "thread_pair": bool(THREAD_PAIR_MODE),
+                "thread_index": idx,
+                "follow_up": bool(THREAD_PAIR_MODE and idx == 1),
+            }
+        )
 
-        item: Dict[str, Any] = {
-            "lang": lang_out,
-            "text": text,
-            "reaction": reaction_kind,
-            "delay_sec": delay_sec,
-            "mode": guess_mode(text),
-            # Compatibility: UI labels this field as `provider`.
-            "provider": guess_mode(text),
-            "thread_pair": thread_flag,   # 2.1: tag the pair as 'thread' from backend
-            "thread_index": idx,
-        }
-        # #2 is explicitly a follow-up in thread_pair mode
-        if thread_flag and idx == 1:
-            item["follow_up"] = True
-        out.append(item)
-
-    # Optional: provide alternates (power users)
     try:
         if want_alts and alternates and out:
-            # Frontend expects `alternates` as a simple string array.
             out[0]["alternates"] = [str(a) for a in alternates]
     except Exception:
         pass
 
-    # Safety: always exactly two items
     if len(out) != 2:
-        raise CrownTALKError("internal: expected exactly two comments")
+        if len(out) > 2:
+            out = out[:2]
+        else:
+            rescue = _rescue_two(tweet_text)
+            extra = [c for c in rescue if isinstance(c, str)]
+            for c in extra:
+                if len(out) >= 2:
+                    break
+                out.append(
+                    {
+                        "lang": lang_out,
+                        "text": c,
+                        "reaction": None,
+                        "delay_sec": 0,
+                        "mode": None,
+                        "thread_pair": bool(THREAD_PAIR_MODE),
+                        "thread_index": len(out),
+                        "follow_up": bool(THREAD_PAIR_MODE and len(out) == 1),
+                    }
+                )
 
     return out
 
@@ -7966,6 +8239,7 @@ def comment_from_url_stream_endpoint():
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
 
+
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
     if request.method == "OPTIONS":
@@ -8370,7 +8644,6 @@ def reroll_endpoint():
         return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
 
 
-
 # ------------------------------------------------------------------------------
 # Multi-voice storytelling / thread helper
 # ------------------------------------------------------------------------------
@@ -8475,7 +8748,7 @@ def thread_story_endpoint():
 
 
 
-# ---- injected helper(s) by ChatGPT fix ----
+# ---- injected helper(s) ----
 
 def weighted_sample(weight_map: dict[str, float]) -> str:
     """Sample a key from a weight map.
