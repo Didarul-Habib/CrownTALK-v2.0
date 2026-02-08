@@ -120,18 +120,10 @@ def _extract_handle_and_id(url: str) -> Tuple[str, str]:
 def _do_get_json(url: str) -> requests.Response:
     _rate_limit_yield()
     try:
-        # Some upstream proxies (including VX/FX mirrors) apply basic anti-bot
-        # heuristics. A real User-Agent + explicit Accept improves reliability
-        # from hosted environments like Render.
-        headers = {
-            "User-Agent": (
-                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
-                "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
-            ),
+        return requests.get(url, timeout=(5, 12), headers={
+            "User-Agent": "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
             "Accept": "application/json,text/plain,*/*",
-        }
-        # Use separate connect/read timeouts for better behavior on free hosting.
-        return requests.get(url, headers=headers, timeout=(5, 12))
+        })
     except Exception as e:
         raise CrownTALKError(f"Upstream error: {e}", code="upstream_error") from e
 
@@ -403,6 +395,45 @@ def fetch_tweet_data(x_url: str) -> TweetData:
                 e,
             )
             time.sleep(1 + attempt)
+
+# Fallback: Twitter syndication endpoint (often more reliable than mirrors)
+# Works for many public tweets without auth.
+synd_url = f"https://cdn.syndication.twimg.com/tweet-result?id={status_id}&lang=en"
+for attempt in range(1, 3):
+    try:
+        logger.info("Fetching syndication tweet data for %s -> %s", x_url, synd_url)
+        r = _do_get_json(synd_url)
+        last_status = r.status_code
+        if r.status_code == 200:
+            payload = _read_json_payload(r)
+            # Try common fields
+            text = payload.get("text") or payload.get("full_text") or payload.get("rawText") or ""
+            user = payload.get("user") or {}
+            handle2 = user.get("screen_name") or user.get("screenName") or handle
+            name2 = user.get("name") or user.get("display_name") or None
+            lang2 = payload.get("lang") or None
+            if not text:
+                raise CrownTALKError("Upstream payload missing text", code="upstream_missing_text")
+            data = TweetData(
+                text=text,
+                author_name=name2,
+                handle=handle2,
+                tweet_id=str(status_id),
+                lang=lang2,
+                canonical_url=f"https://x.com/{handle2}/status/{status_id}" if handle2 else None,
+            )
+            _cache_set(handle2 or handle, status_id, data)
+            return data
+        elif r.status_code in (401, 403, 404):
+            # likely private/deleted
+            break
+        else:
+            time.sleep(1 + attempt)
+    except CrownTALKError:
+        raise
+    except Exception as e:
+        logger.warning("Syndication error on attempt %s for %s: %s", attempt, x_url, e)
+        time.sleep(1 + attempt)
 
     raise CrownTALKError(
         f"Tweet could not be fetched (last status={last_status})",

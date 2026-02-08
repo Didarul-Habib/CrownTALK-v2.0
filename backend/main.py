@@ -8221,33 +8221,32 @@ def comment_from_url_stream_endpoint():
     except Exception:
         pass
 
-
     def gen():
-        def _fail(code: str, message: str):
-            # Emit a result item so the frontend can surface the failure (it ignores `error` events).
+        def fail(code: str, message: str, url_for_item: str | None = None):
+            u = url_for_item or (req.source_url or "")
             yield sse_event("error", {"code": code, "message": message})
-            yield sse_event("result", {"item": {"url": url, "status": "error", "reason": message}})
+            yield sse_event("result", {"item": {"url": u, "status": "error", "reason": message, "comments": []}})
             yield sse_event("done", {"ok": False})
+
         try:
-            # stage 1: validate + fetch/extract (cached)
             yield sse_event("status", {"stage": "fetching"})
             try:
                 safe_url = validate_public_http_url(req.source_url)
             except CrownTALKError as e:
-                yield from _fail(e.code, str(e))
-            return
+                yield from fail(e.code, str(e))
+                return
 
             yield sse_event("status", {"stage": "extracting"})
             try:
                 prev = fetch_source_preview(safe_url)
-            except Exception as e:
-                yield from _fail("fetch_failed", "Failed to fetch URL")
-            return
+            except Exception:
+                yield from fail("fetch_failed", "Failed to fetch URL", url_for_item=safe_url)
+                return
 
             content = (prev.get("content") or "").strip()
             if not content:
-                yield from _fail("no_content", "Could not extract content from URL")
-            return
+                yield from fail("no_content", "Could not extract content from URL", url_for_item=safe_url)
+                return
 
             looks_claimy = bool(re.search(r"\b\d+(?:[\.,]\d+)?%\b|\b\d{4}\b|\$\d+", content))
             quote_mode = bool(req.quote_mode or looks_claimy)
@@ -8267,9 +8266,10 @@ def comment_from_url_stream_endpoint():
 
             synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
 
-            # stage 2: generation (dedupe cache)
             yield sse_event("status", {"stage": "generating"})
-            cache_key = hashlib.sha256(f"urlmode::{_normalize_url_for_cache(safe_url)}::{gen_lang}::{bool(req.fast)}::{quote_mode}::{getattr(g, 'idempotency_key', '')}".encode("utf-8")).hexdigest()
+            cache_key = hashlib.sha256(
+                f"urlmode::{_normalize_url_for_cache(safe_url)}::{gen_lang}::{bool(req.fast)}::{quote_mode}::{getattr(g, 'idempotency_key', '')}".encode("utf-8")
+            ).hexdigest()
             cached = _dedupe_cache_get(cache_key)
             if cached:
                 try:
@@ -8290,14 +8290,10 @@ def comment_from_url_stream_endpoint():
                 )
                 comments = [p.get("text", "").strip() for p in pair if p.get("text")]
 
-                # "Chunk" events (best-effort): emit progressive chunks per comment so the client UI can stream.
-                # Note: providers may not support true token streaming across all SDKs on free tier; this still
-                # provides progressive rendering for UX consistency.
                 for ci, ctext in enumerate(comments):
                     ctext = _truncate_output(ctext)
                     for off in range(0, len(ctext), 200):
                         yield sse_event("chunk", {"index": ci, "text": ctext[off:off+200]})
-                        # heartbeat (proxy keep-alive)
                         if int(time.time()) % 15 == 0:
                             yield sse_event("ping", {"t": int(time.time())})
 
@@ -8311,19 +8307,19 @@ def comment_from_url_stream_endpoint():
                 }
                 _dedupe_cache_set(cache_key, result_item)
 
-            yield sse_event("result", {"type": "result", "item": result_item})
+            yield sse_event("result", {"item": result_item})
             yield sse_event("status", {"stage": "finalizing"})
             yield sse_event("done", {"ok": True})
         except GeneratorExit:
-            # Client disconnected (best-effort)
             return
-        except Exception as e:
-            yield from _fail("internal_error", "Unexpected error")
+        except Exception:
+            yield from fail("internal_error", "Unexpected error")
 
     resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
+
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
@@ -8582,10 +8578,10 @@ def comment_stream_endpoint():
     fast = bool(req.fast)
 
     def gen():
-        def _fail(code: str, message: str):
-            # Emit a result item so the frontend can surface the failure (it ignores `error`/`status` events).
+        def fail(code: str, message: str):
+            # Some clients ignore `type:"error"`; always send a `result` item too.
             yield sse_event("error", {"code": code, "message": message})
-            yield sse_event("result", {"item": {"url": url, "status": "error", "reason": message}})
+            yield sse_event("result", {"item": {"url": url, "status": "error", "reason": message, "comments": []}})
             yield sse_event("done", {"ok": False})
 
         # progress: fetching
@@ -8593,47 +8589,51 @@ def comment_stream_endpoint():
         try:
             t = fetch_tweet_data(url)
         except CrownTALKError as e:
-            yield from _fail(e.code, str(e))
+            yield from fail(e.code, str(e))
             return
         except Exception:
-            yield from _fail("fetch_error", "Failed to fetch tweet")
+            yield from fail("fetch_error", "Failed to fetch tweet")
             return
 
         yield sse_event("status", {"stage": "generating"})
         handle = t.handle or _extract_handle_from_url(url)
         target = output_language or "en"
         try:
-            # Generate english + optional native if requested language differs
-            comments = []
             if target == "en":
-                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=url, target_lang="en", out_lang_tag="en")
+                comments = generate_two_comments_with_providers(
+                    t.text or "", t.author_name or None, handle, t.lang or None,
+                    url=url, target_lang="en", out_lang_tag="en"
+                )
             else:
-                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=url, target_lang=target, out_lang_tag=target)
-            # stream as chunks (coarse-grained)
-            # stream a single result item compatible with frontend parser
+                comments = generate_two_comments_with_providers(
+                    t.text or "", t.author_name or None, handle, t.lang or None,
+                    url=url, target_lang=target, out_lang_tag=target
+                )
+
             result_item = {
                 "url": url,
                 "status": "ok",
                 "comments": [
-                    {k: v for k, v in c.items() if k in ("text", "provider", "alternates")} for c in comments
+                    {k: v for k, v in c.items() if k in ("text", "provider", "alternates")}
+                    for c in (comments or [])
                 ],
             }
-            yield sse_event("result", {"type": "result", "item": result_item})
+            yield sse_event("result", {"item": result_item})
             yield sse_event("status", {"stage": "finalizing"})
-            # best-effort save
             try:
-                for c in comments:
+                for c in comments or []:
                     _save_comment(url, c.get("lang"), c.get("text"))
             except Exception:
                 pass
             yield sse_event("done", {"ok": True})
         except Exception:
-            yield from _fail("generation_error", "Failed to generate comment")
+            yield from fail("generation_error", "Failed to generate comment")
 
     resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
+
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
     if request.method == "OPTIONS":
