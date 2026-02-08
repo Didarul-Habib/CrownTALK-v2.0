@@ -6334,7 +6334,7 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
 
 
 
-def safe_offline_two_comments(tweet_text: str, author: Optional[str]) -> list[str]:
+def safe_offline_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     """Best-effort offline fallback that never raises NameError."""
     fn = globals().get("offline_two_comments")
     if callable(fn):
@@ -6630,7 +6630,7 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
     mode_line = (mode_line or "").strip()
     if mode_line:
         base += "\n" + mode_line + "\n"
-    return _postprocess_candidates(base, tweet_text=text)
+    return base.strip()
 def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     if not (USE_OPENAI and _openai_client):
         raise RuntimeError("OpenAI disabled or client not available")
@@ -7270,7 +7270,7 @@ def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
             c = re.sub(rf"\b{re.escape(no_commas)}\b", comma_num, c)
 
 
-    return _postprocess_candidates(c, tweet_text=text)
+    return c
 def _maybe_llm_variety_snippet(url: str, tweet_text: str) -> str:
     """
     Some builds include _build_llm_variety_snippet(), some don't.
@@ -7313,7 +7313,7 @@ def _pick_rewrite_provider_order() -> list[str]:
     # Circuit breaker: skip providers temporarily if they're in an "open" state.
     out = [name for name in out if not _cb_is_open(name)]
 
-    return _postprocess_candidates(out, tweet_text=text)
+    return out
 def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
     witty = (topic == "meme" and PRO_KOL_ALLOW_WIT)
     return (
