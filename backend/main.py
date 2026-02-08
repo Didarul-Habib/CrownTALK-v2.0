@@ -7187,7 +7187,12 @@ def _available_providers() -> list[tuple[str, callable]]:
     """
 
     order_raw = os.getenv("CROWNTALK_LLM_ORDER", "").strip().lower()
-    order = [x.strip() for x in order_raw.split(",") if x.strip()]
+    order = \[x\.strip\(\) for x in order_raw\.split\(\",\"\) if x\.strip\(\)\]
+
+    # common aliases / typos
+    alias = {"grok": "groq", "groqcloud": "groq"}
+    order = [alias.get(x, x) for x in order]
+
 
     all_providers: dict[str, tuple[bool, callable | None]] = {
         "groq": (USE_GROQ, generate_two_comments_with_groq),
@@ -7212,6 +7217,13 @@ def _available_providers() -> list[tuple[str, callable]]:
             is_on, fn = all_providers.get(name, (False, None))
             if is_on and fn is not None:
                 providers.append((name, fn))
+        # Always include offline as last-resort unless explicitly disabled (not supported).
+        if not any(n == "offline" for n, _ in providers):
+            providers.append(("offline", generate_two_comments_offline))
+
+        # If nothing matched (e.g. typo like 'grok'), fall back to offline.
+        if not providers:
+            providers = [("offline", generate_two_comments_offline)]
         return providers
     # Fallback: no env override → use default order of all enabled providers
     for name in ["groq", "openai", "gemini", "mistral", "cohere", "huggingface", "openrouter", "deepseek", "offline"]:
