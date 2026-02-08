@@ -396,49 +396,49 @@ def fetch_tweet_data(x_url: str) -> TweetData:
             )
             time.sleep(1 + attempt)
 
-# Fallback: Twitter syndication endpoint (often more reliable than mirrors)
-# Works for many public tweets without auth.
-synd_url = f"https://cdn.syndication.twimg.com/tweet-result?id={status_id}&lang=en"
-for attempt in range(1, 3):
-    try:
-        logger.info("Fetching syndication tweet data for %s -> %s", x_url, synd_url)
-        r = _do_get_json(synd_url)
-        last_status = r.status_code
-        if r.status_code == 200:
-            payload = _read_json_payload(r)
-            # Try common fields
-            text = payload.get("text") or payload.get("full_text") or payload.get("rawText") or ""
-            user = payload.get("user") or {}
-            handle2 = user.get("screen_name") or user.get("screenName") or handle
-            name2 = user.get("name") or user.get("display_name") or None
-            lang2 = payload.get("lang") or None
-            if not text:
-                raise CrownTALKError("Upstream payload missing text", code="upstream_missing_text")
-            data = TweetData(
-                text=text,
-                author_name=name2,
-                handle=handle2,
-                tweet_id=str(status_id),
-                lang=lang2,
-                canonical_url=f"https://x.com/{handle2}/status/{status_id}" if handle2 else None,
-            )
-            _cache_set(handle2 or handle, status_id, data)
-            return data
-        elif r.status_code in (401, 403, 404):
-            # likely private/deleted
-            break
-        else:
+    # Fallback: Twitter syndication endpoint (often more reliable than mirrors)
+    # Works for many public tweets without auth.
+    synd_url = f"https://cdn.syndication.twimg.com/tweet-result?id={status_id}&lang=en"
+    for attempt in range(1, 3):
+        try:
+            logger.info("Fetching syndication tweet data for %s -> %s", x_url, synd_url)
+            r = _do_get_json(synd_url)
+            last_status = r.status_code
+            if r.status_code == 200:
+                payload = _read_json_payload(r)
+                # Try common fields
+                text = payload.get("text") or payload.get("full_text") or payload.get("rawText") or ""
+                user = payload.get("user") or {}
+                handle2 = user.get("screen_name") or user.get("screenName") or handle
+                name2 = user.get("name") or user.get("display_name") or None
+                lang2 = payload.get("lang") or None
+                if not text:
+                    raise CrownTALKError("Upstream payload missing text", code="upstream_missing_text")
+                data = TweetData(
+                    text=text,
+                    author_name=name2,
+                    handle=handle2,
+                    tweet_id=str(status_id),
+                    lang=lang2,
+                    canonical_url=f"https://x.com/{handle2}/status/{status_id}" if handle2 else None,
+                )
+                _cache_set(handle2 or handle, status_id, data)
+                return data
+            elif r.status_code in (401, 403, 404):
+                # likely private/deleted
+                break
+            else:
+                time.sleep(1 + attempt)
+        except CrownTALKError:
+            raise
+        except Exception as e:
+            logger.warning("Syndication error on attempt %s for %s: %s", attempt, x_url, e)
             time.sleep(1 + attempt)
-    except CrownTALKError:
-        raise
-    except Exception as e:
-        logger.warning("Syndication error on attempt %s for %s: %s", attempt, x_url, e)
-        time.sleep(1 + attempt)
 
-    raise CrownTALKError(
-        f"Tweet could not be fetched (last status={last_status})",
-        code="tweet_fetch_failed",
-    )
+        raise CrownTALKError(
+            f"Tweet could not be fetched (last status={last_status})",
+            code="tweet_fetch_failed",
+        )
 
 
 # ------------------------------------------------------------------------------
