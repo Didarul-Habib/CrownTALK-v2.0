@@ -7187,7 +7187,7 @@ def _available_providers() -> list[tuple[str, callable]]:
     """
 
     order_raw = os.getenv("CROWNTALK_LLM_ORDER", "").strip().lower()
-    order = \[x\.strip\(\) for x in order_raw\.split\(\",\"\) if x\.strip\(\)\]
+    order = [x.strip() for x in order_raw.split(",") if x.strip()]
 
     # common aliases / typos
     alias = {"grok": "groq", "groqcloud": "groq"}
