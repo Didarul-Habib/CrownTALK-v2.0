@@ -1922,7 +1922,7 @@ if USE_GROQ:
     except Exception:
         _groq_client = None
         USE_GROQ = False
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.3-70b-versatile")
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
 # Groq pacing / backoff (to avoid falling back too quickly)
 GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "1.0"))  # spacing between calls
 GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "4"))               # how many times to retry one call
@@ -2109,7 +2109,7 @@ if USE_GEMINI:
 # ------------------------------------------------------------------------------
 MISTRAL_API_KEY = os.getenv("MISTRAL_API_KEY", "").strip()
 USE_MISTRAL = bool(MISTRAL_API_KEY)
-MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "mistral-small-2506")
+MISTRAL_MODEL = os.getenv("MISTRAL_MODEL", "open-mixtral-8x7b")
 MISTRAL_API_BASE = os.getenv("MISTRAL_API_BASE", "https://api.mistral.ai/v1")
 
 # ------------------------------------------------------------------------------
@@ -8584,10 +8584,13 @@ def comment_stream_endpoint():
 
     def gen():
         def fail(code: str, message: str):
+            # Emit a frontend-compatible "result" item even on failures.
+            err_item = {"url": url, "status": "error", "reason": message, "comments": []}
             yield sse_event("error", {"code": code, "message": message})
-            yield sse_event("result", {"item": {"url": url, "status": "error", "reason": message, "comments": []}})
-            yield sse_event("done", {"ok": False})
-
+            logger.warning("comment/stream failed code=%s url=%s msg=%s", code, url, message)
+            yield sse_event("result", {"type": "result", "item": err_item})
+            # keep a "done" marker for humans/debuggers; frontend will also infer done when stream closes
+            yield sse_event("done", {"type": "done", "ok": False})
         # progress: fetching
         yield sse_event("status", {"stage": "fetching"})
         try:
