@@ -120,7 +120,18 @@ def _extract_handle_and_id(url: str) -> Tuple[str, str]:
 def _do_get_json(url: str) -> requests.Response:
     _rate_limit_yield()
     try:
-        return requests.get(url, timeout=10)
+        # Some upstream proxies (including VX/FX mirrors) apply basic anti-bot
+        # heuristics. A real User-Agent + explicit Accept improves reliability
+        # from hosted environments like Render.
+        headers = {
+            "User-Agent": (
+                "Mozilla/5.0 (X11; Linux x86_64) AppleWebKit/537.36 "
+                "(KHTML, like Gecko) Chrome/121.0.0.0 Safari/537.36"
+            ),
+            "Accept": "application/json,text/plain,*/*",
+        }
+        # Use separate connect/read timeouts for better behavior on free hosting.
+        return requests.get(url, headers=headers, timeout=(5, 12))
     except Exception as e:
         raise CrownTALKError(f"Upstream error: {e}", code="upstream_error") from e
 
