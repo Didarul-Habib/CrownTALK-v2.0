@@ -16,7 +16,7 @@ from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 
 import requests
-from flask import Flask, request, jsonify, make_response, g
+from flask import Flask, request, jsonify, make_response, g, Response, stream_with_context
 from bs4 import BeautifulSoup
 
 from api import api_success, api_error, sse_event
@@ -8223,26 +8223,31 @@ def comment_from_url_stream_endpoint():
 
 
     def gen():
+        def _fail(code: str, message: str):
+            # Emit a result item so the frontend can surface the failure (it ignores `error` events).
+            yield sse_event("error", {"code": code, "message": message})
+            yield sse_event("result", {"item": {"url": url, "status": "error", "reason": message}})
+            yield sse_event("done", {"ok": False})
         try:
             # stage 1: validate + fetch/extract (cached)
             yield sse_event("status", {"stage": "fetching"})
             try:
                 safe_url = validate_public_http_url(req.source_url)
             except CrownTALKError as e:
-                yield sse_event("error", {"code": e.code, "message": str(e)})
-                return
+                yield from _fail(e.code, str(e))
+            return
 
             yield sse_event("status", {"stage": "extracting"})
             try:
                 prev = fetch_source_preview(safe_url)
             except Exception as e:
-                yield sse_event("error", {"code": "fetch_failed", "message": "Failed to fetch URL"})
-                return
+                yield from _fail("fetch_failed", "Failed to fetch URL")
+            return
 
             content = (prev.get("content") or "").strip()
             if not content:
-                yield sse_event("error", {"code": "no_content", "message": "Could not extract content from URL"})
-                return
+                yield from _fail("no_content", "Could not extract content from URL")
+            return
 
             looks_claimy = bool(re.search(r"\b\d+(?:[\.,]\d+)?%\b|\b\d{4}\b|\$\d+", content))
             quote_mode = bool(req.quote_mode or looks_claimy)
@@ -8313,10 +8318,9 @@ def comment_from_url_stream_endpoint():
             # Client disconnected (best-effort)
             return
         except Exception as e:
-            yield sse_event("error", {"code": "internal_error", "message": "Unexpected error"})
+            yield from _fail("internal_error", "Unexpected error")
 
-    resp = make_response(gen())
-    resp.headers["Content-Type"] = "text/event-stream"
+    resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
@@ -8578,15 +8582,21 @@ def comment_stream_endpoint():
     fast = bool(req.fast)
 
     def gen():
+        def _fail(code: str, message: str):
+            # Emit a result item so the frontend can surface the failure (it ignores `error`/`status` events).
+            yield sse_event("error", {"code": code, "message": message})
+            yield sse_event("result", {"item": {"url": url, "status": "error", "reason": message}})
+            yield sse_event("done", {"ok": False})
+
         # progress: fetching
         yield sse_event("status", {"stage": "fetching"})
         try:
             t = fetch_tweet_data(url)
         except CrownTALKError as e:
-            yield sse_event("error", {"code": e.code, "message": str(e)})
+            yield from _fail(e.code, str(e))
             return
         except Exception:
-            yield sse_event("error", {"code": "fetch_error", "message": "Failed to fetch tweet"})
+            yield from _fail("fetch_error", "Failed to fetch tweet")
             return
 
         yield sse_event("status", {"stage": "generating"})
@@ -8618,10 +8628,9 @@ def comment_stream_endpoint():
                 pass
             yield sse_event("done", {"ok": True})
         except Exception:
-            yield sse_event("error", {"code": "generation_error", "message": "Failed to generate comment"})
+            yield from _fail("generation_error", "Failed to generate comment")
 
-    resp = make_response(gen())
-    resp.headers["Content-Type"] = "text/event-stream"
+    resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
