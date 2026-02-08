@@ -9,7 +9,7 @@ except Exception:  # noqa: BLE001
 import collections
 import json, os, re, time, random, hashlib, logging, sqlite3, threading, secrets, hmac, socket, ipaddress
 from collections import Counter
-from contextvars import https://portal.deltahash.ai?ref=DELTA-95E0DDhttps://portal.deltahash.ai?ref=DELTA-95E0DD
+from contextvars import ContextVar
 from datetime import datetime
 from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict, Any
@@ -789,6 +789,8 @@ def bump_metric(name: str, amount: int = 1) -> None:
         # metrics are best-effort only; never break main flow
         pass
 
+
+
 import uuid
 
 @app.before_request
@@ -1210,7 +1212,7 @@ def _require_user_or_unauthorized():
 
     return None
 
-    
+
 @app.route("/signup", methods=["POST", "OPTIONS"])
 def signup_endpoint():
     if request.method == "OPTIONS":
@@ -1654,6 +1656,7 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 
     return results
 
+
 # Request-scoped context (per tweet request)
 REQUEST_THREAD_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_THREAD_CTX", default=None)
 REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_CTX", default=None)
@@ -1905,6 +1908,7 @@ def _coingecko_price(coin_id: str) -> Optional[dict]:
         return r.json().get(coin_id)
     except Exception:
         return None
+
 
 # ------------------------------------------------------------------------------
 # Optional Groq (free-tier). If not set, we run fully offline.
@@ -2371,8 +2375,7 @@ def _do_init() -> None:
             CREATE INDEX IF NOT EXISTS idx_user_sessions_user_id ON user_sessions(user_id);
 
             """
-    )
-
+        )
 
 def init_db() -> None:
     # Ensure SQLite path is writable (Render free tier: prefer /tmp or app dir).
@@ -3600,7 +3603,6 @@ def detect_sentiment(text: str) -> str:
         return "bearish"
     return "neutral"
 
-
 # ------------------------------------------------------------------------------
 # Reaction engine: types, profiles, heat score, familiarity & pacing
 # ------------------------------------------------------------------------------
@@ -3924,6 +3926,7 @@ REACTION_MODE_SPECS = {
         "force_skip": True,
     },
 }
+
 
 def apply_reaction_mode_to_plan(plan: dict, mode: str | None = None) -> dict:
     # Post-process a reaction plan based on the configured mode.
@@ -4656,6 +4659,7 @@ class OfflineCommentGenerator:
                 break
 
         return out[:2]
+
 
 # Utilities used by the generator
 def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author: Optional[str] = None, handle: Optional[str] = None) -> Dict[str, Any]:
@@ -5591,6 +5595,7 @@ def pick_two_diverse_text(candidates: list[str]) -> list[str]:
     return [a, b]
 
 
+
 def ensure_question_mark(text: str) -> str:
     """If a comment *reads* like a question, ensure it ends with '?'"""
     t = (text or '').strip()
@@ -5931,6 +5936,73 @@ def _keyword_pool_for_relevance(tweet_text: str, research_ctx: Optional[dict] = 
     return pool
 
 
+def score_candidate_comment(
+    comment: str,
+    tweet_text: str,
+    lang_code: str = "en",
+    script: str = "latn",
+    research_ctx: Optional[dict] = None,
+) -> float:
+    """Cheap-but-effective judge score: relevance + specificity - slop - risk."""
+    c = (comment or "").strip()
+    if not c:
+        return -999.0
+    low = c.lower()
+    lang_code = (lang_code or "en").lower()
+    script = (script or "latn").lower()
+    is_english = lang_code.startswith("en") and script == "latn"
+
+    score = 0.0
+
+    # relevance: mentions at least one key token/entity
+    pool = _keyword_pool_for_relevance(tweet_text, research_ctx=research_ctx)
+    if pool:
+        hits = 0
+        for tok in list(pool)[:60]:
+            if tok and tok in low:
+                hits += 1
+                if hits >= 2:
+                    break
+        if hits >= 1:
+            score += 2.0
+        if hits >= 2:
+            score += 1.0
+
+    # specificity: a concrete question or operator language
+    if "?" in c:
+        score += 1.0
+    if any(w in low for w in PRO_OPERATOR_WORDS):
+        score += 1.0
+    if re.search(r"\d", c):
+        score += 0.5
+
+    # penalize generic slop (English only)
+    if is_english and contains_generic_phrase(low):
+        score -= 3.0
+
+    # risk: hallucination guard (tweet + research)
+    if tweet_text and not hallucination_safe(c, tweet_text, research_ctx=research_ctx):
+        score -= 3.0
+
+    # repetition penalty (English only)
+    if is_english and (template_burned(c) or too_similar_to_recent(c)):
+        score -= 1.5
+
+    # length preference: keep it tight but not tiny
+    try:
+        n = len(tokenize_by_script(c, script=script)) if script not in ("zh","ja") else len([ch for ch in c if _is_cjk_char(ch)])
+        if 6 <= n <= 18:
+            score += 0.5
+        elif n < 4:
+            score -= 0.5
+        elif n > 26:
+            score -= 0.5
+    except Exception:
+        pass
+
+    return score
+
+
 def pick_best_pair(
     candidates: list[str],
     tweet_text: str,
@@ -6151,7 +6223,6 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
         _research_cache_set(cache_key, ctx)
 
     return ctx
-
 
 def hallucination_safe(comment: str, tweet_text: str, research_ctx: Optional[dict] = None) -> bool:
     """
@@ -7266,7 +7337,6 @@ def _rewrite_sys_prompt(topic: str, sentiment: str) -> str:
         "Return a JSON array of two strings: [\"...\", \"...\"].\n"
     )
 
-
 def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]) -> Optional[list[str]]:
     topic = detect_topic(tweet_text or "")
     sentiment = detect_sentiment(tweet_text or "")
@@ -8239,7 +8309,6 @@ def comment_from_url_stream_endpoint():
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
 
-
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
     if request.method == "OPTIONS":
@@ -8644,6 +8713,7 @@ def reroll_endpoint():
         return jsonify({"url": url, "error": "internal_error", "comments": [], "code": "internal_error"}), 500
 
 
+
 # ------------------------------------------------------------------------------
 # Multi-voice storytelling / thread helper
 # ------------------------------------------------------------------------------
@@ -8748,7 +8818,7 @@ def thread_story_endpoint():
 
 
 
-# ---- injected helper(s) ----
+# ---- injected helper(s) by ChatGPT fix ----
 
 def weighted_sample(weight_map: dict[str, float]) -> str:
     """Sample a key from a weight map.
