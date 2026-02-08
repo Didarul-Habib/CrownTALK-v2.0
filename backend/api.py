@@ -51,7 +51,20 @@ def api_error(code: str, message: str, status: int = 400, details: Optional[Dict
     return resp
 
 def sse_event(event: str, data: Any):
-    payload = data
-    if not isinstance(data, str):
-        payload = json.dumps(data, ensure_ascii=False)
-    return f"event: {event}\ndata: {payload}\n\n"
+    """Server-Sent Event helper.
+
+    NOTE:
+    Some CrownTALK clients (and many simple SSE parsers) only look for `data:`
+    lines and ignore (or break on) named events (`event:` lines). To keep
+    maximum compatibility, we always emit *only* a single `data:` line and we
+    carry the event name in the JSON payload as `type`.
+    """
+
+    # Normalize payload to JSON-able structure.
+    if isinstance(data, dict):
+        payload_obj: Any = dict(data)
+        payload_obj.setdefault("type", event)
+    else:
+        payload_obj = {"type": event, "data": data}
+
+    return f"data: {json.dumps(payload_obj, ensure_ascii=False)}\n\n"
