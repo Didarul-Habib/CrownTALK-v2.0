@@ -7212,14 +7212,14 @@ def _available_providers() -> list[tuple[str, callable]]:
             is_on, fn = all_providers.get(name, (False, None))
             if is_on and fn is not None:
                 providers.append((name, fn))
-        return _postprocess_candidates(providers, tweet_text=text)
+        return providers
     # Fallback: no env override → use default order of all enabled providers
     for name in ["groq", "openai", "gemini", "mistral", "cohere", "huggingface", "openrouter", "deepseek", "offline"]:
         is_on, fn = all_providers.get(name, (False, None))
         if is_on and fn is not None:
             providers.append((name, fn))
 
-    return _postprocess_candidates(providers, tweet_text=text)
+    return providers
 def restore_decimals_and_tickers(comment: str, tweet_text: str) -> str:
     """
     Fix common LLM/tokenization artifacts:
