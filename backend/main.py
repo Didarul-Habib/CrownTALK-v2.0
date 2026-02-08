@@ -7460,10 +7460,10 @@ _GREETING_RE = re.compile(
 def _is_greeting_tweet(txt: str) -> bool:
     t = (txt or "").strip()
     if not t:
-        return _postprocess_candidates(False, tweet_text=text)
+        return False
     m = _GREETING_RE.search(t[:80])
     if not m:
-        return _postprocess_candidates(False, tweet_text=text)
+        return False
     return len(t) <= 180 or (m.start() <= 12)
 
 def _extract_project_hint(txt: str) -> Optional[str]:
@@ -7710,9 +7710,9 @@ def generate_two_comments_with_providers(
             {
                 "lang": lang_out,
                 "text": text,
-                "reaction": plan.reactions[idx] if plan and idx < len(plan.reactions) else None,
-                "delay_sec": plan.delays[idx] if plan and idx < len(plan.delays) else 0,
-                "mode": plan.modes[idx] if plan and idx < len(plan.modes) else None,
+                "reaction": ( (plan.get("comment_reactions") or [None, None])[idx] if isinstance(plan, dict) and idx < len((plan.get("comment_reactions") or [])) else None ),
+                "delay_sec": ( (plan.get("delays") or [0,0])[idx] if isinstance(plan, dict) and idx < len((plan.get("delays") or [])) else 0 ),
+                "mode": ( (plan.get("reaction_mode") if isinstance(plan, dict) else None) ),
                 "thread_pair": bool(THREAD_PAIR_MODE),
                 "thread_index": idx,
                 "follow_up": bool(THREAD_PAIR_MODE and idx == 1),
