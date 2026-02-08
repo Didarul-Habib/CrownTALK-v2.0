@@ -375,8 +375,16 @@ def fetch_tweet_data(x_url: str) -> TweetData:
             r = _do_get_json(vx_url)
             last_status = r.status_code
             if r.status_code == 200:
-                payload = _read_json_payload(r)
-                data = _parse_payload(payload)
+                try:
+                    payload = _read_json_payload(r)
+                    data = _parse_payload(payload)
+                except CrownTALKError as e:
+                    # Some upstreams return HTML (200) behind bot protection. Treat invalid JSON as retryable/fallback.
+                    if getattr(e, "code", None) == "upstream_invalid_json":
+                        logger.warning("Invalid JSON from upstream (%s) for %s; will retry/fallback", r.url, x_url)
+                        time.sleep(1 + attempt)
+                        continue
+                    raise
                 _cache_set(handle, status_id, data)
                 return data
             elif r.status_code in (401, 403, 404):
@@ -412,8 +420,16 @@ def fetch_tweet_data(x_url: str) -> TweetData:
             r = _do_get_json(fx_url)
             last_status = r.status_code
             if r.status_code == 200:
-                payload = _read_json_payload(r)
-                data = _parse_payload(payload)
+                try:
+                    payload = _read_json_payload(r)
+                    data = _parse_payload(payload)
+                except CrownTALKError as e:
+                    # Some upstreams return HTML (200) behind bot protection. Treat invalid JSON as retryable/fallback.
+                    if getattr(e, "code", None) == "upstream_invalid_json":
+                        logger.warning("Invalid JSON from upstream (%s) for %s; will retry/fallback", r.url, x_url)
+                        time.sleep(1 + attempt)
+                        continue
+                    raise
                 _cache_set(handle, status_id, data)
                 return data
             elif r.status_code in (401, 403, 404):
