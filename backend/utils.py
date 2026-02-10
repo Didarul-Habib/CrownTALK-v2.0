@@ -361,6 +361,27 @@ def fetch_tweet_data(x_url: str) -> TweetData:
     """
     handle, status_id = _extract_handle_and_id(x_url)
 
+    def _enrich_i_status_if_needed(original_handle: str, data: TweetData) -> TweetData:
+        """If user submitted /i/status/... links, try to enrich with real handle.
+
+        VX/FX sometimes returns incomplete handle info for /i/status URLs.
+        When that happens, use the syndication endpoint to recover handle/name
+        so the frontend can display https://x.com/{handle}/status/{id}.
+        """
+        try:
+            if original_handle != "i":
+                return data
+            if data.handle and data.handle != "i" and data.author_name:
+                return data
+            syn = _fetch_syndication_tweet(status_id)
+            # prefer syndication handle/name, but keep VX/FX text if it's richer
+            data.handle = syn.handle or data.handle
+            data.author_name = syn.author_name or data.author_name
+            data.canonical_url = syn.canonical_url or data.canonical_url
+            return data
+        except Exception:
+            return data
+
     cached = _cache_get(handle, status_id)
     if cached is not None:
         return cached
@@ -378,6 +399,7 @@ def fetch_tweet_data(x_url: str) -> TweetData:
                 try:
                     payload = _read_json_payload(r)
                     data = _parse_payload(payload)
+                    data = _enrich_i_status_if_needed(handle, data)
                 except CrownTALKError as e:
                     # Some upstreams return HTML (200) behind bot protection. Treat invalid JSON as retryable/fallback.
                     if getattr(e, "code", None) == "upstream_invalid_json":
@@ -423,6 +445,7 @@ def fetch_tweet_data(x_url: str) -> TweetData:
                 try:
                     payload = _read_json_payload(r)
                     data = _parse_payload(payload)
+                    data = _enrich_i_status_if_needed(handle, data)
                 except CrownTALKError as e:
                     # Some upstreams return HTML (200) behind bot protection. Treat invalid JSON as retryable/fallback.
                     if getattr(e, "code", None) == "upstream_invalid_json":

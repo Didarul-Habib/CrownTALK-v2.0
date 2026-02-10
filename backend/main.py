@@ -6334,8 +6334,18 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
 
 
 
-def safe_offline_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
-    """Best-effort offline fallback that never raises NameError."""
+def safe_offline_two_comments(
+    tweet_text: str,
+    author: Optional[str],
+    handle: Optional[str] = None,
+    lang: Optional[str] = None,
+    url: str = "",
+) -> list[str]:
+    """Best-effort offline fallback.
+
+    NOTE: Some callers pass handle/lang positionally plus url as a keyword.
+    We accept those extra args so we never crash on fallback.
+    """
     fn = globals().get("offline_two_comments")
     if callable(fn):
         try:
@@ -6359,7 +6369,7 @@ def safe_offline_two_comments(tweet_text: str, author: Optional[str], url: str =
 
 def generate_two_comments_offline(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     """Offline provider wrapper required by _available_providers()."""
-    out = safe_offline_two_comments(tweet_text, author)
+    out = safe_offline_two_comments(tweet_text, author, url=url)
     out = [postprocess_comment(x, "offline") for x in out if x]
     out = enforce_unique(out, tweet_text=tweet_text, url=url, lang="en")
 
@@ -6794,7 +6804,8 @@ def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     mode_line = llm_mode_hint(tweet_text)
     sys_prompt = _llm_sys_prompt(mode_line)
 
-    endpoint = os.getenv("COHERE_CHAT_ENDPOINT", "https://api.cohere.ai/v2/chat")
+    # Cohere API base domain is api.cohere.com ("api.cohere.ai" will 404)
+    endpoint = os.getenv("COHERE_CHAT_ENDPOINT", "https://api.cohere.com/v2/chat")
 
     payload = {
         "model": COHERE_MODEL,
@@ -7444,7 +7455,7 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
             except Exception as e:
                 logger.warning("pro rewrite provider %s failed: %s", provider, e)
 
-    return _postprocess_candidates(None, tweet_text=text)
+    return _postprocess_candidates(None, tweet_text=tweet_text)
 MAX_CANDIDATES_FOR_SELECTION = int(os.getenv("CROWNTALK_MAX_CANDIDATES", "6"))
 
 
@@ -7493,16 +7504,42 @@ def _name_for_greeting(author_name: Optional[str], handle: Optional[str]) -> str
 
     The frontend requested: call out by display name, not username.
     """
+    def _valid_name_from_handle(h: str) -> str:
+        """Turn a username/handle into a clean callout name.
+
+        Examples:
+        - "Shakib.eth" -> "Shakib"
+        - "shakibul9097" -> "shakibul"
+        - "@John_Doe-123" -> "John"
+        """
+        h = re.sub(r"^@", "", (h or "").strip())
+        if not h:
+            return "friend"
+
+        # split on separators first (dot/underscore/hyphen)
+        h = re.split(r"[._-]", h)[0]
+
+        # keep only leading letters
+        m = re.match(r"[A-Za-z]+", h)
+        if m:
+            return m.group(0)[:18]
+
+        # fallback: first alnum chunk
+        core = re.split(r"\W+", h)[0]
+        return (core or "friend")[:18]
+
     if author_name:
         nm = re.sub(r"\s+", " ", str(author_name)).strip()
-        # Keep up to 2 words for readability (e.g., "Crypto Josh")
-        parts = [p for p in nm.split(" ") if p]
-        if len(parts) >= 2:
-            nm2 = " ".join(parts[:2])
-            return nm2[:24].strip()
-        return nm[:24].strip()
+        # remove obvious punctuation/emoji-ish symbols (best-effort)
+        nm = re.sub(r"[^\w\s]", "", nm).strip()
+        parts = [p for p in nm.split() if p]
+        if parts:
+            # Keep up to 2 words for readability (e.g., "Crypto Josh")
+            return " ".join(parts[:2])[:24].strip()
+
     if handle:
-        return re.sub(r"^@", "", str(handle)).strip()[:18]
+        return _valid_name_from_handle(str(handle))
+
     return "friend"
 
 def build_greeting_pair(tweet_text: str, author_name: Optional[str], handle: Optional[str], lang_code: str = "en") -> list[str]:
@@ -7524,17 +7561,44 @@ def build_greeting_pair(tweet_text: str, author_name: Optional[str], handle: Opt
             f"{name}님 화이팅 컨디션 좋게 시작해봐요",
         ]
 
+    # EN: avoid punctuation unless it's a question.
+    # (So we avoid commas and em-dashes here.)
+    if lang_code.startswith("en"):
+        if hint:
+            hint2 = str(hint).strip()
+            if hint2.startswith("@"):
+                hint2 = hint2[1:]
+            pool = [
+                f"Gm {name} loving the focus on {hint2}",
+                f"Gm {name} {hint2} looks interesting today",
+                f"Good morning {name} keep pushing {hint2}",
+                f"Morning {name} excited to see where {hint2} goes",
+                f"Gm {name} keep building around {hint2}",
+            ]
+        else:
+            pool = [
+                f"Gm {name} hope your day starts strong",
+                f"Good morning {name} wishing you a smooth day",
+                f"Morning {name} keep building",
+                f"Gm {name} lets make today count",
+                f"Good morning {name} hope you feel energized today",
+                f"Morning {name} sending good vibes",
+            ]
+
+        random.shuffle(pool)
+        return pool[:2]
+
+    # fallback for other langs already handled above
     if hint:
-        hint2 = str(hint).strip()
-        if hint2.startswith('@'):
-            hint2 = hint2[1:]
+        hint2 = str(hint).strip().lstrip("@")
         return [
-            f"Gm {name}, love the focus on {hint2}",
-            f"Have a great day {name} — keep building",
+            f"Gm {name} {hint2} 흐름 좋아 보이네요" if lang_code.startswith("ko") else f"Gm {name} {hint2}",
+            f"{name} 화이팅 좋은 하루 보내세요" if lang_code.startswith("ko") else f"Have a great day {name}",
         ]
+
     return [
-        f"Gm {name}, hope your day starts strong",
-        f"Have a great day {name} — keep building",
+        f"Gm {name}" if lang_code.startswith("en") else f"Gm {name}",
+        f"Have a great day {name}" if lang_code.startswith("en") else f"Have a great day {name}",
     ]
 
 
