@@ -8391,11 +8391,21 @@ def comment_endpoint():
 
     done = 0
 
-    # Concurrency: process multiple URLs in parallel, but keep it safe for rate limits.
-    # - URL_PROCESS_CONCURRENCY controls how many tweets we fetch/generate at once.
-    # - Groq has its own limiter (GROQ_MAX_CONCURRENCY + GROQ_MIN_INTERVAL).
-    URL_PROCESS_CONCURRENCY = int(os.getenv("URL_PROCESS_CONCURRENCY", "3"))
-    URL_PROCESS_CONCURRENCY = max(1, min(8, URL_PROCESS_CONCURRENCY))
+    # Concurrency / pacing for multi-URL requests:
+    # When users paste many links, each link can trigger multiple LLM calls (generate + validate + fallbacks).
+    # If we run several URLs in parallel, Groq will often 429 (rate limit). So:
+    #   - For a single URL: allow a small parallelism (max 2) for snappy UX.
+    #   - For 2+ URLs: force sequential processing (batch_size=1, workers=1) + small spacing.
+    _requested_workers = int(os.getenv("URL_PROCESS_CONCURRENCY", "2") or "2")
+    URL_PROCESS_CONCURRENCY = max(1, min(2, _requested_workers))
+
+    # Batch size (overridden to 1 when multiple URLs)
+    _requested_batch = int(os.getenv("BATCH_SIZE", "2") or "2")
+    BATCH_SIZE = max(1, min(10, _requested_batch))
+
+    total_urls = len(cleaned)
+    batch_size = 1 if total_urls > 1 else BATCH_SIZE
+    workers = 1 if total_urls > 1 else URL_PROCESS_CONCURRENCY
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -8512,7 +8522,7 @@ def comment_endpoint():
             return (url, None, {"url": url, "reason": "internal_error", "code": "internal_error"})
 
     # Process in chunks so super large batches don't explode threads
-    for batch in chunked(cleaned, BATCH_SIZE):
+    for batch in chunked(cleaned, batch_size):
         if not batch:
             continue
 
