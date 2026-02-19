@@ -96,18 +96,29 @@ def _extract_handle_and_id(url: str) -> Tuple[str, str]:
             raise ValueError(f"unsupported host {host}")
 
         parts = [p for p in parsed.path.split("/") if p]
-        # expected patterns:
-        #   /handle/status/id
-        #   /i/status/id
-        if len(parts) >= 3 and parts[-2] == "status":
-            handle = parts[-3]
-            status_id = parts[-1]
-        elif len(parts) >= 4 and parts[-2] == "status":
-            handle = parts[-4]
-            status_id = parts[-1]
-        else:
+
+        # Find ".../status/<id>" anywhere in the path, including:
+        #   /handle/status/<id>
+        #   /i/status/<id>
+        #   /i/web/status/<id>
+        try:
+            si = parts.index("status")
+        except ValueError:
+            # sometimes path ends with /status/<id>/photo/1 etc.
+            si = -1
+            for j, pth in enumerate(parts):
+                if pth == "status":
+                    si = j
+                    break
+        if si == -1 or si + 1 >= len(parts):
             raise ValueError("couldn't parse status path")
 
+        status_id = parts[si + 1]
+        # Handle: for standard URLs, handle is the segment before "status".
+        # For /i/... paths, treat handle as "i" so the caller can later enrich.
+        handle = parts[si - 1] if si - 1 >= 0 else ""
+        if parts and parts[0] == "i":
+            handle = "i"
         status_id = re.sub(r"[^\d]", "", status_id)
         if not handle or not status_id:
             raise ValueError("missing handle or id")
@@ -521,8 +532,8 @@ def clean_and_normalize_urls(urls: List[str]) -> List[str]:
         r"(?P<scheme>https?://)?"
         r"(?P<domain>(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com))"
         r"/"
-        r"(?:(?P<handle>[A-Za-z0-9_]{1,15})|i)"
-        r"/status/"
+        r"(?:(?P<handle>[A-Za-z0-9_]{1,15})/status|i/(?:web/)?status)"
+        r"/"
         r"(?P<id>\d+)",
         flags=re.IGNORECASE,
     )

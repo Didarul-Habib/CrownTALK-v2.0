@@ -7916,6 +7916,27 @@ def fetch_source_preview(source_url: str) -> dict:
             pass
         return cached
 
+
+    # Special-case X/Twitter status links: treat as a tweet "preview" instead of scraping HTML (which often fails).
+    try:
+        if re.search(r"(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/(?:[A-Za-z0-9_]{1,15}|i)(?:/(?:web/)?status|/status)/\d+", safe_url, re.IGNORECASE):
+            td = fetch_tweet_data(safe_url)
+            content = (td.text or "").strip()
+            out = {
+                "url": td.canonical_url or safe_url,
+                "title": f"X post by @{td.handle}" if td.handle else "X post",
+                "author": td.author_name or (f"@{td.handle}" if td.handle else ""),
+                "published": "",
+                "language": (td.lang or "en").lower() if td.lang else "en",
+                "content": content,
+                "excerpt": (content[:280] + "…") if len(content) > 280 else content,
+            }
+            _ttl_set(_page_cache, cache_key, out, ttl=PAGE_CACHE_TTL_SEC)
+            return out
+    except Exception:
+        # fall back to HTML extraction
+        pass
+
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; CrownTALK/2.0; +https://example.com)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
@@ -8029,7 +8050,8 @@ def fetch_source_preview(source_url: str) -> dict:
     text = text[:18000]
     excerpt = (desc or text[:320]).strip()
 
-    out = {"url": safe_url, "title": title, "excerpt": excerpt,
+    out = {"url": (prev.get("url") or safe_url),
+                    "input_url": req.source_url, "title": title, "excerpt": excerpt,
         "author": author,
         "published": published,
         "language": _detect_lang_light(text), "content": text, "citations": _citation_snippets(text, safe_url, title)}
@@ -8243,12 +8265,14 @@ def comment_from_url_endpoint():
         _audit("comment_from_url", {"ok": True, "url": req.source_url})
         payload = {
             "item": {
-                "url": req.source_url,
+                "url": (prev.get("url") or req.source_url),
+                "input_url": req.source_url,
                 "title": prev.get("title"),
                 "excerpt": prev.get("excerpt"),
                 "comments": comments,
                 "status": "ok",
-                "citations": prev.get("citations") or [{"url": req.source_url, "title": prev.get("title"), "quote": prev.get("excerpt","")[:200]}],
+                "citations": prev.get("citations") or [{"url": (prev.get("url") or req.source_url),
+                "input_url": req.source_url, "title": prev.get("title"), "quote": prev.get("excerpt","")[:200]}],
             }
         }
         _dedupe_cache_set(cache_key, payload)
@@ -8367,12 +8391,14 @@ def comment_from_url_stream_endpoint():
                             yield sse_event("ping", {"t": int(time.time())})
 
                 result_item = {
-                    "url": safe_url,
+                    "url": (prev.get("url") or safe_url),
+                    "input_url": req.source_url,
                     "title": prev.get("title"),
                     "excerpt": prev.get("excerpt"),
                     "status": "ok",
                     "comments": [{"text": c} for c in comments],
-                    "citations": [{"url": safe_url, "title": prev.get("title")}] if quote_mode else [],
+                    "citations": [{"url": (prev.get("url") or safe_url),
+                    "input_url": req.source_url, "title": prev.get("title")}] if quote_mode else [],
                 }
                 _dedupe_cache_set(cache_key, result_item)
 
@@ -8528,7 +8554,7 @@ def comment_endpoint():
                 )
 
             if want_native:
-                native_lang = native_override or (t.lang or "en")
+                native_lang = (None if (str(native_override or "").strip().lower() in ("auto","detect")) else native_override) or (t.lang or "en")
                 native_lang = str(native_lang).strip().lower() if native_lang else "en"
                 if not native_lang.startswith("en") or not want_en:
                     out_tag = native_lang if not native_lang.startswith("en") else "native"
@@ -8559,6 +8585,7 @@ def comment_endpoint():
 
             item = {
                 "url": display_url,
+                "input_url": url,
                 "comments": two,
                 "used_research": used_research,
             }
@@ -8659,7 +8686,7 @@ def comment_stream_endpoint():
     def gen():
         def fail(code: str, message: str):
             # Emit a frontend-compatible "result" item even on failures.
-            err_item = {"url": url, "status": "error", "reason": message, "comments": []}
+            err_item = {"url": url, "input_url": url, "status": "error", "reason": message, "comments": []}
             yield sse_event("error", {"code": code, "message": message})
             logger.warning("comment/stream failed code=%s url=%s msg=%s", code, url, message)
             yield sse_event("result", {"type": "result", "item": err_item})
@@ -8678,18 +8705,23 @@ def comment_stream_endpoint():
 
         yield sse_event("status", {"stage": "generating"})
         handle = t.handle or _extract_handle_from_url(url)
+        input_url = url
+        display_url = t.canonical_url or (f"https://x.com/{handle}/status/{t.tweet_id}" if handle and getattr(t, "tweet_id", None) else url)
         target = output_language or "en"
+        if target in ("auto","detect"):
+            target = (t.lang or "en").strip().lower() if (t.lang or "").strip() else "en"
         try:
             # Generate english + optional native if requested language differs
             comments = []
             if target == "en":
-                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=url, target_lang="en", out_lang_tag="en")
+                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=display_url, target_lang="en", out_lang_tag="en")
             else:
-                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=url, target_lang=target, out_lang_tag=target)
+                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=display_url, target_lang=target, out_lang_tag=target)
             # stream as chunks (coarse-grained)
             # stream a single result item compatible with frontend parser
             result_item = {
-                "url": url,
+                "url": display_url,
+                "input_url": input_url,
                 "status": "ok",
                 "comments": [
                     {k: v for k, v in c.items() if k in ("text", "provider", "alternates")} for c in comments
@@ -8771,7 +8803,7 @@ def reroll_endpoint():
             )
 
         if want_native:
-            native_lang = native_override or (t.lang or "en")
+            native_lang = (None if (str(native_override or "").strip().lower() in ("auto","detect")) else native_override) or (t.lang or "en")
             native_lang = str(native_lang).strip().lower() if native_lang else "en"
             if not native_lang.startswith("en") or not want_en:
                 out_tag = native_lang if not native_lang.startswith("en") else "native"
