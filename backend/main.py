@@ -7897,13 +7897,12 @@ def _strip_and_squash_ws(s: str) -> str:
     return " ".join((s or "").split())
 
 
-
 def fetch_source_preview(source_url: str) -> dict:
-    """Fetch a URL and extract a small preview + cleaned text for URL mode.
+    """Fetch a URL and extract a small preview + cleaned text.
 
     - SSRF-safe: blocks localhost/private networks.
     - Cached in-memory (TTL) to avoid repeated fetch/extract work.
-    - Special-cases X/Twitter status links using VX/FX helpers instead of HTML.
+    - Lightweight extraction heuristics (Render Free friendly).
     """
     # Normalize + validate (SSRF protection)
     safe_url = validate_public_http_url(source_url)
@@ -7917,50 +7916,39 @@ def fetch_source_preview(source_url: str) -> dict:
             pass
         return cached
 
-    # Special-case X/Twitter status links: treat as a tweet "preview"
-    # instead of scraping HTML (which often fails or is truncated).
+
+    # Special-case X/Twitter status links: treat as a tweet "preview" instead of scraping HTML (which often fails).
     try:
-        if re.search(
-            r"(?:https?://)?(?:www\.)?(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/"
-            r"(?:(?:[A-Za-z0-9_]{1,15}/)?status|i/(?:web/)?status)/\d+",
-            safe_url,
-            re.IGNORECASE,
-        ):
+        if re.search(r"(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/(?:[A-Za-z0-9_]{1,15}|i)(?:/(?:web/)?status|/status)/\d+", safe_url, re.IGNORECASE):
             td = fetch_tweet_data(safe_url)
             content = (td.text or "").strip()
             out = {
                 "url": td.canonical_url or safe_url,
-                "input_url": source_url,
                 "title": f"X post by @{td.handle}" if td.handle else "X post",
                 "author": td.author_name or (f"@{td.handle}" if td.handle else ""),
                 "published": "",
                 "language": (td.lang or "en").lower() if td.lang else "en",
                 "content": content,
                 "excerpt": (content[:280] + "…") if len(content) > 280 else content,
-                "citations": [],
             }
-            _ttl_set(_page_cache, cache_key, out, ttl=PAGE_CACHE_TTL_SECONDS)
+            _ttl_set(_page_cache, cache_key, out, ttl=PAGE_CACHE_TTL_SEC)
             return out
     except Exception:
-        # fall back to generic HTML extraction
+        # fall back to HTML extraction
         pass
 
     headers = {
-        "User-Agent": "Mozilla/5.0 (compatible; CrownTALK/2.0; +https://crowntalk.app)",
+        "User-Agent": "Mozilla/5.0 (compatible; CrownTALK/2.0; +https://example.com)",
         "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
     }
-
+    
     # Stream download with a hard byte cap (robots/timeout respectful)
     timeout_sec = URL_FETCH_TIMEOUT_STREAM_SEC if request.path.endswith("/stream") else URL_FETCH_TIMEOUT_NONSTREAM_SEC
     r = requests.get(safe_url, headers=headers, timeout=timeout_sec, allow_redirects=True, stream=True)
     r.raise_for_status()
     ctype = (r.headers.get("Content-Type") or "").lower()
     if ctype and ("text/html" not in ctype and "application/xhtml+xml" not in ctype):
-        raise CrownTALKError(
-            "bad_content_type",
-            f"Only HTML pages are allowed (got: {ctype.split(';')[0] or 'unknown'}).",
-        )
-
+        raise CrownTALKError("bad_content_type", f"Only HTML pages are allowed (got: {ctype.split(';')[0] or 'unknown'}).")
     buf = bytearray()
     for chunk in r.iter_content(chunk_size=65536):
         if not chunk:
@@ -7968,29 +7956,22 @@ def fetch_source_preview(source_url: str) -> dict:
         buf.extend(chunk)
         if len(buf) > MAX_FETCH_BYTES:
             break
-
     html = buf.decode(r.encoding or "utf-8", errors="replace")
     soup = BeautifulSoup(html, "html.parser")
 
-    # --- Basic metadata ---
-    title = ""
-    if soup.title and soup.title.string:
-        try:
-            title = (soup.title.string or "").strip()
-        except Exception:
-            title = ""
+    # basic metadata
 
     author = ""
     try:
-        author_meta = (
-            (soup.find("meta", attrs={"name": "author"}) or {})
-            or (soup.find("meta", attrs={"property": "article:author"}) or {})
-        )
-        if hasattr(author_meta, "get"):
-            author = (author_meta.get("content") or "").strip()
+        author = (
+            (soup.find("meta", attrs={"name": "author"}) or {}).get("content")
+            or (soup.find("meta", attrs={"property": "article:author"}) or {}).get("content")
+            or ""
+        ).strip()
     except Exception:
         author = ""
 
+    published = ""
     try:
         published = (
             (soup.find("meta", attrs={"property": "article:published_time"}) or {}).get("content")
@@ -8000,57 +7981,91 @@ def fetch_source_preview(source_url: str) -> dict:
     except Exception:
         published = ""
 
+    og_title = soup.find("meta", property="og:title")
+    if og_title and og_title.get("content"):
+        title = og_title.get("content").strip() or title
+
     desc = ""
-    try:
-        og_desc = soup.find("meta", property="og:description")
-        if og_desc and og_desc.get("content"):
-            desc = (og_desc.get("content") or "").strip()
-        if not desc:
-            meta_desc = soup.find("meta", attrs={"name": "description"})
-            if meta_desc and meta_desc.get("content"):
-                desc = (meta_desc.get("content") or "").strip()
-    except Exception:
-        desc = ""
+    og_desc = soup.find("meta", property="og:description")
+    if og_desc and og_desc.get("content"):
+        desc = og_desc.get("content").strip()
+    if not desc:
+        meta_desc = soup.find("meta", attrs={"name": "description"})
+        if meta_desc and meta_desc.get("content"):
+            desc = meta_desc.get("content").strip()
 
-    # strip obvious non-content inside the main element
-    main_el = None
-    for sel in ["article", "main", "[role=main]"]:
-        try:
-            found = soup.select_one(sel)
-        except Exception:
-            found = None
-        if found is not None:
-            main_el = found
-            break
-    if main_el is None:
-        main_el = soup.body or soup
-
-    for tag in main_el.find_all(["script", "style", "noscript", "svg", "canvas", "form", "iframe"]):
+    # strip obvious non-content
+    for tag in soup(["script", "style", "noscript", "svg", "canvas", "form", "iframe"]):
         try:
             tag.decompose()
         except Exception:
             pass
 
-    text = _strip_and_squash_ws(main_el.get_text(" "))
+    def _text_len(el) -> int:
+        try:
+            return len(_strip_and_squash_ws(el.get_text(" ")))
+        except Exception:
+            return 0
 
-    # keep bounded; longer content makes LLMs slower and often worse
+    def _link_density(el) -> float:
+        try:
+            txt_all = _strip_and_squash_ws(el.get_text(" ")) or ""
+            if not txt_all:
+                return 1.0
+            link_txt = " ".join([_strip_and_squash_ws(a.get_text(" ")) for a in el.find_all("a")]) if hasattr(el, "find_all") else ""
+            return min(1.0, len(link_txt) / max(1, len(txt_all)))
+        except Exception:
+            return 1.0
+
+    # Candidate containers prioritized by semantics
+    candidates = []
+    for sel in ["article", "main", "[role=main]"]:
+        for el in soup.select(sel):
+            candidates.append(el)
+    # Fallback: longer div/section blocks
+    if not candidates:
+        for el in soup.find_all(["div", "section"], limit=120):
+            if _text_len(el) >= 400:
+                candidates.append(el)
+
+    best = None
+    best_score = -1.0
+    for el in candidates[:80]:
+        tl = _text_len(el)
+        if tl < 120:
+            continue
+        ld = _link_density(el)
+        # score: prefer longer text, penalize high link density
+        score = float(tl) * (1.0 - (ld * 0.85))
+        if score > best_score:
+            best_score = score
+            best = el
+
+    if best is None:
+        best = soup
+
+    text = _strip_and_squash_ws(best.get_text(" "))
+
+    # keep bounded; longer content makes LLMs worse + slower on free tier
     text = text[:18000]
     excerpt = (desc or text[:320]).strip()
 
-    out = {
-        "url": safe_url,
-        "input_url": source_url,
-        "title": title or safe_url,
-        "excerpt": excerpt,
+    out = {"url": (prev.get("url") or safe_url),
+                    "input_url": req.source_url, "title": title, "excerpt": excerpt,
         "author": author,
         "published": published,
-        "language": _detect_lang_light(text),
-        "content": text,
-        "citations": _citation_snippets(text, safe_url, title),
-    }
-    _ttl_set(_page_cache, cache_key, out, ttl=PAGE_CACHE_TTL_SECONDS)
+        "language": _detect_lang_light(text), "content": text, "citations": _citation_snippets(text, safe_url, title)}
+    _ttl_set(_page_cache, cache_key, out, PAGE_CACHE_TTL_SECONDS)
     return out
 
+
+
+# ------------------------------------------------------------------------------
+# Chunking + summarization for long articles (sync; free-tier friendly)
+# ------------------------------------------------------------------------------
+URL_SUMMARY_CHUNK_CHARS = int(os.getenv("URL_SUMMARY_CHUNK_CHARS", "4500"))
+URL_SUMMARY_MAX_CHUNKS = int(os.getenv("URL_SUMMARY_MAX_CHUNKS", "6"))
+URL_SUMMARY_TARGET_CHARS = int(os.getenv("URL_SUMMARY_TARGET_CHARS", "3200"))
 
 def _chunk_text(text: str, max_chars: int) -> list[str]:
     t = (text or "").strip()
@@ -8206,17 +8221,23 @@ def comment_from_url_endpoint():
     looks_claimy = bool(re.search(r"\b\d+(?:[\.,]\d+)?%\b|\b\d{4}\b|\$\d+", content))
     quote_mode = bool(req.quote_mode or looks_claimy)
 
-    # build a pseudo "tweet" text for your existing generator
+    # build a pseudo "tweet" style context for the URL-based generator
     context_block = (content_for_prompt or "")[:7000]
     prompt_prefix = (
-        "You are writing a reply comment to content from a URL (article or thread). "
-        "Be concise, natural, and high-quality for X (Twitter).\n"
-        "Use the author/content as context, but do not hallucinate facts.\n"
+        "You are CrownTALK, a professional crypto-native X (Twitter) reply generator.\n"
+        "You are replying to a tweet that links to an article, thread, or long-form content.\n"
+        "You will be given the tweet text plus ARTICLE_TITLE, ARTICLE_EXCERPT and ARTICLE_CONTENT.\n"
+        "- Always ground your replies in the actual tweet and article content.\n"
+        "- Reference at least one concrete detail (term, metric, project, claim, or idea) that appears in the tweet or article.\n"
+        "- Do not invent facts. If important details are missing, say you would need more specifics instead of guessing.\n"
+        "- Style: crypto-native, niche-aware, no generic 'gm', 'nice thread', or empty praise.\n"
+        "- Keep each reply concise, high-signal, and written as an X reply, not a summary.\n"
     )
     if quote_mode:
         prompt_prefix += (
-            "If there are stats/claims, either quote the exact phrasing briefly and ask for a source, "
-            "or respond with a careful caveat. Prefer one short quote.\n"
+            "If there are statistics or strong claims (percentages, years, dollar amounts, or growth figures), "
+            "briefly quote or paraphrase one of them and either ask for a source or respond with a careful caveat. "
+            "Prefer a single, focused reference instead of listing many numbers.\n"
         )
 
     synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','') }\nSOURCE_EXCERPT: {prev.get('excerpt','') }\nSOURCE_CONTENT: {context_block}"
