@@ -8367,8 +8367,6 @@ def comment_from_url_stream_endpoint():
                     "briefly quote or paraphrase ONE of them and either ask for a source or respond with a careful caveat. "
                     "Prefer a single, focused reference instead of listing many numbers.\n"
                 )
-                    "or respond with a careful caveat. Prefer one short quote.\n"
-                )
 
             synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
 
