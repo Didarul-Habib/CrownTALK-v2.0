@@ -7939,8 +7939,28 @@ def fetch_source_preview(source_url: str) -> dict:
             _ttl_set(_page_cache, cache_key, out, ttl=PAGE_CACHE_TTL_SEC)
             return out
     except Exception:
-        # fall back to HTML extraction
-        pass
+        # VX/FX path failed – try Twitter syndication CDN for public tweets.
+        try:
+            from .utils import _extract_handle_and_id, _fetch_syndication_tweet
+
+            # Re-parse to get a clean status_id
+            _, status_id = _extract_handle_and_id(safe_url)
+            td = _fetch_syndication_tweet(status_id)
+            content = (td.text or "").strip()
+            out = {
+                "url": td.canonical_url or safe_url,
+                "title": f"X post by @{td.handle}" if td.handle else "X post",
+                "author": td.author_name or (f"@{td.handle}" if td.handle else ""),
+                "published": "",
+                "language": (td.lang or "en").lower() if td.lang else "en",
+                "content": content,
+                "excerpt": (content[:280] + "…") if len(content) > 280 else content,
+            }
+            _ttl_set(_page_cache, cache_key, out, ttl=PAGE_CACHE_TTL_SEC)
+            return out
+        except Exception:
+            # Fall through to generic HTML extraction as a last resort.
+            pass
 
     headers = {
         "User-Agent": "Mozilla/5.0 (compatible; CrownTALK/2.0; +https://example.com)",
