@@ -39,6 +39,11 @@ from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
 # App / Logging / Config
 # ------------------------------------------------------------------------------
 app = Flask(__name__)
+
+
+@app.route("/robots.txt")
+def robots_txt():
+    return Response("User-agent: *\nDisallow:\n", mimetype="text/plain")
 # Max request payload size (bytes) to mitigate abuse on free-tier hosting.
 # Default: 64KB. Override via CROWNTALK_MAX_PAYLOAD_BYTES.
 try:
@@ -8225,20 +8230,18 @@ def comment_from_url_endpoint():
     context_block = (content_for_prompt or "")[:7000]
     prompt_prefix = (
         "You are CrownTALK, a professional crypto-native X (Twitter) reply generator.\n"
-        "You are replying to a tweet that links to an article, thread, or other long-form content.\n"
+        "You are replying to a tweet that links to an article, thread, or long-form content.\n"
         "You will be given the tweet text plus ARTICLE_TITLE, ARTICLE_EXCERPT and ARTICLE_CONTENT.\n"
-        "Rules:\n"
-        "1) Every reply must clearly react to specific details from the article or thread, not just the tweet.\n"
-        "2) Explicitly reference at least one concrete detail (names, metrics, mechanisms, risks, examples, or quoted phrases) from ARTICLE_TITLE or ARTICLE_CONTENT.\n"
-        "3) If ARTICLE_CONTENT looks empty, generic, or unrelated, say that you need more detail instead of guessing.\n"
-        "4) Never invent tokenomics, prices, growth numbers, or roadmaps.\n"
-        "5) Style: crypto-native, niche-aware, no generic 'gm', 'nice thread', or empty praise.\n"
-        "6) Keep each reply concise, high-signal, and written as an X reply, not a summary.\n"
+        "- Always ground your replies in the actual tweet and article content.\n"
+        "- Reference at least one concrete detail (term, metric, project, claim, or idea) that appears in the tweet or article.\n"
+        "- Do not invent facts. If important details are missing, say you would need more specifics instead of guessing.\n"
+        "- Style: crypto-native, niche-aware, no generic 'gm', 'nice thread', or empty praise.\n"
+        "- Keep each reply concise, high-signal, and written as an X reply, not a summary.\n"
     )
     if quote_mode:
         prompt_prefix += (
-            "When the article includes strong claims (percentages, years, dollar amounts, or growth figures), "
-            "briefly quote or paraphrase ONE of them and either ask for a source or respond with a careful caveat. "
+            "If there are statistics or strong claims (percentages, years, dollar amounts, or growth figures), "
+            "briefly quote or paraphrase one of them and either ask for a source or respond with a careful caveat. "
             "Prefer a single, focused reference instead of listing many numbers.\n"
         )
 
@@ -8347,25 +8350,19 @@ def comment_from_url_stream_endpoint():
                 return
 
             looks_claimy = bool(re.search(r"\b\d+(?:[\.,]\d+)?%\b|\b\d{4}\b|\$\d+", content))
+            quote_mode = bool(req.quote_mode or looks_claimy)
+
             gen_lang = (req.output_language or "en").strip().lower()
             context_block = content[:5000]
             prompt_prefix = (
-                "You are CrownTALK, a professional crypto-native X (Twitter) reply generator.\n"
-                "You are replying to a tweet that links to an article, thread, or other long-form content.\n"
-                "You will be given SOURCE_TITLE, SOURCE_EXCERPT and SOURCE_CONTENT.\n"
-                "Rules:\n"
-                "1) Every reply must clearly react to specific details from the article or thread, not just the tweet.\n"
-                "2) Explicitly reference at least one concrete detail (names, metrics, mechanisms, risks, examples, or quoted phrases) from SOURCE_TITLE or SOURCE_CONTENT.\n"
-                "3) If SOURCE_CONTENT looks empty, generic, or unrelated, say that you need more detail instead of guessing.\n"
-                "4) Never invent tokenomics, prices, growth numbers, or roadmaps.\n"
-                "5) Style: crypto-native, niche-aware, no generic 'gm', 'nice thread', or empty praise.\n"
-                "6) Keep each reply concise, high-signal, and written as an X reply, not a summary.\n"
+                "You are writing a reply comment to content from a URL (article or thread). "
+                "Be concise, natural, and high-quality for X (Twitter).\n"
+                "Use the author/content as context, but do not hallucinate facts.\n"
             )
             if quote_mode:
                 prompt_prefix += (
-                    "When the article includes strong claims (percentages, years, dollar amounts, or growth figures), "
-                    "briefly quote or paraphrase ONE of them and either ask for a source or respond with a careful caveat. "
-                    "Prefer a single, focused reference instead of listing many numbers.\n"
+                    "If there are stats/claims, either quote the exact phrasing briefly and ask for a source, "
+                    "or respond with a careful caveat. Prefer one short quote.\n"
                 )
 
             synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
