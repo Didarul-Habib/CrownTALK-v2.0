@@ -1523,12 +1523,17 @@ def get_request_nonce() -> str:
 # ------------------------------------------------------------------------------
 # Pro KOL upgrade switches (all three add-ons)
 # ------------------------------------------------------------------------------
-PRO_KOL_MODE = os.getenv("PRO_KOL_MODE", "0").strip() == "1"
+# Default behavior: enable strict Pro KOL filtering + polish, but keep expensive
+# rewrite passes *off* unless explicitly opted in via env vars.
+_raw_pro_kol_mode = os.getenv("PRO_KOL_MODE")
+# If PRO_KOL_MODE is not set, default to "on" for higher quality comments.
+PRO_KOL_MODE = (_raw_pro_kol_mode or "1").strip() == "1"
 
-
-PRO_KOL_POLISH = PRO_KOL_MODE
-PRO_KOL_STRICT = PRO_KOL_MODE
-PRO_KOL_REWRITE = PRO_KOL_MODE
+# Individual feature toggles (can be overridden separately if needed).
+PRO_KOL_POLISH = os.getenv("PRO_KOL_POLISH", "1" if PRO_KOL_MODE else "0").strip() == "1"
+PRO_KOL_STRICT = os.getenv("PRO_KOL_STRICT", "1" if PRO_KOL_MODE else "0").strip() == "1"
+# Rewrite is heavier (extra LLM calls); keep it disabled by default.
+PRO_KOL_REWRITE = os.getenv("PRO_KOL_REWRITE", "0").strip() == "1"
 
 # Rewrite tuning (extra LLM calls; can hit quota)
 PRO_KOL_REWRITE_MAX_TRIES = int(os.getenv("PRO_KOL_REWRITE_MAX_TRIES", "2"))
