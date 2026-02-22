@@ -1673,6 +1673,9 @@ REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_
 REQUEST_TARGET_LANG: ContextVar[str] = ContextVar("REQUEST_TARGET_LANG", default="en")
 REQUEST_VOICE: ContextVar[Optional[dict]] = ContextVar("REQUEST_VOICE", default=None)
 
+# Project recognition (local, file-backed via PROJECT_RESEARCH_DIR)
+REQUEST_PROJECT_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_PROJECT_CTX", default=None)
+
 REQUEST_REACTION_PLAN: ContextVar[Optional[dict]] = ContextVar("REQUEST_REACTION_PLAN", default=None)
 
 def set_request_reaction_plan(plan: Optional[dict]) -> None:
@@ -1680,6 +1683,35 @@ def set_request_reaction_plan(plan: Optional[dict]) -> None:
 
 def current_reaction_plan() -> Optional[dict]:
     return REQUEST_REACTION_PLAN.get(None)
+
+
+# Optional style hints for the current request (tone / intent / voice etc.).
+REQUEST_STYLE_HINTS: ContextVar[Optional[dict]] = ContextVar("REQUEST_STYLE_HINTS", default=None)
+
+def set_request_style_hints(style: Optional[dict]) -> None:
+    """
+    Store normalized style hints (tone, intent, voice index, flags) for the current request.
+
+    This is intentionally a light dict so providers / helpers can read it without
+    depending on Pydantic models.
+    """
+    try:
+        REQUEST_STYLE_HINTS.set(style or {})
+    except Exception:
+        # Best-effort only; never crash if contextvars fail.
+        pass
+
+def current_style_hints() -> dict:
+    """
+    Return style hints for the current request as a plain dict.
+    Always returns a dict (possibly empty) for convenience.
+    """
+    try:
+        val = REQUEST_STYLE_HINTS.get(None)
+    except Exception:
+        val = None
+    return val or {}
+
 
 def current_ct_vibe(now: datetime | None = None) -> str:
     """
@@ -5469,6 +5501,25 @@ def _pick_voice_card(tweet_text: str, plan: dict | None = None) -> dict:
     weights: list[float] = []
     cards: list[dict] = []
 
+    # Optional style-driven bias: allow UI voice index (0-4) to gently steer voice selection.
+    preferred_by_index: dict[int, set[str]] = {
+        0: {"researcher", "governance_nerd", "infra_maxi", "defi_strategist"},
+        2: {"deadpan_meme", "trader", "skeptic"},
+        3: {"builder", "infra_maxi", "ecosystem_kol"},
+        4: {"researcher", "defi_strategist", "governance_nerd", "trader"},
+    }
+    voice_index: int | None = None
+    try:
+        style = current_style_hints()
+        vi = style.get("voice_index") if isinstance(style, dict) else None
+        if isinstance(vi, int):
+            voice_index = vi
+        elif isinstance(vi, str) and vi.strip().isdigit():
+            voice_index = int(vi.strip())
+    except Exception:
+        voice_index = None
+    preferred = preferred_by_index.get(voice_index) if voice_index is not None else None
+
     for card in VOICE_CARDS:
         w = 1.0
         boost_topics = card.get("boost_topics") or {}
@@ -5476,6 +5527,13 @@ def _pick_voice_card(tweet_text: str, plan: dict | None = None) -> dict:
             w *= boost_topics[topic]
         if crypto:
             w *= card.get("boost_if_crypto", 1.0)
+
+        # Respect requested UI voice (if provided)
+        if preferred:
+            if card["id"] in preferred:
+                w *= 1.8
+            else:
+                w *= 0.75
 
         # light penalty for very recent voices to avoid repetition
         if _RECENT_VOICES and card["id"] == _RECENT_VOICES[-1]:
@@ -5718,6 +5776,32 @@ def enforce_unique(
     script = (script or script_from_lang_code(lang_code)).strip().lower()
     is_english = lang_code.startswith("en") and script == "latn"
 
+    # Optional per-request style hints (anti_cringe / voice_index) can tighten filters.
+    try:
+        style = current_style_hints()
+    except Exception:
+        style = {}
+
+    anti_flag = False
+    voice_index: int | None = None
+    if isinstance(style, dict):
+        raw = style.get("anti_cringe")
+        if isinstance(raw, bool):
+            anti_flag = raw
+        elif isinstance(raw, (int, float)):
+            anti_flag = bool(raw)
+        elif isinstance(raw, str):
+            anti_flag = raw.strip().lower() in {"1", "true", "yes", "on"}
+
+        vi = style.get("voice_index")
+        if isinstance(vi, int):
+            voice_index = vi
+        elif isinstance(vi, str) and vi.strip().isdigit():
+            voice_index = int(vi.strip())
+
+    # In Pro voice (voice_index==0) we default to a stricter KOL-safe filter.
+    strict_gate = bool(PRO_KOL_STRICT or anti_flag or (voice_index == 0))
+
     if research_ctx is None:
         try:
             research_ctx = REQUEST_RESEARCH_CTX.get()
@@ -5733,11 +5817,15 @@ def enforce_unique(
             continue
 
         # Pro strict gate (context-aware)
-        if PRO_KOL_STRICT and (not pro_kol_ok(c, tweet_text=tweet_text)):
+        if strict_gate and (not pro_kol_ok(c, tweet_text=tweet_text)):
             continue
 
         # Anti-hallucination: no new tickers / large numbers unless present in tweet OR research
         if tweet_text and not hallucination_safe(c, tweet_text, research_ctx=research_ctx):
+            continue
+
+        # Professional claim guard (avoid fake certainty / personal claims)
+        if not claim_safe(c):
             continue
 
         # Block repeated sentence skeletons (structure-level repetition)
@@ -5962,6 +6050,21 @@ def score_candidate_comment(
     script = (script or "latn").lower()
     is_english = lang_code.startswith("en") and script == "latn"
 
+    # Optional per-request style hints (e.g., anti_cringe) can tighten filters.
+    try:
+        style = current_style_hints()
+    except Exception:
+        style = {}
+    anti_flag = False
+    if isinstance(style, dict):
+        raw = style.get("anti_cringe")
+        if isinstance(raw, bool):
+            anti_flag = raw
+        elif isinstance(raw, (int, float)):
+            anti_flag = bool(raw)
+        elif isinstance(raw, str):
+            anti_flag = raw.strip().lower() in {"1", "true", "yes", "on"}
+
     score = 0.0
 
     # relevance: mentions at least one key token/entity
@@ -6089,7 +6192,7 @@ def extract_entities(tweet_text: str) -> dict:
         "numbers": list(dict.fromkeys(decimals + integers)),
     }
 
-def build_research_context_for_tweet(tweet_text: str) -> dict:
+def build_research_context_for_tweet(tweet_text: str, extra_handles: Optional[list[str]] = None) -> dict:
     """
     Combined research context for a tweet.
 
@@ -6103,6 +6206,21 @@ def build_research_context_for_tweet(tweet_text: str) -> dict:
     ents = extract_entities(tweet_text or "")
     cashtags = ents.get("cashtags") or []
     handles = ents.get("handles") or []
+    # Allow caller to force-add handles (e.g., the tweet author's @username).
+    if extra_handles:
+        try:
+            for h in extra_handles:
+                hh = (h or "").strip()
+                if not hh:
+                    continue
+                if not hh.startswith("@"):
+                    hh = "@" + hh
+                handles.append(hh)
+        except Exception:
+            pass
+    # De-dupe handles while keeping order.
+    if handles:
+        handles = list(dict.fromkeys(handles))
 
     # Build a cache key that includes both cashtags and handles so we
     # don't re-hit APIs or disk for the same pattern.
@@ -6280,6 +6398,37 @@ def hallucination_safe(comment: str, tweet_text: str, research_ctx: Optional[dic
         if val > 10 and ns not in allowed_nums:
             return False
 
+    return True
+
+
+_CLAIM_RISK_PHRASES = [
+    # Overconfident / unverifiable claims
+    "guaranteed", "100%", "certain", "confirmed", "officially confirmed",
+    "insider", "leaked", "i know", "trust me",
+    # Personal experience claims (often hallucinated)
+    "i bought", "i aped", "i used", "i tested", "i tried", "i just used",
+    "i made", "i earned", "my bag", "my position",
+    # Hard shill / advice
+    "buy now", "sell now", "not financial advice", "financial advice",
+    "you should buy", "you should sell", "easy money",
+]
+
+def claim_safe(comment: str) -> bool:
+    """Guard against risky / unprofessional claims.
+
+    This is intentionally conservative: it blocks common overconfident
+    and "I personally did X" patterns that make replies look fake.
+    """
+    c = (comment or "").strip()
+    if not c:
+        return False
+    low = c.lower()
+    for p in _CLAIM_RISK_PHRASES:
+        if p in low:
+            return False
+    # Avoid direct investment advisory tone even if the phrase list misses it.
+    if re.search(r"\b(nfa|dyor)\b", low):
+        return False
     return True
 
 
@@ -7664,8 +7813,50 @@ def generate_two_comments_with_providers(
         ]
 
     # --- 1) Build + store reaction plan for this tweet -----------------------
+    # Allow style hints (tone / intent / anti_cringe) to gently bias reaction mode.
     try:
-        plan = build_reaction_plan_with_modes(tweet_text, handle, lang_hint=gen_lang)
+        style = current_style_hints()
+    except Exception:
+        style = {}
+
+    reaction_mode: str | None = None
+    try:
+        tone = (str(style.get("tone") or "")).strip().lower() if isinstance(style, dict) else ""
+        intent = (str(style.get("intent") or "")).strip().lower() if isinstance(style, dict) else ""
+        anti_flag_raw = style.get("anti_cringe") if isinstance(style, dict) else None
+        anti_flag = False
+        if isinstance(anti_flag_raw, bool):
+            anti_flag = anti_flag_raw
+        elif isinstance(anti_flag_raw, (int, float)):
+            anti_flag = bool(anti_flag_raw)
+        elif isinstance(anti_flag_raw, str):
+            anti_flag = anti_flag_raw.strip().lower() in {"1", "true", "yes", "on"}
+
+        # Tone-based defaults
+        if tone in {"chill", "soft", "neutral", "subtle"}:
+            reaction_mode = "chill"
+        elif tone in {"hype", "excited", "bullish", "pumped"}:
+            reaction_mode = "hype"
+        elif tone in {"silent", "none"}:
+            reaction_mode = "silent"
+
+        # Intent-based nudge (if tone not explicit)
+        if not reaction_mode and intent in {"educational", "explain", "thread"}:
+            reaction_mode = "chill"
+
+        # Anti-cringe prefers softer, less shouty reactions by default.
+        if not reaction_mode and anti_flag:
+            reaction_mode = "chill"
+    except Exception:
+        reaction_mode = None
+
+    try:
+        plan = build_reaction_plan_with_modes(
+            tweet_text,
+            handle,
+            lang_hint=gen_lang,
+            reaction_mode=reaction_mode,
+        )
     except Exception:
         plan = None
     try:
@@ -7941,7 +8132,8 @@ def fetch_source_preview(source_url: str) -> dict:
                 "content": content,
                 "excerpt": (content[:280] + "…") if len(content) > 280 else content,
             }
-            _ttl_set(_page_cache, cache_key, out, ttl=PAGE_CACHE_TTL_SEC)
+            # _ttl_set signature is positional; use the correct constant name.
+            _ttl_set(_page_cache, cache_key, out, PAGE_CACHE_TTL_SECONDS)
             return out
     except Exception:
         # fall back to HTML extraction
@@ -7990,6 +8182,14 @@ def fetch_source_preview(source_url: str) -> dict:
         ).strip()
     except Exception:
         published = ""
+
+    # Title (initialize before any fallback usage)
+    title = ""
+    try:
+        if soup.title and soup.title.string:
+            title = _strip_and_squash_ws(str(soup.title.string))
+    except Exception:
+        title = ""
 
     og_title = soup.find("meta", property="og:title")
     if og_title and og_title.get("content"):
@@ -8191,6 +8391,9 @@ def comment_from_url_endpoint():
     except Exception as e:
         return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
 
+    # URL-mode currently reuses the same generator as tweet mode; any additional style
+    # controls are accepted in schemas for forward-compat.
+
     # Load-shed: if endpoint is slow, default to fast mode
     try:
         if _should_load_shed("POST /comment_from_url"):
@@ -8208,8 +8411,40 @@ def comment_from_url_endpoint():
         return api_success(cached_idem)
 
     # fetch + extract
+    tweet_ctx = None
+    source_input = req.source_url
     try:
-        prev = fetch_source_preview(req.source_url)
+        safe_in = validate_public_http_url(source_input)
+    except Exception as e:
+        return api_error("bad_url", "Invalid URL", 400, {"detail": str(e)})
+
+    # If user pasted an X/Twitter status URL, treat it as "tweet shared an article".
+    article_url = None
+    try:
+        if re.search(r"(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/(?:[A-Za-z0-9_]{1,15}|i)(?:/(?:web/)?status|/status)/\d+", safe_in, re.IGNORECASE):
+            td = fetch_tweet_data(safe_in)
+            tweet_ctx = {
+                "tweet_url": td.canonical_url or safe_in,
+                "tweet_text": (td.text or "").strip(),
+                "handle": td.handle or "",
+                "tweet_id": getattr(td, "tweet_id", "") or "",
+            }
+            # Extract first external URL from tweet text.
+            m = re.search(r"https?://\S+", tweet_ctx["tweet_text"])
+            if m:
+                cand = m.group(0).rstrip(")]}>,.!\"' ")
+                # ignore x/twitter links
+                if not re.search(r"(?:^|//)(?:x\.com|twitter\.com|t\.co)(/|$)", cand, re.IGNORECASE):
+                    article_url = cand
+                else:
+                    # t.co is common; allow and let requests resolve.
+                    article_url = cand
+    except Exception:
+        tweet_ctx = None
+        article_url = None
+
+    try:
+        prev = fetch_source_preview(article_url or safe_in)
     except Exception as e:
         return api_error("fetch_failed", "Failed to fetch URL", 400, {"detail": str(e)})
 
@@ -8250,7 +8485,10 @@ def comment_from_url_endpoint():
             "Prefer a single, focused reference instead of listing many numbers.\n"
         )
 
-    synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','') }\nSOURCE_EXCERPT: {prev.get('excerpt','') }\nSOURCE_CONTENT: {context_block}"
+    tweet_text_block = (tweet_ctx or {}).get("tweet_text") or ""
+    if tweet_text_block:
+        tweet_text_block = f"TWEET_TEXT: {tweet_text_block}\n"
+    synthetic_tweet = f"{prompt_prefix}\n{tweet_text_block}SOURCE_TITLE: {prev.get('title','') }\nSOURCE_EXCERPT: {prev.get('excerpt','') }\nSOURCE_CONTENT: {context_block}"
 
     # Use existing comment generator: generate_comments_for_single_tweet expects TweetData. We'll reuse lower-level LLM call.
     try:
@@ -8275,14 +8513,18 @@ def comment_from_url_endpoint():
             url=req.source_url,
             target_lang=gen_lang,
             out_lang_tag=gen_lang,
-            include_alternates=False,
+            include_alternates=bool(getattr(req, "include_alternates", False)),
         )
-        comments = [p.get("text", "").strip() for p in pair if p.get("text")]
+        # Return comment objects (same shape as /comment) so the frontend can render consistently.
+        comments = [p for p in pair if isinstance(p, dict) and (p.get("text") or "").strip()]
         _audit("comment_from_url", {"ok": True, "url": req.source_url})
-        payload = {
+        resp_payload = {
             "item": {
                 "url": (prev.get("url") or req.source_url),
                 "input_url": req.source_url,
+                "tweet_url": (tweet_ctx or {}).get("tweet_url"),
+                "tweet_id": (tweet_ctx or {}).get("tweet_id"),
+                "handle": (tweet_ctx or {}).get("handle"),
                 "title": prev.get("title"),
                 "excerpt": prev.get("excerpt"),
                 "comments": comments,
@@ -8291,9 +8533,9 @@ def comment_from_url_endpoint():
                 "input_url": req.source_url, "title": prev.get("title"), "quote": prev.get("excerpt","")[:200]}],
             }
         }
-        _dedupe_cache_set(cache_key, payload)
-        _persist_generation("url", payload, payload)
-        return api_success(payload)
+        _dedupe_cache_set(cache_key, resp_payload)
+        _persist_generation("url", payload, resp_payload)
+        return api_success(resp_payload)
     except Exception as e:
         return api_error("generation_failed", "Failed to generate comments", 500, {"detail": str(e)})
 
@@ -8317,6 +8559,11 @@ def comment_from_url_stream_endpoint():
         req = UrlCommentRequest(**payload)
     except Exception as e:
         return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
+
+    include_alts = bool(getattr(req, "include_alternates", False))
+    want_en = bool(getattr(req, "lang_en", True))
+    want_native = bool(getattr(req, "lang_native", False))
+    native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
 
     # Load-shed: if endpoint is slow, default to fast mode
     try:
@@ -8342,9 +8589,27 @@ def comment_from_url_stream_endpoint():
                 yield from fail(e.code, str(e), req.source_url)
                 return
 
+            tweet_ctx = None
+            article_url = None
+            try:
+                if re.search(r"(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/(?:[A-Za-z0-9_]{1,15}|i)(?:/(?:web/)?status|/status)/\d+", safe_url, re.IGNORECASE):
+                    td = fetch_tweet_data(safe_url)
+                    tweet_ctx = {
+                        "tweet_url": td.canonical_url or safe_url,
+                        "tweet_text": (td.text or "").strip(),
+                        "handle": td.handle or "",
+                        "tweet_id": getattr(td, "tweet_id", "") or "",
+                    }
+                    m = re.search(r"https?://\S+", tweet_ctx["tweet_text"])
+                    if m:
+                        article_url = m.group(0).rstrip(")]}>,.!\"' ")
+            except Exception:
+                tweet_ctx = None
+                article_url = None
+
             yield sse_event("status", {"stage": "extracting"})
             try:
-                prev = fetch_source_preview(safe_url)
+                prev = fetch_source_preview(article_url or safe_url)
             except Exception as e:
                 yield from fail("fetch_failed", "Failed to fetch URL", req.source_url)
                 return
@@ -8370,7 +8635,10 @@ def comment_from_url_stream_endpoint():
                     "or respond with a careful caveat. Prefer one short quote.\n"
                 )
 
-            synthetic_tweet = f"{prompt_prefix}\nSOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
+            tweet_text_block = (tweet_ctx or {}).get("tweet_text") or ""
+            if tweet_text_block:
+                tweet_text_block = f"TWEET_TEXT: {tweet_text_block}\n"
+            synthetic_tweet = f"{prompt_prefix}\n{tweet_text_block}SOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
 
             # stage 2: generation (dedupe cache)
             yield sse_event("status", {"stage": "generating"})
@@ -8383,22 +8651,60 @@ def comment_from_url_stream_endpoint():
                     pass
                 result_item = cached
             else:
-                pair = generate_two_comments_with_providers(
-                    tweet_text=synthetic_tweet,
-                    author=None,
-                    handle=None,
-                    lang=gen_lang,
-                    url=safe_url,
-                    target_lang=gen_lang,
-                    out_lang_tag=gen_lang,
-                    include_alternates=False,
-                )
-                comments = [p.get("text", "").strip() for p in pair if p.get("text")]
+                comments_all: list[dict] = []
+                if want_en:
+                    comments_all.extend(
+                        generate_two_comments_with_providers(
+                            tweet_text=synthetic_tweet,
+                            author=None,
+                            handle=None,
+                            lang=gen_lang,
+                            url=safe_url,
+                            target_lang="en",
+                            out_lang_tag="en",
+                            include_alternates=include_alts,
+                        )
+                    )
+                if want_native:
+                    native_lang = (None if (str(native_override or "").strip().lower() in ("auto", "detect")) else native_override) or gen_lang
+                    native_lang = (native_lang or "en").strip().lower()
+                    if not native_lang.startswith("en") or not want_en:
+                        out_tag = native_lang if not native_lang.startswith("en") else "native"
+                        comments_all.extend(
+                            generate_two_comments_with_providers(
+                                tweet_text=synthetic_tweet,
+                                author=None,
+                                handle=None,
+                                lang=gen_lang,
+                                url=safe_url,
+                                target_lang=native_lang,
+                                out_lang_tag=out_tag,
+                                include_alternates=include_alts,
+                            )
+                        )
+                if not comments_all:
+                    comments_all = generate_two_comments_with_providers(
+                        tweet_text=synthetic_tweet,
+                        author=None,
+                        handle=None,
+                        lang=gen_lang,
+                        url=safe_url,
+                        target_lang=gen_lang,
+                        out_lang_tag=gen_lang,
+                        include_alternates=include_alts,
+                    )
 
                 # "Chunk" events (best-effort): emit progressive chunks per comment so the client UI can stream.
                 # Note: providers may not support true token streaming across all SDKs on free tier; this still
                 # provides progressive rendering for UX consistency.
-                for ci, ctext in enumerate(comments):
+                comment_texts = []
+                for c in comments_all:
+                    if isinstance(c, dict):
+                        t = (c.get("text") or "").strip()
+                        if t:
+                            comment_texts.append(t)
+
+                for ci, ctext in enumerate(comment_texts):
                     ctext = _truncate_output(ctext)
                     for off in range(0, len(ctext), 200):
                         yield sse_event("chunk", {"index": ci, "text": ctext[off:off+200]})
@@ -8409,10 +8715,13 @@ def comment_from_url_stream_endpoint():
                 result_item = {
                     "url": (prev.get("url") or safe_url),
                     "input_url": req.source_url,
+                    "tweet_url": (tweet_ctx or {}).get("tweet_url"),
+                    "tweet_id": (tweet_ctx or {}).get("tweet_id"),
+                    "handle": (tweet_ctx or {}).get("handle"),
                     "title": prev.get("title"),
                     "excerpt": prev.get("excerpt"),
                     "status": "ok",
-                    "comments": [{"text": c} for c in comments],
+                    "comments": [c for c in comments_all if isinstance(c, dict) and (c.get("text") or "").strip()],
                     "citations": [{"url": (prev.get("url") or safe_url),
                     "input_url": req.source_url, "title": prev.get("title")}] if quote_mode else [],
                 }
@@ -8451,7 +8760,8 @@ def comment_endpoint():
 
     cached_idem = _idem_lookup("urls")
     if isinstance(cached_idem, dict):
-        return jsonify(cached_idem), 200
+        # Return in envelope for consistency (frontend supports both).
+        return api_success(cached_idem)
 
     urls = payload.get("urls")
     if not isinstance(urls, list) or not urls:
@@ -8499,19 +8809,23 @@ def comment_endpoint():
 
     # Concurrency / pacing for multi-URL requests:
     # When users paste many links, each link can trigger multiple LLM calls (generate + validate + fallbacks).
-    # If we run several URLs in parallel, Groq will often 429 (rate limit). So:
-    #   - For a single URL: allow a small parallelism (max 2) for snappy UX.
-    #   - For 2+ URLs: force sequential processing (batch_size=1, workers=1) + small spacing.
+    # If we run several URLs in parallel, Groq will often 429 (rate limit).
+    # We still keep concurrency conservative, but allow a small amount of parallelism
+    # so 4–5 URLs don't take several minutes.
     _requested_workers = int(os.getenv("URL_PROCESS_CONCURRENCY", "2") or "2")
     URL_PROCESS_CONCURRENCY = max(1, min(2, _requested_workers))
 
-    # Batch size (overridden to 1 when multiple URLs)
     _requested_batch = int(os.getenv("BATCH_SIZE", "2") or "2")
     BATCH_SIZE = max(1, min(10, _requested_batch))
 
     total_urls = len(cleaned)
-    batch_size = 1 if total_urls > 1 else BATCH_SIZE
-    workers = 1 if total_urls > 1 else URL_PROCESS_CONCURRENCY
+    if total_urls <= 1:
+        workers = URL_PROCESS_CONCURRENCY
+        batch_size = BATCH_SIZE
+    else:
+        # For multiple URLs, process in small parallel batches capped by URL_PROCESS_CONCURRENCY.
+        workers = max(1, min(URL_PROCESS_CONCURRENCY, total_urls))
+        batch_size = workers
 
     from concurrent.futures import ThreadPoolExecutor, as_completed
 
@@ -8537,10 +8851,45 @@ def comment_endpoint():
             REQUEST_THREAD_CTX.set(thread_ctx)
 
             try:
-                research_ctx = build_research_context_for_tweet(t.text or "") if ENABLE_RESEARCH else {"status": "disabled"}
+                research_ctx = build_research_context_for_tweet(
+                    t.text or "",
+                    extra_handles=[t.handle] if getattr(t, "handle", None) else None,
+                ) if ENABLE_RESEARCH else {"status": "disabled"}
             except Exception:
                 research_ctx = {"status": "error"}
             REQUEST_RESEARCH_CTX.set(research_ctx)
+
+            # Best-effort project recognition (local file-backed profiles by @handle)
+            try:
+                proj = None
+                if isinstance(research_ctx, dict):
+                    projs = research_ctx.get("projects") or []
+                    if isinstance(projs, list) and projs:
+                        # Prefer an exact match to the author's handle, else first.
+                        want = ("@" + (t.handle or "").lstrip("@")).lower() if t.handle else ""
+                        for p in projs:
+                            h = str((p or {}).get("handle") or "").lower()
+                            if want and h == want:
+                                proj = p
+                                break
+                        if proj is None:
+                            proj = projs[0]
+                REQUEST_PROJECT_CTX.set(proj)
+            except Exception:
+                REQUEST_PROJECT_CTX.set(None)
+
+            try:
+                style_hints = {
+                    "tone": (str(payload.get("tone") or "").strip().lower() or None),
+                    "intent": (str(payload.get("intent") or "").strip().lower() or None),
+                    "voice_index": payload.get("voice"),
+                    "tone_match": bool(payload.get("tone_match")),
+                    "thread_ready": bool(payload.get("thread_ready")),
+                    "anti_cringe": bool(payload.get("anti_cringe")),
+                }
+                set_request_style_hints(style_hints)
+            except Exception:
+                pass
 
             try:
                 set_request_voice(t.text or "")
@@ -8599,12 +8948,44 @@ def comment_endpoint():
             display_url = _canonical_x_url_from_tweet(url, t)
             used_research = bool(research_ctx and research_ctx.get("status") == "ok")
 
+            # Include lightweight tweet preview + project match metadata (frontend can display).
+            tweet_preview = {
+                "text": (t.text or "")[:1200],
+                "author_name": t.author_name or None,
+                "handle": handle or None,
+                "lang": t.lang or None,
+                "entities": extract_entities(t.text or "") if (t.text or "") else {"cashtags": [], "handles": [], "numbers": []},
+            }
+            proj_ctx = None
+            try:
+                proj_ctx = REQUEST_PROJECT_CTX.get()
+            except Exception:
+                proj_ctx = None
+
+            tweet_id = getattr(t, "tweet_id", "") or ""
+            project_handles: list[str] = []
+            try:
+                if isinstance(research_ctx, dict):
+                    for proj in (research_ctx.get("projects") or []):
+                        h = (proj.get("handle") or "").strip()
+                        if h and h not in project_handles:
+                            project_handles.append(h)
+            except Exception:
+                project_handles = []
+
             item = {
                 "url": display_url,
                 "input_url": url,
+                "status": "ok",
                 "comments": two,
+                "handle": handle,
+                "tweet_id": tweet_id,
                 "used_research": used_research,
+                "tweet": tweet_preview,
+                "project": proj_ctx,
             }
+            if project_handles:
+                item["project_handles"] = project_handles
 
             try:
                 emit_premium_event("item_stage", {"url": display_url, "stage": "done"})
@@ -8633,7 +9014,7 @@ def comment_endpoint():
         if not batch:
             continue
 
-        with ThreadPoolExecutor(max_workers=min(URL_PROCESS_CONCURRENCY, len(batch))) as ex:
+        with ThreadPoolExecutor(max_workers=workers) as ex:
             futs = [ex.submit(_process_one, u) for u in batch]
 
             for fut in as_completed(futs):
@@ -8672,7 +9053,8 @@ def comment_endpoint():
 
     response_obj = {"results": results, "failed": failed}
     _persist_generation("urls", payload, response_obj)
-    return jsonify(response_obj), 200
+    # Return in envelope for consistency (frontend supports both).
+    return api_success(response_obj)
 
 
 @app.route("/comment/stream", methods=["POST", "OPTIONS"])
@@ -8698,6 +9080,10 @@ def comment_stream_endpoint():
     preset = (req.preset or "").strip()
     output_language = (req.output_language or "").strip().lower() or None
     fast = bool(req.fast)
+    include_alts = bool(getattr(req, "include_alternates", False))
+    want_en = bool(getattr(req, "lang_en", True))
+    want_native = bool(getattr(req, "lang_native", False))
+    native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
 
     def gen():
         def fail(code: str, message: str):
@@ -8719,30 +9105,173 @@ def comment_stream_endpoint():
             yield from fail("fetch_error", "Failed to fetch tweet")
             return
 
+        # Per-request context: thread, research, project, voice, style.
+        try:
+            thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
+        except Exception:
+            thread_ctx = None
+        try:
+            REQUEST_THREAD_CTX.set(thread_ctx)
+        except Exception:
+            pass
+
+        try:
+            research_ctx = build_research_context_for_tweet(
+                t.text or "",
+                extra_handles=[t.handle] if getattr(t, "handle", None) else None,
+            ) if ENABLE_RESEARCH else {"status": "disabled"}
+        except Exception:
+            research_ctx = {"status": "error"}
+        try:
+            REQUEST_RESEARCH_CTX.set(research_ctx)
+        except Exception:
+            pass
+
+        # Best-effort project recognition (local file-backed profiles by @handle)
+        try:
+            proj = None
+            if isinstance(research_ctx, dict):
+                projs = research_ctx.get("projects") or []
+                if isinstance(projs, list) and projs:
+                    want = ("@" + (t.handle or "").lstrip("@")).lower() if t.handle else ""
+                    for p in projs:
+                        h = str((p or {}).get("handle") or "").lower()
+                        if want and h == want:
+                            proj = p
+                            break
+                    if proj is None:
+                        proj = projs[0]
+            REQUEST_PROJECT_CTX.set(proj)
+        except Exception:
+            REQUEST_PROJECT_CTX.set(None)
+
+        try:
+            style_hints = {
+                "tone": (str(req.tone or "").strip().lower() or None),
+                "intent": (str(req.intent or "").strip().lower() or None),
+                "voice_index": req.voice,
+                "tone_match": bool(req.tone_match),
+                "thread_ready": bool(req.thread_ready),
+                "anti_cringe": bool(req.anti_cringe),
+            }
+            set_request_style_hints(style_hints)
+        except Exception:
+            pass
+
+        try:
+            set_request_voice(t.text or "")
+        except Exception:
+            pass
+
         yield sse_event("status", {"stage": "generating"})
         handle = t.handle or _extract_handle_from_url(url)
         input_url = url
         display_url = t.canonical_url or (f"https://x.com/{handle}/status/{t.tweet_id}" if handle and getattr(t, "tweet_id", None) else url)
         target = output_language or "en"
-        if target in ("auto","detect"):
+        if target in ("auto", "detect"):
             target = (t.lang or "en").strip().lower() if (t.lang or "").strip() else "en"
         try:
-            # Generate english + optional native if requested language differs
-            comments = []
-            if target == "en":
-                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=display_url, target_lang="en", out_lang_tag="en")
-            else:
-                comments = generate_two_comments_with_providers(t.text or "", t.author_name or None, handle, t.lang or None, url=display_url, target_lang=target, out_lang_tag=target)
+            comments: list[dict] = []
+
+            # If the client is using the newer dual-language toggles, honor them.
+            if want_en:
+                comments.extend(
+                    generate_two_comments_with_providers(
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
+                        url=display_url,
+                        target_lang="en",
+                        out_lang_tag="en",
+                        include_alternates=include_alts,
+                    )
+                )
+
+            if want_native:
+                native_lang = (None if (str(native_override or "").strip().lower() in ("auto", "detect")) else native_override) or (t.lang or "en")
+                native_lang = str(native_lang).strip().lower() if native_lang else "en"
+                if not native_lang.startswith("en") or not want_en:
+                    out_tag = native_lang if not native_lang.startswith("en") else "native"
+                    comments.extend(
+                        generate_two_comments_with_providers(
+                            t.text or "",
+                            t.author_name or None,
+                            handle,
+                            t.lang or None,
+                            url=display_url,
+                            target_lang=native_lang,
+                            out_lang_tag=out_tag,
+                            include_alternates=include_alts,
+                        )
+                    )
+
+            # Legacy: if toggles aren't used, fall back to output_language.
+            if not comments:
+                if target == "en":
+                    comments = generate_two_comments_with_providers(
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
+                        url=display_url,
+                        target_lang="en",
+                        out_lang_tag="en",
+                        include_alternates=include_alts,
+                    )
+                else:
+                    comments = generate_two_comments_with_providers(
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
+                        url=display_url,
+                        target_lang=target,
+                        out_lang_tag=target,
+                        include_alternates=include_alts,
+                    )
             # stream as chunks (coarse-grained)
             # stream a single result item compatible with frontend parser
+            tweet_preview = {
+                "text": (t.text or "")[:1200],
+                "author_name": t.author_name or None,
+                "handle": handle or None,
+                "lang": t.lang or None,
+                "entities": extract_entities(t.text or "") if (t.text or "") else {"cashtags": [], "handles": [], "numbers": []},
+            }
+            proj_ctx = None
+            try:
+                proj_ctx = REQUEST_PROJECT_CTX.get()
+            except Exception:
+                proj_ctx = None
+
+            tweet_id = getattr(t, "tweet_id", "") or ""
+            used_research = False
+            project_handles: list[str] = []
+            try:
+                used_research = bool(research_ctx and isinstance(research_ctx, dict) and research_ctx.get("status") == "ok")
+                if isinstance(research_ctx, dict):
+                    for proj in (research_ctx.get("projects") or []):
+                        h = (proj.get("handle") or "").strip()
+                        if h and h not in project_handles:
+                            project_handles.append(h)
+            except Exception:
+                used_research = False
+                project_handles = []
+
             result_item = {
                 "url": display_url,
                 "input_url": input_url,
                 "status": "ok",
-                "comments": [
-                    {k: v for k, v in c.items() if k in ("text", "provider", "alternates")} for c in comments
-                ],
+                "comments": comments,
+                "handle": handle,
+                "tweet_id": tweet_id,
+                "used_research": used_research,
+                "tweet": tweet_preview,
+                "project": proj_ctx,
             }
+            if project_handles:
+                result_item["project_handles"] = project_handles
             yield sse_event("result", {"type": "result", "item": result_item})
             yield sse_event("status", {"stage": "finalizing"})
             # best-effort save
@@ -8790,10 +9319,44 @@ def reroll_endpoint():
         REQUEST_THREAD_CTX.set(thread_ctx)
 
         try:
-            research_ctx = build_research_context_for_tweet(t.text or "") if ENABLE_RESEARCH else {"status": "disabled"}
+            research_ctx = build_research_context_for_tweet(
+                t.text or "",
+                extra_handles=[t.handle] if getattr(t, "handle", None) else None,
+            ) if ENABLE_RESEARCH else {"status": "disabled"}
         except Exception:
             research_ctx = {"status": "error"}
         REQUEST_RESEARCH_CTX.set(research_ctx)
+
+        # Best-effort project recognition (local file-backed profiles by @handle)
+        try:
+            proj = None
+            if isinstance(research_ctx, dict):
+                projs = research_ctx.get("projects") or []
+                if isinstance(projs, list) and projs:
+                    want = ("@" + (t.handle or "").lstrip("@")).lower() if t.handle else ""
+                    for p in projs:
+                        h = str((p or {}).get("handle") or "").lower()
+                        if want and h == want:
+                            proj = p
+                            break
+                    if proj is None:
+                        proj = projs[0]
+            REQUEST_PROJECT_CTX.set(proj)
+        except Exception:
+            REQUEST_PROJECT_CTX.set(None)
+
+        try:
+            style_hints = {
+                "tone": (str(data.get("tone") or "").strip().lower() or None),
+                "intent": (str(data.get("intent") or "").strip().lower() or None),
+                "voice_index": data.get("voice"),
+                "tone_match": bool(data.get("tone_match")),
+                "thread_ready": bool(data.get("thread_ready")),
+                "anti_cringe": bool(data.get("anti_cringe")),
+            }
+            set_request_style_hints(style_hints)
+        except Exception:
+            pass
 
         set_request_voice(t.text or "")
 
@@ -8846,10 +9409,26 @@ def reroll_endpoint():
         display_url = _canonical_x_url_from_tweet(url, t)
         used_research = bool(research_ctx and research_ctx.get("status") == "ok")
 
+
+        tweet_preview = {
+            "text": (t.text or "")[:1200],
+            "author_name": t.author_name or None,
+            "handle": handle or None,
+            "lang": t.lang or None,
+            "entities": extract_entities(t.text or "") if (t.text or "") else {"cashtags": [], "handles": [], "numbers": []},
+        }
+        proj_ctx = None
+        try:
+            proj_ctx = REQUEST_PROJECT_CTX.get()
+        except Exception:
+            proj_ctx = None
+
         return jsonify({
             "url": display_url,
             "comments": two,
             "used_research": used_research,
+            "tweet": tweet_preview,
+            "project": proj_ctx,
         }), 200
 
     except CrownTALKError as e:

@@ -1,5 +1,7 @@
 from __future__ import annotations
 
+import os
+
 from typing import Any, Dict, List, Literal, Optional
 from pydantic import BaseModel, Field, HttpUrl, field_validator
 
@@ -11,9 +13,21 @@ MAX_LANG_LEN = 12
 class CommentRequest(BaseModel):
     urls: List[str] = Field(..., min_length=1, description="List of X/Twitter status URLs")
     preset: Optional[str] = Field(default=None, max_length=MAX_PRESET_LEN)
+    # style controls (accepted for forward-compat; backend may apply selectively)
+    tone: Optional[str] = Field(default=None, max_length=32)
+    intent: Optional[str] = Field(default=None, max_length=32)
+    voice: Optional[int] = Field(default=None, ge=0, le=4)
+    tone_match: Optional[bool] = Field(default=False)
+    thread_ready: Optional[bool] = Field(default=False)
+    anti_cringe: Optional[bool] = Field(default=False)
     # generation preferences
     output_language: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN, description="Preferred output language (e.g., en, bn, hi)")
     fast: Optional[bool] = Field(default=False, description="Fast mode: fewer tokens/variants when possible")
+    include_alternates: Optional[bool] = Field(default=False)
+    # dual-language output (tweet mode already supports these in payload)
+    lang_en: Optional[bool] = Field(default=True)
+    lang_native: Optional[bool] = Field(default=False)
+    native_lang: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN)
 
     @field_validator("urls")
     @classmethod
@@ -38,8 +52,18 @@ class CommentRequest(BaseModel):
 class StreamCommentRequest(BaseModel):
     url: str
     preset: Optional[str] = Field(default=None, max_length=MAX_PRESET_LEN)
+    tone: Optional[str] = Field(default=None, max_length=32)
+    intent: Optional[str] = Field(default=None, max_length=32)
+    voice: Optional[int] = Field(default=None, ge=0, le=4)
+    tone_match: Optional[bool] = Field(default=False)
+    thread_ready: Optional[bool] = Field(default=False)
+    anti_cringe: Optional[bool] = Field(default=False)
     output_language: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN)
     fast: Optional[bool] = False
+    include_alternates: Optional[bool] = Field(default=False)
+    lang_en: Optional[bool] = Field(default=True)
+    lang_native: Optional[bool] = Field(default=False)
+    native_lang: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN)
 
 
 class UrlCommentRequest(BaseModel):
@@ -47,9 +71,19 @@ class UrlCommentRequest(BaseModel):
 
     source_url: str = Field(..., min_length=4, max_length=2048)
     preset: Optional[str] = Field(default=None, max_length=MAX_PRESET_LEN)
+    tone: Optional[str] = Field(default=None, max_length=32)
+    intent: Optional[str] = Field(default=None, max_length=32)
+    voice: Optional[int] = Field(default=None, ge=0, le=4)
+    tone_match: Optional[bool] = Field(default=False)
+    thread_ready: Optional[bool] = Field(default=False)
+    anti_cringe: Optional[bool] = Field(default=False)
     output_language: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN)
     fast: Optional[bool] = Field(default=False)
     quote_mode: Optional[bool] = Field(default=False, description="If true, prefer quoting/citing claims")
+    include_alternates: Optional[bool] = Field(default=False)
+    lang_en: Optional[bool] = Field(default=True)
+    lang_native: Optional[bool] = Field(default=False)
+    native_lang: Optional[str] = Field(default=None, max_length=MAX_LANG_LEN)
 
     @field_validator("source_url")
     @classmethod
@@ -65,11 +99,15 @@ class VerifyAccessRequest(BaseModel):
     code: str = Field(..., min_length=1, max_length=128)
 
 class SignupRequest(BaseModel):
-    email: str = Field(..., min_length=3, max_length=320)
+    # Back-compat: some clients used email; current UI uses x_link.
+    x_link: Optional[str] = Field(default=None, min_length=1, max_length=320)
+    email: Optional[str] = Field(default=None, min_length=3, max_length=320)
+    name: Optional[str] = Field(default=None, min_length=1, max_length=128)
     password: str = Field(..., min_length=8, max_length=256)
 
 class LoginRequest(BaseModel):
-    email: str = Field(..., min_length=3, max_length=320)
+    x_link: Optional[str] = Field(default=None, min_length=1, max_length=320)
+    email: Optional[str] = Field(default=None, min_length=3, max_length=320)
     password: str = Field(..., min_length=1, max_length=256)
 
 class ApiError(BaseModel):
@@ -80,5 +118,6 @@ class ApiError(BaseModel):
 class ApiEnvelope(BaseModel):
     success: bool
     requestId: str
+    apiVersion: str = Field(default_factory=lambda: os.getenv("CROWNTALK_API_VERSION", "2026-02-22.1"))
     data: Optional[Any] = None
     error: Optional[ApiError] = None

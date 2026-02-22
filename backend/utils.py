@@ -263,7 +263,6 @@ def _parse_payload(payload: dict) -> TweetData:
     if tweet_id is not None:
         tweet_id = str(tweet_id)
 
-
     # Canonical URL from upstream (e.g., "tweetURL") – this is the clean form
     canonical_url = (
         base.get("tweetURL")
@@ -273,18 +272,6 @@ def _parse_payload(payload: dict) -> TweetData:
         or payload.get("tweetUrl")
         or payload.get("url")
     )
-
-    if canonical_url:
-        canonical_url = str(canonical_url).strip()
-        # Normalize twitter.com -> x.com and strip tracking params/fragments
-        canonical_url = re.sub(
-            r"^https?://(www\.)?(mobile\.)?twitter\.com/",
-            "https://x.com/",
-            canonical_url,
-            flags=re.IGNORECASE,
-        )
-        canonical_url = canonical_url.split("#", 1)[0].split("?", 1)[0]
-
 
     if not text:
         raise CrownTALKError(

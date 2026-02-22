@@ -5,6 +5,7 @@ import json
 import os
 
 _MAX_OUTPUT_CHARS = int(os.getenv("CROWNTALK_MAX_OUTPUT_CHARS", "6000"))
+API_VERSION = os.getenv("CROWNTALK_API_VERSION", "2026-02-22.1")
 
 def _truncate_str(s: str) -> str:
     s = s or ""
@@ -33,7 +34,13 @@ from flask import Response, jsonify, g
 from schemas import ApiEnvelope, ApiError
 
 def api_success(data: Any = None, status: int = 200, headers: Optional[Dict[str, str]] = None):
-    env = ApiEnvelope(success=True, requestId=getattr(g, "request_id", ""), data=_truncate_any(data), error=None)
+    env = ApiEnvelope(
+        success=True,
+        requestId=getattr(g, "request_id", ""),
+        apiVersion=API_VERSION,
+        data=_truncate_any(data),
+        error=None,
+    )
     resp = jsonify(env.model_dump())
     resp.status_code = status
     if headers:
@@ -42,7 +49,13 @@ def api_success(data: Any = None, status: int = 200, headers: Optional[Dict[str,
     return resp
 
 def api_error(code: str, message: str, status: int = 400, details: Optional[Dict[str, Any]] = None, headers: Optional[Dict[str, str]] = None):
-    env = ApiEnvelope(success=False, requestId=getattr(g, "request_id", ""), data=None, error=ApiError(code=code, message=message, details=details))
+    env = ApiEnvelope(
+        success=False,
+        requestId=getattr(g, "request_id", ""),
+        apiVersion=API_VERSION,
+        data=None,
+        error=ApiError(code=code, message=message, details=details),
+    )
     resp = jsonify(env.model_dump())
     resp.status_code = status
     if headers:
