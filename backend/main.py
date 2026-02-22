@@ -6472,7 +6472,17 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
     return has_focus or has_operator
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
+    """
+    Basic offline generator wrapper.
+
+    We prefer to return whatever the local OfflineCommentGenerator produced,
+    without injecting any generic rescue lines here. Higher-level callers
+    (safe_offline_two_comments / provider cascades) are responsible for
+    deciding when to fall back to `_rescue_two`.
+    """
     items = generator.generate_two(text, author or None, None, None)
+
+    # Split by language
     en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
     non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
 
@@ -6484,10 +6494,8 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     elif non:
         result.append(non[0])
 
-    # Apply your uniqueness filters + diversity pairing
+    # Apply uniqueness / light dedupe, but do NOT inject rescue here.
     result = enforce_unique(result, tweet_text=text)
-    if len(result) < 2:
-        result = enforce_unique(result + _rescue_two(text), tweet_text=text)
 
     return result[:2]
 
@@ -6500,40 +6508,54 @@ def safe_offline_two_comments(
     lang: Optional[str] = None,
     url: str = "",
 ) -> list[str]:
-    """Best-effort offline fallback.
-
-    NOTE: Some callers pass handle/lang positionally plus url as a keyword.
-    We accept those extra args so we never crash on fallback.
     """
+    Best-effort offline fallback that never raises.
+
+    It prefers the explicit ``offline_two_comments`` hook and only falls back
+    to the local ``OfflineCommentGenerator``. This helper deliberately does
+    **not** inject the generic ``_rescue_two`` lines so that higher‑level
+    provider wrappers stay in control of when we give up and use a generic
+    reply.
+    """
+    # 1) Try the explicit offline_two_comments hook if present.
     fn = globals().get("offline_two_comments")
     if callable(fn):
         try:
-            return fn(tweet_text, author)
+            out = fn(tweet_text, author)
+            if isinstance(out, (list, tuple)):
+                cleaned = [str(x).strip() for x in out if x]
+                if cleaned:
+                    return cleaned[:2]
         except Exception as e:  # noqa: BLE001
-            logger.warning("offline_two_comments failed, using rescue: %s", e)
+            logger.warning("offline_two_comments failed in safe_offline_two_comments: %s", e)
 
-    # Last resort: use the offline generator directly, then rescue.
+    # 2) Fall back to the OfflineCommentGenerator directly.
     try:
         items = generator.generate_two(tweet_text, author or None, None, None)
-        out = [i.get("text","").strip() for i in items if i and i.get("text")]
+        out = [i.get("text", "").strip() for i in items if i and i.get("text")]
         out = [o for o in out if o]
-        if len(out) >= 2:
-            return out[:2]
         if out:
-            return (out + _rescue_two(tweet_text))[:2]
+            return out[:2]
     except Exception as e:  # noqa: BLE001
-        logger.warning("offline generator failed, using rescue: %s", e)
+        logger.warning("offline generator failed in safe_offline_two_comments: %s", e)
 
-    return _rescue_two(tweet_text)[:2]
+    # 3) True failure: return [] so callers can decide how to rescue.
+    return []
 
 def generate_two_comments_offline(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
-    """Offline provider wrapper required by _available_providers()."""
+    """Offline provider wrapper required by _available_providers().
+
+    This is used when Groq / other online providers are disabled or as a
+    best‑effort fallback. It prefers offline contextual comments and only
+    falls back to ``_rescue_two`` when nothing else is available.
+    """
     out = safe_offline_two_comments(tweet_text, author, url=url)
     out = [postprocess_comment(x, "offline") for x in out if x]
     out = enforce_unique(out, tweet_text=tweet_text, url=url, lang="en")
 
     if len(out) < 2:
-        out = enforce_unique(out + _rescue_two(tweet_text), tweet_text=tweet_text, url=url, lang="en")
+        rescue = [postprocess_comment(x, "offline") for x in _rescue_two(tweet_text) if x]
+        out = enforce_unique(out + rescue, tweet_text=tweet_text, url=url, lang="en")
 
     return out[:2]
 
@@ -6676,36 +6698,49 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [
-        restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
+        restore_decimals_and_tickers(enforce_word_count_llm(c, min_w=5, max_w=22, soft_max=26), tweet_text)
         for c in candidates
     ]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
+    candidates = [c for c in candidates if 4 <= len(words(c)) <= 24]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     # ---------- 5) Fallbacks if Groq output is weak ----------
+    offline: list[str] = []
     if len(candidates) < 2:
-        candidates = enforce_unique(
-            candidates + safe_offline_two_comments(tweet_text, author),
-            tweet_text=tweet_text,
-        )
+        try:
+            offline = safe_offline_two_comments(tweet_text, author)
+        except Exception as e:  # noqa: BLE001
+            logger.warning("safe_offline_two_comments failed in groq_two_comments: %s", e)
+            offline = []
 
-    if len(candidates) < 2:
-        candidates = enforce_unique(
-            candidates + _rescue_two(tweet_text),
-            tweet_text=tweet_text,
-        )
+        if offline:
+            candidates = enforce_unique(
+                candidates + offline,
+                tweet_text=tweet_text,
+            )
 
+    # If we still don't have two, fill the gap with generic rescue lines,
+    # but never drop an existing good candidate.
     if len(candidates) < 2:
-        # Last resort: do not fail the whole request just because strict filters
-        # (anti-repeat, word-count, parsing) reduced the pool below 2.
-        # Returning 2 reasonable offline comments is better than returning an
-        # error and showing nothing on the frontend.
-        fallback = safe_offline_two_comments(tweet_text, author)
-        # Ensure we always return exactly two strings.
-        if isinstance(fallback, (list, tuple)) and len(fallback) >= 2:
-            return [str(fallback[0]), str(fallback[1])]
-        # Extremely defensive final fallback
-        return ["Solid point", "What changed your mind on this?"]
+        rescue = [c for c in _rescue_two(tweet_text) if c]
+        for r in rescue:
+            if len(candidates) >= 2:
+                break
+            if r not in candidates:
+                candidates.append(r)
+
+    # If rescue still didn't give us two, prefer any offline pair we have.
+    if len(candidates) < 2 and offline:
+        if len(offline) >= 2:
+            candidates = [offline[0], offline[1]]
+        elif len(offline) == 1 and candidates:
+            candidates = [candidates[0], offline[0]]
+
+    # Extremely defensive final fallback so callers never see an empty list.
+    if len(candidates) < 2:
+        rescue = [c for c in _rescue_two(tweet_text) if c]
+        if rescue:
+            candidates = (candidates + rescue)[:2]
 
     # If the pair is too similar, try to diversify by mixing in offline ones
     if _pair_too_similar(candidates[0], candidates[1]):
@@ -7282,10 +7317,10 @@ def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "
     # Parse → clean → enforce constraints (exactly 2)
     candidates = parse_two_comments_flex(raw)
     candidates = [
-        restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
+        restore_decimals_and_tickers(enforce_word_count_llm(c, min_w=5, max_w=22, soft_max=26), tweet_text)
         for c in candidates
     ]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
+    candidates = [c for c in candidates if 4 <= len(words(c)) <= 24]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
 
     # Ensure we always end with 2
@@ -7595,8 +7630,8 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
                     continue
 
                 cand = parse_two_comments_flex(raw)
-                cand = [restore_decimals_and_tickers(enforce_word_count_llm(x), tweet_text) for x in cand]
-                cand = [x for x in cand if 6 <= len(words(x)) <= 18]
+                cand = [restore_decimals_and_tickers(enforce_word_count_llm(x, min_w=5, max_w=22, soft_max=26), tweet_text) for x in cand]
+                cand = [x for x in cand if 4 <= len(words(x)) <= 24]
                 cand = [postprocess_comment(x, "llm") for x in cand]
                 # strict + variety pass
                 cand = enforce_unique(cand, tweet_text=tweet_text)
@@ -7916,6 +7951,7 @@ def generate_two_comments_with_providers(
         if forced:
             candidates = enforce_unique(candidates + forced, tweet_text=tweet_text, lang_code=gen_lang)
     # --- 4) Fallback: offline + ultra-safe rescue ----------------------------
+    offline = []
     if len(candidates) < 2:
         try:
             offline = safe_offline_two_comments(tweet_text, author, handle, lang, url=url)
@@ -7924,15 +7960,34 @@ def generate_two_comments_with_providers(
             offline = []
 
         if offline:
-            candidates = enforce_unique(candidates + offline, tweet_text=tweet_text, lang_code=gen_lang)
+            candidates = enforce_unique(
+                candidates + offline,
+                tweet_text=tweet_text,
+                lang_code=gen_lang,
+            )
 
-        if len(candidates) < 2:
-            rescue = _rescue_two(tweet_text)
-            candidates = enforce_unique(candidates + rescue, tweet_text=tweet_text, lang_code=gen_lang)
-
+    # If we still don't have two, fill the gap with generic rescue lines,
+    # but never drop an existing good candidate.
     if len(candidates) < 2:
-        rescue = _rescue_two(tweet_text)
-        candidates = [c for c in rescue if c][:2]
+        rescue = [c for c in _rescue_two(tweet_text) if c]
+        for r in rescue:
+            if len(candidates) >= 2:
+                break
+            if r not in candidates:
+                candidates.append(r)
+
+    # If rescue still didn't give us two, prefer any offline pair we have.
+    if len(candidates) < 2 and offline:
+        if len(offline) >= 2:
+            candidates = [offline[0], offline[1]]
+        elif len(offline) == 1 and candidates:
+            candidates = [candidates[0], offline[0]]
+
+    # Extremely defensive final fallback so callers never see an empty list.
+    if len(candidates) < 2:
+        rescue = [c for c in _rescue_two(tweet_text) if c]
+        if rescue:
+            candidates = (candidates + rescue)[:2]
 
     # --- 5) Judge + select best pair -----------------------------------------
     script = script_from_lang_code(lang_out)
