@@ -4680,14 +4680,25 @@ class OfflineCommentGenerator:
                 self._commit(cand, url=url, lang="en")
                 out.append({"lang": "en", "text": cand})
 
-        # If we still don't have 2 comments, just return what we have.
-        # Higher-level provider wrappers (safe_offline_two_comments / Groq, etc.)
-        # are responsible for deciding whether to duplicate or resort to
-        # `_rescue_two`. The offline generator itself should never inject
-        # generic rescue lines.
+        # hard guarantee two comments
+        if len(out) < 2:
+            out += [
+                {"lang": "en", "text": enforce_word_count_natural(s, 6, 13)}
+                for s in _rescue_two(text)
+            ]
+            out = [c for c in out if c["text"]][:2]
+
+        # keep EN#1 / EN#2 from being near-duplicates
         if len(out) == 2 and _pair_too_similar(out[0]["text"], out[1]["text"]):
-            # If the second is too similar, drop it and let callers handle fallback.
-            out = [out[0]]
+            extras = [_rescue_two(text)[0]]
+            extras = [enforce_word_count_natural(e, 6, 13) for e in extras if e]
+            for e in extras:
+                if not e:
+                    continue
+                if not self._accept(e, tweet_text=text):
+                    continue
+                out[1] = {"lang": "en", "text": e}
+                break
 
         return out[:2]
 
@@ -6461,15 +6472,9 @@ def pro_kol_ok(comment: str, tweet_text: str = "") -> bool:
     return has_focus or has_operator
 
 def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
-    """Basic offline generator wrapper around OfflineCommentGenerator.
-
-    This prefers whatever the local generator produced and deliberately
-    does *not* inject generic rescue lines. Higher-level callers decide
-    if/when to fall back to `_rescue_two`.
-    """
     items = generator.generate_two(text, author or None, None, None)
-    en = [i.get("text") for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
-    non = [i.get("text") for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
+    en = [i["text"] for i in items if (i.get("lang") or "en") == "en" and i.get("text")]
+    non = [i["text"] for i in items if (i.get("lang") or "en") != "en" and i.get("text")]
 
     result: list[str] = []
     if en:
@@ -6479,10 +6484,13 @@ def offline_two_comments(text: str, author: Optional[str]) -> list[str]:
     elif non:
         result.append(non[0])
 
-    # Apply uniqueness / diversity filters, but do NOT inject rescue here.
+    # Apply your uniqueness filters + diversity pairing
     result = enforce_unique(result, tweet_text=text)
+    if len(result) < 2:
+        result = enforce_unique(result + _rescue_two(text), tweet_text=text)
 
     return result[:2]
+
 
 
 def safe_offline_two_comments(
@@ -6492,53 +6500,44 @@ def safe_offline_two_comments(
     lang: Optional[str] = None,
     url: str = "",
 ) -> list[str]:
-    """Best-effort offline fallback that never raises.
+    """Best-effort offline fallback.
 
     NOTE: Some callers pass handle/lang positionally plus url as a keyword.
-    We accept those extra args via the handle/lang/url parameters but only
-    rely on tweet_text + author for generation.
+    We accept those extra args so we never crash on fallback.
     """
-    # Prefer the explicit offline_two_comments hook if present.
     fn = globals().get("offline_two_comments")
     if callable(fn):
         try:
-            out = fn(tweet_text, author)
-            if isinstance(out, (list, tuple)):
-                cleaned = [str(x).strip() for x in out if x]
-                if cleaned:
-                    return cleaned[:2]
+            return fn(tweet_text, author)
         except Exception as e:  # noqa: BLE001
-            logger.warning("offline_two_comments failed in safe_offline_two_comments: %s", e)
+            logger.warning("offline_two_comments failed, using rescue: %s", e)
 
-    # Last resort: use the offline generator directly, *without* injecting rescue.
+    # Last resort: use the offline generator directly, then rescue.
     try:
         items = generator.generate_two(tweet_text, author or None, None, None)
-        out = [i.get("text", "").strip() for i in items if i and i.get("text")]
+        out = [i.get("text","").strip() for i in items if i and i.get("text")]
         out = [o for o in out if o]
-        if out:
+        if len(out) >= 2:
             return out[:2]
+        if out:
+            return (out + _rescue_two(tweet_text))[:2]
     except Exception as e:  # noqa: BLE001
-        logger.warning("offline generator failed in safe_offline_two_comments: %s", e)
+        logger.warning("offline generator failed, using rescue: %s", e)
 
-    # True failure: let higher-level callers decide if they want `_rescue_two`.
-    return []
+    return _rescue_two(tweet_text)[:2]
+
 def generate_two_comments_offline(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     """Offline provider wrapper required by _available_providers()."""
     out = safe_offline_two_comments(tweet_text, author, url=url)
     out = [postprocess_comment(x, "offline") for x in out if x]
     out = enforce_unique(out, tweet_text=tweet_text, url=url, lang="en")
 
-    if len(out) == 0:
-        # Absolute last resort for pure-offline mode: allow generic rescue.
-        rescue = [postprocess_comment(x, "offline") for x in _rescue_two(tweet_text) if x]
-        out = enforce_unique(rescue, tweet_text=tweet_text, url=url, lang="en")
-    elif len(out) == 1:
-        # Prefer duplicating a solid offline comment over introducing generic slop.
-        out = [out[0], out[0]]
+    if len(out) < 2:
+        out = enforce_unique(out + _rescue_two(tweet_text), tweet_text=tweet_text, url=url, lang="en")
 
     return out[:2]
 
-# ----------------------------------------------------------------------------
+# ------------------------------------------------------------------------------
 # LLM parsing helper shared by providers
 # ------------------------------------------------------------------------------
 def parse_two_comments_flex(raw_text: str) -> list[str]:
@@ -6576,157 +6575,162 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
 # ------------------------------------------------------------------------------
 def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> list[str]:
     """
-    Main Groq-based generator.
-    - Does a quick analysis pass (TweetAnalysis) to understand tone, meme, gm/gn, etc.
-    - Then generates two short replies guided by that analysis.
-    - Has rate-limit aware retries and falls back to offline if needed.
+    Main Groq-based generator (v2).
+
+    Goals:
+    - Use Groq as the primary source of BOTH comments.
+    - Ensure the two comments are genuinely distinct and grounded in the tweet.
+    - Only fall back to offline generators if Groq is unavailable or badly misbehaves.
     """
     if not (USE_GROQ and _groq_client):
         raise RuntimeError("Groq disabled or client not available")
 
-    global _GROQ_LAST_CALL_TS, _GROQ_DISABLED_UNTIL
-
-    # ---------- 1) Try to analyze the tweet (best-effort) ----------
+    # ---------- 1) Optional tweet analysis (best-effort) ----------
     analysis: TweetAnalysis | None = None
     try:
         analysis = analyze_tweet_with_groq(tweet_text)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Groq tweet analysis failed (will continue without it): %s", exc)
+    except Exception as exc:  # pragma: no cover - extremely defensive
+        logger.warning("Groq tweet analysis failed; continuing without analysis: %s", exc)
 
+    # ---------- 2) Build system + user prompts ----------
     mode_line = llm_mode_hint(tweet_text[:80])
     sys_prompt = _llm_sys_prompt(mode_line)
 
-    user_prompt = _build_comment_user_prompt(tweet_text=tweet_text, analysis=analysis, url=url)
+    base_user_prompt = _build_comment_user_prompt(
+        tweet_text=tweet_text,
+        analysis=analysis,
+        url=url,
+    )
 
-    resp = None
+    def _parse_and_normalise(raw_text: str) -> list[str]:
+        # Flexible parsing (JSON array / bullet list / lines)
+        parsed = parse_two_comments_flex(raw_text)
+        if not parsed and raw_text.strip():
+            parsed = [raw_text.strip()]
 
-    # ---------- 3) Call Groq with spacing + backoff ----------
-    for attempt in range(GROQ_MAX_RETRIES):
-        now = time.time()
+        # Light-length and number/ticker preservation
+        cleaned: list[str] = []
+        for c in parsed:
+            c = restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
+            if 6 <= len(words(c)) <= 18:
+                cleaned.append(c)
+        return cleaned
 
-        # Respect any prior hard backoff window
-        if now < _GROQ_DISABLED_UNTIL:
-            sleep_for = _GROQ_DISABLED_UNTIL - now
-            if sleep_for > 0:
-                logger.info(
-                    "Groq backoff active, sleeping %.2fs before next call",
-                    sleep_for,
-                )
-                time.sleep(sleep_for)
-            now = time.time()
+    def _dedupe_local(seq: list[str]) -> list[str]:
+        """Exact + trivial normalization dedupe within a single request."""
+        out: list[str] = []
+        seen: set[str] = set()
+        for c in seq:
+            key = re.sub(r"\s+", " ", c).strip().lower()
+            if not key or key in seen:
+                continue
+            seen.add(key)
+            out.append(c)
+        return out
 
-        # Enforce minimum spacing between calls to avoid hammering the API
-        delta = now - _GROQ_LAST_CALL_TS
-        if delta < GROQ_MIN_INTERVAL:
-            sleep_for = GROQ_MIN_INTERVAL - delta
-            if sleep_for > 0:
-                time.sleep(sleep_for)
+    # ---------- 3) First Groq call: ask for both comments ----------
+    candidates: list[str] = []
+    try:
+        resp = groq_chat_limited(
+            messages=[
+                {"role": "system", "content": sys_prompt},
+                {"role": "user", "content": base_user_prompt},
+            ],
+            max_tokens=220,
+            temperature=0.9,
+        )
+        raw = (resp.choices[0].message.content or "").strip()
+        candidates = _parse_and_normalise(raw)
+    except Exception as exc:  # pragma: no cover - defensive
+        logger.warning("Groq main generation failed, will try fallbacks: %s", exc)
 
+    candidates = _dedupe_local(candidates)
+    candidates = enforce_unique(
+        candidates,
+        tweet_text=tweet_text,
+        url=url,
+        lang="en",
+    )
+
+    # ---------- 4) If we have < 2 unique comments, ask Groq once more ----------
+    if len(candidates) < 2:
         try:
-            resp = groq_chat_limited(
+            already = candidates[0] if candidates else ""
+            alt_user_prompt = base_user_prompt
+            if already:
+                alt_user_prompt = (
+                    base_user_prompt
+                    + "\n\nYou already suggested this reply:\n"
+                    + f"1) {already}\n"
+                    + "Now propose ONE MORE alternative reply for the same tweet.\n"
+                    + "- It must clearly differ in wording AND angle.\n"
+                    + "- Return just the new comment text."
+                )
+
+            alt_resp = groq_chat_limited(
                 messages=[
                     {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_prompt},
+                    {"role": "user", "content": alt_user_prompt},
                 ],
-                n=1,
-                max_tokens=160,
-                temperature=0.9,
+                max_tokens=140,
+                temperature=1.0,
             )
-            _GROQ_LAST_CALL_TS = time.time()
-            break
-
-        except Exception as e:  # noqa: BLE001
-            wait_secs = 0.0
-            msg = str(e).lower()
-
-            # Try to read Retry-After header if present
-            try:
-                hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
-                ra = hdrs.get("Retry-After") or hdrs.get("retry-after")
-                if ra is not None:
-                    try:
-                        wait_secs = max(wait_secs, float(ra))
-                    except Exception:  # noqa: BLE001
-                        pass
-            except Exception:  # noqa: BLE001
-                pass
-
-            # Generic rate-limit / quota hints
-            if "429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg:
-                wait_secs = max(wait_secs, GROQ_BACKOFF_SECONDS)
-
-            if wait_secs > 0:
-                _GROQ_DISABLED_UNTIL = time.time() + wait_secs
-                logger.warning(
-                    "Groq rate-limited or quota hit, backing off for %.2fs (attempt %d/%d)",
-                    wait_secs,
-                    attempt + 1,
-                    GROQ_MAX_RETRIES,
-                )
-                time.sleep(wait_secs)
-                continue
-
-            # Non rate-limit error → bubble up so the provider wrapper can fall back
-            logger.warning("Groq error (non-rate-limit): %s", e)
-            raise
-
-    if resp is None:
-        raise RuntimeError("Groq call failed after retries")
-
-    # ---------- 4) Turn raw text into two clean comments ----------
-    raw = (resp.choices[0].message.content or "").strip()
-    candidates = parse_two_comments_flex(raw)
-    candidates = [
-        restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
-        for c in candidates
-    ]
-    candidates = [c for c in candidates if 6 <= len(words(c)) <= 18]
-    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, lang="en")
-
-    # ---------- 5) Fallbacks if Groq output is weak ----------
-    if len(candidates) < 2:
-        # First, try to supplement with the local offline generator.
-        offline = safe_offline_two_comments(tweet_text, author)
-        if isinstance(offline, (list, tuple)):
-            offline_clean = [str(x).strip() for x in offline if x]
-        else:
-            offline_clean = []
-        if offline_clean:
+            alt_raw = (alt_resp.choices[0].message.content or "").strip()
+            alt_candidates = _parse_and_normalise(alt_raw)
+            combined = candidates + alt_candidates
+            combined = _dedupe_local(combined)
             candidates = enforce_unique(
-                candidates + offline_clean,
+                combined,
                 tweet_text=tweet_text,
+                url=url,
+                lang="en",
             )
+        except Exception as exc:  # pragma: no cover - defensive
+            logger.warning("Groq alternative reply generation failed: %s", exc)
 
-    if not candidates:
-        # Groq and offline both failed. As an absolute last resort, fall back
-        # to generic rescue lines so the provider still returns something.
-        rescue = _rescue_two(tweet_text) or [
-            "Solid point",
-            "What changed your mind on this?",
-        ]
-        candidates = [c for c in rescue if c][:2] or [
-            "Solid point",
-            "What changed your mind on this?",
-        ]
-    elif len(candidates) == 1:
-        # Prefer duplicating a strong Groq comment rather than mixing in a
-        # generic rescue line that can feel off-topic or 'AI slop'.
-        candidates = [candidates[0], candidates[0]]
+    # ---------- 5) Offline / rescue fallbacks (only if still < 2) ----------
+    if len(candidates) < 2:
+        try:
+            offline = safe_offline_two_comments(tweet_text, author)
+        except Exception as exc:  # pragma: no cover
+            logger.warning("safe_offline_two_comments failed in groq_two_comments: %s", exc)
+            offline = []
 
-
-    # If the pair is too similar, try to diversify by mixing in offline ones
-    if _pair_too_similar(candidates[0], candidates[1]):
         merged = enforce_unique(
-            candidates + safe_offline_two_comments(tweet_text, author),
+            candidates + offline,
             tweet_text=tweet_text,
+            url=url,
+            lang="en",
         )
-        if len(merged) >= 2:
-            candidates = merged[:2]
+        candidates = _dedupe_local(merged)
+
+    if len(candidates) < 2:
+        merged = enforce_unique(
+            candidates + _rescue_two(tweet_text),
+            tweet_text=tweet_text,
+            url=url,
+            lang="en",
+        )
+        candidates = _dedupe_local(merged)
+
+    # ---------- 6) Final defense + pair diversification ----------
+    if not candidates:
+        # Extremely defensive final fallback – should be practically unreachable.
+        return ["Solid point", "What changed your mind on this?"]
+
+    if len(candidates) == 1:
+        # If Groq + offline really only gave us one viable comment,
+        # duplicate it so the UI is never empty in slot #2.
+        return [candidates[0], candidates[0]]
+
+    # If we have more than two and the top pair is too similar, try to diversify
+    if len(candidates) > 2 and _pair_too_similar(candidates[0], candidates[1]):
+        for alt in candidates[2:]:
+            if not _pair_too_similar(candidates[0], alt):
+                return [candidates[0], alt]
 
     return candidates[:2]
-# ------------------------------------------------------------------------------
-# OpenAI / Gemini generators (same constraints as Groq)
-# ------------------------------------------------------------------------------
+
 def _llm_sys_prompt(mode_line: str = "") -> str:
     base = (
         "You generate two short replies to a tweet.\n"
@@ -7922,7 +7926,7 @@ def generate_two_comments_with_providers(
             forced = []
         if forced:
             candidates = enforce_unique(candidates + forced, tweet_text=tweet_text, lang_code=gen_lang)
-    # --- 4) Fallback: offline only; avoid generic rescue unless everything fails ----
+    # --- 4) Fallback: offline + ultra-safe rescue ----------------------------
     if len(candidates) < 2:
         try:
             offline = safe_offline_two_comments(tweet_text, author, handle, lang, url=url)
@@ -7931,20 +7935,17 @@ def generate_two_comments_with_providers(
             offline = []
 
         if offline:
-            candidates = enforce_unique(
-                candidates + offline,
-                tweet_text=tweet_text,
-                lang_code=gen_lang,
-            )
+            candidates = enforce_unique(candidates + offline, tweet_text=tweet_text, lang_code=gen_lang)
 
-    # Only if we have *no* candidates at all after Groq + offline do we use
-    # the generic rescue lines. This should be extremely rare and is mainly
-    # to avoid breaking the API contract.
-    if not candidates:
+        if len(candidates) < 2:
+            rescue = _rescue_two(tweet_text)
+            candidates = enforce_unique(candidates + rescue, tweet_text=tweet_text, lang_code=gen_lang)
+
+    if len(candidates) < 2:
         rescue = _rescue_two(tweet_text)
         candidates = [c for c in rescue if c][:2]
 
-# --- 5) Judge + select best pair -----------------------------------------
+    # --- 5) Judge + select best pair -----------------------------------------
     script = script_from_lang_code(lang_out)
     try:
         research_ctx = REQUEST_RESEARCH_CTX.get()
@@ -8002,28 +8003,8 @@ def generate_two_comments_with_providers(
 
     if len(out) != 2:
         if len(out) > 2:
-            # More than two comments; just keep the best two selected above.
             out = out[:2]
-        elif len(out) == 1:
-            # Prefer duplicating the single strong comment over injecting a
-            # generic rescue line that may feel off-topic or "AI slop".
-            first = out[0]
-            out.append(
-                {
-                    "lang": first.get("lang") or lang_out,
-                    "text": first.get("text") or "",
-                    "reaction": first.get("reaction"),
-                    "delay_sec": first.get("delay_sec", 0),
-                    "mode": first.get("mode"),
-                    "thread_pair": first.get("thread_pair", bool(THREAD_PAIR_MODE)),
-                    "thread_index": 1,
-                    "follow_up": bool(THREAD_PAIR_MODE),
-                }
-            )
         else:
-            # len(out) == 0: absolute last resort. Use generic rescue lines so
-            # the API contract ("two comments") is still satisfied, but this
-            # should be extremely rare.
             rescue = _rescue_two(tweet_text)
             extra = [c for c in rescue if isinstance(c, str)]
             for c in extra:
