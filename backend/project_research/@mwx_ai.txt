@@ -1,0 +1,297 @@
+PROJECT_CARD_V1
+HANDLE: @mwx_ai
+NAME: MWX
+TICKER: MWXT
+CATEGORY: DeAI / AI tooling marketplace (SME-focused SaaS + Web3 settlement rails)
+CHAIN: Base (EVM L2)
+STAGE: Early mainnet (token live; marketplace app and Transparency Hub public, still evolving)
+NARRATIVE_TAGS: agentic-AI, AI-marketplace, SME-SaaS, fiat-to-crypto rails, deflationary-token, staking, governance
+TVL_HINT: Not a DeFi-TVL protocol; main KPIs are marketplace usage and token stats, not TVL
+ONE_LINER: MWX is a plug-and-play AI tools marketplace for SMEs on Base, combining a Web2-style UX with MWXT token mechanics for payments, staking, discounts and governance.
+
+===============================================================================
+1) CORE VALUE PROP
+===============================================================================
+- Problem: SMEs want AI automation across marketing, finance, ops and HR but often can’t afford or integrate heavy “enterprise AI” solutions.
+- Solution: MWX packages AI tools as ready-to-use modules and offers them via a marketplace UI, so SMEs can subscribe or purchase without deep technical integration.
+- Differentiation: Hybrid model—Web2-style UX and fiat-friendly onboarding paired with Web3 settlement (on Base) and a token economy that ties marketplace activity to MWXT demand and incentives.
+- Why now: Aligns with agentic AI and AI-SaaS narratives, but targeted at a concrete segment (SMEs) and backed by transparency primitives (burn logs, purchase counters) rather than pure meme dynamics.
+
+===============================================================================
+2) PRODUCT / CURRENT STATE
+===============================================================================
+- Token and chain footprint:
+  - MWXT is live on Base with an ERC‑20 contract showing max supply, holders, price and volume on explorers.
+  - Contract suite uses upgradeable patterns (proxy/UUPS), with additional staking, vesting and sale contracts published in a public repo.
+- Marketplace and apps:
+  - MWX Market web app is reachable, shows featured products and supports account sign-in/registration.
+  - Transparency Hub displays burn totals, transaction hashes, and marketplace transaction/purchase counts.
+  - GitBook docs position the platform around three pillars: an AI tools suite, a third-party AI marketplace, and a deflationary MWXT token.
+- Declared AI “families” (examples from docs):
+  - CreateWhiz, SalesWhiz, SmartWhiz, FinanceWhiz, LegalWhiz, TalentWhiz, SEOWhiz, SMEWhiz and others.
+  - UX messaging emphasises “ready-to-use,” no-code and “no crypto knowledge required,” with MPC-style login flows highlighted.
+- User groups:
+  - Demand side: SMEs/MSMEs buying and using AI modules through the marketplace.
+  - Supply side: AI developers/vendors listing modules and sharing revenue via smart contracts.
+  - Token community: MWXT holders staking for discounts/benefits and participating in governance/incentives.
+- Distribution / liquidity surfaces (project-referenced):
+  - Token listings mentioned on MEXC, PancakeSwap, BitMart and other venues.
+  - Token profile and official links surfaced on BaseScan and third-party data sites.
+
+===============================================================================
+3) KEY METRICS (APPROX / PUBLIC DASHBOARDS)
+===============================================================================
+- Token / market (approximate; changes frequently):
+  - Max supply: 1,000,000,000 MWXT.
+  - Circulating supply: roughly ~150M MWXT on recent dashboard snapshots.
+  - Market cap: around the mid‑tens of millions USD (varies with price).
+  - 24h trading volume: roughly in the US$1M+ range on observed snapshots, spiking during events.
+  - Holders: around 5.4k–5.5k addresses on Base.
+- Marketplace and deflation stats (self-reported on Transparency Hub):
+  - Purchase counts (example snapshot): CreateWhiz ~1,096; SalesWhiz ~712; SmartWhiz ~460; FinanceWhiz ~452; LegalWhiz ~346.
+  - Transactions: thousands of “Institutional purchase” and hundreds of “Retail purchase” transactions listed.
+  - Burn total: dashboard shows ~13.8k MWXT burned, with individual burn transaction hashes linking to BaseScan.
+- Interpretation guidance:
+  - Treat all on-platform counters as project-published metrics that should be cross-checked via the linked on-chain evidence where possible.
+  - TVL is not the primary success metric; adoption should be judged more by recurring usage and marketplace traction.
+
+===============================================================================
+4) MAIN RISKS
+===============================================================================
+- Smart contract and upgradeability risk:
+  - Token and related contracts are upgradeable; this allows fixes and iteration, but introduces admin-key and governance-risk surface area.
+  - Explorer UIs may show “no audit submitted,” even where project materials mention audits—scope and coverage should be independently verified.
+- Token/economics and emissions risk:
+  - 1B fixed supply with structured allocation (team, DAO, ecosystem, public/private, advisors, liquidity, etc.) and lock/vesting schedules creates predictable unlock events and concentration risks.
+  - Staking models (flexible vs locked, lock multipliers, emergency-unstake with forfeits) can attract mercenary capital; sustainability depends on whether rewards are revenue-backed or mostly emissions.
+- Business and PMF risk:
+  - SME distribution is hard work: onboarding, localisation, support and enterprise trust-building vary by region; the project emphasises SEA/SME focus, which is coherent but execution-heavy.
+  - Competitive landscape includes both Web2 AI SaaS suites and other AI/agent marketplace projects; MWX’s edge must come from real SME usage and third-party vendor supply.
+- Centralisation, custody and regulatory risk:
+  - Fiat acceptance and off-chain payment handling imply payment processors and compliance/ops points where disputes and regulations apply.
+  - Governance is currently more centralised, with DAO-style governance presented as a mid‑to‑long‑term goal (e.g. 2028) rather than a fully live system.
+  - Legal analysis docs frame MWXT as a utility token, not equity—but such opinions are jurisdiction-specific and not blanket regulatory approvals.
+
+===============================================================================
+5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
+===============================================================================
+- Emphasise:
+  - “SME-first AI”: packaged tools for real business workflows, not just a narrative token.
+  - Hybrid UX: Web2-like onboarding and fiat-friendly flows with on-chain settlement and transparency under the hood.
+  - Transparency angle: public burn logs, purchase counters and contract repos—encourage people to verify on-chain.
+- Avoid:
+  - Fixed APY/APR promises, “risk-free staking” language or guaranteed income claims.
+  - Price predictions, “next listing” hype or specific future market-cap targets.
+  - Overstating audit coverage (“audited” must still be validated at the contract level).
+- Good reply angles:
+  - “Interesting attempt to turn SME use of AI into repeatable marketplace flows—watch app purchases and burn logs over time.”
+  - “Hybrid model makes sense: let SMEs pay like Web2 while settlement and burns happen on Base.”
+  - “Public smart-contract repo and transparency dashboards are better than pure meme coins, but upgradeable design means governance and admin controls really matter.”
+
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Background and positioning:
+  - Whitepaper targets a potential market of “400M+ SMEs,” describing MWX as infrastructure for AI startups and vendors to reach them via a shared marketplace.
+  - Storytelling leans on MediaWave’s prior AI work in the region as a credibility anchor.
+- Team and advisors (high-level, public-only):
+  - Public team materials present Yose Rizal as a founder/CEO profile, with Nanda Ivens also shown in founder/leadership roles in some contexts.
+  - Advisors highlighted include Christina Macedo, Antoine Castel, Ruby Alamsyah, Pandu Sastrowardoyo and Justin Thomas Sumner (always verify against current official listings).
+- Architecture and design:
+  - Three-layer structure: application layer (AI tools + UX + payments), marketplace layer (third-party vendors and revenue share), and blockchain layer (Base + MWXT).
+  - Token mechanics focus on commission-based burns, buyback/burn loops and staking-related benefits (discounts/tiers/governance).
+  - Legal analysis document explains intended utility-token framing, fiat–crypto linking and staking/governance, but is not a universal regulatory clearance.
+- Geography and entities:
+  - Materials strongly suggest a Southeast Asia / Indonesia-led team with additional references to legal entities or presence in Panama, BVI and possibly Singapore/Dubai for specific corporate functions.
+
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Official sites and docs: mwxplatform.ai, mwxmarket.ai, mwxtoken.ai, Transparency Hub, GitBook docs and whitepaper.
+- Token and market data: BaseScan contract/token pages, CoinGecko/CoinMarketCap/Messari profiles.
+- Code: MWX Labs GitHub and smart-contract repositories for MWXT and related components.
+- Legal and tokenomics docs: official legal analysis PDF and token-economics/vesting breakdowns.
+- Press and PR: launch announcements and marketplace PR (use for colour; always verify against primary sources).- Note: This appears to be infrastructure-level work; a fork alone doesn’t confirm production readiness.
+
+============================================================
+5) NATIVE DAPPS (THE “CORE” APP LAYER)
+============================================================
+A) Asset Passport
+Purpose
+- A “digital identity” for each tokenized property/asset, aggregating attested ownership history, legal docs, valuations, and maintenance records from trusted sources.
+Design notes
+- Hybrid data model: immutable on-chain records for legally recognized status + encrypted off-chain repositories for detailed documents/inspections/images/filings.
+- Intended cross-chain synchronization of signed updates to maintain consistent asset views across chains.
+- Planned to be integrated into the Integra block explorer (per docs).
+
+B) Global Orderbook
+Purpose
+- A back-end orderbook for real estate tokens to enable price discovery, liquidity pooling, and secondary market trading.
+Design notes
+- Connects siloed venues via shared listing/matching fabric.
+- Supports intermediaries (e.g., licensed brokers) and embeds commissions/commission payouts into lifecycle.
+- Vision includes: central repository (asset data, investor eligibility, commission terms) + distribution network (instant venue connectivity) + “ecosystem flywheel” to avoid fragmentation.
+
+C) Native Stablecoin
+Purpose
+- Primary unit of account and settlement asset on the chain.
+Design notes
+- Issued by a regulated entity, redeemable at par.
+- 1:1 backed by “risk-free assets” (as claimed).
+- Returns from backing assets are described as being invested in real estate (per docs); also “revenue capture” is mentioned (details not fully specified on the snippet page).
+
+D) Compliance & Identity Layer (as a “native dApp/module”)
+Purpose
+- Turn regulations into machine-readable policies enforced in transactions.
+Design notes
+- Uses W3C DIDs for participant identifiers.
+- Uses VCs from regulated issuers (KYC/KYB, accreditation, sanctions status, license type, etc.).
+- Policies can encode eligibility, transfer restrictions, lock-ups, jurisdiction constraints, travel-rule/reporting obligations.
+- Enforced as gating logic: only execute state transitions when policies satisfied.
+
+E) Token Issuance Framework
+Purpose
+- Standardize issuance patterns / reference contracts for tokenized real estate and related instruments.
+Design notes
+- Issuers define an issuance profile: legal wrapper (SPV/fund/trust/etc.), jurisdiction/regime, investor eligibility, rights, transfer restrictions, redemption rules.
+- Framework instantiates audited reference contracts integrating compliance/identity + asset passport.
+- Supports on-chain, hybrid, and intermediary-coordinated institutional flows.
+- Lifecycle management includes: updating disclosures, corporate actions, distributions, redemptions, wind-downs; recorded to the Asset Passport.
+
+============================================================
+6) TOKENOMICS — $IRL
+============================================================
+Role of $IRL
+- Native utility/settlement/governance token.
+- Used for gas fees, staking, governance votes, and value capture from core products (as claimed).
+- Mentions dual economic model: burns + 2% annual base inflation to fund validator rewards (inflation schedule adjustable by governance).
+
+Supply & distribution (as stated in GitBook)
+- Fixed initial supply: 100B $IRL
+Allocations:
+- Ecosystem & Growth: 37%
+- Foundation: 26%
+- Core Contributors & Anchors: 22%
+- Investors: 15%
+- Validators: from 2% yearly inflation
+
+Note: The GitBook says “final breakdown shall be posted on the official Integra website,” implying details (vesting, exact wallets, etc.) may still be evolving.
+
+============================================================
+7) TEAM / LEADERSHIP / ORGANIZATION
+============================================================
+From the public team page (highlights)
+Leadership Council (examples shown)
+- Dr Vivek Anand Oberoi (BNW Developments)
+- Nathan Ergonul (World Bank Group consultant)
+- Sanjoy Chowdhury (Standard Chartered Bank)
+- Dhuha Fadhel (ex World Bank / Standard Chartered Bank)
+- Raj Kapoor (India Blockchain Alliance)
+- Claus Skaaning (DigiShares)
+- Saurabh Shankar (Diamond Hand)
+Core Contributors (examples shown)
+- Somesh Gaur (CBO, Integra)
+- Adam Boudjemaa (CTO, Integra)
+- Piyush Gupta (CEO, Polytrade)
+- Milind Bansia (CSO, Polytrade)
+- Swapnil Agarwal (CEO, Nitya Capital)
+- Ambra Berselli (White Reef Partners)
+- Shreya Berry (Head of Marketing, Polytrade)
+
+Legal/Entity footprint (from website footer)
+- “Integra Layer Foundation / Leeward Management Limited” address in Grand Cayman, Cayman Islands.
+
+============================================================
+8) COMMUNITY / DISTRIBUTION / “GROWTH MECHANICS”
+============================================================
+X (Twitter) presence
+- The @integra_layer profile bio says: “The Foundation Layer for Real Estate. Built by leading firms with $12B+ in AuM.”
+- Public mirror indicates ~40K followers (as of the crawl date on the mirror page).
+
+Telegram
+- There is an official Telegram channel (integraofficial). Posts emphasize:
+  - “Full-Stack Layer 1”
+  - Whitepaper link distribution
+  - An “XP”/points style system and “City of Integra” gamified ecosystem participation.
+  - A staking program connected to earning XP and “$IRL eligibility” is referenced in Telegram posts, with a “Road to $IRL” dashboard link.
+
+Gamified ecosystem: “Enter the City” / “City Builder”
+- The website/team page links to “Enter the City.”
+- Third-party aggregators (e.g., Zora coin page) reference a “City Builder” concept tied to community growth.
+
+============================================================
+9) PARTNERSHIPS / CONSORTIUM / PR CLAIMS
+============================================================
+$12B+ AuM consortium claim
+- Press release coverage claims Integra is backed by / integrated with a consortium representing $12B+ assets under management and partners spanning the U.S., Europe, and the Middle East.
+- Coverage states upcoming milestones: public testnet, developer integrations, institutional tokenization pilots.
+
+Important: These are PR claims. Treat them as directional signals until independently verified (e.g., named partners, on-chain evidence, pilots announced with counterparties).
+
+============================================================
+10) PORTAL / DASHBOARD (USER-FACING PRODUCT)
+============================================================
+- The official website links to a “Portal” at dashboard.integralayer.com.
+- In this environment, the portal page did not load (likely a dynamic auth-gated app).
+- The GitBook whitepaper mentions a “unified dashboard” to manage portfolio, discover dApps, staking/governance, and communication.
+
+============================================================
+11) COMPETITIVE LANDSCAPE (HOW INTEGRA DIFFERENTIATES)
+============================================================
+Differentiation claims (from the docs)
+- Vertical (asset-specific) L1 focus vs general-purpose chains.
+- Compliance + identity + data attestations baked into the protocol stack.
+- Native applications (passport/orderbook/stablecoin) rather than relying entirely on external dApps.
+- Curated validator set suitable for regulated workflows.
+- Cross-venue liquidity via a “global orderbook” concept.
+
+Likely comparables (conceptual)
+- Tokenization stacks for RWAs and real-estate-specific issuance platforms.
+- General-purpose L1/L2 chains hosting RWA dApps.
+- Off-chain “tokenization as a service” providers.
+Integra’s pitch is: unify the whole pipeline into one specialized chain + ecosystem.
+
+============================================================
+12) DUE DILIGENCE CHECKLIST (WHAT TO VERIFY BEFORE COMMITTING)
+============================================================
+A) Tech & network
+- Is there a public testnet? Explorer? RPC endpoints? Chain ID? EVM compatibility in practice?
+- Is there developer documentation beyond the high-level GitBook?
+- Validator set: who are the initial validators (names, operators, stake distribution)?
+- Security: audits of core modules, smart contract libraries, bridges, stablecoin contracts.
+
+B) Compliance & legal
+- Who issues the stablecoin? Under what jurisdictional regime? What reserves, which banks/custodians?
+- Who issues verifiable credentials? Which KYC/KYB providers are integrated?
+- How are transfer restrictions enforced for different jurisdictions?
+
+C) Real-world adoption
+- Any named pilot programs with asset managers/developers?
+- Evidence of assets tokenized: sample “asset passports,” issuance data, secondary trades, broker integrations.
+
+D) Token economics
+- Vesting schedules, lockups, emission schedules, burn policy specifics.
+- Treasury transparency: wallets, governance controls, reporting.
+
+E) Risks
+- Regulatory risk (real estate is jurisdiction-heavy).
+- Stablecoin risk (issuer/reserves/banking).
+- Market structure risk (global orderbook needs many venues & brokers to work).
+- Execution risk (moving from narrative to production infra is hard).
+
+============================================================
+13) SOURCES USED (PUBLIC LINKS)
+============================================================
+Official
+- Website: https://integralayer.com/
+- Team: https://integralayer.com/team
+- Whitepaper (GitBook): https://whitepaper.integralayer.com/
+
+Community / mirrors / technical
+- X mirror (profile + recent posts): https://www.muskviewer.com/integra_layer
+- Telegram channel mirror: https://t.me/s/integraofficial?before=69
+- GitHub org: https://github.com/Integra-layer
+
+Third-party coverage
+- Decrypt (Chainwire syndication): https://decrypt.co/345829/integra-announces-12b-aum-rwa-consortium-behind-real-estate-blockchain
+- Chainwire press release: https://chainwire.org/2025/10/24/integra-announces-12b-aum-rwa-consortium-behind-real-estate-blockchain/
