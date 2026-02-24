@@ -5,9 +5,26 @@ TICKER: $BYD (appears in official UI; RootData currently flags token as “not l
 CATEGORY: Bitcoin L1 interoperability / bridge infrastructure (BTCFi narrative)
 CHAIN: Bitcoin L1 + multi-chain connectivity via LayerZero (OFT-based “omnichain” pattern)
 STAGE: Pre-mainnet from a user perspective (public app in maintenance / mock-data mode; testnet milestone shipped, mainnet not yet live at time of research)
-NARRATIVE_TAGS: BTCFi, interoperability, bridge, cross-standard swaps, tri-directional bridging, security-first
-TVL_HINT: Unknown / not yet published (official UI shows “Total TVL: Soon” and mock analytics)
-ONE_LINER: Beyond positions itself as a native Bitcoin interoperability protocol that bridges assets to, from and within Bitcoin L1, including cross-standard conversion between multiple Bitcoin token standards.
+
+NARRATIVE_TAGS:
+- BTCFi
+- interoperability
+- bridge
+- cross-standard swaps
+- tri-directional bridging
+- security-first
+
+CT_ANGLE_ONE_LINER: Beyond positions itself as a native Bitcoin interoperability protocol that bridges assets to, from and within Bitcoin L1, including cross-standard conversion between multiple Bitcoin token standards.
+
+RISKS_SHORT:
+- Bridge-risk class is historically high-risk; Beyond uses multi-component lock/mint patterns that have been exploited across crypto.
+- Permissioned MPC/multisig “Forge” (11 signers, 7-of-11) concentrates trust and adds governance/censorship/availability risk until V2.
+- Token/incentive timelines appear in UI but are still evolving (“not listed” elsewhere); leaderboard incentives can attract farming.
+
+COMPARABLES:
+- LayerZero-powered OFT bridge stacks
+- Thorchain (cross-chain liquidity; different design but same “move assets across” user need)
+- Wormhole / Axelar (cross-chain messaging/bridging comps)
 
 ===============================================================================
 1) CORE VALUE PROP
@@ -33,7 +50,7 @@ ONE_LINER: Beyond positions itself as a native Bitcoin interoperability protocol
   - Markets itself as connecting Bitcoin to “80+ chains” and “500+ tokens,” while simultaneously labelling volume/TVL counters as “Soon,” signalling an in-progress launch rather than a live, scaled protocol.
 
 ===============================================================================
-3) KEY METRICS (CURRENTLY LIMITED / PROJECT-STATED)
+3) KEY METRICS (PUBLIC / APPROX / TIME-SENSITIVE)
 ===============================================================================
 - TVL: Not yet published in official analytics; site shows “Total TVL: Soon,” and analytics dashboard operates in mock-data mode.
 - Volume / usage: Leaderboard and analytics UIs show mock data and “Season One” framing with zero observed volume/transactions at capture time.
@@ -42,29 +59,63 @@ ONE_LINER: Beyond positions itself as a native Bitcoin interoperability protocol
 - Ecosystem scale (project-stated marketing):
   - Claims of “80+ chains” and “500+ tokens” connected are presented alongside “Soon” metrics; treat as forward-looking positioning, not current on-chain reality.
 
+(Always treat these as directional, not guaranteed.)
+
 ===============================================================================
 4) MAIN RISKS
 ===============================================================================
 - Bridge-design / smart contract risk:
-  - Implements a standard “lock on source / mint on destination” bridging pattern with multiple on-chain and off-chain components—a class historically associated with some of the largest exploits in crypto.
-  - Bridge-risk context: industry reports track multi‑billion USD losses from bridge-related incidents; design, implementation and monitoring quality matter materially.
+  - Implements a “lock on source / mint on destination” bridging pattern with multiple on-chain and off-chain components—a class historically associated with major exploits.
 - Custody, multisig and centralisation risk:
-  - Bitcoin-side “Forge” component is described as an MPC-backed multisig with 11 signers and a 7-of-11 threshold; V1 is explicit about being permissioned, with a V2 plan to move to staking-based permissionless operation.
-  - Guardian nodes and “private-key PoA multisig” approaches are positioned as security features, but also concentrate trust and introduce governance/censorship/availability questions.
+  - Bitcoin-side “Forge” component is described as an MPC-backed multisig with 11 signers and a 7-of-11 threshold; V1 is explicit about being permissioned, with a V2 plan toward staking-based permissionless operation.
+  - Guardian nodes and “private-key PoA multisig” approaches concentrate trust and introduce governance/censorship/availability questions.
 - Security process maturity:
-  - Docs reference at least one third-party audit (e.g. Zokyo, completed Q4 2024) and state that audits have been performed; breadth and recency of coverage should be rechecked near mainnet launch.
-  - Bug bounty: intent to run a program via Immunefi with timing tied to mainnet going live; exact scope/rewards should be verified once the program is active.
+  - Docs reference at least one third-party audit (e.g. Zokyo, completed Q4 2024); scope/recency should be rechecked near mainnet.
+  - Bug bounty intent via Immunefi is tied to mainnet going live; verify once active.
 - Token / incentives risk (if $BYD proceeds):
-  - $BYD appears in the UI while external data sources flag the token as “not listed,” suggesting status and timelines are still evolving.
-  - Volume- or leaderboard-based incentives can attract mercenary usage and wash-like patterns if not carefully designed with anti-sybil and anti-abuse rules.
+  - $BYD appears in the UI while external data sources flag the token as “not listed,” suggesting status/timelines are evolving.
+  - Leaderboard incentives can attract mercenary usage and wash-like patterns without strong anti-sybil/anti-abuse rules.
 
 ===============================================================================
 5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
 ===============================================================================
-- Emphasise:
+- Emphasize:
   - “Infrastructure, not hype”: Beyond as Bitcoin interoperability plumbing (BTC ↔ EVM and cross-standard on L1) rather than a pure token play.
-  - Cross-standard + tri-directional story: highlight conversion between Bitcoin token standards (e.g. inscriptions-era assets) and both inbound and outbound flows.
-  - Security posture as an ongoing process: audits, bug bounty plans and multisig/MPC are positives, but still require scrutiny.
+  - Cross-standard + tri-directional story: conversion between Bitcoin token standards and both inbound/outbound flows.
+  - Security posture as an ongoing process: audits, bug bounty plans, multisig/MPC are positives, but still require scrutiny.
+- Avoid:
+  - Fixed APYs, “risk-free bridge” language, or guaranteed yield narratives.
+  - Precise TVL/volume flexing while official dashboards are in mock-data mode and counters show “Soon.”
+  - Confident claims about token listings, TGE/mainnet dates, or % allocations beyond what official UI/docs clearly confirm.
+- Good reply angles / examples:
+  - “BTCFi needs safer, standard-aware bridges; Beyond is positioning to move assets into, out of and across Bitcoin L1.”
+  - “Worth tracking as it moves from mock-data to live: security reviews, bug bounty scope, and how they handle the Forge/guardian trust model.”
+  - “If execution lands, a cross-standard swap layer on Bitcoin could be a meaningful unlock for BTC-native liquidity.”
+
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Background:
+  - Public materials emphasise architecture and mission more than individual founders; verified GitHub org controls the beyond.tech domain and does not list public members.
+- Protocol architecture (per docs):
+  - Source-chain contracts on non-Bitcoin networks handle mint/burn flows for bridged assets.
+  - Bitcoin-side Forge locks/unlocks assets on L1 via a multisig/MPC arrangement.
+  - Roadmap includes a V2 transition from permissioned validator sets toward staking-based guardianship.
+- Interoperability stack (LayerZero + OFT):
+  - Uses LayerZero messaging and OFT tokens to keep supply unified across chains and avoid fragmented wrapped-token pools.
+  - LayerZero’s own Immunefi bounty supports the stack contextually, but does not guarantee safety for apps built on top.
+- Launch readiness:
+  - Third-party metadata cites a 2024 founding and a testnet milestone (Oct 17, 2024), but the official app still shows maintenance + mock-data mode, explaining why live TVL/volume metrics are absent at capture time.
+
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Official site & docs: beyond.markets, docs.beyond.markets / docs.beyond.tech (overview, security, audits, bug bounty, dev intro).
+- Official app: bridge, analytics, leaderboard pages showing maintenance/mock-data status.
+- Verified GitHub organisation: “beyond-btc.”
+- Interoperability context: LayerZero OFT documentation + LayerZero Immunefi bounty.
+- Bridge-risk context: research on cross-chain bridge hacks + DeFiLlama-style hack dashboards.
+- Third-party metadata: RootData timelines and “token not listed” status for $BYD.  - Security posture as an ongoing process: audits, bug bounty plans and multisig/MPC are positives, but still require scrutiny.
 - Avoid:
   - Fixed APYs, “risk-free bridge” language or guaranteed yield narratives—bridge infrastructure is historically high-risk.
   - Precise TVL/volume flexing when official dashboards are in mock-data mode and counters show “Soon.”
