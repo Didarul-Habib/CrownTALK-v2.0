@@ -1,0 +1,118 @@
+PROJECT_CARD_V1
+HANDLE: @MindoAI
+NAME: Mindo AI
+TICKER: N/A (no clearly confirmed official token; an unverified “MINDOAI” token exists on Solana and should be treated with high caution unless confirmed by official channels.)
+CATEGORY: InfoFi / attention economy / creator–project marketplace
+CHAIN: Multi-chain analytics orientation (uses on-chain + social + wallet data; not a TVL-focused DeFi protocol)
+STAGE: Live product (attention economy leaderboard + campaigns and creator rewards)
+NARRATIVE_TAGS: infofi, attention-economy, KOL-marketplace, on-chain-attribution, identity, rewards
+TVL_HINT: Not TVL-driven (no conventional DeFi TVL; value is in campaigns and reward pools, not liquidity)
+ONE_LINER: Performance-based Web3 creator–project marketplace that scores influence using on-chain and social metrics and routes campaign rewards to measurable outcomes.
+
+===============================================================================
+1) CORE VALUE PROP
+===============================================================================
+- Problem: Web3 “influence” is often measured by noisy vanity metrics (likes, followers, impressions) that can be farmed.
+- Solution: Mindo AI ranks creators and projects using a blend of attention metrics and on-chain signals, then routes campaign rewards based on measured outcomes instead of pure hype.
+- Differentiation: Public messaging emphasizes a wide measurement surface (200+ on-chain and social metrics) and attribution of content to concrete on-chain actions (e.g., swaps, staking, votes).
+- Why it matters now: InfoFi / attention-economy narratives are strong in cycles where CT is noisy and teams want measurable ROI on KOL spend; Mindo highlights sizable campaign pools and ongoing creator incentives.
+
+===============================================================================
+2) PRODUCT / CURRENT STATE
+===============================================================================
+- Live surface: Presented as a Web3 attention-economy leaderboard / analytics site with profiles for KOLs and projects and public leaderboards.
+- Leaderboards: Ranks KOLs and projects based on an internal attention / impact score, not just raw follower counts.
+- KOL onboarding: “Your first step toward the identity layer” messaging, with verification via X profile and connection of social accounts.
+- Social Card: “Your Social Card” concept that aggregates attention metrics and routes rewards from project pools for qualified creators.
+- Campaign and rewards:
+  - Runs campaign-based reward pools where creators compete on leaderboards and tasks to earn from project-specific pools.
+  - Scoring is described as combining content (posts, media) with on-chain actions tied to swaps, staking, governance-like behaviors.
+  - A “reward tasks” flow is referenced for multi-format content (e.g., video leaderboard) behind connected social accounts.
+- Claim / whitelist flows: Public references to a whitelist / claim page for campaign-specific rewards (e.g., “Claim your $TRIA rewards here”).
+- Main users:
+  - Creators / KOLs seeking performance-based campaign rewards and an “identity / reputation” profile for their impact.
+  - Web3 projects looking for a more accountable channel to discover creators and track campaign outcomes.
+- Notable integrations / partners (from public materials):
+  - RubyScore: case study describing integration of a multichain wallet scoring API for real-time wallet / reputation signals.
+  - Campaigns involving projects such as Fasset, DeepNodeAI, Rubic and others are mentioned in third-party and campaign write-ups (treat specifics as marketing unless cross-verified).
+
+===============================================================================
+3) KEY METRICS (APPROX / PUBLIC CLAIMS)
+===============================================================================
+- TVL: Not a conventional TVL-bearing protocol; main “value” is in campaign pools and reward distributions rather than locked liquidity.
+- Creator / user scale (project-stated):
+  - Public company descriptions claim Mindo AI “connects 250K+ creators with high-quality Web3 companies.”
+- Measurement surface (project-stated):
+  - Claims an AI scoring engine that analyzes “200+ on-chain and social metrics” to quantify influence, price impact and performance.
+- Reward pools and campaigns (project-stated):
+  - Public messaging claims that, in roughly one year, “more than $100M was distributed via InfoFi reward pools,” with campaign budgets ranging from ~15k to 150k+ USD-equivalent.
+  - A campaign announcement references a $250,000 token pool campaign with Fasset.
+- Token footprint (high caution):
+  - A “Mindo AI / MINDOAI” token listing on Solana is explicitly flagged as unverified and shows highly concentrated holdings; treat as non-canonical or experimental until official contract details are confirmed by Mindo AI.
+- IMPORTANT: All numbers above are project-stated marketing data unless independently audited; replies should treat them as directional, not guaranteed facts.
+
+===============================================================================
+4) MAIN RISKS
+===============================================================================
+- Smart contract / infra / gaming risk:
+  - Systems that score creators and allocate rewards based on measurable actions tend to attract optimization and farming; they require ongoing anti-sybil and anti-abuse defenses.
+  - Linking social content to on-chain actions (swaps, staking, voting) is non-trivial and may have edge cases or inaccuracies.
+- Platform dependency risk:
+  - KOL onboarding and identity framing rely heavily on X; changes in policies, APIs or rate limits can impact verification, data access and the reliability of scoring.
+- Token / emissions / airdrop risk:
+  - No clearly confirmed official token in the primary project messaging used here.
+  - Unverified token listings and “pre-TGE” or airdrop-tracker narratives create impersonation and scam risk; users can easily confuse unofficial tickers with canonical ones.
+  - Any points-based system or hints at future token rewards should NOT be treated as guaranteed airdrops, emissions or income.
+- Business / PMF risk:
+  - Competes in a crowded “InfoFi / creator rewards / KOL marketplace” segment where network effects (creators + projects) are critical.
+  - Sustained success depends on ongoing campaign budgets, trustworthy metrics and perceived fairness of scoring / reward allocation.
+- Centralization / governance risk:
+  - Scoring logic, metric weighting and eligibility rules are controlled by the platform operators, not an on-chain governance system.
+  - Reward distribution flows, claim pages and campaign rules may be upgradable or adjustable by the team, which introduces discretionary risk for participants.
+
+===============================================================================
+5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
+===============================================================================
+- Emphasize:
+  - “Results, not noise”: connect creators and projects with rewards tied to measurable performance instead of just impressions.
+  - On-chain attribution angle: scoring that combines social content with on-chain activity like swaps / staking / governance (but without claiming perfect attribution).
+  - Live, campaign-driven nature: highlight active campaigns, leaderboards and reward pools where creators compete on performance.
+  - Reputation / identity layer: Mindo is framed as part of an identity / reputation stack for Web3 creators and projects.
+- Avoid:
+  - Guaranteeing any specific income level, APR, or reward amount for all users.
+  - Claiming a confirmed airdrop, TGE date, listing date or token price target unless clearly stated by official channels and easily verifiable.
+  - Treating unverified token listings as official or telling people to buy them.
+- Good angles for replies:
+  - “Performance-based KOL marketplace that tries to link CT attention to real on-chain outcomes.”
+  - “Useful for teams that want a clearer view of which creators actually drive swaps / staking instead of just likes.”
+  - “Fits the broader InfoFi / attention-economy narrative without needing a pure DeFi TVL story.”
+  - “Remind people to stick to official links and be careful with any unverified ‘MINDOAI’ tokens or airdrop promises.”
+
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Background and positioning:
+  - Public descriptions present Mindo AI as founded around 2025, focused on data-driven KOL marketing and capital / ROI measurement.
+  - Team footprint appears small-to-mid sized based on public company metadata and profile footprints.
+- Mechanism design and “influence”:
+  - Core idea: quantify influence and price impact using a wide surface of on-chain and social metrics, then rank creators and projects accordingly.
+  - Scoring is described as combining content-level signals (posts, engagement) and on-chain actions linked to that content (swaps, staking, governance-like behavior).
+  - This makes the product closer to a performance-based marketplace and attribution system than a simple analytics dashboard.
+- Architecture / integration hints:
+  - The RubyScore case study states that Mindo AI integrated RubyScore’s multichain wallet scoring API to power real-time wallet reputation and profiling.
+  - This suggests that wallet-level quality / reputation metrics are part of the backend primitives alongside social scoring.
+- Identity layer framing:
+  - KOL onboarding is explicitly positioned as a step toward an “identity layer,” with X verification as a starting point.
+  - This aligns with broader InfoFi and reputation/identity narratives around tying actions and contributions to persistent reputational scores.
+- Token reality check:
+  - Public data across aggregators is inconsistent: some list “MINDOAI” tokens, while other trackers frame outcomes as points-based and “pre-TGE.”
+  - Safest stance: token status is not clearly confirmed by primary channels; treat any token listing as non-canonical unless the project’s official communications confirm contract addresses, supply and distribution plans.
+
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Official site and app surfaces (e.g., mindoshare.ai and its key pages such as KOL onboarding, Social Card, reward tasks, claim/whitelist flows).
+- Official X / social channels for Mindo AI and relevant campaign announcements.
+- Third-party project profiles and InfoFi / attention-economy write-ups that describe the product and mechanisms.
+- RubyScore documentation and case studies describing the multichain wallet scoring integration.
+- Token and airdrop trackers and listings (used only to assess risk and uncertainty around token status; not as confirmation of any official asset).
