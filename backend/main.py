@@ -4772,75 +4772,114 @@ def build_context_profile(raw_text: str, url: Optional[str] = None, tweet_author
             "script": script}
 
 
-def _rescue_two(tweet_text: str, lang_code: Optional[str] = None) -> List[str]:
-    """Ultra-safe last resort for when everything else fails.
-
-    This should be:
-    - language-aware (so native runs don't fall back to English)
-    - short (UI-friendly)
-    - non-cringe (no 'rn', 'tbh', etc.)
+def _rescue_two(tweet_text: str, lang_code: str | None = None) -> list[str]:
     """
-    # Prefer per-request target language, then caller override, then light detection.
-    lc = (lang_code or _get_target_lang() or _detect_lang_light(tweet_text) or "en").strip().lower()
-    script = (script_from_lang_code(lc) or "latn").strip().lower()
+    Ultra-safe last resort when everything else failed.
 
-    # Basic hint extraction (handles/cashtags/keywords) to avoid being totally generic.
-    base = re.sub(r"https?://\S+", "", tweet_text or "").strip()
-    hint = None
+    - Never raises.
+    - Works even if LLM providers are offline.
+    - Tries to stay on-topic via cheap local heuristics.
+    - Avoids slang like “rn”, “tbh”, etc.
+    """
     try:
-        ents = extract_entities(base)
-        handles = (ents.get("handles") or [])
-        cashtags = (ents.get("cashtags") or [])
-        if cashtags:
-            hint = str(cashtags[0]).strip()
-        elif handles:
-            hint = str(handles[0]).strip().lstrip("@")
+        raw = tweet_text or ""
+        raw_clean = re.sub(r"https?://\S+", "", raw).strip()
+
+        # Language / script guess
+        try:
+            current_target = _get_target_lang()  # may not exist on older builds
+        except Exception:
+            current_target = None
+
+        lang = (lang_code or current_target or _detect_lang_light(raw_clean or raw) or "en") or "en"
+        lang = lang.strip().lower()
+        script = (script_from_lang_code(lang) or "latn").lower()
+
+        # Very light “what is this about?” hint
+        try:
+            ents = extract_entities(raw_clean or raw)
+            hint = ""
+            if ents:
+                if getattr(ents, "cashtags", None):
+                    hint = ents.cashtags[0]
+                elif getattr(ents, "hashtags", None):
+                    hint = ents.hashtags[0].lstrip("#")
+                elif getattr(ents, "handles", None):
+                    hint = ents.handles[0].lstrip("@")
+                elif getattr(ents, "urls", None):
+                    hint = ents.urls[0]
+                elif getattr(ents, "keywords", None):
+                    hint = ents.keywords[0]
+            if not hint:
+                m = re.search(r"[A-Za-z][A-Za-z0-9_]{2,15}", raw_clean)
+                if m:
+                    hint = m.group(0)
+            if not hint and raw_clean:
+                hint = raw_clean[:24]
+        except Exception:
+            hint = ""
+
+        hint_for_en = (hint or "this").strip()
+        if len(hint_for_en) > 24:
+            hint_for_en = hint_for_en[:24]
+
+        # --- CJK fallbacks ---
+        if script in {"zh", "hani"}:
+            topic = (hint or raw_clean[:18] or "这个项目").strip()
+            if len(topic) > 18:
+                topic = topic[:18]
+
+            c1 = f"{topic}这个角度挺有意思，你怎么看？"
+            c2 = "接下来你最关注哪一个验证指标或观察维度？"
+            return [
+                trim_cjk_length(c1, 34),
+                trim_cjk_length(c2, 34),
+            ]
+
+        if script == "ja":
+            topic = (hint or raw_clean[:18] or "このテーマ").strip()
+            if len(topic) > 18:
+                topic = topic[:18]
+
+            c1 = f"{topic}の視点おもしろいですね。前提やリスクはどこだと思いますか？"
+            c2 = "次に一番注目すべき指標や検証の進め方って何でしょう？"
+            return [
+                trim_cjk_length(c1, 40),
+                trim_cjk_length(c2, 40),
+            ]
+
+        if script == "ko":
+            topic = (hint or raw_clean[:20] or "이 아이디어").strip()
+            if len(topic) > 24:
+                topic = topic[:24]
+
+            c1 = f"{topic} 관점이 꽤 흥미롭네요. 핵심 전제나 리스크는 뭐라고 보세요?"
+            c2 = "다음으로 가장 주목해야 할 지표나 검증 방법은 뭐라고 생각하세요?"
+            return [
+                enforce_word_count_natural(c1, 8, 24, script="latn"),
+                enforce_word_count_natural(c2, 8, 24, script="latn"),
+            ]
+
+        # --- Default English-style fallback ---
+        line1 = f"Interesting angle on {hint_for_en} — what’s the key assumption here?"
+        line2 = f"Curious what metric would prove {hint_for_en} is actually working."
+
+        a = enforce_word_count_natural(line1, 8, 18, script="latn")
+        b = enforce_word_count_natural(line2, 8, 18, script="latn")
+        if not a:
+            a = "Interesting angle — what’s the key assumption here?"
+        if not b:
+            b = "Curious what metric would prove it’s actually working."
+
+        return [a, b]
     except Exception:
-        hint = None
-    if not hint:
-        # fallback: first decent latin token (for EN), else generic
-        m = re.findall(r"[A-Za-z]{3,}", base)
-        hint = (m[0] if m else "this").strip()
+        # Absolute last ditch
+        return [
+            "Interesting angle — what’s the key assumption here?",
+            "Curious what metric would prove this is working.",
+        ]
 
-    # Script-specific ultra-safe pairs.
-    if script in ("zh",):
-        # Use a short, context-aware hint so native runs don't feel generic.
-        safe_hint = ""
-        if hint:
-            try:
-                safe_hint = re.sub(r"\s+", " ", str(hint)).strip()
-            except Exception:
-                safe_hint = str(hint).strip()
-            if len(safe_hint) > 24:
-                safe_hint = safe_hint[:24]
-        # If we have a usable hint (like a cashtag or handle), fold it into the question.
-        if safe_hint and safe_hint.lower() != "this":
-            a = f"{safe_hint} 这个点挺有意思，核心风险/前提是什么？"
-            b = f"接下来围绕 {safe_hint} 最值得关注的指标或验证方式是哪一个？"
-        else:
-            # Absolute last resort: keep them generic but still safe/short.
-            a = "这个点挺有意思，核心风险/前提是什么？"
-            b = "接下来最值得关注的指标或验证方式是哪一个？"
-        return [trim_cjk_length(a, 42), trim_cjk_length(b, 42)]
 
-    if script in ("ja",):
-        a = "面白い視点ですね。前提条件やリスクはどこですか？"
-        b = "次に注目すべき指標は何だと思いますか？"
-        return [trim_cjk_length(a, 42), trim_cjk_length(b, 42)]
-
-    if script in ("ko",):
-        a = "흥미로운 관점이네요. 핵심 전제나 리스크는 뭐예요?"
-        b = "다음으로 확인해야 할 지표는 뭐라고 보세요?"
-        return [enforce_word_count_natural(a, 6, 18, script=script), enforce_word_count_natural(b, 6, 18, script=script)]
-
-    # Default: English/Latin and other scripts we don't have templates for.
-    a = enforce_word_count_natural(f"Interesting angle on {hint} — what’s the key assumption here?", 6, 18, script=script)
-    b = enforce_word_count_natural(f"Curious what metric would prove {hint} is working.", 6, 18, script=script)
-    if not a:
-        a = "Interesting angle — what’s the key assumption here?"
-    if not b:
-        b = "Curious what metric would confirm it’s working."
-    return [a, b]
 def build_canonical_x_url(original_url: str, t: Any) -> str:
     """
     Build https://x.com/<handle>/status/<tweet_id> when possible.
