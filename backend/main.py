@@ -2660,7 +2660,7 @@ _CLAUSE_Q_STARTERS = [
     "where do you",
 ]
 
-def maybe_insert_clause_connector(text: str, *, max_words: int = 18, script: str = "latn") -> str:
+def maybe_insert_clause_connector(text: str, *, max_words: int = 18, script: str = "latn", lang_code: str = "en") -> str:
     """Fix common run-on joins between a statement and a question clause.
 
     Chooses one connector from: ", ", " — ", ", so " depending on context.
@@ -2698,7 +2698,8 @@ def maybe_insert_clause_connector(text: str, *, max_words: int = 18, script: str
     total_words = len(re.findall(r"[A-Za-z0-9']+", t))
     cond = prefix.lower().startswith(("if ", "when ", "while ", "unless "))
 
-    can_add_so = (total_words + 1) <= int(max_words)
+    lang_code = (lang_code or "en").strip().lower()
+    can_add_so = (total_words + 1) <= int(max_words) and lang_code.startswith("en")
 
     if cond:
         conn = ", "
@@ -3369,7 +3370,7 @@ def postprocess_comment(text: str, source: str) -> str:
     # LLM output: allow a bit more room and try hard not to cut mid-sentence.
     if source == "llm":
         out = smart_trim_words(text, 6, 18, soft_max=22)
-        out = maybe_insert_clause_connector(out, max_words=18, script="latn")
+        out = maybe_insert_clause_connector(out, max_words=18, script=script_from_lang_code(_get_target_lang()), lang_code=_get_target_lang())
         # best-effort: keep ? only if it looks like a question
         is_q = bool(re.search(r"\?\s*$", out))
         return enforce_terminal_punctuation(out, is_question=is_q)
@@ -5286,6 +5287,22 @@ def words(text: str) -> list[str]:
     # Fallback: whitespace tokenization for non-Latin scripts
     return [w for w in re.split(r"\s+", (text or "").strip()) if w]
 
+def len_ok_for_lang(text: str, lang_code: Optional[str] = None, *, min_words: int = 6, max_words: int = 18, min_cjk: int = 8, max_cjk: int = 60) -> bool:
+    """Length gate that works for both Latin and CJK scripts.
+    - Latin: word-based.
+    - CJK (zh/ja/ko): character-based (ignoring whitespace).
+    """
+    l = (lang_code or _get_target_lang() or "en").strip().lower()
+    script = script_from_lang_code(l)
+    t = (text or "").strip()
+    if not t:
+        return False
+    if script in ("zh", "ja", "ko"):
+        n = len(re.sub(r"\s+", "", t))
+        return int(min_cjk) <= n <= int(max_cjk)
+    return int(min_words) <= len(words(t)) <= int(max_words)
+
+
 def _sanitize_comment(raw: str) -> str:
     txt = re.sub(r"https?://\S+", "", raw or "")
     txt = re.sub(r"[@#]\S+", "", txt)
@@ -6815,9 +6832,9 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
         restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
         for c in candidates
     ]
-candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
-        # ---------- 5) If Groq output is thin, try to get diversity from Groq itself ----------
+    # ---------- 5) If Groq output is thin, try to get diversity from Groq itself ----------
     def _pick_second_from_groq(first_comment: str) -> str | None:
         """Ask Groq for a second, clearly different reply.
 
@@ -6855,7 +6872,7 @@ candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_l
         parsed = parse_two_comments_flex(second_raw)
         cand = parsed[0].strip() if parsed else second_raw
         cand = restore_decimals_and_tickers(enforce_word_count_llm(cand), tweet_text)
-        if not (6 <= len(words(cand)) <= 18):
+        if not len_ok_for_lang(cand, _get_target_lang(), min_words=6, max_words=18, min_cjk=8, max_cjk=60):
             return None
         return cand
 
@@ -6886,7 +6903,7 @@ candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_l
             restore_decimals_and_tickers(enforce_word_count_llm(b), tweet_text)
             for b in backup
         ]
-backup = enforce_unique(backup, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    backup = enforce_unique(backup, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     if not backup:
         # Absolute last resort: only here when Groq + offline both failed.
@@ -7015,7 +7032,7 @@ def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     raw = (resp.choices[0].message.content or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
-candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     if len(candidates) < 2:
         candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
@@ -7058,7 +7075,7 @@ def gemini_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
-candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     if len(candidates) < 2:
         candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
@@ -7120,7 +7137,7 @@ def mistral_two_comments(tweet_text: str, author: Optional[str], url: str = "") 
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
-candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     if len(candidates) < 2:
         candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
@@ -7187,7 +7204,7 @@ def cohere_two_comments(tweet_text: str, author: Optional[str], url: str = "") -
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
-candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     if len(candidates) < 2:
         candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
@@ -7249,7 +7266,7 @@ def huggingface_two_comments(tweet_text: str, author: Optional[str], url: str = 
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
-candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     if len(candidates) < 2:
         candidates = enforce_unique(candidates + safe_offline_two_comments(tweet_text, author), tweet_text=tweet_text)
@@ -7317,7 +7334,7 @@ def deepseek_two_comments(tweet_text: str, author: Optional[str], url: str = "")
     raw = (raw or "").strip()
     candidates = parse_two_comments_flex(raw)
     candidates = [restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text) for c in candidates]
-candidates = [postprocess_comment(c, "llm") for c in candidates]
+    candidates = [postprocess_comment(c, "llm") for c in candidates]
     candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     if len(candidates) < 2:
@@ -7469,7 +7486,7 @@ def openrouter_two_comments(tweet_text: str, author: Optional[str], url: str = "
         restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
         for c in candidates
     ]
-candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
+    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
     # Ensure we always end with 2
     if len(candidates) < 2:
@@ -7779,7 +7796,7 @@ def pro_kol_rewrite_pair(tweet_text: str, author: Optional[str], seed: list[str]
 
                 cand = parse_two_comments_flex(raw)
                 cand = [restore_decimals_and_tickers(enforce_word_count_llm(x), tweet_text) for x in cand]
-                cand = [x for x in cand if 6 <= len(words(x)) <= 18]
+                cand = [x for x in cand if len_ok_for_lang(x, _get_target_lang(), min_words=6, max_words=18, min_cjk=8, max_cjk=60)]
                 cand = [postprocess_comment(x, "llm") for x in cand]
                 # strict + variety pass
                 cand = enforce_unique(cand, tweet_text=tweet_text)
@@ -7965,8 +7982,16 @@ def generate_two_comments_with_providers(
     url = url or ""
 
     # Decide language for generation vs UI tagging
-    gen_lang = (target_lang or lang or "en").strip().lower()
-    lang_out = (out_lang_tag or gen_lang or "en").strip().lower()
+        # Decide language for generation vs UI tagging
+    lang_hint = (target_lang or lang or "").strip().lower()
+    if not lang_hint:
+        # If the frontend only sent a display tag, treat it as the generation language too.
+        tag = (out_lang_tag or "").strip().lower()
+        if tag and tag not in {"en", "en-us", "en-gb"}:
+            lang_hint = tag
+
+    gen_lang = (lang_hint or "en").strip().lower()
+    lang_out = ((out_lang_tag or "").strip().lower() or gen_lang or "en").strip().lower()
 
     # Make target language available to all LLM providers for this request
     try:
