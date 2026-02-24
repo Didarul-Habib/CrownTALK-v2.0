@@ -8262,42 +8262,23 @@ def generate_two_comments_with_providers(
         if rewritten and len(rewritten) == 2:
             final_pair = rewritten
 
-    # --- 6b) Optional inline English gloss for native-language output --------
+    
+    # --- 6b) Optional English gloss metadata for native-language output ----
+    translations_for_pair: list[str] = []
     try:
         lang_norm = (lang_out or "").strip().lower()
     except Exception:
         lang_norm = "en"
+
     if lang_norm and not lang_norm.startswith("en"):
         try:
-            translations = translate_comments_to_english(final_pair[:2], source_lang=lang_norm)
+            translations_for_pair = translate_comments_to_english(final_pair[:2], source_lang=lang_norm)
         except Exception as exc:  # noqa: BLE001
             logger.warning("translate_comments_to_english failed: %s", exc)
-            translations = []
-        if translations:
-            merged: list[str] = []
-            for orig, trans in zip(final_pair[:2], translations):
-                if not isinstance(orig, str):
-                    merged.append(orig)
-                    continue
-                t = (trans or "").strip() if isinstance(trans, str) else str(trans or "").strip()
-                if not t:
-                    merged.append(orig)
-                    continue
-                base = orig.strip()
-                # Avoid duplication if translation is essentially the same text
-                try:
-                    if sanitize_comment(base).lower() == sanitize_comment(t).lower():
-                        merged.append(base)
-                    else:
-                        merged.append(f"{base} ({t})")
-                except Exception:
-                    merged.append(f"{base} ({t})")
-            # Preserve any extra comments beyond the first two unchanged
-            if len(final_pair) > 2:
-                merged.extend(final_pair[2:])
-            final_pair = merged
-
-    # --- 7) Build final structured output ------------------------------------
+            translations_for_pair = []
+    else:
+        translations_for_pair = []
+# --- 7) Build final structured output ------------------------------------
     out: List[Dict[str, Any]] = []
 
     for idx, text in enumerate(final_pair[:2]):
@@ -8307,6 +8288,7 @@ def generate_two_comments_with_providers(
             {
                 "lang": lang_out,
                 "text": text,
+                "translation_en": ( (translations_for_pair[idx].strip() if isinstance(translations_for_pair, list) and idx < len(translations_for_pair) and isinstance(translations_for_pair[idx], str) and translations_for_pair[idx].strip() else None) ),
                 "reaction": ( (plan.get("comment_reactions") or [None, None])[idx] if isinstance(plan, dict) and idx < len((plan.get("comment_reactions") or [])) else None ),
                 "delay_sec": ( (plan.get("delays") or [0,0])[idx] if isinstance(plan, dict) and idx < len((plan.get("delays") or [])) else 0 ),
                 "mode": ( (plan.get("reaction_mode") if isinstance(plan, dict) else None) ),
@@ -8335,6 +8317,7 @@ def generate_two_comments_with_providers(
                     {
                         "lang": lang_out,
                         "text": c,
+                        "translation_en": None,
                         "reaction": None,
                         "delay_sec": 0,
                         "mode": None,
