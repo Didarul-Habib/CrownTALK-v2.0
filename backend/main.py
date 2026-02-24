@@ -4804,8 +4804,23 @@ def _rescue_two(tweet_text: str, lang_code: Optional[str] = None) -> List[str]:
 
     # Script-specific ultra-safe pairs.
     if script in ("zh",):
-        a = "这个点挺有意思，核心风险/前提是什么？"
-        b = "接下来最值得关注的指标或验证方式是哪一个？"
+        # Use a short, context-aware hint so native runs don't feel generic.
+        safe_hint = ""
+        if hint:
+            try:
+                safe_hint = re.sub(r"\s+", " ", str(hint)).strip()
+            except Exception:
+                safe_hint = str(hint).strip()
+            if len(safe_hint) > 24:
+                safe_hint = safe_hint[:24]
+        # If we have a usable hint (like a cashtag or handle), fold it into the question.
+        if safe_hint and safe_hint.lower() != "this":
+            a = f"{safe_hint} 这个点挺有意思，核心风险/前提是什么？"
+            b = f"接下来围绕 {safe_hint} 最值得关注的指标或验证方式是哪一个？"
+        else:
+            # Absolute last resort: keep them generic but still safe/short.
+            a = "这个点挺有意思，核心风险/前提是什么？"
+            b = "接下来最值得关注的指标或验证方式是哪一个？"
         return [trim_cjk_length(a, 42), trim_cjk_length(b, 42)]
 
     if script in ("ja",):
