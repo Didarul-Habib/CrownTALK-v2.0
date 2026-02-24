@@ -1,0 +1,119 @@
+PROJECT_CARD_V1
+HANDLE: @xeetdotai
+NAME: Xeet
+TICKER: N/A (no official fungible-token ticker is specified in public legal pages; rewards are described generically and can be paid in multiple forms)
+CATEGORY: InfoFi-adjacent / SocialFi (creator distribution + scoring/analytics + competitive tournaments)
+CHAIN: Creator Cards are issued as NFTs on Abstract; core scoring and leaderboards are primarily off-chain
+STAGE: Mainnet (live product) with BETA labeling on some legal/product surfaces
+NARRATIVE_TAGS: creator-tournaments, mindshare-distribution, reputation-scoring, creator-NFTs, anti-spam, anti-sybil, campaign-marketing
+TVL_HINT: N/A (not a DeFi TVL protocol; TVL framing does not meaningfully apply)
+ONE_LINER: Gamified creator competition platform where creators connect social accounts, get ranked in tournaments and leaderboards, and mint/trade Creator Card NFTs tied to identity and eligibility.
+
+===============================================================================
+1) CORE VALUE PROP
+===============================================================================
+- Problem: brands and projects struggle to identify and reward real creators while social platforms are noisy with bots, spam and incentivized posting loops.
+- Solution: Xeet runs tournaments and leaderboards that score creators based on connected social activity, then ties eligibility and rewards to performance in those competitions.
+- Differentiation: combines creator analytics/scoring, competitive tournaments, and an on-chain NFT layer (Creator Cards) plus explicit rules and a Creator Code of Conduct.
+- Why now: after X’s January 2026 move against “InfoFi” reward apps, any platform in this space must lean into compliance-aware, anti-spam and curated distribution models.
+
+===============================================================================
+2) PRODUCT / CURRENT STATE
+===============================================================================
+- Live product: creator tournaments and competitive leaderboards, scoring/analytics, creator “assets” (including NFTs), and campaign/marketing programs backed by legal Terms and a Privacy Policy.
+- Data ingestion: connects to social platforms (especially X) via OAuth, ingests permitted profile/content/engagement data and device/usage information to operate scores, rankings and discovery.
+- Creator Cards: transferable NFTs on Abstract governed by dedicated “Creator Cards Terms & Conditions and Creator Code of Conduct” that cover minting, transfers, rewards eligibility and prohibited behavior.
+- Marketplace signal: “Xeet Creator Cards” exist as an ERC‑1155 collection on Abstract on OpenSea, with live items, owners and trading activity.
+- Main users: creators competing for leaderboard placement and campaign eligibility, brands/projects seeking performance-based creator campaigns, and NFT users collecting or trading Creator Cards.
+- Integrations: relies on third‑party social platforms for data and on-chain infrastructure/wallets/marketplaces for the NFT layer; Privacy Policy explicitly mentions connecting X/Twitter, Discord, YouTube and collecting engagement data.
+- Status after X policy changes: Xeet publicly stated in January 2026 that campaigns were paused after X’s ban on incentivized posting apps while it assessed next steps.
+
+===============================================================================
+3) KEY METRICS (APPROX / PUBLIC ONLY)
+===============================================================================
+- TVL: not applicable in the DeFi sense; core KPI is creator and campaign activity, not capital locked.
+- Creator Cards footprint (example snapshot): OpenSea showed thousands of items, over one thousand owners and a non‑zero total volume for the Abstract collection at time of research (subject to rapid change).
+- Social footprint (example snapshot): third‑party analytics around late 2025 showed the @xeetdotai account with tens of thousands of followers and activity consistent with an actively used product brand.
+- Ecosystem tooling: a browser extension (“Xeet Viewer”) exposes Xeet scoring data inside X, indicating external developers are building around the scoring system.
+- All metrics should be treated as directional and time‑sensitive, not guarantees.
+
+===============================================================================
+4) MAIN RISKS
+===============================================================================
+- Platform dependency and policy risk: deeply reliant on X and other social networks for data and distribution; X’s 2026 ban on incentivized posting already forced campaigns to pause.
+- Scoring centralization and rule‑change risk: Terms reserve discretion to modify scoring/eligibility, disqualify participants or adjust outcomes for manipulation, introducing “policy volatility” and fairness perception risk.
+- Data privacy and profiling risk: collects tokens and engagement metadata to derive scores and rankings; automated processing influences discovery and tournament outcomes and must be handled with strong privacy/compliance practices.
+- Smart contract and NFT marketplace risk: Creator Cards as NFTs expose users to standard on‑chain risks (wallet compromise, phishing, irreversible transactions, third‑party marketplace issues) which Xeet cannot fully control.
+- Token confusion / impersonation risk: unrelated “Xeet AI (XEET)” tokens on BSC and similar may mislead users; there is no evidence in Xeet’s own legal pages that such tokens are official.
+- Compliance and KYC risk: Terms and Creator Cards docs allow KYC/verification and sanctions screening; while helpful for compliance, they add friction and uncertainty for participants expecting permissionless rewards.
+
+===============================================================================
+5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
+===============================================================================
+- Emphasize:
+  - Creator tournaments + analytics + on‑chain Creator Cards as the core story, not simple “post‑to‑earn” farming.
+  - Focus on distribution, reputation and competition rather than token speculation.
+  - Acknowledge the reality of X’s InfoFi‑related policy changes and that the platform has had to adapt.
+- Avoid:
+  - Claiming there is an official XEET token or promoting any unverified token as official.
+  - Promising fixed payouts, guaranteed airdrops, or “risk‑free” returns.
+  - Stating or implying affiliation with or endorsement by X.
+- Good angles for replies:
+  - “Turns creator reach into structured tournaments, leaderboards and on‑chain Creator Cards instead of pure engagement spam.”
+  - “Interesting attempt to keep creator distribution and tournaments alive while adapting to stricter InfoFi rules on X.”
+  - “Worth watching how they balance gamification, anti‑spam rules and compliance in a post‑InfoFi‑ban environment.”
+
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Operator: public legal docs name “Xeet Corp.” as the operator, with Terms and Privacy Policy effective June 6, 2025 and Creator Cards terms updated February 11, 2026; Delaware law is referenced for disputes.
+- Scoring model description: Privacy Policy explicitly states the service derives scores, rankings and classifications via automated processing of connected‑account data, which affects discovery and tournament outcomes; users can in some cases request information or object.
+- Hybrid architecture: scoring and leaderboards are off‑chain; Creator Cards are on‑chain NFTs, creating an identity/eligibility credential that pairs with off‑chain metrics.
+- Team notes: third‑party databases list specific founders/co‑founders and categorize Xeet as InfoFi/SocialFi, but these should be treated as secondary sources, not primary confirmations.
+- Ecosystem context: January 2026 X policy changes heavily impacted InfoFi‑style apps, pushing the category toward smaller, more curated or compliance‑aware products.
+
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Official site and app surfaces (xeet.ai), including Terms of Service, Privacy Policy, and Creator Cards Terms & Code of Conduct.
+- Official X account @xeetdotai and public statements about pausing campaigns after X’s policy update.
+- OpenSea collection for “Xeet Creator Cards” on Abstract and individual item pages.
+- Reputable news and analysis on X’s ban of incentivized posting apps and its impact on InfoFi platforms.
+- Third‑party analytics/databases tracking Xeet’s social metrics and founder information (use cautiously).- Data privacy and profiling risk: collects tokens and engagement metadata to derive scores and rankings; automated processing influences discovery and tournament outcomes and must be handled with strong privacy/compliance practices.
+- Smart contract and NFT marketplace risk: Creator Cards as NFTs expose users to standard on‑chain risks (wallet compromise, phishing, irreversible transactions, third‑party marketplace issues) which Xeet cannot fully control.
+- Token confusion / impersonation risk: unrelated “Xeet AI (XEET)” tokens on BSC and similar may mislead users; there is no evidence in Xeet’s own legal pages that such tokens are official.
+- Compliance and KYC risk: Terms and Creator Cards docs allow KYC/verification and sanctions screening; while helpful for compliance, they add friction and uncertainty for participants expecting permissionless rewards.
+
+===============================================================================
+5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
+===============================================================================
+- Emphasize:
+  - Creator tournaments + analytics + on‑chain Creator Cards as the core story, not simple “post‑to‑earn” farming.
+  - Focus on distribution, reputation and competition rather than token speculation.
+  - Acknowledge the reality of X’s InfoFi‑related policy changes and that the platform has had to adapt.
+- Avoid:
+  - Claiming there is an official XEET token or promoting any unverified token as official.
+  - Promising fixed payouts, guaranteed airdrops, or “risk‑free” returns.
+  - Stating or implying affiliation with or endorsement by X
+- Good angles for replies:
+  - “Turns creator reach into structured tournaments, leaderboards and on‑chain Creator Cards instead of pure engagement spam.”
+  - “Interesting attempt to keep creator distribution and tournaments alive while adapting to stricter InfoFi rules on X.”
+  - “Worth watching how they balance gamification, anti‑spam rules and compliance in a post‑InfoFi‑ban environment.”
+
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Operator: public legal docs name “Xeet Corp.” as the operator, with Terms and Privacy Policy effective June 6, 2025 and Creator Cards terms updated February 11, 2026; Delaware law is referenced for disputes.
+- Scoring model description: Privacy Policy explicitly states the service derives scores, rankings and classifications via automated processing of connected‑account data, which affects discovery and tournament outcomes; users can in some cases request information or object.
+- Hybrid architecture: scoring and leaderboards are off‑chain; Creator Cards are on‑chain NFTs, creating an identity/eligibility credential that pairs with off‑chain metrics.
+- Team notes: third‑party databases list specific founders/co‑founders and categorize Xeet as InfoFi/SocialFi, but these should be treated as secondary sources, not primary confirmations.
+- Ecosystem context: January 2026 X policy changes heavily impacted InfoFi‑style apps, pushing the category toward smaller, more curated or compliance‑aware products.
+
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Official site and app surfaces (xeet.ai), including Terms of Service, Privacy Policy, and Creator Cards Terms & Code of Conduct.
+- Official X account @xeetdotai and public statements about pausing campaigns after X’s policy update.
+- OpenSea collection for “Xeet Creator Cards” on Abstract and individual item pages.
+- Reputable news and analysis on X’s ban of incentivized posting apps and its impact on InfoFi platforms.
+- Third‑party analytics/databases tracking Xeet’s social metrics and founder information (use cautiously).
