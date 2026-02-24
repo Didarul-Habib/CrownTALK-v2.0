@@ -1,0 +1,98 @@
+PROJECT_CARD_V1
+HANDLE: @x__score
+NAME: Wallchain X Score
+TICKER: N/A (X Score is a metric/extension, not a token)
+CATEGORY: InfoFi / AttentionFi (influence scoring + creator/brand growth tooling)
+CHAIN: N/A for X Score itself (metric on X); broader Wallchain ecosystem connects wallets and on-chain data across multiple chains
+STAGE: Mature (public scoring system + live Chrome extension; actively updated)
+NARRATIVE_TAGS: attentionfi, infofi, creator-economy, reputation-scoring, anti-bot, mindshare
+TVL_HINT: N/A (not a TVL-based DeFi protocol)
+ONE_LINER: Wallchain X Score is a 0–1000 influence score (plus a Chrome extension to view it) designed to identify authentic crypto influence on X using a connectivity-graph approach instead of vanity metrics.
+
+===============================================================================
+1) CORE VALUE PROP
+===============================================================================
+- Problem: follower counts and raw engagement on X are easy to fake; brands struggle to identify genuinely influential accounts.
+- Solution: X Score ranks accounts based on a Crypto Twitter Connectivity Graph (CTCG), using actions like retweets, follows and replies to infer proximity to influential “seed” accounts.
+- Differentiation: puts graph structure and interaction quality at the centre, rather than follower counts; algorithm uses exponential decay to reduce the value of repetitive/low-quality actions.
+- Why now: fits the InfoFi/AttentionFi push to measure narrative impact on CT and to make influencer discovery and campaign attribution more data-driven.
+
+===============================================================================
+2) PRODUCT / CURRENT STATE
+===============================================================================
+- X Score metric:
+  - Accounts receive a score between 0 and 1000; docs state that a score of ~100 corresponds roughly to the top 1% of Crypto Twitter.
+  - Score updates over time based on changes in the connectivity graph.
+- Chrome extension:
+  - Lets users see their own X Score, observe changes over time and view scores on other X profiles.
+  - Chrome Web Store listing markets it as “Quantify influence on X” and emphasises follower quality and real engagement signals.
+- Wallchain ecosystem:
+  - X Score is one module; others include Quacks (daily recognition/rewards for high-quality content) and mindshare leaderboards.
+  - Leaderboards rank accounts based on “quality-weighted attention” and update daily; partner campaigns (e.g. with Genome, Covalent) have run on top of this system.
+- Users:
+  - Brands/protocols use X Score and associated APIs for influencer discovery, campaign analytics and mindshare tracking.
+  - Creators/KOLs use X Score as a proof-of-impact and lean into Quacks/leaderboards as recognition and potential rewards.
+
+===============================================================================
+3) KEY METRICS (APPROX / PUBLIC ONLY)
+===============================================================================
+- Extension adoption:
+  - Chrome Web Store lists tens of thousands of users (e.g. ~20k installs on a recent snapshot) with a high rating (around 4.9/5) and recent version updates.
+  - Wallchain’s own social/LinkedIn posts claim higher cumulative install numbers (e.g. 30k+ X Score installs as of late 2025); treat as directional marketing data.
+- Social footprint:
+  - Third-party analytics show @x__score with tens of thousands of followers and an account age going back to 2023 (exact figures drift over time).
+- Scale heuristic:
+  - Docs explicitly highlight that “100 out of 1000” is roughly top-1% for Crypto Twitter, which is a helpful mental model for interpreting scores.
+
+===============================================================================
+4) MAIN RISKS
+===============================================================================
+- Model and infra risk:
+  - X Score is an off-chain, proprietary scoring model; errors, changes in seeds/weights, or data issues can materially alter scores.
+  - Broader Wallchain services involve wallet connections and on-chain data; any integration bugs or misconfigurations can impact privacy and UX.
+- Governance and centralisation risk:
+  - Scoring depends on seed-set choices, weighting schemes and decay parameters, all controlled by the operator; rules can change.
+  - Wallchain’s privacy policy describes model outputs as experimental and potentially biased; treating the score as objective truth is risky.
+- Token / incentive risk:
+  - X Score is not a token, but the ecosystem references Quacks, reward pools and a potential $QUACK token/presale in separate flows.
+  - Points/presale mechanics can attract farming, bots and impersonators; users must be careful with unofficial links and lookalike tokens.
+- Business / PMF risk:
+  - The InfoFi/attention-measurement space is competitive; sustained adoption depends on score quality, fraud resistance and partner ecosystem depth.
+
+===============================================================================
+5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
+===============================================================================
+- Emphasise:
+  - “Signal over vanity”: X Score’s goal is to surface genuine influence using graph connectivity and engagement quality instead of raw follower counts.
+  - Role in campaigns: useful as a heuristic for brands to screen KOLs and track mindshare in campaigns and leaderboard programmes.
+  - Daily-updating and no-opt-in: creators don’t have to pre-register to be scored; the extension is simply a way to see and use the metric.
+- Avoid:
+  - Claims that X Score is “perfectly accurate,” “un-gameable,” or a guarantee of selection in campaigns.
+  - Promising fixed earnings, airdrops or token allocations tied directly to X Score.
+- Good reply angles:
+  - “Helps filter out botted vanity metrics and focus on who actually moves CT conversations.”
+  - “Handy heuristic for teams running KOL campaigns and mindshare leaderboards.”
+  - “Part of a broader AttentionFi stack (X Score, Quacks, leaderboards) rather than a standalone token.”
+
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Algorithm characteristics (from docs):
+  - Uses a graph of Crypto Twitter where edges come from actions like follows, retweets and replies.
+  - Influence flows across the graph; interacting with high-score accounts tends to increase your score more than interacting with low-score accounts.
+  - Exponential decay reduces the value of repetitive interactions and mitigates simple farming strategies.
+- Extension behaviour:
+  - Optional but convenient; the extension surfaces the score contextually in the X UI and lets users track changes over time.
+  - The extension does not control the scoring algorithm; it simply displays data from the Wallchain backend.
+- Ecosystem context:
+  - X Score is the “anchor metric” for other Wallchain modules such as Quacks and mindshare leaderboards.
+  - Partner campaigns (e.g. Covalent, Genome) demonstrate real usage in branded reward programmes and narrative campaigns.
+
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Wallchain docs: X Score overview, extension guide, use cases and privacy policy.
+- Chrome Web Store listing for Wallchain X Score.
+- Official X account: @x__score.
+- Partner announcements and campaigns (e.g. Covalent, Genome) describing mindshare leaderboards and reward structures.
+- Third-party directories and profiles listing Wallchain X Score as an InfoFi/AttentionFi product.
