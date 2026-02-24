@@ -1,0 +1,126 @@
+PROJECT_CARD_V1
+HANDLE: @Polymarket
+NAME: Polymarket
+TICKER: N/A (official help centre states there is no token and no announced TGE/airdrop)
+CATEGORY: Prediction markets / event contracts (on-chain settlement + exchange-style UX)
+CHAIN: Polygon PoS (USDC.e collateral on chain; deposits/withdrawals via bridges/multi-network routes)
+STAGE: Mature live platform with an international venue plus a separate U.S. DCM-regulated venue
+NARRATIVE_TAGS: prediction-markets, event-contracts, CLOB, UMA-optimistic-oracle, gasless-UX, InfoFi, sports-and-politics
+TVL_HINT: Hundreds of millions in TVL/open interest (e.g. ~300M–400M range on DeFiLlama snapshots; highly time-sensitive)
+ONE_LINER: Non-custodial prediction market where users trade tokenised outcomes of real-world events and prices between $0 and $1 behave like implied probabilities.
+
+===============================================================================
+1) CORE VALUE PROP
+===============================================================================
+- Turns “what will happen?” questions into tradeable markets, where prices reflect crowd-implied odds.
+- Uses a central limit order book (CLOB) with off-chain matching and on-chain settlement instead of AMM pools.
+- Each $1 USDC.e of collateral is split into fully collateralised outcome tokens (Yes/No or multi-outcome) that settle via smart contracts.
+- Resolution is handled through UMA’s Optimistic Oracle with a dispute/bond process, not a central arbiter.
+- Why it matters now: prediction markets have moved from niche to “information infrastructure” with large event-driven activity (elections, macro, sports, crypto narratives) and mainstream distribution partners.
+
+===============================================================================
+2) PRODUCT / CURRENT STATE
+===============================================================================
+- Dual-platform structure:
+  - International platform at polymarket.com: not CFTC-regulated; accessible only from permitted jurisdictions.
+  - Polymarket US: a separate venue operated by QCX LLC d/b/a Polymarket US, listed as a CFTC-regulated Designated Contract Market (DCM).
+- Trading mechanics (international platform):
+  - CLOB-based matching: users place limit orders; the mid price is treated as the market-implied probability.
+  - Hybrid-decentralised design: matching and orderbook operations are off-chain; settlement and collateral accounting are on-chain.
+  - Collateral: USDC.e on Polygon; each $1 creates a pair of conditional tokens (Yes/No) using the Gnosis Conditional Token Framework (ERC-1155).
+  - Wallet model: “smart” proxy wallets on Polygon controlled by the user’s EOA or Magic-link-style login; users retain non-custodial control of funds and positions.
+- Resolution and oracle:
+  - Markets have pre-defined resolution criteria in their descriptions.
+  - UMA Optimistic Oracle allows anyone to propose an outcome (with a bond) and anyone to dispute; disputes can escalate to UMA governance.
+  - Challenge windows and bond sizes are documented; disputes are time-bound but can introduce delays on ambiguous questions.
+- Incentives and fees:
+  - Most markets are fee-free; selected markets charge taker fees used to fund maker rebates.
+  - Liquidity rewards pay makers based on how competitive and useful their resting orders are.
+  - Long-duration “Holding Rewards” exist for some markets, with an annualised rate sampled and streamed as variable rewards.
+- Builder / integrator surface:
+  - Official REST/WebSocket APIs plus TypeScript/Python SDKs.
+  - Builder Program with attribution, fee-sharing and access to gasless flows via relayers.
+- Geographic and access controls:
+  - API docs include a geoblock endpoint; broad geoblocking (including the U.S.) applies to order placement on the international platform.
+  - U.S. access is being channelled through the regulated DCM path with a waitlist, app and intermediated access model.
+
+===============================================================================
+3) KEY METRICS (APPROX / PUBLIC SNAPSHOTS)
+===============================================================================
+- TVL / open interest:
+  - DeFiLlama snapshots around early 2026 show mid–hundreds of millions of USD in TVL and open interest on Polygon for Polymarket.
+  - Treat these as directional and highly time-sensitive.
+- Volume:
+  - DeFiLlama’s 30-day volume snapshots have reported multi-billion USD ranges (e.g. low single-digit billions) across recent 30-day windows.
+  - Polymarket press and media coverage have referenced “billions” in notional trading over half-year periods.
+- User activity:
+  - Third-party reporting (e.g. crypto media) has cited peak periods with hundreds of thousands of monthly active traders, particularly around major elections.
+- Interpretation:
+  - All of the above are snapshot metrics, not guarantees.
+  - For replies, it is safer to say “hundreds of millions in TVL/open interest and multi-billion dollar volumes” rather than quoting a single exact number.
+
+===============================================================================
+4) MAIN RISKS
+===============================================================================
+- Smart contract and infra risk:
+  - Multiple contracts (Conditional Tokens, Exchange, adapters, wallet factories) and infrastructure components (matching engine, relayer) form a non-trivial attack surface.
+  - Bugs or misconfigurations could affect settlement or capital safety.
+- Hybrid centralisation risk:
+  - Off-chain matching and relayer services mean performance and UX depend on Polymarket’s infrastructure; downtime or misalignment can disrupt trading.
+  - Maker/taker fees, rewards and market listings are centrally configured knobs.
+- Oracle and governance risk:
+  - UMA Optimistic Oracle introduces a dispute/bond game; ambiguous question wording or contested data sources can lead to contentious resolutions.
+  - Governance outcomes and community sentiment can influence perceived fairness of markets and outcomes.
+- Regulatory and geo risk:
+  - International platform has broad geoblocking and is explicitly described as not CFTC-regulated.
+  - Past CFTC enforcement included a civil penalty and wind-down of certain markets; any future regulatory shifts could impact availability, products or design.
+  - State-level or international legal actions (e.g. at the U.S. state level) can still affect market availability even with a DCM path.
+- Market integrity and “epistemic” risk:
+  - Concerns about insider trading in sensitive markets (e.g. geopolitics, war, regulatory actions).
+  - Academic and media critiques highlight that a single market price can “launder” disagreement and capital asymmetry into a clean-looking probability.
+
+- Token / scam risk:
+  - Polymarket’s official stance is “no token” and “no announced TGE/airdrop.”
+  - Main risk is fake tokens and scam airdrops exploiting the brand.
+
+===============================================================================
+5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
+===============================================================================
+- Emphasise:
+  - “Information market with skin in the game”: prices as crowd-implied probabilities that update in real time.
+  - Exchange-style mechanics: orderbook trading, fully collateralised outcome tokens, and on-chain settlement.
+  - Maturity of the stack: widely used product with public docs, SDKs, liquidity programmes and visible depth compared to most on-chain prediction apps.
+  - Regulatory nuance: distinction between the international platform and the Polymarket US DCM-regulated venue.
+- Avoid:
+  - Claiming that there is or will be a token/airdrop unless the official help centre explicitly changes its stance.
+  - Guaranteed returns (even for holding or liquidity programmes); parameters are variable and can be changed.
+  - Statements like “legal everywhere” or “anyone can trade,” ignoring published geographic restrictions.
+- Good angles for replies:
+  - “Polymarket is basically an exchange for probabilities—markets on real-world events with prices between $0 and $1.”
+  - “Helps turn noisy narratives around elections, sports or crypto into a single live market signal.”
+  - “Interesting to see prediction markets go mainstream with big-name partnerships instead of staying a niche degen toy.”
+
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Regulatory arc (high-level):
+  - Launched as a crypto-native prediction market in 2020.
+  - In early 2022, the CFTC enforced against earlier U.S. activity, resulting in a civil penalty and wind-down order.
+  - In 2025, Polymarket announced acquiring QCEX/QCX to pursue a regulated DCM path; CFTC listings show QCX LLC as a DCM operating as Polymarket US.
+  - Later in 2025, major news outlets reported a planned ICE (Intercontinental Exchange, NYSE owner) investment and partnership around event-driven data and tokenisation.
+- Technical design highlights:
+  - On-chain settlement on Polygon using the Gnosis Conditional Token Framework (CTF) and UMA.
+  - “Negative risk” markets increase capital efficiency by allowing conversions between outcome exposures within the same event.
+  - Gasless transactions for end users are enabled via relayers for partner apps and builders.
+- Social impact and debate:
+  - Ongoing discussion around whether prediction markets improve public understanding or simply add speculative pressure.
+  - Debates about insider trading, ethics of markets on sensitive topics, and the epistemic status of “market probability” as a truth proxy.
+
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Polymarket official docs and help centre (market structure, resolution, fees, holding rewards, token status).
+- Polymarket contract-address documentation and technical references for CTF, Exchange, adapters and UMA integration.
+- DeFiLlama protocol dashboard for Polymarket (TVL/open interest/volume/fees snapshots).
+- CFTC enforcement orders and DCM listings for QCX/Polymarket US.
+- Press coverage: X partnership, ICE investment, MLS and other sports/media partnerships, plus investigative pieces and academic work on prediction markets.
