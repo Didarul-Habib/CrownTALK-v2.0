@@ -1984,18 +1984,60 @@ def _coingecko_price(coin_id: str) -> Optional[dict]:
 
 
 # ------------------------------------------------------------------------------
-# Optional Groq (free-tier). If not set, we run fully offline.
+# Optional Groq (free-tier or paid). If not set, we run fully offline.
 # ------------------------------------------------------------------------------
-GROQ_API_KEY = os.getenv("GROQ_API_KEY")
-USE_GROQ = bool(GROQ_API_KEY)
+# Backwards-compatible:
+# - GROQ_API_KEY: legacy single key (still works)
+# - GROQ_API_KEY_FREE / GROQ_API_KEY_PAID: optional split keys
+# - GROQ_MODE: "free" / "paid" / "auto" (default "auto")
+GROQ_API_KEY_LEGACY = os.getenv("GROQ_API_KEY")
+GROQ_API_KEY_FREE = os.getenv("GROQ_API_KEY_FREE") or GROQ_API_KEY_LEGACY
+GROQ_API_KEY_PAID = os.getenv("GROQ_API_KEY_PAID") or ""
+GROQ_MODE = (os.getenv("GROQ_MODE", "auto") or "auto").strip().lower()
+GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_SERVICE_TIER = (os.getenv("GROQ_SERVICE_TIER", "") or "").strip() or None
+
+def _choose_groq_key() -> tuple[Optional[str], str]:
+    """Decide which Groq key to use.
+
+    Returns (api_key, mode_label) where mode_label is "free", "paid",
+    "legacy" or "disabled" (for observability only).
+    """
+    # explicit modes first
+    if GROQ_MODE == "paid" and GROQ_API_KEY_PAID:
+        return GROQ_API_KEY_PAID, "paid"
+    if GROQ_MODE == "free" and GROQ_API_KEY_FREE:
+        return GROQ_API_KEY_FREE, "free"
+
+    # auto mode: prefer paid if available, then free/legacy
+    if GROQ_MODE == "auto":
+        if GROQ_API_KEY_PAID:
+            return GROQ_API_KEY_PAID, "paid"
+        if GROQ_API_KEY_FREE:
+            label = "free" if os.getenv("GROQ_API_KEY_FREE") else "legacy"
+            return GROQ_API_KEY_FREE, label
+
+    # fallback: any key we have
+    key = GROQ_API_KEY_PAID or GROQ_API_KEY_FREE
+    if key:
+        label = "paid" if key == GROQ_API_KEY_PAID else "free"
+        return key, label
+
+    return None, "disabled"
+
+_GROQ_API_KEY, _GROQ_MODE_LABEL = _choose_groq_key()
+USE_GROQ = bool(_GROQ_API_KEY)
+
 if USE_GROQ:
     try:
         from groq import Groq
-        _groq_client = Groq(api_key=GROQ_API_KEY)
+        _groq_client = Groq(api_key=_GROQ_API_KEY)
     except Exception:
         _groq_client = None
         USE_GROQ = False
-GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+else:
+    _groq_client = None
+
 # Groq pacing / backoff (to avoid falling back too quickly)
 GROQ_MIN_INTERVAL = float(os.getenv("GROQ_MIN_INTERVAL_SECONDS", "1.0"))  # spacing between calls
 GROQ_MAX_RETRIES = int(os.getenv("GROQ_MAX_RETRIES", "4"))               # how many times to retry one call
@@ -2114,13 +2156,16 @@ def groq_chat_limited(*, messages, max_tokens: int, temperature: float, n: int =
 
             # Now perform the API call without holding the global lock
             try:
-                resp = _groq_client.chat.completions.create(
+                kwargs = dict(
                     model=model or GROQ_MODEL,
                     messages=messages,
                     n=n,
                     max_tokens=max_tokens,
                     temperature=temperature,
                 )
+                if GROQ_SERVICE_TIER:
+                    kwargs["service_tier"] = GROQ_SERVICE_TIER
+                resp = _groq_client.chat.completions.create(**kwargs)
                 # Clear cooldown on success (best-effort)
                 try:
                     with _with_file_lock(lock_path):
@@ -6898,15 +6943,14 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
             "Return just the reply text, no numbering, no quotes."
         )
         try:
-            second_resp = _groq_client.chat.completions.create(
-                model=GROQ_MODEL,
+            second_resp = groq_chat_limited(
                 messages=[
                     {"role": "system", "content": sys_prompt},
                     {"role": "user", "content": followup_user},
                 ],
-                n=1,
                 max_tokens=120,
                 temperature=0.9,
+                n=1,
             )
         except Exception as exc:  # noqa: BLE001
             logger.warning("Groq second-comment call failed: %s", exc)
