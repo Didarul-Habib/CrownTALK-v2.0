@@ -1459,6 +1459,7 @@ BACKEND_PUBLIC_URL = os.environ.get("BACKEND_PUBLIC_URL", "https://crowntalk.onr
 # Batch & pacing (env-tunable)
 BATCH_SIZE = int(os.environ.get("BATCH_SIZE", "25"))                 # ← process N at a time
 PER_URL_SLEEP = float(os.environ.get("PER_URL_SLEEP_SECONDS", "0.0"))  # ← sleep after every URL
+CONTEXT_JSON_MAX_CHARS = int(os.getenv("CONTEXT_JSON_MAX_CHARS", "2000") or "2000")
 MAX_URLS_PER_REQUEST = int(os.environ.get("MAX_URLS_PER_REQUEST", "20"))  # ← hard cap per request
 
 KEEP_ALIVE_INTERVAL = int(os.environ.get("KEEP_ALIVE_INTERVAL", "600"))
@@ -5004,10 +5005,11 @@ def fetch_thread_context(url: str, tweet_data: Any | None = None) -> Optional[di
         "parent_text": parent_text,
     }
 
+
 def _build_context_json_snippet() -> str:
     """
     Construct a compact JSON blob with thread + research context.
-    Injected into every provider prompt.
+    Injected into every provider prompt as a short, machine-friendly hint.
     """
     ctx: dict[str, Any] = {}
     thread_ctx = REQUEST_THREAD_CTX.get(None)
@@ -5027,12 +5029,17 @@ def _build_context_json_snippet() -> str:
         blob = str(ctx)
 
     # Keep it reasonably small for prompts
+    max_chars = CONTEXT_JSON_MAX_CHARS
+    if not isinstance(max_chars, int) or max_chars <= 0:
+        max_chars = 2000
+
     return (
-        "\n\nExtra context (JSON, for grounding; "
-        "you may quote from it but MUST NOT invent beyond it):\n"
-        + blob[:2000]
+        "\n\nGrounding context (JSON; you may quote from it but MUST NOT invent beyond it):\n"
+        + blob[:max_chars]
     )
 
+
+# ==== Tweet analysis layer (Groq pre-pass) ====================================
 # ==== Tweet analysis layer (Groq pre-pass) ====================================
 # This is a lightweight “brain” that classifies the tweet (meme, greeting,
 # sarcasm, etc.) so the main LLM can respond more intelligently.
@@ -5212,17 +5219,19 @@ def analyze_tweet_with_groq(tweet_text: str) -> TweetAnalysis | None:
     return analysis
 
 
+
 def _build_comment_user_prompt(
     tweet_text: str,
     analysis: Optional[TweetAnalysis],
     url: str = "",
 ) -> str:
     """
-    Build the user prompt for LLM comment generation, with:
-    - raw tweet text
-    - optional structured analysis (tone, sarcasm, sentiment, type)
-    - extra context from vx / research (thread, author, etc.)
-    - optional reaction plan (reaction types + diversity)
+    Build the user prompt for LLM comment generation.
+
+    This function focuses on:
+    - Passing the raw tweet text.
+    - Supplying compact analysis / context / reaction hints.
+    - Keeping wording short so we don't waste tokens.
     """
     tweet_text = (tweet_text or "").strip()
 
@@ -5233,7 +5242,7 @@ def _build_comment_user_prompt(
     if analysis is not None:
         analysis_snippet = analysis.to_prompt_fragment()
 
-    # NEW: reaction plan snippet for the LLM (so it understands #1 vs #2 roles)
+    # Reaction plan snippet (so the model understands how #1 vs #2 should differ)
     reaction_snippet = ""
     plan = current_reaction_plan()
     if isinstance(plan, dict):
@@ -5245,49 +5254,38 @@ def _build_comment_user_prompt(
         r1 = reactions[0] if len(reactions) >= 1 else None
         r2 = reactions[1] if len(reactions) >= 2 else None
 
-        bits = ["Reaction plan:"]
+        bits: list[str] = ["Reaction plan:"]
         if topic:
-            bits.append(f"- Detected topic: {topic}")
+            bits.append(f"- Topic: {topic}")
         if sentiment:
-            bits.append(f"- Detected sentiment: {sentiment}")
+            bits.append(f"- Sentiment: {sentiment}")
         if heat is not None:
-            bits.append(f"- Heat score (0-3+): {heat}")
+            bits.append(f"- Heat (0–3+): {heat}")
         level = fam.get("level")
         if level:
             bits.append(f"- Familiarity with author: {level}")
 
         if r1 or r2:
             bits.append(
-                "- Comment #1 should follow reaction type: "
+                "- Comment #1 reaction type: "
                 f"{(r1 or 'agree_plus').replace('_', ' ')}."
             )
             bits.append(
-                "- Comment #2 should follow reaction type: "
-                f"{(r2 or 'question').replace('_', ' ')}."
-            )
-            bits.append(
-                "Reaction type meanings:\n"
-                "- agree_plus: you agree or resonate and add one concrete detail.\n"
-                "- question: you ask one sharp question, no more.\n"
-                "- banter: playful CT banter, light memes, still respectful.\n"
-                "- soft_pushback: polite doubt or concern, no aggression.\n"
-                "- congrats: celebrate a win or milestone without fanboy hype.\n"
+                "- Comment #2 reaction type: "
+                f"{(r2 or 'question_sharp').replace('_', ' ')} "
+                "(default: question_sharp)."
             )
 
         reaction_snippet = "\n".join(bits)
 
     parts: list[str] = []
 
+    # High-level task description (short – system prompt carries most rules).
     parts.append(
-        "Given the following tweet from X / Twitter, generate exactly TWO reply comments.\n"
-        "You must:\n"
-        "- Understand the tweet's intent, emotion, and possible sarcasm.\n"
-        "- Match the tone (funny, serious, degen, wholesome, etc.) but keep it respectful.\n"
-        "- If it's a GM / GN / greetings post, you must also greet back.\n"
-        "- If it's a meme or image-heavy shitpost, lean playful / witty.\n"
-        "- Avoid financial advice, promises, or guarantees.\n"
-        "- Keep each reply between 6 and 18 words.\n"
-        "- Do NOT repeat the tweet text, and do NOT ask questions in both replies."
+        "Given the tweet below, write TWO reply comments that follow the system rules.\n"
+        "- Match the tweet's intent and emotion (including any meme or sarcasm) but stay respectful.\n"
+        "- Avoid giving investment advice, guarantees, or explicit trading instructions.\n"
+        "- Do not copy the tweet text; respond with fresh wording."
     )
 
     parts.append(
@@ -5306,12 +5304,12 @@ def _build_comment_user_prompt(
     if reaction_snippet:
         parts.append(reaction_snippet)
 
-    # 🔁 NEW: explicitly make #2 a follow-up to #1
+    # Explicit reminder about #1 vs #2 thread behaviour.
     parts.append(
-        "Now write TWO reply comments, numbered 1 and 2.\n"
-        "- Comment #1 should read as a direct reply to the tweet.\n"
-        "- Comment #2 should read like a natural follow-up to YOUR OWN comment #1 "
-        "(it still stays grounded in the same tweet, but should feel like you continued your own thought).\n"
+        "Now write the TWO comments, numbered 1 and 2.\n"
+        "- Comment #1: direct reply to the tweet with one clear idea.\n"
+        "- Comment #2: natural follow-up to YOUR OWN comment #1 "
+        "(question or added nuance/risk), still grounded in the same tweet.\n"
         "- Do NOT make #2 look like a totally separate, unrelated comment.\n"
         "Each on its own line, no quotes, no hashtags."
     )
@@ -7102,68 +7100,73 @@ def translate_comments_to_english(texts: list[str], source_lang: str | None = No
 # --------------------------------------------------------
 # OpenAI / Gemini generators (same constraints as Groq)
 # ------------------------------------------------------------------------------
+
 def _llm_sys_prompt(mode_line: str = "") -> str:
+    """
+    System prompt for all LLM providers that generate X replies.
+
+    Goals:
+    - Very crisp rules so replies stay short, sharp, and grounded.
+    - Still professional and human, especially for CT / crypto conversations.
+    - Compact wording to keep token usage low.
+    """
+    # Resolve target language early so we can bake it into the rules.
+    target_lang = (REQUEST_TARGET_LANG.get() or "en").strip().lower()
+    script = (script_from_lang_code(target_lang) or "latn").lower() if target_lang else "latn"
+
+    # Length rule tuned per script.
+    if target_lang and not target_lang.startswith("en"):
+        if script in {"zh", "ja"}:
+            length_line = "- Each comment is one short sentence (about 12–40 characters)."
+        else:
+            length_line = "- Each comment is one short sentence (roughly 6–18 tokens)."
+    else:
+        length_line = "- Each comment is one short sentence of around 6–18 words (never more than 20)."
+
+    lang_line = ""
+    if target_lang:
+        lang_line = f"- Write the comments in language code '{target_lang}'."
+
     base = (
-        "You generate two short replies to a tweet.\n"
+        "You are CrownTALK, a professional X (Twitter) reply writer.\n"
         "\n"
         "Hard rules:\n"
         "- Output exactly 2 comments.\n"
-        "- Each comment must be a single short sentence of around 6-18 words (never more than 20).\n"
-        "- One thought per comment (no second clause like 'thanks for sharing').\n"
-        "- No emojis, hashtags, or links.\n"
-        "- Do NOT invent details not present in the tweet.\n"
-        "- Anchor each comment in a concrete detail from the tweet (names, numbers, tickers, claims).\n"
-        "- Preserve numbers and tickers exactly (e.g., 17.99 stays 17.99, $SOL stays $SOL).\n"
-"- Preserve ratios and levels exactly (e.g., 1/3 stays 1/3, 0.618 stays 0.618, -70% stays -70%).\n"
-"- Do not insert spaces into acronyms (OG, KOL, CT, BTC).\n"
-"- Internal commas/ellipses are allowed; avoid terminal punctuation unless it is a question.\n"
+        f"{length_line}\n"
+        "- One thought per comment (no chained clauses like 'thanks for sharing').\n"
+        "- No emojis, hashtags, @mentions, or links.\n"
+        "- Stay tightly grounded in the tweet; do NOT invent facts, metrics, or announcements.\n"
+        "- Anchor each comment in concrete details from the tweet (names, numbers, tickers, claims).\n"
+        "- Preserve numbers, prices, ratios, and tickers exactly (e.g., 17.99, $SOL, 1/3, 0.618, -70%).\n"
+        "- Do not insert spaces into acronyms (OG, KOL, CT, BTC).\n"
+        "- Internal commas/ellipses are allowed; end with '?' only if it is a question.\n"
         "- Do not mention that you are an AI, a bot, or a model.\n"
-        "- Do not say 'this tweet', 'this thread', or 'thanks for sharing' - just respond naturally.\n"
-        "\n"
-        "Human style:\n"
-        "- Sound like a smart, grounded CT KOL (calm, specific, slightly opinionated, professional).\n"
-"- Use CT vernacular naturally when relevant: confluence, levels, invalidation, scaling in, DCA, risk defined, liquidity/flow, timeframe.\n"
-        "- Avoid hype/fanboy language and vague praise.\n"
-        "- Avoid these phrases: wow, exciting, huge, insane, amazing, awesome, love this, can't wait, sounds interesting, "
-        "interesting take, great breakdown, nice summary, well said, thanks for sharing.\n"
-        "- Prefer concrete angles: risk, incentives, liquidity/flow, execution, timeline, tradeoffs, product details.\n"
-        "\n"
-        "Diversity + thread behavior:\n"
-        "- Comment #1: a clear observation or claim, as a direct reply to the tweet.\n"
-        "- Comment #2: a follow-up to your own Comment #1 that either asks a sharp question "
-        "or adds a cautious risk/constraint note.\n"
-        "- Comment #2 must read like you continued the same mini-conversation, not a totally separate reply.\n"
-        "- Make the two comments meaningfully different.\n"
-        "\n"
-        "Output format:\n"
-        "- Return a JSON array of two strings: [\"...\", \"...\"].\n"
-        "- If not JSON, return two lines separated by a newline.\n"
+        "- Do not say 'this tweet', 'this thread', or 'thanks for sharing' – just speak naturally.\n"
+    )
+    if lang_line:
+        base += lang_line + "\n"
+
+    base += (
+        "\nHuman style:\n"
+        "- Sound like a sharp, grounded CT KOL: calm, specific, professional.\n"
+        "- Use CT / crypto vernacular naturally when relevant (confluence, risk defined, liquidity, flows, timeframes).\n"
+        "- Avoid hype-bro clichés and empty praise.\n"
+        "- Prefer concrete angles: risk, incentives, execution, product details, timeline, trade-offs.\n"
+        "- When the tweet mentions major tokens or protocols (e.g., BTC, ETH, SOL, high-cap L1s), assume the reader knows the basics and focus on nuance (liquidity, execution, timelines).\n"
+        "- If the tweet is from a big CT / crypto account, reply like a peer: no fanboy tone, no begging, no “sir”.\n"
+        "- For narrative or meme topics (rotations, meta, sectors), it is OK to hint at the bigger picture in one short clause, but keep the comment concise.\n"
     )
 
-    # Per-request target language (set by endpoints before generation)
-    target_lang = (REQUEST_TARGET_LANG.get() or "en").strip().lower()
-    # If target language is non-English, avoid the English-only "6-18 words" constraint.
-    if target_lang and not target_lang.startswith("en"):
-        script = (script_from_lang_code(target_lang) or "latn").lower()
-        if script in ("zh", "ja"):
-            base = base.replace(
-                "- Each comment must be a single short sentence of around 6-18 words (never more than 20).",
-                "- Each comment must be a single short sentence (about 12–40 characters).",
-            )
-        else:
-            base = base.replace(
-                "- Each comment must be a single short sentence of around 6-18 words (never more than 20).",
-                "- Each comment must be a single short sentence (roughly 6–18 tokens).",
-            )
-    if target_lang:
-        base = base.replace(
-            "Hard rules:\n",
-            f"Hard rules:\n- Write the comments in language code '{target_lang}'. If it's not English, do NOT mix English.\n- Avoid @mentions; if you address the author, use their display name (no @handle).\n",
-        )
-        base = base.replace(
-            "Human style:\n",
-            "Human style:\n- If the tweet is a greeting (GM/GN/Good morning/etc), greet back first. Use the author's display name (no @handle) when possible.\n",
-        )
+    base += (
+        "\nDiversity & thread behaviour:\n"
+        "- Comment #1: direct reply with one clear idea, grounded in the tweet.\n"
+        "- Comment #2: natural follow-up to your own Comment #1 (either a sharp question or a cautious risk/nuance).\n"
+        "- Comment #2 must feel like the same person continuing the thought, not a totally separate reply.\n"
+        "- Make the two comments meaningfully different.\n"
+        "\nOutput format:\n"
+        '- Prefer a JSON array of two strings: ["comment 1", "comment 2"].\n'
+        "- If you cannot format JSON reliably, output two lines only, one per comment.\n"
+    )
 
     voice = current_voice_card()
     if voice:
@@ -7171,7 +7174,7 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
             "\nVoice profile:\n"
             f"- id: {voice.get('id')}\n"
             f"- style: {voice.get('description')}\n"
-            "Write both comments in this voice, but still follow all hard rules.\n"
+            "Write both comments in this voice while still following all hard rules.\n"
         )
 
     research_ctx = REQUEST_RESEARCH_CTX.get(None)
@@ -7181,7 +7184,7 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
             base += (
                 "\nResearch note:\n"
                 "- You either have no reliable research data, or it is incomplete.\n"
-                "- If the project is unclear, prefer sharp *questions* over strong claims.\n"
+                "- If the project is unclear, prefer sharp questions over strong claims.\n"
                 "- Never invent TVL, yields, valuations, or tokenomics details.\n"
             )
         elif status == "ok":
@@ -7194,7 +7197,10 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
     mode_line = (mode_line or "").strip()
     if mode_line:
         base += "\n" + mode_line + "\n"
+
     return base.strip()
+
+
 def openai_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
     if not (USE_OPENAI and _openai_client):
         raise RuntimeError("OpenAI disabled or client not available")
