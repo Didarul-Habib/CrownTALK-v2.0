@@ -6917,6 +6917,90 @@ def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> lis
         candidates = [candidates[0], (second or candidates[0])]
 
     return candidates[:2]
+
+
+def translate_comments_to_english(texts: list[str], source_lang: str | None = None) -> list[str]:
+    """Best-effort translation of short comments into English using Groq.
+
+    Returns a list of English strings with (at most) the same length as `texts`.
+    On any error, returns an empty list so callers can safely ignore translation.
+    """
+    try:
+        items = []
+        for t in texts or []:
+            if t is None:
+                items.append("")
+            else:
+                items.append(str(t).strip())
+    except Exception:
+        items = [str(t).strip() for t in texts or []]
+
+    if not items or not any(items):
+        return []
+
+    lang = (source_lang or "").strip().lower()
+    if lang.startswith("en"):
+        # No need to translate if the target language is already English.
+        return []
+
+    if not (USE_GROQ and _groq_client):
+        return []
+
+    try:
+        sys_prompt = (
+            "You are a professional translator. Translate each item from the user's JSON list into natural, fluent English.\n"
+            "The user will send a JSON object with keys 'source_lang' and 'items'.\n"
+            "Return ONLY a JSON array of strings, same length and order as 'items'.\n"
+            "No explanations, no additional keys, no markdown, no code fences."
+        )
+        payload = json.dumps({"source_lang": lang or "auto", "items": items}, ensure_ascii=False)
+        messages = [
+            {"role": "system", "content": sys_prompt},
+            {"role": "user", "content": payload},
+        ]
+        resp = groq_chat_limited(
+            messages=messages,
+            max_tokens=256,
+            temperature=0.2,
+            n=1,
+            model=None,
+        )
+        content = (resp.choices[0].message.content or "").strip()
+
+        # Strip common markdown fences if present
+        if content.startswith("```"):
+            content = re.sub(r"^```[a-zA-Z0-9]*\s*", "", content)
+            content = re.sub(r"```$", "", content).strip()
+
+        translations_obj = None
+        try:
+            parsed = json.loads(content)
+            if isinstance(parsed, list):
+                translations_obj = parsed
+            elif isinstance(parsed, dict) and isinstance(parsed.get("translations"), list):
+                translations_obj = parsed["translations"]
+        except Exception:
+            translations_obj = None
+
+        if not isinstance(translations_obj, list):
+            return []
+
+        out: list[str] = []
+        for item in translations_obj:
+            if isinstance(item, str):
+                out.append(item.strip())
+            else:
+                out.append(str(item).strip())
+
+        # Pad or trim to match original length
+        while len(out) < len(items):
+            out.append("")
+
+        return out[: len(items)]
+    except Exception as e:  # noqa: BLE001
+        logger.warning("translate_comments_to_english failed: %s", e)
+        return []
+
 # --------------------------------------------------------
 # OpenAI / Gemini generators (same constraints as Groq)
 # ------------------------------------------------------------------------------
@@ -8177,6 +8261,41 @@ def generate_two_comments_with_providers(
 
         if rewritten and len(rewritten) == 2:
             final_pair = rewritten
+
+    # --- 6b) Optional inline English gloss for native-language output --------
+    try:
+        lang_norm = (lang_out or "").strip().lower()
+    except Exception:
+        lang_norm = "en"
+    if lang_norm and not lang_norm.startswith("en"):
+        try:
+            translations = translate_comments_to_english(final_pair[:2], source_lang=lang_norm)
+        except Exception as exc:  # noqa: BLE001
+            logger.warning("translate_comments_to_english failed: %s", exc)
+            translations = []
+        if translations:
+            merged: list[str] = []
+            for orig, trans in zip(final_pair[:2], translations):
+                if not isinstance(orig, str):
+                    merged.append(orig)
+                    continue
+                t = (trans or "").strip() if isinstance(trans, str) else str(trans or "").strip()
+                if not t:
+                    merged.append(orig)
+                    continue
+                base = orig.strip()
+                # Avoid duplication if translation is essentially the same text
+                try:
+                    if sanitize_comment(base).lower() == sanitize_comment(t).lower():
+                        merged.append(base)
+                    else:
+                        merged.append(f"{base} ({t})")
+                except Exception:
+                    merged.append(f"{base} ({t})")
+            # Preserve any extra comments beyond the first two unchanged
+            if len(final_pair) > 2:
+                merged.extend(final_pair[2:])
+            final_pair = merged
 
     # --- 7) Build final structured output ------------------------------------
     out: List[Dict[str, Any]] = []
