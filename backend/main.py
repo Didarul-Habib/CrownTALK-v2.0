@@ -1565,6 +1565,208 @@ PROJECT_RESEARCH_MAX_CHARS = int(
 )
 
 
+
+# --------------------------------------------------------------------------
+# Project research helpers: PROJECT_CARD-style metadata + niche detection
+# --------------------------------------------------------------------------
+
+NICHE_PROFILES: dict[str, dict[str, str]] = {
+    "defi": {
+        "style_hint": "analytical, risk-aware; focus on liquidity, yields, incentives.",
+    },
+    "perps": {
+        "style_hint": "short trader tone; focus on structure and risk, not entry signals.",
+    },
+    "memecoin": {
+        "style_hint": "playful CT tone; community and momentum focus, without reckless promises.",
+    },
+    "infra": {
+        "style_hint": "builder/infrastructure tone; focus on execution, reliability, ecosystem quality.",
+    },
+    "nft": {
+        "style_hint": "collector/creator tone; culture, art, and community over pure price talk.",
+    },
+    "gaming": {
+        "style_hint": "gaming tone; UX, fun, retention, and in-game economy health.",
+    },
+    "ai": {
+        "style_hint": "AI-native tone; agents, infra, and real use-cases over vague buzzwords.",
+    },
+    "rwa": {
+        "style_hint": "sober, regulation-aware tone; transparency and structure first.",
+    },
+    "socialfi": {
+        "style_hint": "creator/social graph tone; incentives and user behaviour.",
+    },
+    "governance": {
+        "style_hint": "governance tone; trade-offs, voting, and accountability.",
+    },
+}
+
+
+def _parse_project_card_meta(raw_text: str) -> dict:
+    """
+    Extract optional structured metadata from a PROJECT_CARD-style research note.
+
+    Supported sections (all optional, case-insensitive):
+      - NARRATIVE_TAGS
+      - CT_ANGLE_ONE_LINER
+      - RISKS_SHORT
+      - COMPARABLES
+    """
+    meta: dict[str, Any] = {
+        "narrative_tags": [],
+        "ct_angle_one_liner": "",
+        "risks_short": [],
+        "comparables": [],
+    }
+
+    if not raw_text:
+        return meta
+
+    lines = raw_text.splitlines()
+    current: str | None = None
+
+    header_map = {
+        "NARRATIVE_TAGS": "narrative_tags",
+        "CT_ANGLE_ONE_LINER": "ct_angle_one_liner",
+        "RISKS_SHORT": "risks_short",
+        "COMPARABLES": "comparables",
+    }
+
+    for line in lines:
+        s = line.strip()
+        if not s:
+            continue
+
+        header_candidate = s.lstrip("#*- ").rstrip(":").strip().upper()
+        if header_candidate in header_map:
+            current = header_map[header_candidate]
+            # Inline value after ':' on the same line, if any.
+            after = ""
+            if ":" in s:
+                after = s.split(":", 1)[1].strip()
+            if after:
+                if current == "ct_angle_one_liner":
+                    if not meta["ct_angle_one_liner"]:
+                        meta["ct_angle_one_liner"] = after
+                elif current == "narrative_tags":
+                    tags = [t.strip().lower() for t in after.replace("/", ",").split(",") if t.strip()]
+                    meta["narrative_tags"].extend(tags)
+                elif current in {"risks_short", "comparables"}:
+                    meta[current].append(after)
+            continue
+
+        if not current:
+            continue
+
+        content = s.lstrip("-*• ").strip()
+        if not content:
+            continue
+
+        if current == "ct_angle_one_liner":
+            if not meta["ct_angle_one_liner"]:
+                meta["ct_angle_one_liner"] = content
+        elif current == "narrative_tags":
+            tags = [t.strip().lower() for t in content.replace("/", ",").split(",") if t.strip()]
+            meta["narrative_tags"].extend(tags)
+        elif current in {"risks_short", "comparables"}:
+            meta[current].append(content)
+
+    # De-duplicate lists
+    meta["narrative_tags"] = list(dict.fromkeys(meta["narrative_tags"]))
+    meta["risks_short"] = list(dict.fromkeys(meta["risks_short"]))
+    meta["comparables"] = list(dict.fromkeys(meta["comparables"]))
+    return meta
+
+
+def _map_tag_to_niche(tag: str | None) -> str | None:
+    t = (tag or "").strip().lower()
+    if not t:
+        return None
+
+    if t in NICHE_PROFILES:
+        return t
+
+    if t in {"restaking", "lending", "dex", "amm", "stablecoin", "money market", "yield", "liquidity"}:
+        return "defi"
+    if t in {"perp", "perps", "perpetuals", "derivatives"}:
+        return "perps"
+    if t in {"meme", "memecoin", "meme coin", "shitcoin"}:
+        return "memecoin"
+    if t in {"l1", "layer1", "l2", "layer2", "rollup", "infra", "infrastructure", "modular"}:
+        return "infra"
+    if t in {"nft", "nfts", "collectible", "ordinals", "art"}:
+        return "nft"
+    if t in {"game", "gaming", "gamefi", "play to earn", "p2e"}:
+        return "gaming"
+    if t in {"ai", "agentfi", "agent", "model", "inference"}:
+        return "ai"
+    if t in {"rwa", "real world assets", "treasuries", "tbill", "bonds"}:
+        return "rwa"
+    if t in {"socialfi", "creatorfi", "social", "social graph"}:
+        return "socialfi"
+    if t in {"dao", "governance", "proposal", "vote"}:
+        return "governance"
+
+    return None
+
+
+def classify_niche_from_ctx(projects: list[dict] | None, protocols: list[dict] | None, tweet_text: str | None = None):
+    """
+    Lightweight niche classifier using project metadata, protocol categories,
+    and a few tweet keywords.
+
+    Returns (primary_niche: str|None, niches: list[str], style_hint: str).
+    """
+    from collections import Counter as _Counter
+
+    counts: _Counter[str] = _Counter()
+
+    def add(n: str | None):
+        if not n or n not in NICHE_PROFILES:
+            return
+        counts[n] += 1
+
+    # 1) From project narrative tags
+    for proj in projects or []:
+        for tag in proj.get("narrative_tags") or []:
+            add(_map_tag_to_niche(tag))
+
+    # 2) From protocol category/sector
+    for proto in protocols or []:
+        cat = (proto.get("category") or proto.get("sector") or "").lower()
+        if not cat:
+            continue
+        if any(k in cat for k in ("dex", "lending", "borrow", "stable", "amm", "yield", "money market")):
+            add("defi")
+        if any(k in cat for k in ("perp", "derivative", "perpetual")):
+            add("perps")
+        if any(k in cat for k in ("nft", "collect", "ordinal")):
+            add("nft")
+        if any(k in cat for k in ("game", "gaming", "metaverse")):
+            add("gaming")
+        if any(k in cat for k in ("l1", "layer 1", "l2", "layer 2", "rollup", "infra")):
+            add("infra")
+
+    # 3) Very light tweet keyword hints
+    low_t = (tweet_text or "").lower()
+    if low_t:
+        if any(w in low_t for w in ("memecoin", "meme coin", "shitcoin", "degen coin")):
+            add("memecoin")
+        if any(w in low_t for w in ("dao", "governance", "proposal", "vote on-chain", "snapshot")):
+            add("governance")
+
+    if not counts:
+        return None, [], ""
+
+    primary = counts.most_common(1)[0][0]
+    niches = [name for name, _ in counts.most_common()]
+    style_hint = NICHE_PROFILES.get(primary, {}).get("style_hint", "") or ""
+
+    return primary, niches, style_hint
+
+
 def _load_project_research(handles: list[str]) -> list[dict]:
     """
     Look for research files for any @handles mentioned in the tweet.
@@ -1650,14 +1852,18 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 
             text = raw_text[:PROJECT_RESEARCH_MAX_CHARS]
 
-            results.append(
-                {
-                    "handle": h,                        # e.g. "@Warden_Protocol"
-                    "file": os.path.basename(real_path),# e.g. "@warden_protocol.txt"
-                    "path": real_path,
-                    "summary": text,                    # truncated content
-                }
-            )
+            meta = _parse_project_card_meta(text)
+            proj = {
+                "handle": h,                        # e.g. "@Warden_Protocol"
+                "file": os.path.basename(real_path),# e.g. "@warden_protocol.txt"
+                "path": real_path,
+                "summary": text,                    # truncated content
+            }
+            # Optionally enrich with structured PROJECT_CARD-style metadata.
+            if isinstance(meta, dict):
+                proj.update(meta)
+
+            results.append(proj)
             seen_paths.add(real_path)
             chosen_path = real_path
             break
@@ -6424,9 +6630,20 @@ def build_research_context_for_tweet(tweet_text: str, extra_handles: Optional[li
                 "projects": projects,
             }
 
+        # Lightweight niche classification even when on-chain research is disabled.
+        if projects:
+            primary_niche, niche_list, niche_style = classify_niche_from_ctx(projects, [], tweet_text)
+            if primary_niche:
+                ctx["niche"] = primary_niche
+            if niche_list:
+                ctx["niches"] = niche_list
+            if niche_style:
+                ctx["niche_style_hint"] = niche_style
+
         if cache_key:
             _research_cache_set(cache_key, ctx)
         return ctx
+
 
     # ------------------------------------------------------------------
     # 2) DeFi / on-chain research (only when ENABLE_RESEARCH = 1)
@@ -6505,6 +6722,15 @@ def build_research_context_for_tweet(tweet_text: str, extra_handles: Optional[li
     }
     if projects:
         ctx["projects"] = projects
+
+    # Lightweight niche classification to help the LLM adapt tone without extra tokens.
+    primary_niche, niche_list, niche_style = classify_niche_from_ctx(projects, protocols, tweet_text)
+    if primary_niche:
+        ctx["niche"] = primary_niche
+    if niche_list:
+        ctx["niches"] = niche_list
+    if niche_style:
+        ctx["niche_style_hint"] = niche_style
 
     if cache_key:
         _research_cache_set(cache_key, ctx)
@@ -7147,18 +7373,21 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
         base += lang_line + "\n"
 
     base += (
-        "\nHuman style:\n"\n        "- If you write a question, make it a clear question starting with words like what, how, why, does, is, could, etc., not just a statement with a '?' at the end.\n"
+        "\nHuman style:\n"
+        "- If you write a question, it must genuinely be a question (what, how, why, where, when, is, could, etc.), not just a statement with a '?' at the end.\n"
         "- Sound like a sharp, grounded CT KOL: calm, specific, professional.\n"
         "- Use CT / crypto vernacular naturally when relevant (confluence, risk defined, liquidity, flows, timeframes).\n"
         "- Avoid hype-bro clichés and empty praise.\n"
         "- Prefer concrete angles: risk, incentives, execution, product details, timeline, trade-offs.\n"
-        "- When the tweet mentions major tokens or protocols (e.g., BTC, ETH, SOL, high-cap L1s), assume the reader knows the basics and focus on nuance (liquidity, execution, timelines).\n"
-        "- If the tweet is from a big CT / crypto account, reply like a peer: no fanboy tone, no begging, no “sir”.\n"
-        "- For narrative or meme topics (rotations, meta, sectors), it is OK to hint at the bigger picture in one short clause, but keep the comment concise.\n"
+        "- When the tweet mentions major tokens or protocols, assume the reader knows the basics and focus on nuance (liquidity, execution, timelines).\n"
+        "- If the tweet is from a big CT / crypto account, reply like a peer: no fanboy tone, no begging, no 'sir'.\n"
+        "- For narrative or meme topics (rotations, meta, sectors), it's fine to hint at the bigger picture in one short clause, but keep each comment concise.\n"
+        "- If JSON context includes a niche_style_hint, keep tone loosely aligned with it (e.g., DeFi = risk-aware, memecoin = lighter but not reckless).\n"
     )
 
     base += (
-        "\nDiversity & thread behaviour:\n"\n        "- Exactly ONE of the two comments may be phrased as a question; the other must be a statement with no question mark.\n"
+        "\nDiversity & thread behaviour:\n"
+        "- Exactly ONE of the two comments must be a genuine question; the other must be a statement with no question mark.\n"
         "- Comment #1: direct reply with one clear idea, grounded in the tweet.\n"
         "- Comment #2: natural follow-up to your own Comment #1 (either a sharp question or a cautious risk/nuance).\n"
         "- Comment #2 must feel like the same person continuing the thought, not a totally separate reply.\n"
@@ -7192,6 +7421,7 @@ def _llm_sys_prompt(mode_line: str = "") -> str:
                 "\nResearch note:\n"
                 "- You have some structured research context for the project.\n"
                 "- You may reference it cautiously, but never invent numbers beyond that data.\n"
+                "- If a niche or niche_style_hint is present in the JSON context, let it gently shape tone and focus.\n"
             )
 
     mode_line = (mode_line or "").strip()
