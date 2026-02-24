@@ -1671,6 +1671,37 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 REQUEST_THREAD_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_THREAD_CTX", default=None)
 REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_CTX", default=None)
 REQUEST_TARGET_LANG: ContextVar[str] = ContextVar("REQUEST_TARGET_LANG", default="en")
+
+
+def _get_target_lang(default: str = "en") -> str:
+    """Best-effort current request target language.
+
+    Priority:
+    1) REQUEST_TARGET_LANG context var (set per comment request)
+    2) Lightweight detection based on request/thread context
+    3) Provided default (usually 'en')
+    """
+    try:
+        lang = REQUEST_TARGET_LANG.get()
+    except Exception:  # pragma: no cover - very defensive
+        lang = None
+
+    if isinstance(lang, str) and lang.strip():
+        return lang.strip().lower()
+
+    # As an extra safety net, try tweet language from thread context
+    try:
+        ctx = REQUEST_THREAD_CTX.get()
+    except Exception:
+        ctx = None
+    if isinstance(ctx, dict):
+        for k in ("target_lang", "lang", "tweet_lang"):
+            v = ctx.get(k)
+            if isinstance(v, str) and v.strip():
+                return v.strip().lower()
+
+    return (default or "en").strip().lower()
+
 REQUEST_VOICE: ContextVar[Optional[dict]] = ContextVar("REQUEST_VOICE", default=None)
 
 # Project recognition (local, file-backed via PROJECT_RESEARCH_DIR)
