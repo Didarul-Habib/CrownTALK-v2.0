@@ -1,99 +1,125 @@
-Firestarter_AI Deep Dive (Agentic Commerce + Firestarter Launchpad Ecosystem)
-Last updated: 2026-01-11
-Prepared for: Didarul Habib
+PROJECT_CARD_V1
+HANDLE: @3look_io
+NAME: 3look
+TICKER: N/A (no public token ticker in official docs; framing centers on points and campaign rewards)
+CATEGORY: CultureFi / SocialFi (campaign‑driven creator monetization)
+CHAIN: Chain‑agnostic integrations (historically described as working across Ethereum, Solana, Polygon, Cardano); rewards are claimed to a wallet per‑campaign
+STAGE: Public Alpha (web app with “Alpha is live” positioning)
+NARRATIVE_TAGS: CultureFi, SocialFi, attention‑as‑an‑asset, campaign‑rewards, post‑to‑earn, points, creator‑tooling
+TVL_HINT: N/A (not a DeFi TVL protocol; value is in campaign pools, points and rewards)
+ONE_LINER: Campaign‑driven CultureFi platform where creators join branded campaigns, post from their own accounts, and earn rewards every ~24 hours based on qualified engagement.
 
-============================================================
-0) What I researched (and why this report is careful)
-============================================================
-The handle you shared is: https://x.com/Firestarter_AI
+===============================================================================
+1) CORE VALUE PROP
+===============================================================================
+- Problem: creators post constantly but brand campaigns are often vague, hard to track and poorly aligned with actual engagement quality.
+- Solution: 3look structures things as campaign → content → reward: brands define rules and pools; creators join; the system tracks eligible posts and allocates rewards based on qualified engagement.
+- Differentiation: emphasizes campaign‑based participation (not just global leaderboards), automatic tracking of posts, and weighting by “qualified engagement” instead of raw likes/followers.
+- Why now: they are actively pushing Public Alpha and wave‑based onboarding, attracting crypto‑native creators who want fast feedback loops on their posting
 
-“Firestarter” is a name used by multiple unrelated products (e.g., an open-source “Firestarter” website-to-chatbot repo; a marketing agency; etc.). This report focuses on the ecosystem that appears tied to:
-- The @Firestarter_AI positioning (“agentic AI commerce”),
-- A consumer shopping assistant app + Chrome extension branded “Firestarter,” and
-- The “Firestarter Launchpad” / tokenization + DEX + storefront docs at docs.firestarter.fun.
+===============================================================================
+2) PRODUCT / CURRENT STATE
+===============================================================================
+- Live surface: Alpha web app with Creator Studio plus navigation for Campaigns, Rewards, referrals/invites.
+- Core modules (per docs):
+  - Post to Earn: create posts with AI suggestions and templates inside the platform.
+  - Engage Hub: context‑aware reply suggestions and engagement feeds.
+  - Creator Studio: meme templates, GIFs and brand assets with more tools “coming soon”.
+- Campaign mechanics:
+  - Campaign launches with rules and a fixed reward pool.
+  - Creators join and publish from their own social accounts (primarily X).
+  - Posts are automatically tracked and evaluated for eligibility and qualified engagement.
+  - Rewards are calculated and become claimable on an approximately 24‑hour cadence until the pool is exhausted.
+- Users:
+  - Primary users are crypto‑native posters (including strong repliers and meme creators) who participate in campaigns on X.
+  - Secondary users are brands/communities that configure campaigns and budgets as part of their marketing spend.
+- Ecosystem signals:
+  - Public homepage showcases logos like Mocaverse, Chimpers and 0N1 Force as campaign or ecosystem examples.
+  - ApeCoin DAO forum posts describe collaborations, white‑label widgets and B2B tooling.
 
-Where the web sources themselves suggest multiple “Firestarter” meanings, I call that out explicitly rather than guessing.
+===============================================================================
+3) KEY METRICS (APPROX / PUBLIC ONLY)
+===============================================================================
+- TVL: N/A; incentives are campaign pools plus points and eventual crypto rewards, not locked liquidity.
+- Usage / scale (self‑reported):
+  - ApeCoin DAO implementation reports mention thousands of GIFs/memes in template libraries, plus impression and user‑growth snapshots during 2023–2024.
+  - Social profile mirrors show tens of thousands of followers and an account created in late 2021 (exact numbers fluctuate).
+- Stand‑out mechanic:
+  - 24‑hour rhythm: rewards accrue and become claimable daily; waitlist/score refresh is also described as daily.
+- Treat all counts as approximate and time‑bound; they are not guaranteed.
 
-============================================================
-1) High-level description (in plain English)
-============================================================
-Firestarter (as presented by @Firestarter_AI and related product listings) is aiming at “agentic commerce”:
-- Buyer side: a personal AI shopping agent that can search, compare, and streamline shopping via natural language.
-- Seller/brand side: tools to make catalogs/storefronts easier for AI agents to understand, recommend, and transact with (including automated listing optimization, distribution, and “AI visibility” / AEO checks).
+===============================================================================
+4) MAIN RISKS
+===============================================================================
+- Infra and platform risk:
+  - Deep reliance on X for authentication, publishing and tracking; Terms highlight dependence on third‑party APIs and technical limits.
+  - Even if final rewards are on‑chain, the qualified‑engagement scoring and spam filtering are internal systems that users must trust.
+- Token / emissions risk:
+  - Docs focus on points (Løøkz) and campaign rewards; there is no fully specified public token ticker or emission schedule for a “3look” token.
+  - This leaves room for speculation and expectation gaps between community narratives and reality.
+- Business / PMF risk:
+  - Creator earnings depend on sustained campaign budgets; if campaigns slow down, the incentive loop weakens quickly.
+- Centralization / custodial and privacy risk:
+  - Waitlist and ranking rely on external data providers and internal scoring; scores can change as signals refresh.
+  - Privacy notice describes collection of OAuth tokens, device identifiers, IP addresses and detailed activity tracking.
+- Regulatory risk:
+  - Operating in the “post‑to‑earn” / incentivized content space exposes the platform to evolving rules around advertising disclosures and financial promotions.
 
-In parallel, Firestarter’s official docs (GitBook at docs.firestarter.fun) describe a tokenization launchpad:
-- “Tokenize anything” (idea/brand/asset) into a tradeable token,
-- Launch via a bonding curve, then trade on a Firestarter DEX,
-- Add a creator “Storefront” for token-gated products/perks,
-- A reputation / “Issuer Trust Score,” and an affiliate system.
+===============================================================================
+5) HOW TO TALK ABOUT IT IN CROWNTALK REPLIES
+===============================================================================
+- Emphasize:
+  - Campaign‑driven monetization: clear rules, pools and distribution cycles instead of vague “post and hope” models.
+  - Daily feedback loop: rewards calculated and claimable roughly every 24 hours while campaigns run.
+  - Quality‑over‑followers framing: rewards based on qualified engagement and narrative fit, not just raw impressions.
+  - Creator tooling stack: Post to Earn, Engage Hub and Creator Studio modules that make it easier to produce and distribute on‑brand content.
+- Avoid:
+  - Promising fixed earnings or implying everyone will qualify for payouts.
+  - Claiming a specific token launch date, price target or ticker unless clearly announced by the project.
+  - Overselling audits or security guarantees.
+- Good angles for replies:
+  - “Brands pay for attention; 3look structures that into campaigns where creators earn based on real engagement.”
+  - “Leans into CultureFi—memes, templates and replies—as a measurable channel instead of pure hype.”
+  - “Interesting play for creators who already post daily and want campaigns with clear rules and timelines.”
 
-The overlap between the “AI commerce” brand materials and the tokenization docs is clearest in one feature repeated in the docs:
-- “Firestarter AI Launch” that “scans your X profile” to help create a token/storefront draft.
+===============================================================================
+6) LONG-FORM NOTES / RESEARCH
+===============================================================================
+- Operator: legal documents identify 3Vision Corp, incorporated in Panama, as the operating entity.
+- Origins: forum posts in the ApeCoin DAO ecosystem describe 3look as evolving from “NFTlook,” led by co‑founders Dan Dober and Andy Ocean with early NFT‑meme tooling.
+- Architecture:
+  - Campaign layer: rules, narratives, pools and daily distribution.
+  - Content layer: evaluation of narrative relevance, originality and qualified engagement with spam filtering.
+  - Tooling layer: creative assets and assisted posting/reply features.
+- Tokenomics and rewards:
+  - Løøkz points are described as an internal contribution signal that can increase eligibility for on‑chain rewards and future distributions.
+  - Campaigns may pay in brand‑native points or crypto assets post‑TGE, claimed to user wallets when distributed.
+- Narrative context: fits the broader attention‑economy arc in crypto—turning culture and distribution into measurable value via structured campaigns instead of open‑ended “shill‑to‑earn”.
 
-============================================================
-2) Verified “what exists” (products, artifacts, public surfaces)
-============================================================
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Official site and app surfaces (3look.io, app.3look.io) and public docs.
+- Legal pages: Terms of Use and Privacy Policy.
+- Docs on campaign mechanics, Post to Earn, Engage Hub, and lookz/points.
+- ApeCoin DAO forum posts and updates that describe collaborations, metrics and product evolution.
+- Public profile mirrors and analytics snapshots covering follower counts and growth.- Architecture:
+  - Campaign layer: rules, narratives, pools and daily distribution.
+  - Content layer: evaluation of narrative relevance, originality and qualified engagement with spam filtering.
+  - Tooling layer: creative assets and assisted posting/reply features.
+- Tokenomics and rewards:
+  - Løøkz points are described as an internal contribution signal that can increase eligibility for on‑chain rewards and future distributions.
+  - Campaigns may pay in brand‑native points or crypto assets post‑TGE, claimed to user wallets when distributed.
+- Narrative context: fits the broader attention‑economy arc in crypto—turning culture and distribution into measurable value via structured campaigns instead of open‑ended “shill‑to‑earn”.
 
-2.1) X / social identity
-- X handle: @Firestarter_AI (Firestarter | AI Commerce).
-- Public positioning (via an X-profile viewer): “agentic AI commerce” where a personal AI shopper handles search/comparison/execution.
-
-2.2) iOS app: “Firestarter: AI Shopping Agent”
-Source: Apple App Store listing
-- Name: Firestarter: AI Shopping Agent
-- Developer: Analog One
-- Core pitch: “Shop smarter… AI-powered shopping assistant”
-- Feature claims in listing:
-  - Natural language shopping (“Tell Firestarter what you need …”)
-  - AI agents scan multiple stores and show best options quickly
-  - Recommendations based on prices/reviews/availability
-  - Preference saving + alerts (price drops / restocks)
-  - Chat-style UI
-  - Notes “no crypto-wallets… or complicated setup”
-- Privacy note on listing: “Data Not Collected” (developer indicates no data collected; Apple notes info not verified by Apple)
-
-2.3) Chrome extension: “Firestarter AI Shopping Assistant”
-Source: Chrome Web Store listing
-- Tagline: “Universal ‘Add to Firestarter’ + Seller Agent - Buyer search tool & seller import assistant”
-- Feature claims:
-  - Buyer: natural-language product search; save/compare items; “Add to Firestarter” button on supported sites
-  - Seller: import products, manage listings, prepare storefronts for AI-driven commerce workflows
-- Release info:
-  - Version 1.0.0; updated 2025-12-21
-  - Developer contact email shown: victor@analog.one
-- Privacy:
-  - Mentions a privacy policy hosted on nukem.xyz
-  - The listing also includes a “handles the following” section (PII category), and declares data is not sold to third parties (as per Chrome listing UI)
-
-2.4) “Firestarter – Storefront Edition” (B2B / seller platform listing)
-Source: G2 product page
-- Described as an AI-powered commerce platform for brands/sellers:
-  - Create/manage/optimize storefronts with minimal manual work
-  - Launch product pages, manage listings
-  - “Conversational AI” to guide buyers
-  - Automation for setup/optimization/selling workflows
-- G2 page includes user review snippets mentioning:
-  - Price optimization
-  - Automated negotiations “within my rules”
-  - Visibility across AI agents and affiliate networks
-  (These are third-party reviews—treat as anecdotal, not guaranteed product capability.)
-
-2.5) Firestarter Launchpad docs (tokenization + DEX + storefront)
-Source: docs.firestarter.fun (GitBook)
-Key verified statements from docs:
-- Firestarter is a “launchpad” to tokenize an idea/brand/asset so anyone can buy/trade; likens itself to “Kickstarter… with an instant 24/7 marketplace.” 
-- “Instant Automated Marketplace”: launches directly into a liquid, 24/7 marketplace.
-- “Issuer Trust Score” described as a 0–100 credibility/reputation signal.
-- Bonding curve launch; a “graduation” to a DEX after a market cap threshold; and DEX trading.
-- Storefront: a personal “decentralized marketplace” where creators sell goods/perks, priced in the project’s token; includes wallet/social login and an integrated fiat on-ramp (per docs).
-- Fee structure (docs):
-  - Launch fee: $2 (paid in $ANLOG) (per fee structure page)
-  - Initial sale fees and DEX trading fees broken down between platform, affiliates, LPs, issuer, and a “Scout” (coming soon) role.
-
-2.6) “Analog One / Analog” connection (possible corporate linkage)
-Source: analog.one website navigation
-- analog.one lists “Firestarter” as a product in its navigation.
-Important caveat:
+===============================================================================
+7) SOURCES (HUMAN REFERENCE ONLY)
+===============================================================================
+- Official site and app surfaces (3look.io, app.3look.io) and public docs.
+- Legal pages: Terms of Use and Privacy Policy.
+- Docs on campaign mechanics, Post to Earn, Engage Hub, and lookz/points.
+- ApeCoin DAO forum posts and updates that describe collaborations, metrics and product evolution.
+- Public profile mirrors and analytics snapshots covering follower counts and growth.Important caveat:
 - “Analog” appears to be a Web3 protocol site; this may indicate the tokenization/DEX version of Firestarter is under that umbrella.
 - This does not, by itself, prove that every “Firestarter AI commerce” surface is the same product—only that there is at least one “Firestarter” product under Analog’s ecosystem.
 
