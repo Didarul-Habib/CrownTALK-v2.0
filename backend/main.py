@@ -9311,6 +9311,7 @@ def comment_from_url_stream_endpoint():
                 result_item = cached
             else:
                 comments_all: list[dict] = []
+                comments_all: list[dict] = []
                 if want_en:
                     comments_all.extend(
                         generate_two_comments_with_providers(
@@ -9324,11 +9325,17 @@ def comment_from_url_stream_endpoint():
                             include_alternates=include_alts,
                         )
                     )
+
                 if want_native:
-                    native_lang = (None if (str(native_override or "").strip().lower() in ("auto", "detect")) else native_override) or gen_lang
+                    native_lang = (native_override or "").strip().lower() if native_override else None
+                    if not native_lang or native_lang in ("auto", "detect"):
+                        native_lang = (gen_lang or "en").strip().lower()
                     native_lang = (native_lang or "en").strip().lower()
-                    if not native_lang.startswith("en") or not want_en:
-                        out_tag = native_lang if not native_lang.startswith("en") else "native"
+                    # If native resolves to English and we already generated English, avoid duplicate + bogus translation.
+                    if native_lang.startswith("en") and want_en:
+                        pass
+                    else:
+                        out_tag = native_lang if not native_lang.startswith("en") else "en"
                         comments_all.extend(
                             generate_two_comments_with_providers(
                                 tweet_text=synthetic_tweet,
@@ -9341,6 +9348,18 @@ def comment_from_url_stream_endpoint():
                                 include_alternates=include_alts,
                             )
                         )
+                if not comments_all:
+                    comments_all = generate_two_comments_with_providers(
+                        tweet_text=synthetic_tweet,
+                        author=None,
+                        handle=None,
+                        lang=gen_lang,
+                        url=safe_url,
+                        target_lang=gen_lang,
+                        out_lang_tag=gen_lang,
+                        include_alternates=include_alts,
+                    )
+
                 if not comments_all:
                     comments_all = generate_two_comments_with_providers(
                         tweet_text=synthetic_tweet,
@@ -9578,10 +9597,16 @@ def comment_endpoint():
                 )
 
             if want_native:
-                native_lang = (None if (str(native_override or "").strip().lower() in ("auto","detect")) else native_override) or (t.lang or "en")
-                native_lang = str(native_lang).strip().lower() if native_lang else "en"
-                if not native_lang.startswith("en") or not want_en:
-                    out_tag = native_lang if not native_lang.startswith("en") else "native"
+                native_lang = (native_override or "").strip().lower() if native_override else None
+                tweet_lang = (t.lang or "").strip().lower()
+                if not native_lang or native_lang in ("auto", "detect"):
+                    native_lang = tweet_lang or "en"
+                native_lang = (native_lang or "en").strip().lower()
+                # If native resolves to English and we already generated English, avoid duplicate + bogus translation.
+                if native_lang.startswith("en") and want_en:
+                    pass
+                else:
+                    out_tag = native_lang if not native_lang.startswith("en") else "en"
                     comments_all.extend(
                         generate_two_comments_with_providers(
                             t.text or "",
@@ -9594,6 +9619,7 @@ def comment_endpoint():
                             include_alternates=bool(payload.get("include_alternates", False)),
                         )
                     )
+
 
             two = comments_all or generate_two_comments_with_providers(
                 t.text or "",
@@ -9833,6 +9859,7 @@ def comment_stream_endpoint():
             comments: list[dict] = []
 
             # If the client is using the newer dual-language toggles, honor them.
+            # If the client is using the newer dual-language toggles, honor them.
             if want_en:
                 comments.extend(
                     generate_two_comments_with_providers(
@@ -9848,10 +9875,16 @@ def comment_stream_endpoint():
                 )
 
             if want_native:
-                native_lang = (None if (str(native_override or "").strip().lower() in ("auto", "detect")) else native_override) or (t.lang or "en")
-                native_lang = str(native_lang).strip().lower() if native_lang else "en"
-                if not native_lang.startswith("en") or not want_en:
-                    out_tag = native_lang if not native_lang.startswith("en") else "native"
+                native_lang = (native_override or "").strip().lower() if native_override else None
+                tweet_lang = (t.lang or "").strip().lower()
+                if not native_lang or native_lang in ("auto", "detect"):
+                    native_lang = tweet_lang or "en"
+                native_lang = (native_lang or "en").strip().lower()
+                # If native resolves to English and we already generated English, avoid duplicate + bogus translation.
+                if native_lang.startswith("en") and want_en:
+                    pass
+                else:
+                    out_tag = native_lang if not native_lang.startswith("en") else "en"
                     comments.extend(
                         generate_two_comments_with_providers(
                             t.text or "",
@@ -9864,6 +9897,7 @@ def comment_stream_endpoint():
                             include_alternates=include_alts,
                         )
                     )
+
 
             # Legacy: if toggles aren't used, fall back to output_language.
             if not comments:
@@ -10054,10 +10088,16 @@ def reroll_endpoint():
             )
 
         if want_native:
-            native_lang = (None if (str(native_override or "").strip().lower() in ("auto","detect")) else native_override) or (t.lang or "en")
-            native_lang = str(native_lang).strip().lower() if native_lang else "en"
-            if not native_lang.startswith("en") or not want_en:
-                out_tag = native_lang if not native_lang.startswith("en") else "native"
+            native_lang = (native_override or "").strip().lower() if native_override else None
+            tweet_lang = (t.lang or "").strip().lower()
+            if not native_lang or native_lang in ("auto", "detect"):
+                native_lang = tweet_lang or "en"
+            native_lang = (native_lang or "en").strip().lower()
+            # If native resolves to English and we already generated English, avoid duplicate + bogus translation.
+            if native_lang.startswith("en") and want_en:
+                pass
+            else:
+                out_tag = native_lang if not native_lang.startswith("en") else "en"
                 comments_all.extend(
                     generate_two_comments_with_providers(
                         t.text or "",
