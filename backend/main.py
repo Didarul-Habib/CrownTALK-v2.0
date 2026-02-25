@@ -8412,8 +8412,18 @@ def generate_two_comments_with_providers(
     """
     url = url or ""
 
-    # Decide language for generation vs UI tagging
-    gen_lang = (target_lang or lang or "en").strip().lower()
+    # Decide language for generation vs UI tagging.
+    # Semantics:
+    # - target_lang in {"", None, "auto", "native", "tweet"} → use tweet language if available, else English.
+    # - otherwise → use explicit target_lang (e.g. "en", "vi", "zh").
+    norm_target = (target_lang or "").strip().lower()
+    tweet_lang = (lang or "").strip().lower()
+
+    if norm_target in {"", "auto", "native", "tweet"}:
+        gen_lang = tweet_lang or "en"
+    else:
+        gen_lang = norm_target
+
     lang_out = (out_lang_tag or gen_lang or "en").strip().lower()
 
     # Make target language available to all LLM providers for this request
