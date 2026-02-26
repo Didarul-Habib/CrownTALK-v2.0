@@ -384,6 +384,7 @@ def _percentile(vals: list[int], pct: float) -> int:
         return vs[f]
     return int(vs[f] + (vs[c]-vs[f]) * (k-f))
 
+@app.get("/metrics")
 @app.get("/metrics-lite")
 def metrics_lite():
     """Lightweight rolling averages; no Prometheus required."""
@@ -9224,6 +9225,9 @@ def comment_from_url_stream_endpoint():
     want_native = bool(getattr(req, "lang_native", False))
     native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
 
+    # Expose a stable per-request run id for the streaming client.
+    run_id = getattr(g, "request_id", "") or _make_request_id()
+
     # Load-shed: if endpoint is slow, default to fast mode
     try:
         if _should_load_shed("POST /comment_from_url/stream"):
@@ -9779,6 +9783,9 @@ def comment_stream_endpoint():
             yield sse_event("result", {"type": "result", "item": err_item})
             # keep a "done" marker for humans/debuggers; frontend will also infer done when stream closes
             yield sse_event("done", {"type": "done", "ok": False})
+
+        # Let the client bind this stream to a run id immediately.
+        yield sse_event("meta", {"run_id": run_id})
         # progress: fetching
         yield sse_event("status", {"stage": "fetching"})
         try:
@@ -9993,6 +10000,7 @@ def comment_stream_endpoint():
     resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
+    resp.headers["X-Run-Id"] = run_id
     return resp
 @app.route("/reroll", methods=["POST", "OPTIONS"])
 def reroll_endpoint():
