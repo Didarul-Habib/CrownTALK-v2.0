@@ -9774,6 +9774,9 @@ def comment_stream_endpoint():
     want_native = bool(getattr(req, "lang_native", False))
     native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
 
+    # Stable run id for this SSE session (used by frontend Run History binding).
+    run_id = uuid.uuid4().hex
+
     def gen():
         def fail(code: str, message: str):
             # Emit a frontend-compatible "result" item even on failures.
