@@ -9495,7 +9495,7 @@ def comment_from_url_stream_endpoint():
         except Exception as e:
             yield from fail("internal_error", "Unexpected error", req.source_url)
 
-    resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
+        resp = Response(stream_with_context(stream()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     return resp
@@ -9982,14 +9982,12 @@ def comment_stream_endpoint():
                 t = fallback_tweet_data(url)
             except Exception:
                 yield from fail(e.code, str(e))
-                _mark_run_done(run_id)
                 return
         except Exception:
             try:
                 t = fallback_tweet_data(url)
             except Exception:
                 yield from fail("fetch_error", "Failed to fetch tweet")
-                _mark_run_done(run_id)
                 return
 
         # Per-request context: thread, research, project, voice, style.
@@ -10224,7 +10222,17 @@ def comment_stream_endpoint():
         except Exception:
             yield from fail("generation_error", "Failed to generate comment")
 
-    resp = Response(stream_with_context(gen()), mimetype="text/event-stream")
+    
+    def stream():
+        try:
+            yield from gen()
+        finally:
+            try:
+                _mark_run_done(run_id)
+            except Exception:
+                pass
+
+    resp = Response(stream_with_context(stream()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
     resp.headers["X-Run-Id"] = run_id
