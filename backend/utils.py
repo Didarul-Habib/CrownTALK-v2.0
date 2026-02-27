@@ -564,6 +564,161 @@ def clean_and_normalize_urls(urls: List[str]) -> List[str]:
 # Style fingerprint (for template memory)
 # ------------------------------------------------------------------------------
 
+
+# ------------------------------------------------------------------------------
+# URL canonicalization, dedupe, and resilient tweet fetch helpers
+# ------------------------------------------------------------------------------
+
+def canonicalize_x_url(url: str) -> Tuple[Optional[str], str]:
+    """Return (tweet_id, canonical_url) for a given X/Twitter URL.
+
+    - If we can extract a tweet id, canonical_url will be
+      "https://x.com/{handle_or_i}/status/{id}".
+    - If parsing fails, we fall back to a cleaned, scheme-normalized URL and
+      return tweet_id=None.
+
+    This helper is intentionally tolerant; it should *not* raise for messy
+    input, because callers often use it during best-effort cleanup/dedupe.
+    """
+    raw = (url or "").strip()
+    if not raw:
+        return None, ""
+
+    # Try to extract a proper handle/id pair via our existing parser.
+    try:
+        handle, status_id = _extract_handle_and_id(raw)
+        tweet_id = status_id or None
+        handle_part = (handle or "").strip() or "i"
+        canonical = f"https://x.com/{handle_part}/status/{status_id}"
+        return tweet_id, canonical
+    except CrownTALKError:
+        # Fall through to generic normalization.
+        pass
+    except Exception:
+        # Avoid letting unexpected errors bubble up here; canonicalization
+        # is a best-effort helper.
+        pass
+
+    # Generic URL normalization: ensure https scheme, strip query/fragment.
+    try:
+        u = raw
+        if not u.startswith(("http://", "https://")):
+            u = "https://" + u
+        parsed = urlparse(u)
+        host = (parsed.netloc or "").lower()
+        if host.startswith("www."):
+            host = host[4:]
+        path = parsed.path or ""
+        canonical = f"https://{host}{path}".rstrip("/")
+    except Exception:
+        canonical = raw
+
+    return None, canonical
+
+
+def dedupe_urls_by_tweet_id(urls: List[str]) -> Tuple[List[str], int]:
+    """Dedupe a list of X/Twitter URLs by tweet id while preserving order.
+
+    Rules:
+    - Primary dedupe key is tweet_id (if we can extract it).
+    - If we can't extract an id, we fall back to the canonical_url.
+    - Order of the *first occurrences* is preserved.
+    - Returns (deduped_urls, skipped_count).
+    """
+    if not isinstance(urls, list):
+        return [], 0
+
+    seen_keys: set[str] = set()
+    deduped: List[str] = []
+    skipped = 0
+
+    for raw in urls:
+        if not isinstance(raw, str):
+            continue
+        u = raw.strip()
+        if not u:
+            continue
+        tweet_id, canonical = canonicalize_x_url(u)
+        key = (tweet_id or canonical or u).strip()
+        if not key:
+            continue
+        if key in seen_keys:
+            skipped += 1
+            continue
+        seen_keys.add(key)
+        deduped.append(u)
+
+    return deduped, skipped
+
+
+def fetch_tweet_data_retry(x_url: str, max_attempts: int = 3) -> TweetData:
+    """Wrapper around fetch_tweet_data with coarse retry semantics.
+
+    We only retry on *transient* upstream errors (network issues, invalid JSON),
+    signalled via CrownTALKError.code in {"upstream_error", "upstream_invalid_json"}.
+
+    On clearly bad input (e.g., bad_tweet_url, tweet_not_accessible), we fail
+    fast and re-raise immediately.
+    """
+    last_exc: Optional[Exception] = None
+    for attempt in range(1, max_attempts + 1):
+        try:
+            return fetch_tweet_data(x_url)
+        except CrownTALKError as e:
+            code = getattr(e, "code", "error") or "error"
+            # Non-retryable application-level errors: bad URL, permission, etc.
+            if code in {"bad_tweet_url", "tweet_not_accessible"}:
+                raise
+            # Retryable upstream conditions.
+            if code in {"upstream_error", "upstream_invalid_json"} and attempt < max_attempts:
+                last_exc = e
+                # simple linear backoff; we already have pacing inside fetch_tweet_data
+                time.sleep(0.5 * attempt)
+                continue
+            raise
+        except Exception as e:  # noqa: BLE001
+            # Unexpected errors: allow a couple of retries, then surface.
+            last_exc = e
+            if attempt < max_attempts:
+                time.sleep(0.5 * attempt)
+                continue
+            raise
+
+    # Should not normally reach here, but keep a sane fallback.
+    if last_exc:
+        raise last_exc
+    return fetch_tweet_data(x_url)
+
+
+def fallback_tweet_data(x_url: str) -> TweetData:
+    """Return a minimal TweetData instance when upstream fetch fails.
+
+    This keeps the rest of the pipeline running: we still know which URL / id
+    we're talking about, but have empty text and no author metadata.
+    """
+    tweet_id, canonical = canonicalize_x_url(x_url)
+    handle = None
+    try:
+        h, sid = _extract_handle_and_id(x_url)
+        if sid and (tweet_id is None or sid == tweet_id):
+            handle = h
+            tweet_id = tweet_id or sid
+    except CrownTALKError:
+        # Leave handle/tweet_id as best-effort values.
+        pass
+    except Exception:
+        pass
+
+    return TweetData(
+        text="",
+        author_name=None,
+        handle=handle,
+        tweet_id=tweet_id,
+        lang=None,
+        canonical_url=canonical or None,
+    )
+
+
 def style_fingerprint(text: str) -> str:
     """
     Reduce a comment to a coarse 'style fingerprint' so we can remember

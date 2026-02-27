@@ -20,7 +20,7 @@ from flask import Flask, request, jsonify, make_response, g, Response, stream_wi
 from bs4 import BeautifulSoup
 
 from api import api_success, api_error, sse_event
-from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest, ApiEnvelope, ApiError
+from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest, ApiEnvelope, ApiError, CancelRunRequest
 
 # Optional Postgres auth storage (Supabase). We keep the rest of the app on SQLite
 # because it's used for caching/anti-repeat and can remain ephemeral on Render Free.
@@ -33,7 +33,7 @@ except Exception:  # noqa: BLE001
 
 
 # Helpers from utils.py (already deployed)
-from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls
+from utils import CrownTALKError, fetch_tweet_data, clean_and_normalize_urls, canonicalize_x_url, dedupe_urls_by_tweet_id, fetch_tweet_data_retry, fallback_tweet_data
 
 # ------------------------------------------------------------------------------
 # App / Logging / Config
@@ -217,6 +217,73 @@ def _rate_allow(ip: str, is_sensitive: bool) -> bool:
     st["n"] = int(st.get("n", 0)) + 1
     limit = RATE_LIMIT_SENSITIVE_MAX_REQUESTS if is_sensitive else RATE_LIMIT_MAX_REQUESTS
     return int(st["n"]) <= int(limit)
+
+# --------------------------------------------------------------------------
+# Run manager (per-user active run tracking + cancellation, in-memory)
+# --------------------------------------------------------------------------
+
+ACTIVE_RUNS: dict[str, dict[str, Any]] = {}
+_ACTIVE_RUNS_LOCK = threading.Lock()
+
+
+def _user_key_from_request() -> str:
+    """Coarse user key used for run locking and cancellation.
+
+    Prefer a real authenticated user id if available; otherwise fall back to
+    a hash of client IP + User-Agent so we don't expose raw identifiers.
+    """
+    try:
+        user_id = getattr(g, "user_id", None) or getattr(g, "user_email", None)
+        if user_id:
+            return f"user:{user_id}"
+    except Exception:  # noqa: BLE001
+        pass
+
+    ip = _client_ip()
+    ua = (request.headers.get("User-Agent") or "").strip()
+    base = f"{ip}|{ua}".encode("utf-8", "ignore")
+    return "anon:" + hashlib.sha256(base).hexdigest()
+
+
+def _register_run_or_conflict(user_key: str, run_id: str) -> bool:
+    """Register a new active run; return False if a live run already exists."""
+    now = time.time()
+    with _ACTIVE_RUNS_LOCK:
+        existing = ACTIVE_RUNS.get(user_key)
+        if existing and not existing.get("cancelled"):
+            return False
+        ACTIVE_RUNS[user_key] = {
+            "run_id": run_id,
+            "cancelled": False,
+            "started_at": now,
+        }
+    return True
+
+
+def _cancel_run(run_id: str) -> None:
+    """Best-effort cancellation flag for a given run id (per-process)."""
+    with _ACTIVE_RUNS_LOCK:
+        for key, info in list(ACTIVE_RUNS.items()):
+            if info.get("run_id") == run_id:
+                info["cancelled"] = True
+                break
+
+
+def _is_run_cancelled(run_id: str) -> bool:
+    with _ACTIVE_RUNS_LOCK:
+        for info in ACTIVE_RUNS.values():
+            if info.get("run_id") == run_id:
+                return bool(info.get("cancelled"))
+    return False
+
+
+def _mark_run_done(run_id: str) -> None:
+    with _ACTIVE_RUNS_LOCK:
+        for key, info in list(ACTIVE_RUNS.items()):
+            if info.get("run_id") == run_id:
+                ACTIVE_RUNS.pop(key, None)
+                break
+
 
 @app.before_request
 def _start_timer_and_limits():
@@ -9746,6 +9813,48 @@ def comment_endpoint():
     return api_success(response_obj)
 
 
+
+@app.route("/run/cancel", methods=["POST", "OPTIONS"])
+def cancel_run_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    auth = _require_user_or_unauthorized()
+    if auth is not None:
+        return auth
+
+    payload = request.get_json(silent=True) or {}
+    run_id: str = ""
+
+    try:
+        req = CancelRunRequest.model_validate(payload)
+        run_id = (req.run_id or "").strip()
+    except Exception:
+        # Best-effort: accept a plain {run_id: "..."} body as well.
+        raw = str(payload.get("run_id") or "").strip()
+        run_id = raw
+
+    if not run_id:
+        return api_error(
+            "bad_request",
+            "Missing run_id",
+            400,
+            details={"hint": "Expected JSON body with run_id"},
+        )
+
+    try:
+        _cancel_run(run_id)
+    except Exception:
+        # Cancellation is best-effort and per-process; we still respond success.
+        pass
+
+    # Idempotent: success even if the run was already finished or unknown.
+    return api_success({"run_id": run_id, "cancelled": True})
+
 @app.route("/comment/stream", methods=["POST", "OPTIONS"])
 def comment_stream_endpoint():
     if request.method == "OPTIONS":
@@ -9763,9 +9872,26 @@ def comment_stream_endpoint():
     try:
         req = StreamCommentRequest.model_validate(payload)
     except Exception:
-        return api_error("bad_request", "Invalid request body", 400, details={"hint": "Expected {url: string}"} )
+        return api_error(
+            "bad_request",
+            "Invalid request body",
+            400,
+            details={"hint": "Expected {url: string} or {urls: [...]}"},
+        )
 
-    url = req.url.strip()
+    # For now streaming is still single-URL; if a batch is provided we take the first.
+    url: str = ""
+    if getattr(req, "url", None):
+        url = (req.url or "").strip()
+    elif getattr(req, "urls", None):
+        for u in req.urls:
+            if isinstance(u, str) and u.strip():
+                url = u.strip()
+                break
+
+    if not url:
+        return api_error("bad_request", "Missing 'url' field", 400)
+
     preset = (req.preset or "").strip()
     output_language = (req.output_language or "").strip().lower() or None
     fast = bool(req.fast)
@@ -9773,6 +9899,18 @@ def comment_stream_endpoint():
     want_en = bool(getattr(req, "lang_en", True))
     want_native = bool(getattr(req, "lang_native", False))
     native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
+
+    # Stable run id for this SSE session (used by frontend Run History binding).
+    run_id = uuid.uuid4().hex
+
+    # Run lock: only one active stream per user at a time (per worker).
+    user_key = _user_key_from_request()
+    if not _register_run_or_conflict(user_key, run_id):
+        return api_error(
+            "run_conflict",
+            "Another run is already active; cancel it before starting a new one",
+            409,
+        )
 
     # Stable run id for this SSE session (used by frontend Run History binding).
     run_id = uuid.uuid4().hex
@@ -9792,13 +9930,22 @@ def comment_stream_endpoint():
         # progress: fetching
         yield sse_event("status", {"stage": "fetching"})
         try:
-            t = fetch_tweet_data(url)
+            t = fetch_tweet_data_retry(url)
         except CrownTALKError as e:
-            yield from fail(e.code, str(e))
-            return
+            # For application-level failures, try a minimal fallback payload.
+            try:
+                t = fallback_tweet_data(url)
+            except Exception:
+                yield from fail(e.code, str(e))
+                _mark_run_done(run_id)
+                return
         except Exception:
-            yield from fail("fetch_error", "Failed to fetch tweet")
-            return
+            try:
+                t = fallback_tweet_data(url)
+            except Exception:
+                yield from fail("fetch_error", "Failed to fetch tweet")
+                _mark_run_done(run_id)
+                return
 
         # Per-request context: thread, research, project, voice, style.
         try:
