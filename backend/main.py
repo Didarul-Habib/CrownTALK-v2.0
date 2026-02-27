@@ -9371,7 +9371,17 @@ def comment_from_url_stream_endpoint():
             synthetic_tweet = f"{prompt_prefix}\n{tweet_text_block}SOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
 
             # stage 2: generation (dedupe cache)
-            yield sse_event("status", {"stage": "generating"})
+            yield sse_event(
+            "status",
+            {
+                "type": "status",
+                "stage": "generating",
+                "index": 1,
+                "total": total,
+                "done": done_count,
+                "url": url,
+            },
+        )
             cache_key = hashlib.sha256(f"urlmode::{_normalize_url_for_cache(safe_url)}::{gen_lang}::{bool(req.fast)}::{quote_mode}::{getattr(g, 'idempotency_key', '')}".encode("utf-8")).hexdigest()
             cached = _dedupe_cache_get(cache_key)
             if cached:
@@ -9912,23 +9922,58 @@ def comment_stream_endpoint():
             409,
         )
 
-    # Stable run id for this SSE session (used by frontend Run History binding).
-    run_id = uuid.uuid4().hex
-
     def gen():
+        total = 1
+        done_count = 0
+
         def fail(code: str, message: str):
+            nonlocal done_count
             # Emit a frontend-compatible "result" item even on failures.
             err_item = {"url": url, "input_url": url, "status": "error", "reason": message, "comments": []}
             yield sse_event("error", {"code": code, "message": message})
             logger.warning("comment/stream failed code=%s url=%s msg=%s", code, url, message)
             yield sse_event("result", {"type": "result", "item": err_item})
+            # mark progress as complete for this single-item stream
+            done_count = total
+            yield sse_event(
+                "status",
+                {
+                    "type": "status",
+                    "stage": "finalizing",
+                    "index": 1,
+                    "total": total,
+                    "done": done_count,
+                    "url": url,
+                },
+            )
             # keep a "done" marker for humans/debuggers; frontend will also infer done when stream closes
-            yield sse_event("done", {"type": "done", "ok": False})
+            yield sse_event(
+                "done",
+                {
+                    "type": "done",
+                    "ok": False,
+                    "run_id": run_id,
+                    "total": total,
+                    "done": done_count,
+                    "ok_count": 0,
+                    "cancelled": False,
+                },
+            )
 
         # Let the client bind this stream to a run id immediately.
-        yield sse_event("meta", {"run_id": run_id})
+        yield sse_event("meta", {"type": "meta", "run_id": run_id, "total": total})
         # progress: fetching
-        yield sse_event("status", {"stage": "fetching"})
+        yield sse_event(
+            "status",
+            {
+                "type": "status",
+                "stage": "fetching",
+                "index": 1,
+                "total": total,
+                "done": done_count,
+                "url": url,
+            },
+        )
         try:
             t = fetch_tweet_data_retry(url)
         except CrownTALKError as e:
@@ -10005,7 +10050,17 @@ def comment_stream_endpoint():
         except Exception:
             pass
 
-        yield sse_event("status", {"stage": "generating"})
+        yield sse_event(
+            "status",
+            {
+                "type": "status",
+                "stage": "generating",
+                "index": 1,
+                "total": total,
+                "done": done_count,
+                "url": url,
+            },
+        )
         handle = t.handle or _extract_handle_from_url(url)
         input_url = url
         display_url = t.canonical_url or (f"https://x.com/{handle}/status/{t.tweet_id}" if handle and getattr(t, "tweet_id", None) else url)
@@ -10123,7 +10178,18 @@ def comment_stream_endpoint():
             if project_handles:
                 result_item["project_handles"] = project_handles
             yield sse_event("result", {"type": "result", "item": result_item})
-            yield sse_event("status", {"stage": "finalizing"})
+            done_count = total
+            yield sse_event(
+                "status",
+                {
+                    "type": "status",
+                    "stage": "finalizing",
+                    "index": 1,
+                    "total": total,
+                    "done": done_count,
+                    "url": input_url or url,
+                },
+            )
             # best-effort save
             try:
                 for c in comments:
@@ -10143,7 +10209,18 @@ def comment_stream_endpoint():
                 _persist_generation("urls", snapshot_request, snapshot_response)
             except Exception as exc:  # noqa: BLE001
                 logger.warning("failed to persist streaming generation: %s", exc)
-            yield sse_event("done", {"ok": True})
+            yield sse_event(
+                "done",
+                {
+                    "type": "done",
+                    "ok": True,
+                    "run_id": run_id,
+                    "total": total,
+                    "done": done_count,
+                    "ok_count": 1,
+                    "cancelled": False,
+                },
+            )
         except Exception:
             yield from fail("generation_error", "Failed to generate comment")
 
