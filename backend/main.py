@@ -1948,6 +1948,7 @@ REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_
 REQUEST_TARGET_LANG: ContextVar[str] = ContextVar("REQUEST_TARGET_LANG", default="en")
 REQUEST_INTENT_INFO: ContextVar[Optional[dict]] = ContextVar("REQUEST_INTENT_INFO", default=None)
 REQUEST_LAST_COMMENT_META: ContextVar[Optional[dict]] = ContextVar("REQUEST_LAST_COMMENT_META", default=None)
+REQUEST_QUALITY_MODE: ContextVar[str] = ContextVar("REQUEST_QUALITY_MODE", default="balanced")
 
 
 
@@ -2273,6 +2274,9 @@ GROQ_API_KEY_FREE = os.getenv("GROQ_API_KEY_FREE") or GROQ_API_KEY_LEGACY
 GROQ_API_KEY_PAID = os.getenv("GROQ_API_KEY_PAID") or ""
 GROQ_MODE = (os.getenv("GROQ_MODE", "auto") or "auto").strip().lower()
 GROQ_MODEL = os.getenv("GROQ_MODEL", "llama-3.1-8b-instant")
+GROQ_MODEL_FAST = os.getenv("GROQ_MODEL_FAST", GROQ_MODEL)
+GROQ_MODEL_BALANCED = os.getenv("GROQ_MODEL_BALANCED", GROQ_MODEL)
+GROQ_MODEL_PRO = os.getenv("GROQ_MODEL_PRO", GROQ_MODEL)
 GROQ_SERVICE_TIER = (os.getenv("GROQ_SERVICE_TIER", "") or "").strip() or None
 
 def _choose_groq_key() -> tuple[Optional[str], str]:
@@ -7735,6 +7739,28 @@ def groq_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> 
         max_tokens = 130
         temperature = 0.7
 
+    # Apply quality mode adjustments (fast / balanced / pro).
+    try:
+        qmode = REQUEST_QUALITY_MODE.get()
+    except Exception:
+        qmode = None
+    qmode = (qmode or "balanced").lower()
+    if qmode not in ("fast", "balanced", "pro"):
+        qmode = "balanced"
+
+    model_for_call = GROQ_MODEL_BALANCED
+    if qmode == "fast":
+        model_for_call = GROQ_MODEL_FAST
+    elif qmode == "pro":
+        model_for_call = GROQ_MODEL_PRO
+
+    if qmode == "fast":
+        max_tokens = max(80, int(max_tokens * 0.7))
+        temperature = max(0.5, min(temperature, 0.7))
+    elif qmode == "pro":
+        max_tokens = min(240, int(max_tokens * 1.3))
+        temperature = min(0.9, temperature + 0.05)
+
     # Mode line from lightweight heuristics (kept for backwards-compat).
     mode_line = llm_mode_hint(tweet_text[:80])
     system_prompt = _llm_sys_prompt(mode_line)
@@ -7749,6 +7775,7 @@ def groq_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> 
         messages=messages,
         max_tokens=max_tokens,
         temperature=temperature,
+        model=model_for_call,
     )
     if not resp or not getattr(resp, "choices", None):
         raise RuntimeError("empty Groq response for comments")
@@ -9498,6 +9525,13 @@ def comment_from_url_endpoint():
     except Exception as e:
         return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
 
+    # Per-request quality mode for URL comments.
+    quality_mode = "fast" if bool(getattr(req, "fast", False)) else "balanced"
+    try:
+        REQUEST_QUALITY_MODE.set(quality_mode)
+    except Exception:
+        pass
+
     # URL-mode currently reuses the same generator as tweet mode; any additional style
     # controls are accepted in schemas for forward-compat.
 
@@ -9649,91 +9683,208 @@ def comment_from_url_endpoint():
 
 
 
+
 @app.route("/comment_from_url/stream", methods=["POST", "OPTIONS"])
 def comment_from_url_stream_endpoint():
-    """SSE streaming: fetch/extract URL content and generate comments."""
     if request.method == "OPTIONS":
         return ("", 204)
-    guard = _require_access_or_forbidden()
-    if guard is not None:
-        return guard
-    auth = _require_user_or_unauthorized()
-    if auth is not None:
-        return auth
+
+    guard = _require_access_guard()
+    auth_error = guard.check_request(request)
+    if auth_error:
+        return auth_error
 
     payload = request.get_json(silent=True) or {}
     try:
         req = UrlCommentRequest(**payload)
-    except Exception as e:
-        return api_error("bad_request", "Invalid request body", 400, {"detail": str(e)})
+    except Exception as e:  # pydantic ValidationError or generic error
+        return api_error("bad_request", f"Invalid request: {e}", status=400)
 
     include_alts = bool(getattr(req, "include_alternates", False))
     want_en = bool(getattr(req, "lang_en", True))
     want_native = bool(getattr(req, "lang_native", False))
-    native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
+    native_override = (getattr(req, "native_language", None) or "").strip().lower() or None
 
-    # Expose a stable per-request run id for the streaming client.
-    run_id = getattr(g, "request_id", "") or _make_request_id()
-
-    # Load-shed: if endpoint is slow, default to fast mode
+    # Quality mode for preview/URL stream: fall back to fast flag when present.
+    quality_mode = "fast" if bool(getattr(req, "fast", False)) else "balanced"
     try:
-        if _should_load_shed("POST /comment_from_url/stream"):
-            req.fast = True
+        REQUEST_QUALITY_MODE.set(quality_mode)
     except Exception:
         pass
 
+    run_id = getattr(g, "request_id", "") or _make_request_id()
+
+    # Register this run so /run/cancel can target it and we keep per-user concurrency sane.
+    user_key = _user_key_from_request()
+    if not _register_run_or_conflict(user_key, run_id):
+        return api_error(
+            "run_conflict",
+            "Another run is already active; cancel it before starting a new one.",
+            status=409,
+        )
 
     def gen():
-        def fail(code: str, message: str, url_value: str = ""):
-            u = url_value or (req.source_url if hasattr(req, "source_url") else "")
-            yield sse_event("error", {"code": code, "message": message})
-            yield sse_event("result", {"item": {"url": u, "status": "error", "reason": message, "comments": []}})
-            yield sse_event("done", {"ok": False})
+        total = 1
+        done_count = 0
+
+        def fail(code: str, message: str, url_value: str | None = None):
+            nonlocal done_count
+            u = url_value or (req.source_url or "")
+            done_count = total
+            # Minimal error envelope for the preview client.
+            yield sse_event(
+                "error",
+                {"code": code, "message": message, "url": u},
+            )
+            yield sse_event(
+                "result",
+                {
+                    "type": "result",
+                    "item": {
+                        "url": u,
+                        "input_url": req.source_url,
+                        "status": "error",
+                        "reason": message,
+                        "comments": [],
+                    },
+                },
+            )
+            yield sse_event(
+                "done",
+                {
+                    "type": "done",
+                    "ok": False,
+                    "run_id": run_id,
+                    "total": total,
+                    "done": done_count,
+                    "ok_count": 0,
+                    "cancelled": False,
+                },
+            )
+
+        def bail_if_cancelled(stage: str = "cancelled") -> bool:
+            nonlocal done_count
+            if _is_run_cancelled(run_id):
+                yield sse_event(
+                    "status",
+                    {
+                        "type": "status",
+                        "stage": stage,
+                        "index": 1,
+                        "total": total,
+                        "done": done_count,
+                        "url": req.source_url,
+                        "cancelled": True,
+                    },
+                )
+                yield sse_event(
+                    "done",
+                    {
+                        "type": "done",
+                        "ok": False,
+                        "run_id": run_id,
+                        "total": total,
+                        "done": done_count,
+                        "ok_count": 0,
+                        "cancelled": True,
+                    },
+                )
+                return True
+            return False
 
         try:
-            # stage 1: validate + fetch/extract (cached)
-            yield sse_event("status", {"stage": "fetching"})
-            try:
-                safe_url = validate_public_http_url(req.source_url)
-            except CrownTALKError as e:
-                yield from fail(e.code, str(e), req.source_url)
+            # Let the client bind this stream to a run id immediately.
+            yield sse_event("meta", {"type": "meta", "run_id": run_id, "total": total})
+
+            if (yield from bail_if_cancelled("cancelled")):
                 return
 
-            tweet_ctx = None
-            article_url = None
+            source_url = (req.source_url or "").strip()
+            if not source_url:
+                yield from fail("missing_url", "source_url is required")
+                return
+
+            # Stage: fetching & URL validation.
+            yield sse_event(
+                "status",
+                {
+                    "type": "status",
+                    "stage": "fetching",
+                    "index": 1,
+                    "total": total,
+                    "done": done_count,
+                    "url": source_url,
+                },
+            )
             try:
-                if re.search(r"(?:x\.com|twitter\.com|mobile\.twitter\.com|m\.twitter\.com)/(?:[A-Za-z0-9_]{1,15}|i)(?:/(?:web/)?status|/status)/\d+", safe_url, re.IGNORECASE):
-                    td = fetch_tweet_data(safe_url)
+                safe_url = validate_public_http_url(source_url)
+            except CrownTALKError as e:
+                yield from fail(e.code or "invalid_url", str(e), source_url)
+                return
+
+            article_url: str | None = None
+            tweet_ctx: dict | None = None
+
+            # If this looks like an X/Twitter URL, try to resolve tweet + any article link inside.
+            try:
+                if re.search(r"(?:^|//)(?:x\.com|twitter\.com|t\.co)(/|$)", safe_url, re.IGNORECASE):
+                    t = fetch_tweet_data_retry(safe_url)
                     tweet_ctx = {
-                        "tweet_url": td.canonical_url or safe_url,
-                        "tweet_text": (td.text or "").strip(),
-                        "handle": td.handle or "",
-                        "tweet_id": getattr(td, "tweet_id", "") or "",
+                        "tweet_url": t.url,
+                        "tweet_id": t.tweet_id,
+                        "tweet_text": t.text,
+                        "handle": t.handle,
                     }
-                    m = re.search(r"https?://\S+", tweet_ctx["tweet_text"])
+                    m = re.search(r"https?://\S+", t.text or "")
                     if m:
-                        article_url = m.group(0).rstrip(")]}>,.!\"' ")
+                        cand = m.group(0).rstrip(')]}>,.!"\' ')
+                        article_url = cand
             except Exception:
                 tweet_ctx = None
                 article_url = None
 
-            yield sse_event("status", {"stage": "extracting"})
+            if not article_url:
+                article_url = safe_url
+
+            # Stage: extracting.
+            yield sse_event(
+                "status",
+                {
+                    "type": "status",
+                    "stage": "extracting",
+                    "index": 1,
+                    "total": total,
+                    "done": done_count,
+                    "url": article_url,
+                },
+            )
             try:
                 prev = fetch_source_preview(article_url or safe_url)
-            except Exception as e:
-                yield from fail("fetch_failed", "Failed to fetch URL", req.source_url)
+            except Exception:
+                yield from fail("fetch_failed", "Failed to fetch URL", source_url)
                 return
 
             content = (prev.get("content") or "").strip()
             if not content:
-                yield from fail("no_content", "Could not extract content from URL", req.source_url)
+                yield from fail("no_content", "Could not extract content from URL", source_url)
                 return
 
-            looks_claimy = bool(re.search(r"\b\d+(?:[\.,]\d+)?%\b|\b\d{4}\b|\$\d+", content))
-            quote_mode = bool(req.quote_mode or looks_claimy)
+            auto_lang = (prev.get("language") or "").strip().lower() or "en"
+            output_lang = (req.output_language or "").strip().lower() or auto_lang
 
-            gen_lang = (req.output_language or "en").strip().lower()
-            context_block = content[:5000]
+            # Summarize long content for safer prompts.
+            summary = _summarize_long_text(content, output_lang)
+            context_block = (summary.get("summary") or content or "")[:5000]
+
+            looks_claimy = bool(
+                re.search(r"\b\d+(?:[\.,]\d+)?%\b", content)
+                or re.search(r"\b\d{4}\b", content)
+                or re.search(r"\$\d+", content)
+            )
+            quote_mode = bool(getattr(req, "quote_mode", False) or looks_claimy)
+
+            gen_lang = output_lang or auto_lang or "en"
+
             prompt_prefix = (
                 "You are writing a reply comment to content from a URL (article or thread). "
                 "Be concise, natural, and high-quality for X (Twitter).\n"
@@ -9741,39 +9892,117 @@ def comment_from_url_stream_endpoint():
             )
             if quote_mode:
                 prompt_prefix += (
-                    "If there are stats/claims, either quote the exact phrasing briefly and ask for a source, "
-                    "or respond with a careful caveat. Prefer one short quote.\n"
+                    "If there are statistics or strong claims (percentages, years, dollar amounts, or growth figures), "
+                    "briefly quote or paraphrase one of them and either ask for a source or respond with a careful caveat. "
+                    "Prefer a single, focused reference instead of listing many numbers.\n"
                 )
 
             tweet_text_block = (tweet_ctx or {}).get("tweet_text") or ""
             if tweet_text_block:
                 tweet_text_block = f"TWEET_TEXT: {tweet_text_block}\n"
-            synthetic_tweet = f"{prompt_prefix}\n{tweet_text_block}SOURCE_TITLE: {prev.get('title','')}\nSOURCE_EXCERPT: {prev.get('excerpt','')}\nSOURCE_CONTENT: {context_block}"
+            synthetic_tweet = (
+                f"{prompt_prefix}\n"
+                f"{tweet_text_block}"
+                f"SOURCE_EXCERPT: {prev.get('excerpt', '')}\n"
+                f"SOURCE_CONTENT: {context_block}"
+            )
 
-            # stage 2: generation (dedupe cache)
-            yield sse_event(
-            "status",
-            {
-                "type": "status",
-                "stage": "generating",
-                "index": 1,
-                "total": total,
-                "done": done_count,
-                "url": url,
-            },
-        )
-            cache_key = hashlib.sha256(f"urlmode::{_normalize_url_for_cache(safe_url)}::{gen_lang}::{bool(req.fast)}::{quote_mode}::{getattr(g, 'idempotency_key', '')}".encode("utf-8")).hexdigest()
+            # Build a simple dedupe cache key for this URL + language + toggles.
+            cache_parts = [
+                "url_stream",
+                article_url or safe_url,
+                gen_lang,
+                "quote" if quote_mode else "no-quote",
+                "alts" if include_alts else "no-alts",
+            ]
+            try:
+                nonce = REQUEST_NONCE.get()
+                if nonce:
+                    cache_parts.append(f"nonce:{nonce}")
+            except Exception:
+                pass
+            cache_key = "|".join(cache_parts)
             cached = _dedupe_cache_get(cache_key)
             if cached:
-                try:
-                    g.gen_cache_hit = True
-                except Exception:
-                    pass
-                result_item = cached
-            else:
-                comments_all: list[dict] = []
-                comments_all: list[dict] = []
-                if want_en:
+                result_item = dict(cached)
+                result_item["from_cache"] = True
+                yield sse_event(
+                    "status",
+                    {
+                        "type": "status",
+                        "stage": "generating",
+                        "index": 1,
+                        "total": total,
+                        "done": done_count,
+                        "url": source_url,
+                    },
+                )
+                yield sse_event("result", {"type": "result", "item": result_item})
+                done_count = total
+                yield sse_event(
+                    "status",
+                    {
+                        "type": "status",
+                        "stage": "finalizing",
+                        "index": 1,
+                        "total": total,
+                        "done": done_count,
+                        "url": source_url,
+                    },
+                )
+                yield sse_event(
+                    "done",
+                    {
+                        "type": "done",
+                        "ok": True,
+                        "run_id": run_id,
+                        "total": total,
+                        "done": done_count,
+                        "ok_count": 1,
+                        "cancelled": False,
+                    },
+                )
+                return
+
+            if (yield from bail_if_cancelled("cancelled")):
+                return
+
+            # Stage: generating.
+            yield sse_event(
+                "status",
+                {
+                    "type": "status",
+                    "stage": "generating",
+                    "index": 1,
+                    "total": total,
+                    "done": done_count,
+                    "url": source_url,
+                },
+            )
+
+            comments_all: list[dict] = []
+
+            if want_en:
+                comments_all.extend(
+                    generate_two_comments_with_providers(
+                        tweet_text=synthetic_tweet,
+                        author=None,
+                        handle=None,
+                        lang=gen_lang,
+                        url=safe_url,
+                        target_lang="en",
+                        out_lang_tag="en",
+                        include_alternates=include_alts,
+                    )
+                )
+
+            if want_native:
+                native_lang = native_override
+                if not native_lang or native_lang in ("auto", "detect"):
+                    native_lang = gen_lang
+                native_lang = (native_lang or "en").strip().lower()
+                if not (native_lang.startswith("en") and want_en):
+                    out_tag = native_lang if not native_lang.startswith("en") else "en"
                     comments_all.extend(
                         generate_two_comments_with_providers(
                             tweet_text=synthetic_tweet,
@@ -9781,103 +10010,88 @@ def comment_from_url_stream_endpoint():
                             handle=None,
                             lang=gen_lang,
                             url=safe_url,
-                            target_lang="en",
-                            out_lang_tag="en",
+                            target_lang=native_lang,
+                            out_lang_tag=out_tag,
                             include_alternates=include_alts,
                         )
                     )
 
-                if want_native:
-                    native_lang = (native_override or "").strip().lower() if native_override else None
-                    if not native_lang or native_lang in ("auto", "detect"):
-                        native_lang = (gen_lang or "en").strip().lower()
-                    native_lang = (native_lang or "en").strip().lower()
-                    # If native resolves to English and we already generated English, avoid duplicate + bogus translation.
-                    if native_lang.startswith("en") and want_en:
-                        pass
-                    else:
-                        out_tag = native_lang if not native_lang.startswith("en") else "en"
-                        comments_all.extend(
-                            generate_two_comments_with_providers(
-                                tweet_text=synthetic_tweet,
-                                author=None,
-                                handle=None,
-                                lang=gen_lang,
-                                url=safe_url,
-                                target_lang=native_lang,
-                                out_lang_tag=out_tag,
-                                include_alternates=include_alts,
-                            )
-                        )
-                if not comments_all:
-                    comments_all = generate_two_comments_with_providers(
-                        tweet_text=synthetic_tweet,
-                        author=None,
-                        handle=None,
-                        lang=gen_lang,
-                        url=safe_url,
-                        target_lang=gen_lang,
-                        out_lang_tag=gen_lang,
-                        include_alternates=include_alts,
-                    )
+            comments_all = [
+                c for c in comments_all if isinstance(c, dict) and (c.get("text") or "").strip()
+            ]
+            if not comments_all:
+                yield from fail("no_comments", "Failed to generate comments", source_url)
+                return
 
-                if not comments_all:
-                    comments_all = generate_two_comments_with_providers(
-                        tweet_text=synthetic_tweet,
-                        author=None,
-                        handle=None,
-                        lang=gen_lang,
-                        url=safe_url,
-                        target_lang=gen_lang,
-                        out_lang_tag=gen_lang,
-                        include_alternates=include_alts,
-                    )
+            result_item = {
+                "url": prev.get("url") or safe_url,
+                "input_url": source_url,
+                "tweet_url": (tweet_ctx or {}).get("tweet_url"),
+                "tweet_id": (tweet_ctx or {}).get("tweet_id"),
+                "handle": (tweet_ctx or {}).get("handle"),
+                "title": prev.get("title"),
+                "excerpt": prev.get("excerpt"),
+                "status": "ok",
+                "comments": comments_all,
+                "citations": [
+                    {
+                        "url": prev.get("url") or safe_url,
+                        "input_url": source_url,
+                        "title": prev.get("title"),
+                    }
+                ]
+                if quote_mode
+                else [],
+            }
 
-                # "Chunk" events (best-effort): emit progressive chunks per comment so the client UI can stream.
-                # Note: providers may not support true token streaming across all SDKs on free tier; this still
-                # provides progressive rendering for UX consistency.
-                comment_texts = []
-                for c in comments_all:
-                    if isinstance(c, dict):
-                        t = (c.get("text") or "").strip()
-                        if t:
-                            comment_texts.append(t)
-
-                for ci, ctext in enumerate(comment_texts):
-                    ctext = _truncate_output(ctext)
-                    for off in range(0, len(ctext), 200):
-                        yield sse_event("chunk", {"index": ci, "text": ctext[off:off+200]})
-                        # heartbeat (proxy keep-alive)
-                        if int(time.time()) % 15 == 0:
-                            yield sse_event("ping", {"t": int(time.time())})
-
-                result_item = {
-                    "url": (prev.get("url") or safe_url),
-                    "input_url": req.source_url,
-                    "tweet_url": (tweet_ctx or {}).get("tweet_url"),
-                    "tweet_id": (tweet_ctx or {}).get("tweet_id"),
-                    "handle": (tweet_ctx or {}).get("handle"),
-                    "title": prev.get("title"),
-                    "excerpt": prev.get("excerpt"),
-                    "status": "ok",
-                    "comments": [c for c in comments_all if isinstance(c, dict) and (c.get("text") or "").strip()],
-                    "citations": [{"url": (prev.get("url") or safe_url),
-                    "input_url": req.source_url, "title": prev.get("title")}] if quote_mode else [],
-                }
+            try:
                 _dedupe_cache_set(cache_key, result_item)
+            except Exception:
+                pass
 
             yield sse_event("result", {"type": "result", "item": result_item})
-            yield sse_event("status", {"stage": "finalizing"})
-            yield sse_event("done", {"ok": True})
+            done_count = total
+            yield sse_event(
+                "status",
+                {
+                    "type": "status",
+                    "stage": "finalizing",
+                    "index": 1,
+                    "total": total,
+                    "done": done_count,
+                    "url": source_url,
+                },
+            )
+            yield sse_event(
+                "done",
+                {
+                    "type": "done",
+                    "ok": True,
+                    "run_id": run_id,
+                    "total": total,
+                    "done": done_count,
+                    "ok_count": 1,
+                    "cancelled": False,
+                },
+            )
         except GeneratorExit:
-            # Client disconnected (best-effort)
             return
-        except Exception as e:
+        except Exception:
             yield from fail("internal_error", "Unexpected error", req.source_url)
 
-        resp = Response(stream_with_context(stream()), mimetype="text/event-stream")
+    def stream():
+        try:
+            yield from gen()
+        finally:
+            try:
+                _mark_run_done(run_id)
+            except Exception:
+                pass
+
+    resp = Response(stream_with_context(stream()), mimetype="text/event-stream")
     resp.headers["Cache-Control"] = "no-cache"
     resp.headers["X-Accel-Buffering"] = "no"
+    resp.headers["X-Run-Id"] = run_id
     return resp
 
 @app.route("/comment", methods=["POST", "OPTIONS"])
@@ -9901,6 +10115,19 @@ def comment_endpoint():
     if isinstance(cached_idem, dict):
         # Return in envelope for consistency (frontend supports both).
         return api_success(cached_idem)
+
+    # Derive quality mode for this non-stream batch.
+    quality_mode_raw = (payload.get("quality_mode") or "").strip().lower()
+    if quality_mode_raw not in ("fast", "balanced", "pro"):
+        quality_mode_raw = ""
+    if quality_mode_raw:
+        quality_mode = quality_mode_raw
+    else:
+        quality_mode = "fast" if bool(payload.get("fast")) else "balanced"
+    try:
+        REQUEST_QUALITY_MODE.set(quality_mode)
+    except Exception:
+        pass
 
     urls = payload.get("urls")
     if not isinstance(urls, list) or not urls:
@@ -9973,6 +10200,11 @@ def comment_endpoint():
     def _process_one(url: str) -> tuple[str, dict | None, dict | None]:
         """Return (input_url, result_item_or_none, failed_item_or_none)."""
         try:
+            # Ensure per-thread quality mode is set for this worker.
+            try:
+                REQUEST_QUALITY_MODE.set(quality_mode)
+            except Exception:
+                pass
             try:
                 set_request_nonce(url)
             except Exception:
@@ -10326,7 +10558,23 @@ def comment_stream_endpoint():
 
     preset = (req.preset or "").strip()
     output_language = (req.output_language or "").strip().lower() or None
-    fast = bool(req.fast)
+
+    # Derive quality mode: explicit quality_mode wins; otherwise fall back to fast flag.
+    quality_mode_raw = getattr(req, "quality_mode", None)
+    quality_mode: str = ""
+    if isinstance(quality_mode_raw, str):
+        qm = quality_mode_raw.strip().lower()
+        if qm in ("fast", "balanced", "pro"):
+            quality_mode = qm
+    if not quality_mode:
+        quality_mode = "fast" if bool(getattr(req, "fast", False)) else "balanced"
+
+    fast = quality_mode == "fast"
+    try:
+        REQUEST_QUALITY_MODE.set(quality_mode)
+    except Exception:
+        pass
+
     include_alts = bool(getattr(req, "include_alternates", False))
     want_en = bool(getattr(req, "lang_en", True))
     want_native = bool(getattr(req, "lang_native", False))
@@ -10384,6 +10632,40 @@ def comment_stream_endpoint():
 
         # Let the client bind this stream to a run id immediately.
         yield sse_event("meta", {"type": "meta", "run_id": run_id, "total": total})
+
+        def bail_if_cancelled(stage: str = "cancelled") -> bool:
+            nonlocal done_count
+            if _is_run_cancelled(run_id):
+                yield sse_event(
+                    "status",
+                    {
+                        "type": "status",
+                        "stage": stage,
+                        "index": 1,
+                        "total": total,
+                        "done": done_count,
+                        "url": url,
+                        "cancelled": True,
+                    },
+                )
+                yield sse_event(
+                    "done",
+                    {
+                        "type": "done",
+                        "ok": False,
+                        "run_id": run_id,
+                        "total": total,
+                        "done": done_count,
+                        "ok_count": 0,
+                        "cancelled": True,
+                    },
+                )
+                return True
+            return False
+
+        if (yield from bail_if_cancelled("cancelled")):
+            return
+
         # progress: fetching
         yield sse_event(
             "status",
@@ -10433,6 +10715,9 @@ def comment_stream_endpoint():
             REQUEST_RESEARCH_CTX.set(research_ctx)
         except Exception:
             pass
+
+        if (yield from bail_if_cancelled("cancelled")):
+            return
 
         # Best-effort project recognition (local file-backed profiles by @handle)
         try:
@@ -10621,6 +10906,7 @@ def comment_stream_endpoint():
                     "preset": preset,
                     "output_language": output_language,
                     "fast": fast,
+                    "quality_mode": quality_mode,
                     "mode": "stream",
                 }
                 snapshot_response = {"results": [result_item], "failed": []}
