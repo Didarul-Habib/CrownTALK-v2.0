@@ -5865,6 +5865,7 @@ def _post_polish_comment(
     return txt
 
 
+
 def _quality_gate_comment(
     text: str,
     *,
@@ -5879,6 +5880,7 @@ def _quality_gate_comment(
       - multiple question marks
       - greeting missing comma after name
       - too long
+      - too many sentences / words
       - banned slang
       - obviously unprofessional casing
     """
@@ -5888,8 +5890,33 @@ def _quality_gate_comment(
 
     if not t:
         reasons.append("empty")
+
+    # Global length guard – if the reply is very long, we always rewrite.
     if len(t) > 320:
-        reasons.append("too_long")
+        reasons.append("too_long_chars")
+
+    # Sentence / word-based limits – this is what keeps GM replies short.
+    words = t.split()
+    word_count = len(words)
+    if word_count > 35:
+        reasons.append("too_many_words")
+
+    try:
+        sentences = [s.strip() for s in re.split(r"[.!?]+", t) if s.strip()]
+        sent_count = len(sentences)
+        if sent_count > 2:
+            reasons.append("too_many_sentences")
+    except Exception:
+        sent_count = 0
+
+    # Greeting-specific tight limits: keep GM comments small.
+    mode = (intent_info or {}).get("mode") or ""
+    if mode == "greeting":
+        if word_count > 26:
+            reasons.append("greeting_too_long")
+        # If GM but we somehow have >2 sentences, treat as failure
+        if sent_count > 2:
+            reasons.append("greeting_too_many_sentences")
 
     if not t.endswith((".", "?", "!")):
         reasons.append("no_terminal_punctuation")
@@ -5901,7 +5928,6 @@ def _quality_gate_comment(
     # Greeting comma check
     ok_greeting = True
     try:
-        mode = (intent_info or {}).get("mode") or ""
         if mode == "greeting":
             name = _resolve_greeting_name(display_name, None)
             if name and f"{name}," not in t:
@@ -5918,6 +5944,8 @@ def _quality_gate_comment(
         reasons.append("starts_lowercase")
 
     return (len(reasons) == 0), reasons
+
+
 
 
 def _rewrite_comment_with_groq(original: str) -> str:
@@ -5938,9 +5966,10 @@ def _rewrite_comment_with_groq(original: str) -> str:
         return original
 
     system_text = (
-        "You lightly edit short X replies for punctuation and tone. "
-        "Fix spacing, capitalization, and punctuation. "
-        "Keep the original meaning. Use 1–2 sentences. "
+        "You lightly edit short X replies for punctuation, tone, and brevity. "
+        "Make the reply very short and concise. "
+        "Use at most 2 short sentences and aim for about 12–22 words total. "
+        "Keep any greeting like 'GM Name,' but avoid repeating the same idea. "
         "Remove hype or cringe slang. Output only the final comment."
     )
     messages = [
@@ -10025,10 +10054,10 @@ def comment_endpoint():
             if want_en:
                 comments_all.extend(
                     generate_two_comments_with_providers(
-                        tweet_text=t.text or "",
-                        author=t.author_name or None,
-                        handle=handle,
-                        lang=t.lang or None,
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
                         url=url,
                         target_lang="en",
                         out_lang_tag="en",
@@ -10049,10 +10078,10 @@ def comment_endpoint():
                     out_tag = native_lang if not native_lang.startswith("en") else "en"
                     comments_all.extend(
                         generate_two_comments_with_providers(
-                            tweet_text=t.text or "",
-                            author=t.author_name or None,
-                            handle=handle,
-                            lang=t.lang or None,
+                            t.text or "",
+                            t.author_name or None,
+                            handle,
+                            t.lang or None,
                             url=url,
                             target_lang=native_lang,
                             out_lang_tag=out_tag,
@@ -10062,13 +10091,11 @@ def comment_endpoint():
 
 
             two = comments_all or generate_two_comments_with_providers(
-                tweet_text=t.text or "",
-                author=t.author_name or None,
-                handle=handle,
-                lang=t.lang or None,
+                t.text or "",
+                t.author_name or None,
+                handle,
+                t.lang or None,
                 url=url,
-                target_lang="en",
-                out_lang_tag="en",
                 include_alternates=bool(payload.get("include_alternates", False)),
             )
 
@@ -10450,10 +10477,10 @@ def comment_stream_endpoint():
             if want_en:
                 comments.extend(
                     generate_two_comments_with_providers(
-                        tweet_text=t.text or "",
-                        author=t.author_name or None,
-                        handle=handle,
-                        lang=t.lang or None,
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
                         url=display_url,
                         target_lang="en",
                         out_lang_tag="en",
@@ -10474,10 +10501,10 @@ def comment_stream_endpoint():
                     out_tag = native_lang if not native_lang.startswith("en") else "en"
                     comments.extend(
                         generate_two_comments_with_providers(
-                            tweet_text=t.text or "",
-                            author=t.author_name or None,
-                            handle=handle,
-                            lang=t.lang or None,
+                            t.text or "",
+                            t.author_name or None,
+                            handle,
+                            t.lang or None,
                             url=display_url,
                             target_lang=native_lang,
                             out_lang_tag=out_tag,
@@ -10490,10 +10517,10 @@ def comment_stream_endpoint():
             if not comments:
                 if target == "en":
                     comments = generate_two_comments_with_providers(
-                        tweet_text=t.text or "",
-                        author=t.author_name or None,
-                        handle=handle,
-                        lang=t.lang or None,
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
                         url=display_url,
                         target_lang="en",
                         out_lang_tag="en",
@@ -10501,10 +10528,10 @@ def comment_stream_endpoint():
                     )
                 else:
                     comments = generate_two_comments_with_providers(
-                        tweet_text=t.text or "",
-                        author=t.author_name or None,
-                        handle=handle,
-                        lang=t.lang or None,
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
                         url=display_url,
                         target_lang=target,
                         out_lang_tag=target,
@@ -10697,10 +10724,10 @@ def reroll_endpoint():
         if want_en:
             comments_all.extend(
                 generate_two_comments_with_providers(
-                    tweet_text=t.text or "",
-                    author=t.author_name or None,
-                    handle=handle,
-                    lang=t.lang or None,
+                    t.text or "",
+                    t.author_name or None,
+                    handle,
+                    t.lang or None,
                     url=url,
                     target_lang="en",
                     out_lang_tag="en",
@@ -10720,10 +10747,10 @@ def reroll_endpoint():
                 out_tag = native_lang if not native_lang.startswith("en") else "en"
                 comments_all.extend(
                     generate_two_comments_with_providers(
-                        tweet_text=t.text or "",
-                        author=t.author_name or None,
-                        handle=handle,
-                        lang=t.lang or None,
+                        t.text or "",
+                        t.author_name or None,
+                        handle,
+                        t.lang or None,
                         url=url,
                         target_lang=native_lang,
                         out_lang_tag=out_tag,
@@ -10731,13 +10758,11 @@ def reroll_endpoint():
                 )
 
         two = comments_all or generate_two_comments_with_providers(
-            tweet_text=t.text or "",
-            author=t.author_name or None,
-            handle=handle,
-            lang=t.lang or None,
+            t.text or "",
+            t.author_name or None,
+            handle,
+            t.lang or None,
             url=url,
-            target_lang="en",
-            out_lang_tag="en",
         )
 
         display_url = _canonical_x_url_from_tweet(url, t)
