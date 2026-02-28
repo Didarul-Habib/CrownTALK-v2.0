@@ -10025,10 +10025,10 @@ def comment_endpoint():
             if want_en:
                 comments_all.extend(
                     generate_two_comments_with_providers(
-                        t.text or "",
-                        t.author_name or None,
-                        handle,
-                        t.lang or None,
+                        tweet_text=t.text or "",
+                        author=t.author_name or None,
+                        handle=handle,
+                        lang=t.lang or None,
                         url=url,
                         target_lang="en",
                         out_lang_tag="en",
@@ -10049,10 +10049,10 @@ def comment_endpoint():
                     out_tag = native_lang if not native_lang.startswith("en") else "en"
                     comments_all.extend(
                         generate_two_comments_with_providers(
-                            t.text or "",
-                            t.author_name or None,
-                            handle,
-                            t.lang or None,
+                            tweet_text=t.text or "",
+                            author=t.author_name or None,
+                            handle=handle,
+                            lang=t.lang or None,
                             url=url,
                             target_lang=native_lang,
                             out_lang_tag=out_tag,
@@ -10062,11 +10062,13 @@ def comment_endpoint():
 
 
             two = comments_all or generate_two_comments_with_providers(
-                t.text or "",
-                t.author_name or None,
-                handle,
-                t.lang or None,
+                tweet_text=t.text or "",
+                author=t.author_name or None,
+                handle=handle,
+                lang=t.lang or None,
                 url=url,
+                target_lang="en",
+                out_lang_tag="en",
                 include_alternates=bool(payload.get("include_alternates", False)),
             )
 
@@ -10448,10 +10450,10 @@ def comment_stream_endpoint():
             if want_en:
                 comments.extend(
                     generate_two_comments_with_providers(
-                        t.text or "",
-                        t.author_name or None,
-                        handle,
-                        t.lang or None,
+                        tweet_text=t.text or "",
+                        author=t.author_name or None,
+                        handle=handle,
+                        lang=t.lang or None,
                         url=display_url,
                         target_lang="en",
                         out_lang_tag="en",
@@ -10472,10 +10474,10 @@ def comment_stream_endpoint():
                     out_tag = native_lang if not native_lang.startswith("en") else "en"
                     comments.extend(
                         generate_two_comments_with_providers(
-                            t.text or "",
-                            t.author_name or None,
-                            handle,
-                            t.lang or None,
+                            tweet_text=t.text or "",
+                            author=t.author_name or None,
+                            handle=handle,
+                            lang=t.lang or None,
                             url=display_url,
                             target_lang=native_lang,
                             out_lang_tag=out_tag,
@@ -10488,10 +10490,10 @@ def comment_stream_endpoint():
             if not comments:
                 if target == "en":
                     comments = generate_two_comments_with_providers(
-                        t.text or "",
-                        t.author_name or None,
-                        handle,
-                        t.lang or None,
+                        tweet_text=t.text or "",
+                        author=t.author_name or None,
+                        handle=handle,
+                        lang=t.lang or None,
                         url=display_url,
                         target_lang="en",
                         out_lang_tag="en",
@@ -10499,10 +10501,10 @@ def comment_stream_endpoint():
                     )
                 else:
                     comments = generate_two_comments_with_providers(
-                        t.text or "",
-                        t.author_name or None,
-                        handle,
-                        t.lang or None,
+                        tweet_text=t.text or "",
+                        author=t.author_name or None,
+                        handle=handle,
+                        lang=t.lang or None,
                         url=display_url,
                         target_lang=target,
                         out_lang_tag=target,
@@ -10695,10 +10697,10 @@ def reroll_endpoint():
         if want_en:
             comments_all.extend(
                 generate_two_comments_with_providers(
-                    t.text or "",
-                    t.author_name or None,
-                    handle,
-                    t.lang or None,
+                    tweet_text=t.text or "",
+                    author=t.author_name or None,
+                    handle=handle,
+                    lang=t.lang or None,
                     url=url,
                     target_lang="en",
                     out_lang_tag="en",
@@ -10718,10 +10720,10 @@ def reroll_endpoint():
                 out_tag = native_lang if not native_lang.startswith("en") else "en"
                 comments_all.extend(
                     generate_two_comments_with_providers(
-                        t.text or "",
-                        t.author_name or None,
-                        handle,
-                        t.lang or None,
+                        tweet_text=t.text or "",
+                        author=t.author_name or None,
+                        handle=handle,
+                        lang=t.lang or None,
                         url=url,
                         target_lang=native_lang,
                         out_lang_tag=out_tag,
@@ -10729,11 +10731,13 @@ def reroll_endpoint():
                 )
 
         two = comments_all or generate_two_comments_with_providers(
-            t.text or "",
-            t.author_name or None,
-            handle,
-            t.lang or None,
+            tweet_text=t.text or "",
+            author=t.author_name or None,
+            handle=handle,
+            lang=t.lang or None,
             url=url,
+            target_lang="en",
+            out_lang_tag="en",
         )
 
         display_url = _canonical_x_url_from_tweet(url, t)
