@@ -1946,6 +1946,9 @@ def _load_project_research(handles: list[str]) -> list[dict]:
 REQUEST_THREAD_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_THREAD_CTX", default=None)
 REQUEST_RESEARCH_CTX: ContextVar[Optional[dict]] = ContextVar("REQUEST_RESEARCH_CTX", default=None)
 REQUEST_TARGET_LANG: ContextVar[str] = ContextVar("REQUEST_TARGET_LANG", default="en")
+REQUEST_INTENT_INFO: ContextVar[Optional[dict]] = ContextVar("REQUEST_INTENT_INFO", default=None)
+REQUEST_LAST_COMMENT_META: ContextVar[Optional[dict]] = ContextVar("REQUEST_LAST_COMMENT_META", default=None)
+
 
 
 def _get_target_lang(default: str = "en") -> str:
@@ -5494,6 +5497,532 @@ def analyze_tweet_with_groq(tweet_text: str) -> TweetAnalysis | None:
 
 
 
+
+def _resolve_greeting_name(display_name: Optional[str], handle: Optional[str]) -> str:
+    """
+    Decide how to address the author in greetings.
+
+    Priority:
+      1) Display name (author_name)
+      2) Handle with '@' stripped and first letter capitalized
+      3) Generic "there"
+    """
+    name = (display_name or "").strip()
+    if name:
+        return name
+    h = (handle or "").strip().lstrip("@")
+    if h:
+        return h[:1].upper() + h[1:]
+    return "there"
+
+
+def _detect_greeting_kind(tweet_text: str) -> dict | None:
+    """
+    Lightweight, non-LLM greeting / celebration detector.
+
+    Returns a dict like:
+        {"kind": "gm" | "weekday" | "birthday" | "holiday", "label": "friday", "match": "happy friday"}
+    or None when no greeting is detected.
+    """
+    text = (tweet_text or "").strip()
+    if not text:
+        return None
+    low = text.lower()
+
+    # GM-style greetings (often at start)
+    gm_patterns = [
+        r"^gm\b",
+        r"^g\.m\.\b",
+        r"^good\s+morning\b",
+    ]
+    for pat in gm_patterns:
+        if re.search(pat, low):
+            return {"kind": "gm", "label": "gm", "match": re.search(pat, low).group(0)}
+
+    # Weekday / weekend greetings
+    weekday_labels = ["monday", "tuesday", "wednesday", "thursday", "friday", "saturday", "sunday", "weekend"]
+    for lbl in weekday_labels:
+        phrase = f"happy {lbl}"
+        if phrase in low:
+            return {"kind": "weekday", "label": lbl, "match": phrase}
+
+    # Birthday
+    birthday_phrases = ["happy birthday", "hbd ", "it's my birthday", "its my birthday", "birthday today"]
+    for phrase in birthday_phrases:
+        if phrase in low:
+            return {"kind": "birthday", "label": "birthday", "match": phrase}
+
+    # Very lightweight holiday detection (explicit only, no date guessing)
+    holiday_phrases = [
+        "happy new year",
+        "happy christmas",
+        "merry christmas",
+        "happy holidays",
+    ]
+    for phrase in holiday_phrases:
+        if phrase in low:
+            return {"kind": "holiday", "label": phrase, "match": phrase}
+
+    return None
+
+
+_INTENT_METRICS_KEYWORDS = [
+    "tvl", "volume", "vol", "apy", "apr", "users", "wallets", "retention",
+    "xp", "points", "quests", "zealy", "galxe", "campaign", "questboard",
+]
+_INTENT_ANNOUNCEMENT_KEYWORDS = [
+    "launch", "launched", "launching", "live", "now live", "released", "shipping",
+    "update", "upgraded", "mainnet", "testnet", "beta is out", "we are live",
+]
+_INTENT_OPINION_PHRASES = [
+    "i think", "imo", "imho", "my take", "hot take", "in my opinion",
+    "bullish", "bearish", "feels like", "sounds like",
+]
+_INTENT_QUESTION_STARTERS = [
+    "what", "why", "how", "when", "where", "who", "does", "do ", "did ",
+    "can ", "could ", "should ", "is ", "are ", "will ", "would ", "any chance",
+    "curious", "wondering",
+]
+
+
+def route_intent_basic(tweet_text: str) -> dict:
+    """
+    Cheap, regex/keyword-based intent router.
+
+    Returns:
+        {
+          "mode": "greeting" | "question_reply" | "announcement_reply"
+                   | "metrics_reply" | "opinion_reply" | "default",
+          "tags": {...}
+        }
+    """
+    text = (tweet_text or "").strip()
+    low = text.lower()
+    tags: dict[str, Any] = {}
+
+    # Greeting takes absolute priority
+    greeting = _detect_greeting_kind(text)
+    if greeting:
+        tags["greeting_kind"] = greeting.get("kind")
+        tags["greeting_label"] = greeting.get("label")
+        tags["greeting_match"] = greeting.get("match")
+        return {"mode": "greeting", "tags": tags}
+
+    # Metrics / quests
+    metrics_hit = None
+    for kw in _INTENT_METRICS_KEYWORDS:
+        if kw in low:
+            metrics_hit = kw
+            break
+    if metrics_hit:
+        tags["metrics_hit"] = metrics_hit
+
+    # Announcement
+    announcement_hit = None
+    for kw in _INTENT_ANNOUNCEMENT_KEYWORDS:
+        if kw in low:
+            announcement_hit = kw
+            break
+    if announcement_hit:
+        tags["announcement_hit"] = announcement_hit
+
+    # Opinion markers
+    opinion_hit = None
+    for phrase in _INTENT_OPINION_PHRASES:
+        if phrase in low:
+            opinion_hit = phrase
+            break
+    if opinion_hit:
+        tags["opinion_hit"] = opinion_hit
+
+    # Question detection
+    has_qmark = "?" in low
+    has_qstarter = False
+    low_words = low.split()
+    if low_words:
+        first_word = low_words[0]
+        if first_word in {"what", "why", "how", "when", "where", "who"}:
+            has_qstarter = True
+    for qs in _INTENT_QUESTION_STARTERS:
+        if qs in low:
+            has_qstarter = True
+            tags.setdefault("question_phrase", qs)
+            break
+
+    # Priority resolution:
+    # - metrics beats default
+    # - announcement beats default
+    # - question_reply beats default
+    # - opinion beats default
+    mode = "default"
+    if metrics_hit:
+        mode = "metrics_reply"
+    elif announcement_hit:
+        mode = "announcement_reply"
+    elif has_qmark or has_qstarter:
+        mode = "question_reply"
+    elif opinion_hit:
+        mode = "opinion_reply"
+
+    return {"mode": mode, "tags": tags}
+
+
+def _deterministic_choice(variants: list[str], seed: str) -> str:
+    """Pick a stable variant based on a string seed (tweet URL/id)."""
+    if not variants:
+        return ""
+    try:
+        h = hashlib.sha256(seed.encode("utf-8")).digest()
+        idx = h[0] % len(variants)
+    except Exception:
+        idx = 0
+    return variants[idx]
+
+
+_GREETING_GM_VARIANTS = [
+    "hope today treats you well",
+    "hope you’re off to a solid start",
+    "hope the day is productive for you",
+    "wishing you a smooth, focused day ahead",
+    "hope you get some good wins in today",
+]
+
+_GREETING_WEEKDAY_VARIANTS = [
+    "hope you have a smooth one",
+    "hope the day runs efficiently for you",
+    "hope it’s a productive one",
+    "hope you get to ship something you’re proud of",
+]
+
+_GREETING_BIRTHDAY_VARIANTS = [
+    "hope you get to celebrate properly",
+    "wishing you a relaxed one with good people",
+    "hope the year ahead comes with some big personal wins",
+]
+
+_GREETING_HOLIDAY_VARIANTS = [
+    "hope you get a bit of downtime in",
+    "hope you’re able to unplug for a moment",
+]
+
+
+def _build_greeting_prefix(
+    name: str,
+    intent_info: Optional[dict],
+    seed: str,
+) -> Optional[str]:
+    """
+    Build deterministic greeting opener like:
+        "GM Flowate, hope today treats you well"
+    """
+    if not intent_info:
+        return None
+    mode = (intent_info.get("mode") or "").lower()
+    if mode != "greeting":
+        return None
+
+    tags = intent_info.get("tags") or {}
+    kind = (tags.get("greeting_kind") or "gm").lower()
+    label = (tags.get("greeting_label") or "").lower()
+
+    base = "GM"
+    variants = _GREETING_GM_VARIANTS
+    if kind == "weekday" and label:
+        base = f"Happy {label.capitalize()}"
+        variants = _GREETING_WEEKDAY_VARIANTS
+    elif kind == "birthday":
+        base = "Happy birthday"
+        variants = _GREETING_BIRTHDAY_VARIANTS
+    elif kind == "holiday":
+        base = "Happy holidays"
+        variants = _GREETING_HOLIDAY_VARIANTS
+
+    phrase = _deterministic_choice(variants, seed) if variants else ""
+    if phrase:
+        return f"{base} {name}, {phrase}"
+    return f"{base} {name},"
+
+
+# --- Quality / polish helpers -------------------------------------------------
+
+# Simple ban-list for hype/cringe slang. We re-use the broader PRO_KOL_BAD list
+# if available, but also keep a minimal local set to avoid regressions.
+_BASIC_BANNED_PHRASES = [
+    "insane alpha",
+    "degen play",
+    "aping in",
+    "ape in",
+    "moon mission",
+    "send it to the moon",
+    "we are so back",
+    "so back",
+    "ngmi",
+    "wagmi",
+    "gigabrain",
+]
+
+
+def _has_banned_slang(text: str) -> bool:
+    t = (text or "").lower()
+    if not t:
+        return False
+    try:
+        # PRO_KOL_BAD is defined earlier in this file.
+        for w in PRO_KOL_BAD:
+            if w in t:
+                return True
+    except Exception:
+        pass
+    for phrase in _BASIC_BANNED_PHRASES:
+        if phrase in t:
+            return True
+    return False
+
+
+def _normalize_whitespace(text: str) -> str:
+    return re.sub(r"\s+", " ", (text or "")).strip()
+
+
+def _ensure_final_punctuation(text: str) -> str:
+    t = (text or "").strip()
+    if not t:
+        return t
+    if t.endswith(("?", "!", ".")):
+        return t
+    # Prefer "." as neutral default.
+    return t + "."
+
+
+def _limit_questions(text: str) -> str:
+    """
+    Ensure at most one '?' character.
+    If multiple, keep the last and convert earlier ones to commas.
+    """
+    t = (text or "").strip()
+    q_indices = [i for i, ch in enumerate(t) if ch == "?"]
+    if len(q_indices) <= 1:
+        return t
+    # Keep the last question mark
+    keep = q_indices[-1]
+    chars = list(t)
+    for i in q_indices[:-1]:
+        chars[i] = ","
+    return "".join(chars)
+
+
+def _post_polish_comment(
+    raw: str,
+    *,
+    tweet_text: str,
+    intent_info: Optional[dict],
+    display_name: Optional[str],
+    handle: Optional[str],
+    seed: str,
+) -> str:
+    """
+    Deterministic, non-LLM polish:
+      - normalize whitespace
+      - enforce greeting comma/prefix
+      - enforce final punctuation and single '?'
+    """
+    txt = _normalize_whitespace(raw)
+
+    # Basic trimming of leading bullets / numbers like "1) ..." or "- ..."
+    txt = re.sub(r"^[\s\-\*\d\)\.]+", "", txt).lstrip()
+
+    # Greeting normalization
+    name = _resolve_greeting_name(display_name, handle)
+    try:
+        greeting = _build_greeting_prefix(name, intent_info, seed)
+    except Exception:
+        greeting = None
+
+    if greeting:
+        # Strip any existing gm/happy prefix to avoid duplication.
+        lowered = txt.lower()
+        if lowered.startswith("gm") or lowered.startswith("g.m.") or lowered.startswith("good morning") or lowered.startswith("happy "):
+            # Remove up to first comma or first 3 words.
+            parts = lowered.split(",", 1)
+            if len(parts) == 2:
+                txt = parts[1].lstrip()
+        if txt:
+            txt = f"{greeting} {txt}"
+        else:
+            txt = greeting
+
+    # Limit questions and enforce punctuation
+    txt = _limit_questions(txt)
+    # If it clearly looks like a question but no '?', add one.
+    if "?" not in txt:
+        if any(q in txt.lower() for q in ["what ", "why ", "how ", "when ", "where ", "who ", "curious", "could you", "can you", "would you"]):
+            txt = txt.rstrip(".! ")
+            txt = txt + "?"
+        else:
+            txt = _ensure_final_punctuation(txt)
+
+    # Final cleanup
+    txt = _normalize_whitespace(txt)
+    return txt
+
+
+def _quality_gate_comment(
+    text: str,
+    *,
+    intent_info: Optional[dict],
+    display_name: Optional[str],
+) -> tuple[bool, list[str]]:
+    """
+    Non-LLM checks to decide if we should trigger a tiny rewrite.
+
+    Fail reasons include:
+      - missing end punctuation
+      - multiple question marks
+      - greeting missing comma after name
+      - too long
+      - banned slang
+      - obviously unprofessional casing
+    """
+    reasons: list[str] = []
+    t = (text or "").strip()
+    low = t.lower()
+
+    if not t:
+        reasons.append("empty")
+    if len(t) > 320:
+        reasons.append("too_long")
+
+    if not t.endswith((".", "?", "!")):
+        reasons.append("no_terminal_punctuation")
+
+    q_count = t.count("?")
+    if q_count > 1:
+        reasons.append("too_many_questions")
+
+    # Greeting comma check
+    ok_greeting = True
+    try:
+        mode = (intent_info or {}).get("mode") or ""
+        if mode == "greeting":
+            name = _resolve_greeting_name(display_name, None)
+            if name and f"{name}," not in t:
+                ok_greeting = False
+    except Exception:
+        ok_greeting = True
+    if not ok_greeting:
+        reasons.append("greeting_missing_comma")
+
+    if _has_banned_slang(t):
+        reasons.append("banned_slang")
+
+    if t and t[0].isalpha() and t[0].islower():
+        reasons.append("starts_lowercase")
+
+    return (len(reasons) == 0), reasons
+
+
+def _rewrite_comment_with_groq(original: str) -> str:
+    """
+    Tiny Groq call to fix punctuation / professionalism when quality gate fails.
+
+    The rewrite call:
+      - keeps meaning
+      - enforces 1–2 sentences
+      - removes hype slang
+      - outputs only the final comment text
+    """
+    cleaned = (original or "").strip()
+    if not cleaned:
+        return original
+
+    if not USE_GROQ or _groq_client is None:
+        return original
+
+    system_text = (
+        "You lightly edit short X replies for punctuation and tone. "
+        "Fix spacing, capitalization, and punctuation. "
+        "Keep the original meaning. Use 1–2 sentences. "
+        "Remove hype or cringe slang. Output only the final comment."
+    )
+    messages = [
+        {"role": "system", "content": system_text},
+        {"role": "user", "content": cleaned},
+    ]
+    try:
+        resp = groq_chat_limited(
+            messages,
+            max_tokens=80,
+            temperature=0.4,
+        )
+        if not resp or not getattr(resp, "choices", None):
+            return original
+        out = (resp.choices[0].message.content or "").strip()
+        return out or original
+    except Exception:
+        # Never fail hard on rewrite; just fall back to the original.
+        return original
+
+
+def _build_project_capsule_for_prompt(tweet_text: str) -> str:
+    """
+    Build a tiny grounded project capsule (<= 220 chars) using the
+    REQUEST_PROJECT_CTX research entry when available.
+
+    Only uses fields that are safe and non-hallucinatory.
+    """
+    try:
+        proj = REQUEST_PROJECT_CTX.get()
+    except Exception:
+        proj = None
+
+    if not isinstance(proj, dict):
+        return ""
+
+    handle = (proj.get("handle") or "").strip()
+    name = (proj.get("name") or "").strip() or (proj.get("title") or "").strip()
+    value = (proj.get("core_value_prop") or proj.get("value_prop") or proj.get("summary") or "").strip()
+    state = (proj.get("product_state") or proj.get("stage") or "").strip()
+    avoid = (proj.get("reply_risks") or proj.get("avoid_topics") or "").strip()
+
+    bits: list[str] = []
+    if name:
+        bits.append(f"Project: {name}")
+    elif handle:
+        bits.append(f"Project: {handle}")
+
+    if value:
+        bits.append(f"Value: {value}")
+    if state:
+        bits.append(f"State: {state}")
+    if avoid:
+        bits.append(f"Avoid: {avoid}")
+
+    capsule = " | ".join(bits)
+    capsule = capsule[:220]
+    return capsule
+
+
+def _current_intent_info() -> dict:
+    try:
+        info = REQUEST_INTENT_INFO.get()
+    except Exception:
+        info = None
+    if not isinstance(info, dict):
+        return {"mode": "default", "tags": {}}
+    if "mode" not in info:
+        info["mode"] = "default"
+    if "tags" not in info or not isinstance(info["tags"], dict):
+        info["tags"] = {}
+    return info
+
+
+def _record_last_comment_meta(meta: dict) -> None:
+    try:
+        REQUEST_LAST_COMMENT_META.set(meta)
+    except Exception:
+        pass
+
+
+
 def _build_comment_user_prompt(
     tweet_text: str,
     analysis: Optional[TweetAnalysis],
@@ -5502,90 +6031,102 @@ def _build_comment_user_prompt(
     """
     Build the user prompt for LLM comment generation.
 
-    This function focuses on:
-    - Passing the raw tweet text.
-    - Supplying compact analysis / context / reaction hints.
-    - Keeping wording short so we don't waste tokens.
+    This version is intentionally compact to keep Groq token usage low.
     """
     tweet_text = (tweet_text or "").strip()
+    intent_info = _current_intent_info()
+    mode = (intent_info.get("mode") or "default").lower()
 
     context_snippet = _build_context_json_snippet()
+    project_capsule = _build_project_capsule_for_prompt(tweet_text)
     variety_snippet = _maybe_llm_variety_snippet(url, tweet_text)
 
+    # We no longer depend on LLM-based TweetAnalysis for routing; keep it optional.
     analysis_snippet = ""
     if analysis is not None:
-        analysis_snippet = analysis.to_prompt_fragment()
-
-    # Reaction plan snippet (so the model understands how #1 vs #2 should differ)
-    reaction_snippet = ""
-    plan = current_reaction_plan()
-    if isinstance(plan, dict):
-        reactions = plan.get("comment_reactions") or []
-        topic = plan.get("topic")
-        sentiment = plan.get("sentiment")
-        heat = plan.get("heat")
-        fam = plan.get("familiarity") or {}
-        r1 = reactions[0] if len(reactions) >= 1 else None
-        r2 = reactions[1] if len(reactions) >= 2 else None
-
-        bits: list[str] = ["Reaction plan:"]
-        if topic:
-            bits.append(f"- Topic: {topic}")
-        if sentiment:
-            bits.append(f"- Sentiment: {sentiment}")
-        if heat is not None:
-            bits.append(f"- Heat (0–3+): {heat}")
-        level = fam.get("level")
-        if level:
-            bits.append(f"- Familiarity with author: {level}")
-
-        if r1 or r2:
-            bits.append(
-                "- Comment #1 reaction type: "
-                f"{(r1 or 'agree_plus').replace('_', ' ')}."
-            )
-            bits.append(
-                "- Comment #2 reaction type: "
-                f"{(r2 or 'question_sharp').replace('_', ' ')} "
-                "(default: question_sharp)."
-            )
-
-        reaction_snippet = "\n".join(bits)
+        try:
+            analysis_snippet = analysis.to_prompt_fragment()
+        except Exception:
+            analysis_snippet = ""
 
     parts: list[str] = []
 
-    # High-level task description (short – system prompt carries most rules).
+    # High-level task description (very short).
     parts.append(
-        "Given the tweet below, write TWO reply comments that follow the system rules.\n"
-        "- Match the tweet's intent and emotion (including any meme or sarcasm) but stay respectful.\n"
-        "- Avoid giving investment advice, guarantees, or explicit trading instructions.\n"
-        "- Do not copy the tweet text; respond with fresh wording."
+        "You write short, professional replies to crypto/Web3 tweets. "
+        "Follow all rules carefully."
     )
 
+    # Per-mode guidance
+    if mode == "greeting":
+        parts.append(
+            "Mode: greeting reply.\n"
+            "- Comment #1: warm but professional greeting linked to the tweet.\n"
+            "- Comment #2: natural follow-up (often a single question)."
+        )
+    elif mode == "question_reply":
+        parts.append(
+            "Mode: answer a question in the tweet.\n"
+            "- Comment #1: concise reflection or partial answer.\n"
+            "- Comment #2: one direct clarifying question."
+        )
+    elif mode == "announcement_reply":
+        parts.append(
+            "Mode: reply to a launch/announcement.\n"
+            "- Comment #1: acknowledge the launch without hype.\n"
+            "- Comment #2: ask about roadmap, timeline, or next step."
+        )
+    elif mode == "metrics_reply":
+        parts.append(
+            "Mode: reply to a metrics/stats update.\n"
+            "- Comment #1: react briefly to the numbers.\n"
+            "- Comment #2: ask one concrete metric/timeframe question."
+        )
+    elif mode == "opinion_reply":
+        parts.append(
+            "Mode: nuanced opinion reply.\n"
+            "- Comment #1: add nuance or a light agree/disagree.\n"
+            "- Comment #2: ask one thoughtful follow-up question."
+        )
+    else:
+        parts.append(
+            "Mode: default reply.\n"
+            "- Comment #1: relevant reaction.\n"
+            "- Comment #2: a short question or suggestion."
+        )
+
+    # Global rules (non-negotiable)
     parts.append(
-        f"--- TWEET TEXT START ---\n{tweet_text}\n--- TWEET TEXT END ---"
+        "Global rules:\n"
+        "- Each comment is 1–2 sentences.\n"
+        "- At most one question per comment; avoid multiple '?'.\n"
+        "- No hype/cringe slang, no emojis, no hashtags.\n"
+        "- Do not give trading advice or guarantees.\n"
+        "- Only mention project details present in the tweet or context."
     )
 
+    # Tweet itself
+    parts.append(f"Tweet text:\n{tweet_text}")
+
+    # Include optional analysis snippet
     if analysis_snippet:
         parts.append(analysis_snippet)
 
+    # Grounding context
     if context_snippet:
         parts.append(context_snippet)
+    if project_capsule:
+        parts.append(f"Project capsule (for grounding only):\n{project_capsule}")
 
     if variety_snippet:
         parts.append(variety_snippet)
 
-    if reaction_snippet:
-        parts.append(reaction_snippet)
-
-    # Explicit reminder about #1 vs #2 thread behaviour.
+    # Explicit output template
     parts.append(
-        "Now write the TWO comments, numbered 1 and 2.\n"
-        "- Comment #1: direct reply to the tweet with one clear idea.\n"
-        "- Comment #2: natural follow-up to YOUR OWN comment #1 "
-        "(question or added nuance/risk), still grounded in the same tweet.\n"
-        "- Do NOT make #2 look like a totally separate, unrelated comment.\n"
-        "Each on its own line, no quotes, no hashtags."
+        "Output TWO comments, numbered exactly as:\n"
+        "1) first reply\n"
+        "2) second reply\n"
+        "No extra commentary, no quotes, no bullet points."
     )
 
     return "\n\n".join(p for p in parts if p)
@@ -7107,207 +7648,91 @@ def parse_two_comments_flex(raw_text: str) -> list[str]:
         return m2[:2]
 
     return []
-def groq_two_comments(tweet_text: str, author: str | None, url: str = "") -> list[str]:
-    """
-    Main Groq-based generator.
-    - Does a quick analysis pass (TweetAnalysis) to understand tone, meme, gm/gn, etc.
-    - Then generates two short replies guided by that analysis.
-    - Has rate-limit aware retries and falls back to offline if needed.
-    """
-    if not (USE_GROQ and _groq_client):
-        raise RuntimeError("Groq disabled or client not available")
 
-    global _GROQ_LAST_CALL_TS, _GROQ_DISABLED_UNTIL
+def groq_two_comments(tweet_text: str, author: Optional[str], url: str = "") -> list[str]:
+    """
+    Groq-backed generation of TWO raw comments for a tweet.
 
-    # ---------- 1) Try to analyze the tweet (best-effort) ----------
-    analysis: TweetAnalysis | None = None
+    This is intentionally minimal:
+      - single Groq chat call
+      - token caps selected by intent mode
+      - relies on parse_two_comments_flex for splitting
+      - leaves punctuation and quality fixes to the post-polish step
+    """
+    if not USE_GROQ or _groq_client is None:
+        raise RuntimeError("Groq is not enabled or client is not configured")
+
+    tweet_text = (tweet_text or "").strip()
+
+    # Route intent & store in request context for downstream helpers.
+    intent_info = route_intent_basic(tweet_text)
     try:
-        analysis = analyze_tweet_with_groq(tweet_text)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("Groq tweet analysis failed (will continue without it): %s", exc)
+        REQUEST_INTENT_INFO.set(intent_info)
+    except Exception:
+        pass
 
+    mode = (intent_info.get("mode") or "default").lower()
+
+    # Per-mode token and temperature budgets.
+    if mode == "greeting":
+        max_tokens = 100
+        temperature = 0.6
+    elif mode == "metrics_reply":
+        max_tokens = 140
+        temperature = 0.65
+    elif mode == "opinion_reply":
+        max_tokens = 150
+        temperature = 0.75
+    elif mode in ("announcement_reply", "question_reply"):
+        max_tokens = 140
+        temperature = 0.7
+    else:  # default
+        max_tokens = 130
+        temperature = 0.7
+
+    # Mode line from lightweight heuristics (kept for backwards-compat).
     mode_line = llm_mode_hint(tweet_text[:80])
-    sys_prompt = _llm_sys_prompt(mode_line)
+    system_prompt = _llm_sys_prompt(mode_line)
+    user_prompt = _build_comment_user_prompt(tweet_text=tweet_text, analysis=None, url=url)
 
-    user_prompt = _build_comment_user_prompt(tweet_text=tweet_text, analysis=analysis, url=url)
-
-    resp = None
-
-    # ---------- 3) Call Groq with spacing + backoff ----------
-    for attempt in range(GROQ_MAX_RETRIES):
-        now = time.time()
-
-        # Respect any prior hard backoff window
-        if now < _GROQ_DISABLED_UNTIL:
-            sleep_for = _GROQ_DISABLED_UNTIL - now
-            if sleep_for > 0:
-                logger.info(
-                    "Groq backoff active, sleeping %.2fs before next call",
-                    sleep_for,
-                )
-                time.sleep(sleep_for)
-            now = time.time()
-
-        # Enforce minimum spacing between calls to avoid hammering the API
-        delta = now - _GROQ_LAST_CALL_TS
-        if delta < GROQ_MIN_INTERVAL:
-            sleep_for = GROQ_MIN_INTERVAL - delta
-            if sleep_for > 0:
-                time.sleep(sleep_for)
-
-        try:
-            resp = groq_chat_limited(
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": user_prompt},
-                ],
-                n=1,
-                max_tokens=160,
-                temperature=0.9,
-            )
-            _GROQ_LAST_CALL_TS = time.time()
-            break
-
-        except Exception as e:  # noqa: BLE001
-            wait_secs = 0.0
-            msg = str(e).lower()
-
-            # Try to read Retry-After header if present
-            try:
-                hdrs = getattr(getattr(e, "response", None), "headers", {}) or {}
-                ra = hdrs.get("Retry-After") or hdrs.get("retry-after")
-                if ra is not None:
-                    try:
-                        wait_secs = max(wait_secs, float(ra))
-                    except Exception:  # noqa: BLE001
-                        pass
-            except Exception:  # noqa: BLE001
-                pass
-
-            # Generic rate-limit / quota hints
-            if "429" in msg or "rate" in msg or "quota" in msg or "retry-after" in msg:
-                wait_secs = max(wait_secs, GROQ_BACKOFF_SECONDS)
-
-            if wait_secs > 0:
-                _GROQ_DISABLED_UNTIL = time.time() + wait_secs
-                logger.warning(
-                    "Groq rate-limited or quota hit, backing off for %.2fs (attempt %d/%d)",
-                    wait_secs,
-                    attempt + 1,
-                    GROQ_MAX_RETRIES,
-                )
-                time.sleep(wait_secs)
-                continue
-
-            # Non rate-limit error → bubble up so the provider wrapper can fall back
-            logger.warning("Groq error (non-rate-limit): %s", e)
-            raise
-
-    if resp is None:
-        raise RuntimeError("Groq call failed after retries")
-
-    # ---------- 4) Turn raw text into two clean comments ----------
-    raw = (resp.choices[0].message.content or "").strip()
-    candidates = parse_two_comments_flex(raw)
-    candidates = [
-        restore_decimals_and_tickers(enforce_word_count_llm(c), tweet_text)
-        for c in candidates
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
     ]
-    candidates = _filter_candidates_len(candidates, _get_target_lang())
-    candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
 
-        # ---------- 5) If Groq output is thin, try to get diversity from Groq itself ----------
-    def _pick_second_from_groq(first_comment: str) -> str | None:
-        """Ask Groq for a second, clearly different reply.
+    resp = groq_chat_limited(
+        messages=messages,
+        max_tokens=max_tokens,
+        temperature=temperature,
+    )
+    if not resp or not getattr(resp, "choices", None):
+        raise RuntimeError("empty Groq response for comments")
 
-        We keep this local helper so that it can reuse the same system prompt
-        and context but a simpler user instruction.
-        """
-        followup_user = _build_comment_user_prompt(
-            tweet_text=tweet_text,
-            analysis=analysis,
-            url=url,
-        )
-        followup_user += (
-            "\n\nYou already proposed one reply:\n"
-            f"{first_comment}\n\n"
-            "Now write ONE MORE different reply from a slightly different angle. "
-            "Return just the reply text, no numbering, no quotes."
-        )
+    raw = (resp.choices[0].message.content or "").strip()
+    if not raw:
+        raise RuntimeError("Groq returned empty content")
+
+    # Split into two comments.
+    comments = parse_two_comments_flex(raw)
+    comments = [c.strip() for c in comments if c and c.strip()]
+
+    if not comments:
+        raise RuntimeError("could not parse any comments from Groq output")
+
+    # Ensure at most two.
+    if len(comments) > 2:
+        comments = comments[:2]
+
+    # Enforce a loose word cap before post-processing.
+    cleaned: list[str] = []
+    for c in comments:
         try:
-            second_resp = groq_chat_limited(
-                messages=[
-                    {"role": "system", "content": sys_prompt},
-                    {"role": "user", "content": followup_user},
-                ],
-                max_tokens=120,
-                temperature=0.9,
-                n=1,
-            )
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("Groq second-comment call failed: %s", exc)
-            return None
+            c2 = enforce_word_count_llm(c, max_words=80)
+        except Exception:
+            c2 = c
+        cleaned.append(c2)
 
-        second_raw = (second_resp.choices[0].message.content or "").strip()
-        # Accept either a single line or the first element of a small list.
-        parsed = parse_two_comments_flex(second_raw)
-        cand = parsed[0].strip() if parsed else second_raw
-        cand = restore_decimals_and_tickers(enforce_word_count_llm(cand), tweet_text)
-        if not _len_ok_for_lang(cand, _get_target_lang()):
-            return None
-        return cand
-
-    if len(candidates) == 1:
-        second = _pick_second_from_groq(candidates[0])
-        if second and second not in candidates:
-            candidates.append(second)
-            candidates = enforce_unique(candidates, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
-
-    # If Groq gave us 2+ solid comments, stop here: we don't mix in offline ones.
-    if len(candidates) >= 2:
-        # We still avoid returning literally identical pairs, but we no longer
-        # force a generic offline line just because they overlap a bit.
-        if _pair_too_similar(candidates[0], candidates[1]):
-            logger.info("Groq produced two very similar comments; returning them as-is in Groq-only mode.")
-        return candidates[:2]
-
-    # ---------- 6) Emergency fallbacks (offline + rescue) ----------
-    backup: list[str] = []
-    try:
-        backup = safe_offline_two_comments(tweet_text, author, url=url)
-    except Exception as exc:  # noqa: BLE001
-        logger.warning("safe_offline_two_comments failed in groq_two_comments: %s", exc)
-
-    backup = [b for b in backup if b]
-    if backup:
-        backup = [
-            restore_decimals_and_tickers(enforce_word_count_llm(b), tweet_text)
-            for b in backup
-        ]
-        backup = _filter_candidates_len(backup, _get_target_lang())
-        backup = enforce_unique(backup, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
-
-    if not backup:
-        # Absolute last resort: only here when Groq + offline both failed.
-        fallback = _rescue_two(tweet_text)
-        backup = [b for b in fallback if b][:2]
-
-    if not candidates:
-        candidates = backup[:2]
-    elif len(candidates) == 1 and backup:
-        # Prefer keeping the Groq output as #1, append the best backup as #2.
-        merged = enforce_unique(candidates + backup, tweet_text=tweet_text, url=url, target_lang=_get_target_lang())
-        candidates = merged[:2]
-
-    # Final safety: never return fewer than 2 strings to the caller.
-    if not candidates:
-        candidates = _rescue_two(tweet_text)[:2]
-    elif len(candidates) == 1:
-        second = next((x for x in _rescue_two(tweet_text, _get_target_lang()) if x and x != candidates[0]), None)
-        candidates = [candidates[0], (second or candidates[0])]
-
-    return candidates[:2]
-
+    return cleaned
 
 def translate_comments_to_english(texts: list[str], source_lang: str | None = None) -> list[str]:
     """Best-effort translation of short comments into English using Groq.
@@ -8461,295 +8886,205 @@ def build_greeting_pair(tweet_text: str, author_name: Optional[str], handle: Opt
 
 
 
+
 def generate_two_comments_with_providers(
     tweet_text: str,
+    *,
     author: Optional[str],
     handle: Optional[str],
     lang: Optional[str],
-    url: Optional[str] = None,
-    target_lang: Optional[str] = None,
-    out_lang_tag: Optional[str] = None,
+    url: str,
+    target_lang: str,
+    out_lang_tag: str,
     include_alternates: bool = False,
-) -> List[Dict[str, Any]]:
+) -> list[dict]:
     """
-    Working cascade:
-    - Build a reaction plan (reaction types + delays + skip hints).
-    - Try Groq first (primary, large-context provider).
-    - Use other enabled providers *only as needed* for diversity or rescue.
-    - Fallback to offline + ultra-safe rescue so we always return two comments.
+    Generate two comments for a tweet using Groq as the primary provider,
+    plus an offline fallback. This wrapper also applies:
+
+      - intent routing (route_intent_basic)
+      - greeting/name handling + punctuation post-polish
+      - a non-LLM quality gate
+      - a tiny Groq rewrite on failure
+      - optional translation to English for non-English output
+
+    The goal is to keep outputs short, professional, and grounded while
+    keeping token usage low and avoiding extra user-facing knobs.
     """
-    url = url or ""
+    tweet_text = (tweet_text or "").strip()
 
-    # Decide language for generation vs UI tagging.
-    # Semantics:
-    # - target_lang in {"", None, "auto", "native", "tweet"} → use tweet language if available, else English.
-    # - otherwise → use explicit target_lang (e.g. "en", "vi", "zh").
-    norm_target = (target_lang or "").strip().lower()
-    tweet_lang = (lang or "").strip().lower()
+    # Normalize / choose generation language.
+    gen_lang = (target_lang or lang or "en") or "en"
+    gen_lang = gen_lang.strip() or "en"
 
-    if norm_target in {"", "auto", "native", "tweet"}:
-        gen_lang = tweet_lang or "en"
-    else:
-        gen_lang = norm_target
-
-    lang_out = (out_lang_tag or gen_lang or "en").strip().lower()
-
-    # Make target language available to all LLM providers for this request
     try:
         REQUEST_TARGET_LANG.set(gen_lang)
     except Exception:
         pass
 
-    # Greeting fast-path (better, less gibberish)
-    if _is_greeting_tweet(tweet_text) and (gen_lang.startswith("en") or gen_lang.startswith("ko")):
-        pair = build_greeting_pair(tweet_text, author, handle, lang_code=gen_lang)
-        return [
-            {
-                "lang": lang_out,
-                "text": pair[0],
-                "reaction": "greeting",
-                "thread_pair": bool(THREAD_PAIR_MODE),
-                "thread_index": 0,
-            },
-            {
-                "lang": lang_out,
-                "text": pair[1],
-                "reaction": "greeting",
-                "thread_pair": bool(THREAD_PAIR_MODE),
-                "thread_index": 1,
-                "follow_up": bool(THREAD_PAIR_MODE),
-            },
-        ]
-
-    # --- 1) Build + store reaction plan for this tweet -----------------------
-    # Allow style hints (tone / intent / anti_cringe) to gently bias reaction mode.
+    # Ensure we have an intent in the request context.
     try:
-        style = current_style_hints()
+        intent_info = REQUEST_INTENT_INFO.get()
     except Exception:
-        style = {}
-
-    reaction_mode: str | None = None
-    try:
-        tone = (str(style.get("tone") or "")).strip().lower() if isinstance(style, dict) else ""
-        intent = (str(style.get("intent") or "")).strip().lower() if isinstance(style, dict) else ""
-        anti_flag_raw = style.get("anti_cringe") if isinstance(style, dict) else None
-        anti_flag = False
-        if isinstance(anti_flag_raw, bool):
-            anti_flag = anti_flag_raw
-        elif isinstance(anti_flag_raw, (int, float)):
-            anti_flag = bool(anti_flag_raw)
-        elif isinstance(anti_flag_raw, str):
-            anti_flag = anti_flag_raw.strip().lower() in {"1", "true", "yes", "on"}
-
-        # Tone-based defaults
-        if tone in {"chill", "soft", "neutral", "subtle"}:
-            reaction_mode = "chill"
-        elif tone in {"hype", "excited", "bullish", "pumped"}:
-            reaction_mode = "hype"
-        elif tone in {"silent", "none"}:
-            reaction_mode = "silent"
-
-        # Intent-based nudge (if tone not explicit)
-        if not reaction_mode and intent in {"educational", "explain", "thread"}:
-            reaction_mode = "chill"
-
-        # Anti-cringe prefers softer, less shouty reactions by default.
-        if not reaction_mode and anti_flag:
-            reaction_mode = "chill"
-    except Exception:
-        reaction_mode = None
-
-    try:
-        plan = build_reaction_plan_with_modes(
-            tweet_text,
-            handle,
-            lang_hint=gen_lang,
-            reaction_mode=reaction_mode,
-        )
-    except Exception:
-        plan = None
-    try:
-        set_request_reaction_plan(plan)
-    except Exception:
-        pass
-
-    candidates: list[str] = []
-
-    # --- 2) Provider ordering: Groq first, others after ----------------------
-    providers = _available_providers()
-    groq_providers: list[tuple[str, callable]] = []
-    other_providers: list[tuple[str, callable]] = []
-    for name, fn in providers:
-        if name == "groq":
-            groq_providers.append((name, fn))
-        else:
-            other_providers.append((name, fn))
-
-    ordered_providers: list[tuple[str, callable]] = groq_providers + other_providers
-    if not CROWNTALK_LLM_ORDER and other_providers:
-        import random as _rand_mod
-        rest = other_providers[:]
-        _rand_mod.shuffle(rest)
-        ordered_providers = groq_providers + rest
-
-    got_from_groq = False
-
-    # --- 3) Collect candidates from providers --------------------------------
-    for name, fn in ordered_providers:
-        if got_from_groq and len(candidates) >= 2 and not include_alternates:
-            break
-
+        intent_info = None
+    if not isinstance(intent_info, dict) or not intent_info.get("mode"):
+        intent_info = route_intent_basic(tweet_text)
         try:
-            more = fn(tweet_text, author, url=url)
-            if more:
-                if name == "groq":
-                    got_from_groq = True
-                candidates = enforce_unique(candidates + more, tweet_text=tweet_text, lang_code=gen_lang)
-        except CrownTALKError as e:  # noqa: BLE001
-            logger.warning("LLM provider %s failed with CrownTALKError: %s", name, e)
-            continue
-        except Exception as e:  # noqa: BLE001
-            logger.warning("LLM provider %s failed: %s", name, e)
-            continue
-
-        if len(candidates) >= MAX_CANDIDATES_FOR_SELECTION:
-            break
-
-
-    # --- 4) Second-chance Groq if providers returned empty/bad formats --------
-    if len(candidates) < 2:
-        try:
-            forced = _ensure_pair_via_groq(tweet_text, author, url=url)
+            REQUEST_INTENT_INFO.set(intent_info)
         except Exception:
-            forced = []
-        if forced:
-            candidates = enforce_unique(candidates + forced, tweet_text=tweet_text, lang_code=gen_lang)
-    # --- 4) Fallback: offline + ultra-safe rescue ----------------------------
-    if len(candidates) < 2:
-        try:
-            offline = safe_offline_two_comments(tweet_text, author, handle, lang, url=url)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("safe_offline_two_comments failed: %s", e)
-            offline = []
+            pass
 
-        if offline:
-            candidates = enforce_unique(candidates + offline, tweet_text=tweet_text, lang_code=gen_lang)
+    # --- Primary provider: Groq ------------------------------------------------
+    gen_start = time.time()
+    comments: list[str] = []
+    provider_used = "groq"
+    groq_error: Optional[str] = None
 
-        if len(candidates) < 2:
-            rescue = _rescue_two(tweet_text)
-            candidates = enforce_unique(candidates + rescue, tweet_text=tweet_text, lang_code=gen_lang)
-
-    if len(candidates) < 2:
-        rescue = _rescue_two(tweet_text)
-        candidates = [c for c in rescue if c][:2]
-
-    # --- 5) Judge + select best pair -----------------------------------------
-    script = script_from_lang_code(lang_out)
     try:
-        research_ctx = REQUEST_RESEARCH_CTX.get()
-    except Exception:
-        research_ctx = None
+        comments = groq_two_comments(tweet_text=tweet_text, author=author, url=url)
+    except Exception as e:
+        provider_used = "offline"
+        groq_error = str(e)
 
-    want_alts = bool(include_alternates) or (str(os.getenv("INCLUDE_ALTERNATES", "0")).strip() == "1")
-    pair, alternates = pick_best_pair(
-        candidates,
-        tweet_text=tweet_text,
-        lang_code=lang_out,
-        script=script,
-        research_ctx=research_ctx,
-        want_alternates=want_alts,
-    )
-
-    base_pair = pair
-
-    # --- 6) Optional Pro KOL rewrite -----------------------------------------
-    final_pair = base_pair[:]
-    if PRO_KOL_REWRITE:
+    # Offline fallback if Groq fails or returns nothing.
+    if not comments:
         try:
-            rewritten = pro_kol_rewrite_pair(tweet_text, author, base_pair)
-        except Exception as e:  # noqa: BLE001
-            logger.warning("pro_kol_rewrite_pair failed: %s", e)
-            rewritten = None
+            offline = OfflineCommentGenerator()
+            pair = offline.generate_pair(
+                tweet_text=tweet_text,
+                url=url,
+                author=author,
+                handle=handle,
+            )
+            comments = [c for c in pair if c]
+        except Exception:
+            comments = []
 
-        if rewritten and len(rewritten) == 2:
-            final_pair = rewritten
-
-    
-    # --- 6b) Optional English gloss metadata for native-language output ----
-    translations_for_pair: list[str] = []
-    try:
-        lang_norm = (lang_out or "").strip().lower()
-    except Exception:
-        lang_norm = "en"
-
-    if lang_norm and not lang_norm.startswith("en"):
-        try:
-            translations_for_pair = translate_comments_to_english(final_pair[:2], source_lang=lang_norm)
-        except Exception as exc:  # noqa: BLE001
-            logger.warning("translate_comments_to_english failed: %s", exc)
-            translations_for_pair = []
-    else:
-        translations_for_pair = []
-# --- 7) Build final structured output ------------------------------------
-    out: List[Dict[str, Any]] = []
-
-    for idx, text in enumerate(final_pair[:2]):
-        if not isinstance(text, str):
-            continue
-        out.append(
+    if not comments:
+        _record_last_comment_meta(
             {
-                "lang": lang_out,
-                "text": text,
-                "translation_en": ( (translations_for_pair[idx].strip() if isinstance(translations_for_pair, list) and idx < len(translations_for_pair) and isinstance(translations_for_pair[idx], str) and translations_for_pair[idx].strip() else None) ),
-                "reaction": ( (plan.get("comment_reactions") or [None, None])[idx] if isinstance(plan, dict) and idx < len((plan.get("comment_reactions") or [])) else None ),
-                "delay_sec": ( (plan.get("delays") or [0,0])[idx] if isinstance(plan, dict) and idx < len((plan.get("delays") or [])) else 0 ),
-                "mode": ( (plan.get("reaction_mode") if isinstance(plan, dict) else None) ),
-                "thread_pair": bool(THREAD_PAIR_MODE),
-                "thread_index": idx,
-                "follow_up": bool(THREAD_PAIR_MODE and idx == 1),
+                "provider": provider_used,
+                "groq_error": groq_error,
+                "intent_mode": (intent_info or {}).get("mode"),
+                "quality": {"generated": False},
+                "lang": gen_lang,
             }
         )
+        return []
+
+    # Make sure we have exactly two slots to work with.
+    if len(comments) == 1:
+        comments.append("")
+
+    # --- Post-polish + quality gate + optional tiny rewrite --------------------
+    polished: list[str] = []
+    rewrite_flags: list[bool] = []
+    fail_reasons_all: list[list[str]] = []
+    rewrite_ms_total: int = 0
+
+    for idx, raw in enumerate(comments[:2]):
+        seed = f"{url}|{idx}"
+        txt = _post_polish_comment(
+            raw,
+            tweet_text=tweet_text,
+            intent_info=intent_info,
+            display_name=author,
+            handle=handle,
+            seed=seed,
+        )
+        ok, reasons = _quality_gate_comment(
+            txt,
+            intent_info=intent_info,
+            display_name=author,
+        )
+        rewrite_used = False
+        if not ok:
+            _rw_t0 = time.time()
+            rewritten = _rewrite_comment_with_groq(txt)
+            try:
+                rewrite_ms_total += int(max(0.0, (time.time() - _rw_t0) * 1000.0))
+            except Exception:
+                pass
+            rewrite_used = rewritten.strip() != txt.strip()
+            txt = _post_polish_comment(
+                rewritten,
+                tweet_text=tweet_text,
+                intent_info=intent_info,
+                display_name=author,
+                handle=handle,
+                seed=seed + "|rewrite",
+            )
+            ok2, reasons2 = _quality_gate_comment(
+                txt,
+                intent_info=intent_info,
+                display_name=author,
+            )
+            if not ok2:
+                # merge reasons so we can inspect later
+                merged = list({*reasons, *reasons2})
+                reasons = merged
+            else:
+                reasons = []
+
+        polished.append(txt)
+        rewrite_flags.append(rewrite_used)
+        fail_reasons_all.append(reasons)
+
+    final_comments = [c for c in polished if c]
+
+    # --- Translation to English when generating in a non-English language -----
+    translations: list[Optional[str]] = [None, None]
+    if gen_lang and not gen_lang.lower().startswith("en"):
+        try:
+            translated = translate_comments_to_english(final_comments, source_lang=gen_lang)
+            for i, t in enumerate(translated):
+                if i < len(translations):
+                    translations[i] = t
+                else:
+                    translations.append(t)
+        except Exception:
+            # Translation is optional; silently continue on failure.
+            pass
+
+    # Normalize lengths to exactly 2 entries for downstream code.
+    final_comments = (final_comments + ["", ""])[:2]
+    translations = (translations + [None, None])[:2]
 
     try:
-        if want_alts and alternates and out:
-            out[0]["alternates"] = [str(a) for a in alternates]
+        gen_ms = int(max(0.0, (time.time() - gen_start) * 1000.0))
     except Exception:
-        pass
+        gen_ms = None
 
-    if len(out) != 2:
-        if len(out) > 2:
-            out = out[:2]
-        else:
-            rescue = _rescue_two(tweet_text)
-            extra = [c for c in rescue if isinstance(c, str)]
-            for c in extra:
-                if len(out) >= 2:
-                    break
-                out.append(
-                    {
-                        "lang": lang_out,
-                        "text": c,
-                        "translation_en": None,
-                        "reaction": None,
-                        "delay_sec": 0,
-                        "mode": None,
-                        "thread_pair": bool(THREAD_PAIR_MODE),
-                        "thread_index": len(out),
-                        "follow_up": bool(THREAD_PAIR_MODE and len(out) == 1),
-                    }
-                )
+    _record_last_comment_meta(
+        {
+            "provider": provider_used,
+            "groq_error": groq_error,
+            "intent_mode": (intent_info or {}).get("mode"),
+            "rewrite_used": rewrite_flags,
+            "quality_fail_reasons": fail_reasons_all,
+            "lang": gen_lang,
+            "timing": {
+                "gen_ms": gen_ms,
+                "rewrite_ms": rewrite_ms_total,
+            },
+        }
+    )
+
+    out: list[dict] = []
+    for idx in range(2):
+        text = final_comments[idx].strip()
+        if not text:
+            continue
+        item: dict[str, Any] = {
+            "text": text,
+            "translation_en": translations[idx],
+            "provider": provider_used,
+        }
+        if include_alternates:
+            item["alternates"] = []
+        out.append(item)
 
     return out
-
-
-# ------------------------------------------------------------------------------
-# API routes (batching + pacing)
-# ------------------------------------------------------------------------------
-
-def chunked(seq, size):
-    size = max(1, int(size))
-    for i in range(0, len(seq), size):
-        yield seq[i:i+size]
 
 
 def _canonical_x_url_from_tweet(original_url: str, t: TweetData) -> str:
@@ -9599,7 +9934,31 @@ def comment_endpoint():
                 pass
 
             emit_premium_event("item_stage", {"url": url, "stage": "fetching"})
-            t = fetch_tweet_data(url)
+            fetch_mode = "full"
+            fetch_ms = None
+            try:
+                _fetch_t0 = time.time()
+                t = fetch_tweet_data_retry(url)
+                try:
+                    fetch_ms = int(max(0.0, (time.time() - _fetch_t0) * 1000.0))
+                except Exception:
+                    fetch_ms = None
+            except CrownTALKError as e:
+                fetch_mode = "full_error"
+                # Only fall back on retryable upstream errors
+                if getattr(e, "code", None) in {"upstream_error", "upstream_invalid_json", "upstream_timeout"}:
+                    try:
+                        _fetch_t0 = time.time()
+                        t = fallback_tweet_data(url)
+                        try:
+                            fetch_ms = int(max(0.0, (time.time() - _fetch_t0) * 1000.0))
+                        except Exception:
+                            fetch_ms = None
+                        fetch_mode = "fallback"
+                    except Exception:
+                        raise
+                else:
+                    raise
             emit_premium_event("item_stage", {"url": url, "stage": "generating"})
 
             # Per-request context: thread, research, voice
@@ -9739,6 +10098,20 @@ def comment_endpoint():
             except Exception:
                 project_handles = []
 
+            try:
+                quality_meta = REQUEST_LAST_COMMENT_META.get()
+            except Exception:
+                quality_meta = None
+
+            if isinstance(quality_meta, dict):
+                timing = dict(quality_meta.get("timing") or {})
+                try:
+                    if fetch_ms is not None:
+                        timing.setdefault("fetch_ms", fetch_ms)
+                except Exception:
+                    pass
+                quality_meta["timing"] = timing
+
             item = {
                 "url": display_url,
                 "input_url": url,
@@ -9749,6 +10122,8 @@ def comment_endpoint():
                 "used_research": used_research,
                 "tweet": tweet_preview,
                 "project": proj_ctx,
+                "fetch_mode": fetch_mode,
+                "quality_meta": quality_meta,
             }
             if project_handles:
                 item["project_handles"] = project_handles
