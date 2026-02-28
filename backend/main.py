@@ -15,6 +15,17 @@ from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 
+from typing import Iterable, Sequence, TypeVar
+
+T = TypeVar("T")
+
+def chunked(seq: Sequence[T], size: int):
+    """Yield consecutive chunks from a sequence. Simple local helper to avoid external deps."""
+    if size <= 0:
+        raise ValueError("size must be > 0")
+    for i in range(0, len(seq), size):
+        yield seq[i : i + size]
+
 import requests
 from flask import Flask, request, jsonify, make_response, g, Response, stream_with_context
 from bs4 import BeautifulSoup
