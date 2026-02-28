@@ -5498,21 +5498,37 @@ def analyze_tweet_with_groq(tweet_text: str) -> TweetAnalysis | None:
 
 
 
+
+def _shorten_greeting_name(name: str) -> str:
+    """Shorten long display names/handles for GM greetings (e.g. 'Waleswoosh' -> 'Wale')."""
+    name = (name or "").strip()
+    if not name:
+        return ""
+    first = name.split()[0].strip()
+    if not first:
+        return ""
+    # For shorter names, keep the first word as-is; for very long names, trim.
+    if len(first) > 8:
+        first = first[:4]
+    # Ensure leading capital to look like a name.
+    return first[:1].upper() + first[1:]
+
+
 def _resolve_greeting_name(display_name: Optional[str], handle: Optional[str]) -> str:
     """
     Decide how to address the author in greetings.
 
     Priority:
-      1) Display name (author_name)
-      2) Handle with '@' stripped and first letter capitalized
+      1) Shortened display name (author_name)
+      2) Shortened handle with '@' stripped
       3) Generic "there"
     """
-    name = (display_name or "").strip()
+    name = _shorten_greeting_name(display_name or "")
     if name:
         return name
-    h = (handle or "").strip().lstrip("@")
+    h = _shorten_greeting_name((handle or "").strip().lstrip("@"))
     if h:
-        return h[:1].upper() + h[1:]
+        return h
     return "there"
 
 
@@ -5912,7 +5928,7 @@ def _quality_gate_comment(
     # Greeting-specific tight limits: keep GM comments small.
     mode = (intent_info or {}).get("mode") or ""
     if mode == "greeting":
-        if word_count > 26:
+        if word_count > 20:
             reasons.append("greeting_too_long")
         # If GM but we somehow have >2 sentences, treat as failure
         if sent_count > 2:
