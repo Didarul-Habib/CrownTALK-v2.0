@@ -15,17 +15,6 @@ from zoneinfo import ZoneInfo
 from typing import List, Optional, Dict, Any
 from urllib.parse import urlparse
 
-from typing import Iterable, Sequence, TypeVar
-
-T = TypeVar("T")
-
-def chunked(seq: Sequence[T], size: int):
-    """Yield consecutive chunks from a sequence. Simple local helper to avoid external deps."""
-    if size <= 0:
-        raise ValueError("size must be > 0")
-    for i in range(0, len(seq), size):
-        yield seq[i : i + size]
-
 import requests
 from flask import Flask, request, jsonify, make_response, g, Response, stream_with_context
 from bs4 import BeautifulSoup
@@ -6120,9 +6109,12 @@ def _build_comment_user_prompt(
     # Per-mode guidance
     if mode == "greeting":
         parts.append(
-            "Mode: greeting reply.\n"
-            "- Comment #1: warm but professional greeting linked to the tweet.\n"
-            "- Comment #2: natural follow-up (often a single question)."
+            "Mode: GM-style greeting reply.\\n"
+            "- You MUST write exactly two distinct comments.\\n"
+            "- Comment #1: one very short GM/hello sentence only (no question).\\n"
+            "- Comment #2: one very short GM sentence that includes exactly ONE question, focused on upcoming plans, updates, roadmap, or alpha.\\n"
+            "- Use a trimmed name like 'GM Name,' when greeting the author.\\n"
+            "- Avoid emojis, hashtags, and hype/cringe or degen slang."
         )
     elif mode == "question_reply":
         parts.append(
