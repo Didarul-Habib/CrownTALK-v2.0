@@ -10568,19 +10568,21 @@ def projects_catalog():
                 "id": card.get("id", pid),
                 "slug": card.get("slug") or "",
                 "name": card.get("name") or "",
-                "ticker": card.get("ticker") or "",
-                "primary_chain": card.get("primary_chain") or "",
-                "category": card.get("category") or "",
-                "stage": card.get("stage") or "",
-                "one_line_pitch": card.get("one_line_pitch") or "",
+                # Hide all research-like fields from the UI; keep only basic identifiers.
+                "ticker": "",
+                "primary_chain": "",
+                "category": "",
+                "stage": "",
+                "one_line_pitch": "",
                 "has_post_card": True,
             }
         )
 
-    # Sort by name/ticker for a stable order.
-    items.sort(key=lambda x: (x["name"].lower(), x["ticker"].lower()))
+    # Sort by name for a stable order.
+    items.sort(key=lambda x: x["name"].lower())
 
     return api_success(items)
+
 
 
 @app.route("/project_post", methods=["POST", "OPTIONS"])
