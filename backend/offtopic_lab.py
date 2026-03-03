@@ -70,7 +70,9 @@ def _kind_label(kind: OfftopicKind) -> str:
     if kind == OfftopicKind.AFTERNOON:
         return "afternoon"
     if kind == OfftopicKind.EVENING:
-        return "evening / good night"
+        return "evening"
+    if kind == OfftopicKind.GN_NIGHT:
+        return "good night"
     return "random"
 
 
@@ -95,6 +97,8 @@ def _build_user_prompt(req: OfftopicPostRequest) -> str:
         base_lines.append("Angle suggestions: fatigue vs discipline, finishing the day properly.")
     elif req.kind == OfftopicKind.EVENING:
         base_lines.append("Angle suggestions: reflection on the day, lessons learned, planning tomorrow.")
+    elif req.kind == OfftopicKind.GN_NIGHT:
+        base_lines.append("Angle suggestions: winding down, logging off, and quietly setting up tomorrow.")
     else:
         base_lines.append("Angle suggestions: thoughtful, slightly contrarian, but not edgy or toxic.")
 
@@ -119,9 +123,42 @@ def generate_offtopic_post(
     system = _build_system_prompt()
     user_prompt = _build_user_prompt(req)
 
-    max_tokens = 240
-    if req.post_mode == "semi_mid":
-        max_tokens = 360
+    # Language hint: default to clean English, allow explicit language codes.
+    target_lang = (lang or "en").strip() or "en"
+    lang_line = ""
+    if target_lang and target_lang != "en":
+        lang_line = f"Target output language: '{target_lang}'. Write the final post entirely in this language."
+    elif target_lang:
+        lang_line = "Target output language: 'en'. Write the final post in clear, natural English."
+
+    if lang_line:
+        user_prompt = f"{lang_line}\n\n{user_prompt}"
+
+    # Quality / length presets.
+    q = (qmode or "balanced").strip().lower() or "balanced"
+    if q not in {"fast", "balanced", "pro"}:
+        q = "balanced"
+
+    if req.post_mode == "short":
+        if q == "fast":
+            max_tokens = 160
+            temperature = 0.78
+        elif q == "pro":
+            max_tokens = 260
+            temperature = 0.7
+        else:
+            max_tokens = 200
+            temperature = 0.75
+    else:  # semi_mid
+        if q == "fast":
+            max_tokens = 220
+            temperature = 0.78
+        elif q == "pro":
+            max_tokens = 380
+            temperature = 0.7
+        else:
+            max_tokens = 320
+            temperature = 0.75
 
     messages = [
         {"role": "system", "content": system},
@@ -129,7 +166,7 @@ def generate_offtopic_post(
     ]
 
     try:
-        resp = chat_fn(messages=messages, max_tokens=max_tokens, temperature=0.75, n=1, model=None)
+        resp = chat_fn(messages=messages, max_tokens=max_tokens, temperature=temperature, n=1, model=None)
     except CrownTALKError:
         raise
     except Exception as exc:
@@ -160,7 +197,7 @@ def generate_offtopic_post(
         "language": lang,
         "text": processed,
         "meta": {
-            "quality_mode": qmode,
+            "quality_mode": q,
         },
     }
 

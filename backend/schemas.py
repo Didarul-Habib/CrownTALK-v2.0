@@ -224,12 +224,13 @@ class OfftopicKind(str, Enum):
     NOON = "noon"
     AFTERNOON = "afternoon"
     EVENING = "evening"
+    GN_NIGHT = "gn_night"
 
 
 class OfftopicPostRequest(BaseModel):
     kind: OfftopicKind = Field(
         ...,
-        description="Offtopic vibe: random | gm_morning | noon | afternoon | evening.",
+        description="Offtopic vibe: random | gm_morning | noon | afternoon | evening | gn_night.",
     )
     post_mode: Literal["short", "semi_mid"] = Field(
         default="short",

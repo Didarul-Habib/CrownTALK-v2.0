@@ -470,6 +470,17 @@ def generate_project_post(
     system = _build_system_prompt()
     user_prompt = _build_user_prompt(card, req)
 
+    # Language hint for the model.
+    target_lang = (lang or "en").strip() or "en"
+    lang_line = ""
+    if target_lang and target_lang != "en":
+        lang_line = f"Target output language: '{target_lang}'. Write the final post entirely in this language."
+    elif target_lang:
+        lang_line = "Target output language: 'en'. Write the final post in clear, natural English."
+
+    if lang_line:
+        user_prompt = f"{lang_line}\n\n{user_prompt}"
+
     messages = [
         {"role": "system", "content": system},
         {"role": "user", "content": user_prompt},

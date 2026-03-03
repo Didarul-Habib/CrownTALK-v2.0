@@ -287,10 +287,52 @@ def generate_market_post(
     system = _build_system_prompt()
     user_prompt = _build_user_prompt(req, snap)
 
-    max_tokens = 320
-    temperature = 0.75
-    if req.post_mode == MarketPostMode.THREAD_4_6:
-        max_tokens = 640
+    # Language hint: default to English, allow explicit language codes.
+    target_lang = (lang or "en").strip() or "en"
+    lang_line = ""
+    if target_lang and target_lang != "en":
+        lang_line = f"Target output language: '{target_lang}'. Write the final post entirely in this language."
+    elif target_lang:
+        lang_line = "Target output language: 'en'. Write the final post in clear, natural English."
+
+    if lang_line:
+        user_prompt = f"{lang_line}\n\n{user_prompt}"
+
+    # Quality / length presets.
+    q = (qmode or "balanced").strip().lower() or "balanced"
+    if q not in {"fast", "balanced", "pro"}:
+        q = "balanced"
+
+    if req.post_mode == MarketPostMode.SHORT_CASUAL:
+        if q == "fast":
+            max_tokens = 180
+            temperature = 0.7
+        elif q == "pro":
+            max_tokens = 260
+            temperature = 0.6
+        else:
+            max_tokens = 220
+            temperature = 0.65
+    elif req.post_mode == MarketPostMode.MEDIUM_ANALYSIS:
+        if q == "fast":
+            max_tokens = 260
+            temperature = 0.72
+        elif q == "pro":
+            max_tokens = 380
+            temperature = 0.62
+        else:
+            max_tokens = 320
+            temperature = 0.68
+    else:  # THREAD_4_6
+        if q == "fast":
+            max_tokens = 420
+            temperature = 0.7
+        elif q == "pro":
+            max_tokens = 720
+            temperature = 0.65
+        else:
+            max_tokens = 540
+            temperature = 0.68
 
     messages = [
         {"role": "system", "content": system},
@@ -331,7 +373,7 @@ def generate_market_post(
             "language": lang,
             "tweets": tweets,
             "meta": {
-                "quality_mode": qmode,
+                "quality_mode": q,
             },
         }
 
@@ -345,7 +387,7 @@ def generate_market_post(
         "language": lang,
         "text": processed,
         "meta": {
-            "quality_mode": qmode,
+            "quality_mode": q,
         },
     }
 
