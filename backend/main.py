@@ -33,6 +33,8 @@ from bs4 import BeautifulSoup
 
 from api import api_success, api_error, sse_event
 from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest, ApiEnvelope, ApiError, CancelRunRequest
+from project_lab import load_project_posts, generate_project_post, ProjectLabError
+
 
 # Optional Postgres auth storage (Supabase). We keep the rest of the app on SQLite
 # because it's used for caching/anti-repeat and can remain ephemeral on Render Free.
@@ -1643,6 +1645,16 @@ PROJECT_RESEARCH_DIR = os.getenv(
 PROJECT_RESEARCH_MAX_CHARS = int(
     os.getenv("PROJECT_RESEARCH_MAX_CHARS", "4000")
 )
+
+PROJECT_POSTS_DIR = os.getenv(
+    "PROJECT_POSTS_DIR",
+    os.path.join(os.path.dirname(os.path.abspath(__file__)), "project_posts"),
+)
+
+# In-memory catalog of project post cards (loaded at startup).
+PROJECT_POSTS = load_project_posts(PROJECT_POSTS_DIR)
+
+
 
 
 
@@ -10533,6 +10545,107 @@ def cancel_run_endpoint():
 
     # Idempotent: success even if the run was already finished or unknown.
     return api_success({"run_id": run_id, "cancelled": True})
+
+
+
+@app.route("/projects", methods=["GET", "OPTIONS"])
+def projects_catalog():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    guard = _require_user_or_unauthorized()
+    if guard is not None:
+        return guard
+
+    items = []
+    for pid, card in PROJECT_POSTS.items():
+        items.append(
+            {
+                "id": card.get("id", pid),
+                "slug": card.get("slug") or "",
+                "name": card.get("name") or "",
+                "ticker": card.get("ticker") or "",
+                "primary_chain": card.get("primary_chain") or "",
+                "category": card.get("category") or "",
+                "stage": card.get("stage") or "",
+                "one_line_pitch": card.get("one_line_pitch") or "",
+                "has_post_card": True,
+            }
+        )
+
+    # Sort by name/ticker for a stable order.
+    items.sort(key=lambda x: (x["name"].lower(), x["ticker"].lower()))
+
+    return api_success(items)
+
+
+@app.route("/project_post", methods=["POST", "OPTIONS"])
+def project_post_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    guard = _require_user_or_unauthorized()
+    if guard is not None:
+        return guard
+
+    try:
+        payload = request.get_json(force=True, silent=False) or {}
+    except Exception:
+        return api_error("invalid_json", "Request body must be JSON.", 400)
+
+    try:
+        req = ProjectPostRequest.model_validate(payload)
+    except Exception as exc:
+        return api_error("validation_error", f"Invalid project_post payload: {exc}", 400)
+
+    project_id = (req.project_id or "").strip().upper()
+    if not project_id:
+        return api_error("project_id_required", "project_id is required.", 400)
+
+    card = PROJECT_POSTS.get(project_id)
+    if not card:
+        return api_error("not_found", f"Unknown project_id '{project_id}'.", 404)
+
+    # Derive language + quality mode with safe defaults.
+    lang = (req.language or "en").strip() or "en"
+    qmode = (req.quality_mode or "").strip() or "balanced"
+
+    # Make quality/lang visible to shared helpers, for logging/metrics.
+    try:
+        REQUEST_QUALITY_MODE.set(qmode)
+    except Exception:
+        pass
+    try:
+        REQUEST_TARGET_LANG.set(lang)
+    except Exception:
+        pass
+
+    try:
+        data = generate_project_post(
+            card=card,
+            req=req,
+            lang=lang,
+            qmode=qmode,
+            chat_fn=groq_chat_limited,
+        )
+    except ProjectLabError as e:
+        return api_error(e.code, e.message, e.http_status)
+    except CrownTALKError as e:
+        # Keep semantics aligned with other endpoints.
+        return api_error(e.code, str(e), 400)
+    except Exception as exc:
+        logger.exception("project_post failed: %s", exc)
+        return api_error("internal_error", "Failed to generate project post.", 500)
+
+    return api_success(data)
 
 @app.route("/comment/stream", methods=["POST", "OPTIONS"])
 def comment_stream_endpoint():

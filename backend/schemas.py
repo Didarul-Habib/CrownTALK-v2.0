@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+from enum import Enum
 import os
 
 from typing import Any, Dict, List, Literal, Optional
@@ -151,6 +152,33 @@ class LoginRequest(BaseModel):
     email: Optional[str] = Field(default=None, min_length=3, max_length=320)
     password: str = Field(..., min_length=1, max_length=256)
 
+
+
+
+class ProjectPostMode(str, Enum):
+  SHORT_CASUAL = "short_casual"
+  MEDIUM_CASUAL = "medium_casual"
+  MEDIUM_PROFESSIONAL = "medium_professional"
+  LONG_DETAILED = "long_detailed"
+  THREAD_4_6 = "thread_4_6"
+
+
+class ProjectPostRequest(BaseModel):
+  project_id: str = Field(..., min_length=1, max_length=80)
+  post_mode: ProjectPostMode
+  tone: Optional[str] = Field(
+    default=None,
+    description="Optional tone hint for medium modes: 'casual' or 'professional'.",
+  )
+  language: Optional[str] = Field(
+    default=None,
+    max_length=MAX_LANG_LEN,
+    description="Preferred output language code. For v1 typically 'en'.",
+  )
+  quality_mode: Optional[str] = Field(
+    default=None,
+    description="Preferred quality mode: 'fast', 'balanced', or 'pro'.",
+  )
 
 class CancelRunRequest(BaseModel):
     """Request body schema for /run/cancel endpoint."""
