@@ -180,6 +180,76 @@ class ProjectPostRequest(BaseModel):
     description="Preferred quality mode: 'fast', 'balanced', or 'pro'.",
   )
 
+
+
+class MarketPostMode(str, Enum):
+    """Post types for market-level tweets (BTC/ETH/SOL etc.)."""
+
+    SHORT_CASUAL = "short_casual"
+    MEDIUM_ANALYSIS = "medium_analysis"
+    THREAD_4_6 = "thread_4_6"
+
+
+class MarketPostRequest(BaseModel):
+    asset_id: Optional[str] = Field(
+        default=None,
+        min_length=1,
+        max_length=32,
+        description="Optional asset ticker such as BTC, ETH, SOL. If omitted, backend may choose a relevant asset.",
+    )
+    post_mode: MarketPostMode = Field(
+        default=MarketPostMode.SHORT_CASUAL,
+        description="Post mode: short_casual | medium_analysis | thread_4_6.",
+    )
+    tone: Optional[str] = Field(
+        default=None,
+        description="Optional tone hint: 'casual' or 'professional'.",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        max_length=MAX_LANG_LEN,
+        description="Preferred output language code. For v1 typically 'en'.",
+    )
+    quality_mode: Optional[QualityMode] = Field(
+        default=None,
+        description="Preferred quality mode: 'fast', 'balanced', or 'pro'.",
+    )
+
+
+class OfftopicKind(str, Enum):
+    """Kinds of off-topic / general CT posts."""
+
+    RANDOM = "random"
+    GM_MORNING = "gm_morning"
+    NOON = "noon"
+    AFTERNOON = "afternoon"
+    EVENING = "evening"
+
+
+class OfftopicPostRequest(BaseModel):
+    kind: OfftopicKind = Field(
+        ...,
+        description="Offtopic vibe: random | gm_morning | noon | afternoon | evening.",
+    )
+    post_mode: Literal["short", "semi_mid"] = Field(
+        default="short",
+        description="Length preset for off-topic posts.",
+    )
+    tone: Optional[str] = Field(
+        default=None,
+        description="Optional tone hint: 'casual' or 'professional'.",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        max_length=MAX_LANG_LEN,
+        description="Preferred output language code. For v1 typically 'en'.",
+    )
+    quality_mode: Optional[QualityMode] = Field(
+        default=None,
+        description="Preferred quality mode: 'fast', 'balanced', or 'pro'.",
+    )
+
+
 class CancelRunRequest(BaseModel):
     """Request body schema for /run/cancel endpoint."""
 

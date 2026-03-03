@@ -33,7 +33,10 @@ from bs4 import BeautifulSoup
 
 from api import api_success, api_error, sse_event
 from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest, ApiEnvelope, ApiError, CancelRunRequest, ProjectPostRequest
+from schemas import MarketPostRequest, OfftopicPostRequest
 from project_lab import load_project_posts, generate_project_post, ProjectLabError
+from market_lab import generate_market_post, MarketLabError
+from offtopic_lab import generate_offtopic_post, OfftopicLabError
 
 
 # Optional Postgres auth storage (Supabase). We keep the rest of the app on SQLite
@@ -10648,6 +10651,117 @@ def project_post_endpoint():
         return api_error("internal_error", "Failed to generate project post.", 500)
 
     return api_success(data)
+
+
+
+@app.route("/market_post", methods=["POST", "OPTIONS"])
+def market_post_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    guard = _require_user_or_unauthorized()
+    if guard is not None:
+        return guard
+
+    try:
+        payload = request.get_json(force=True, silent=False) or {}
+    except Exception:
+        return api_error("invalid_json", "Request body must be JSON.", 400)
+
+    try:
+        req = MarketPostRequest.model_validate(payload)
+    except Exception as exc:
+        return api_error("validation_error", f"Invalid market_post payload: {exc}", 400)
+
+    # Language + quality mode with safe defaults.
+    lang = (req.language or "en").strip() or "en"
+    qmode_raw = getattr(req, "quality_mode", None)
+    qmode = (qmode_raw or "").strip() or "balanced"
+
+    try:
+        REQUEST_QUALITY_MODE.set(qmode)
+    except Exception:
+        pass
+    try:
+        REQUEST_TARGET_LANG.set(lang)
+    except Exception:
+        pass
+
+    try:
+        data = generate_market_post(
+            req=req,
+            lang=lang,
+            qmode=qmode,
+            chat_fn=groq_chat_limited,
+        )
+    except MarketLabError as e:
+        return api_error(e.code, e.message, e.http_status)
+    except CrownTALKError as e:
+        return api_error(e.code, str(e), 400)
+    except Exception as exc:
+        logger.exception("market_post failed: %s", exc)
+        return api_error("internal_error", "Failed to generate market post.", 500)
+
+    return api_success(data)
+
+
+@app.route("/offtopic_post", methods=["POST", "OPTIONS"])
+def offtopic_post_endpoint():
+    if request.method == "OPTIONS":
+        return ("", 204)
+
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
+
+    guard = _require_user_or_unauthorized()
+    if guard is not None:
+        return guard
+
+    try:
+        payload = request.get_json(force=True, silent=False) or {}
+    except Exception:
+        return api_error("invalid_json", "Request body must be JSON.", 400)
+
+    try:
+        req = OfftopicPostRequest.model_validate(payload)
+    except Exception as exc:
+        return api_error("validation_error", f"Invalid offtopic_post payload: {exc}", 400)
+
+    lang = (req.language or "en").strip() or "en"
+    qmode_raw = getattr(req, "quality_mode", None)
+    qmode = (qmode_raw or "").strip() or "balanced"
+
+    try:
+        REQUEST_QUALITY_MODE.set(qmode)
+    except Exception:
+        pass
+    try:
+        REQUEST_TARGET_LANG.set(lang)
+    except Exception:
+        pass
+
+    try:
+        data = generate_offtopic_post(
+            req=req,
+            lang=lang,
+            qmode=qmode,
+            chat_fn=groq_chat_limited,
+        )
+    except OfftopicLabError as e:
+        return api_error(e.code, e.message, e.http_status)
+    except CrownTALKError as e:
+        return api_error(e.code, str(e), 400)
+    except Exception as exc:
+        logger.exception("offtopic_post failed: %s", exc)
+        return api_error("internal_error", "Failed to generate offtopic post.", 500)
+
+    return api_success(data)
+
 
 @app.route("/comment/stream", methods=["POST", "OPTIONS"])
 def comment_stream_endpoint():
