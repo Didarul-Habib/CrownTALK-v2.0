@@ -32,7 +32,7 @@ from flask import Flask, request, jsonify, make_response, g, Response, stream_wi
 from bs4 import BeautifulSoup
 
 from api import api_success, api_error, sse_event
-from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest, ApiEnvelope, ApiError, CancelRunRequest
+from schemas import CommentRequest, StreamCommentRequest, UrlCommentRequest, VerifyAccessRequest, SignupRequest, LoginRequest, ApiEnvelope, ApiError, CancelRunRequest, ProjectPostRequest
 from project_lab import load_project_posts, generate_project_post, ProjectLabError
 
 
