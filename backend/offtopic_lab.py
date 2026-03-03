@@ -32,9 +32,6 @@ def _postprocess_text(text: str) -> str:
     if not isinstance(text, str):
         text = str(text or "")
     out = text.strip()
-    # Strip wrapping quotes / smart quotes if the model adds them
-    out = out.strip('"“”\'')
-    out = out.strip()
 
     out = re.sub(r"\s+", " ", out)
     out = "".join(ch for ch in out if ord(ch) <= 0xFFFF)
@@ -73,9 +70,7 @@ def _kind_label(kind: OfftopicKind) -> str:
     if kind == OfftopicKind.AFTERNOON:
         return "afternoon"
     if kind == OfftopicKind.EVENING:
-        return "evening"
-    if kind == OfftopicKind.GN_NIGHT:
-        return "late night / good night"
+        return "evening / good night"
     return "random"
 
 
@@ -99,9 +94,7 @@ def _build_user_prompt(req: OfftopicPostRequest) -> str:
     elif req.kind == OfftopicKind.AFTERNOON:
         base_lines.append("Angle suggestions: fatigue vs discipline, finishing the day properly.")
     elif req.kind == OfftopicKind.EVENING:
-        base_lines.append("Angle suggestions: reflection on the day, lessons learned, winding down, planning tomorrow.")
-    elif req.kind == OfftopicKind.GN_NIGHT:
-        base_lines.append("Angle suggestions: end-of-day reset, shutting down screens, discipline around sleep and markets.")
+        base_lines.append("Angle suggestions: reflection on the day, lessons learned, planning tomorrow.")
     else:
         base_lines.append("Angle suggestions: thoughtful, slightly contrarian, but not edgy or toxic.")
 

@@ -401,9 +401,6 @@ def _postprocess_text(text: str) -> str:
     if not isinstance(text, str):
         text = str(text or "")
     out = text.strip()
-    # Strip wrapping quotes / smart quotes if the model adds them
-    out = out.strip('"“”\'')
-    out = out.strip()
 
     # Normalize whitespace
     out = re.sub(r"\s+", " ", out)
