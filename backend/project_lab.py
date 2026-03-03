@@ -506,10 +506,22 @@ def generate_project_post(
     except Exception as exc:
         raise ProjectLabError("llm_error", f"LLM call failed: {exc}", http_status=502)
 
-    text = getattr(resp, "content", None)
-    if text is None and isinstance(resp, dict):
-        text = resp.get("content")
-    if text is None:
+    # Extract raw text from the LLM response. For Groq chat completions we
+    # mirror the main CrownTALK pipeline and read from choices[0].message.content.
+    text = None
+
+    # Groq-style response object
+    try:
+        if hasattr(resp, "choices") and resp.choices:
+            text = (resp.choices[0].message.content or "").strip()
+    except Exception:
+        text = None
+
+    # Dict-style or simplified response
+    if (not text) and isinstance(resp, dict):
+        text = (resp.get("content") or resp.get("text") or "").strip()
+
+    if not text:
         raise ProjectLabError("llm_empty", "Model returned empty content.", http_status=502)
 
     if mode == "thread_4_6":
