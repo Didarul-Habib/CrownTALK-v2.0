@@ -1,0 +1,141 @@
+PROJECT_POST_CARD_V1
+====================
+
+PROJECT_ID: WALLCHAIN
+SLUG: wallchain
+NAME: Wallchain (Quacks + X Score)
+TICKER: N/A (Quacks are “points” in official vocabulary; no official public token ticker documented)
+PRIMARY_CHAIN: Multi-surface (X-native scoring + optional on-chain footprint multipliers; Solana NFT gating via “Quack Heads”)
+CATEGORY: AttentionFi / InfoFi (mindshare + reputation graph + creator growth + campaign analytics)
+STAGE: Live (daily scoring + live leaderboards + Chrome extension + partner campaigns)
+
+ONE_LINE_PITCH:
+A crypto-native AttentionFi platform that measures “real” influence on X via X Score (0–1000) and rewards quality + consistency using Quacks points and mindshare leaderboards.
+
+CORE_NARRATIVE:
+- “Quality-weighted influence” vs vanity metrics: score is driven by who engages with you (quality of followers + smart interactions), not raw follower count.
+- “Mindshare as measurable signal”: track who drives meaningful attention to a project/topic and who supports an account’s narrative.
+- “Anti-gaming posture”: explicitly targets bots/farming/engagement loops + “AI slop” filtering; positions itself as resistant to manipulation.
+- “Growth infrastructure” (not just a leaderboard): for brands = KOL discovery, campaign measurement, gated/public leaderboards, APIs (mindshare tracking/heatmaps/X Score).
+
+PRODUCT_DETAILS:
+- Core products:
+  - X Score (0–1000): computed using a “Crypto Twitter Connectivity Graph (CTCG)” from actions like retweets, follows, comments; uses seed accounts + exponential decay to reduce repetitive/unnatural inflation.
+  - Quacks (Points): daily-evaluated points that reward valuable/insightful/engaging content and meaningful engagement.
+  - Mindshare Leaderboards: rankings based on “mindshare” (quality-weighted attention). All types of public engagement count.
+- How X Score is described to work (public-facing, simplified):
+  - Proximity-to-seed model: the closer you are (via graph links) to influential seed accounts, the higher your score trends (toward 1000).
+  - Exponential decay: repetitive actions/inflated patterns shouldn’t linearly pump score.
+  - “Influence passes” concept: when someone interacts with you, they pass a portion of their influence to you “without losing it themselves.”
+  - “Scores never decrease based on user actions” (as documented).
+- How Quacks / leaderboards work in product UX:
+  - Login flow: authorize with X → land on profile → view X Score + Quacks balance + referral tools.
+  - Personal mindshare leaderboard: top 5 supporters visible; full list unlock requires completing the in-app unlock flow (Wallchain blog describes “share a tweet” to unlock full leaderboard).
+  - Quacks page shows: Top quackers + your Quacks + X Score + earned + referral Quacks; filters: 7d / 30d / 3 months / all time.
+  - Partner leaderboards: time filters include 7d / 30d / epochs; pages surface project/team/socials + “Featured Tweets”.
+- Growth/campaign features (explicitly mentioned in official comms):
+  - Onboarding pop-ups that explain Quacks/X Score/leaderboards/referrals in under ~30 seconds.
+  - Achievements/badges for contributions.
+  - “Daily Quack Spotlight” popup showing last 24h Quacks.
+  - “Mindshare history” view: day-by-day mindshare growth on user profiles.
+  - “Heatmap” appears as a product surface in Wallchain’s dev app navigation (brand analytics surface).
+- Quack Heads (ecosystem membership / gating):
+  - “Quack Heads” are positioned as a Solana Genesis NFT collection and used for gated community access (private Telegram + Discord roles).
+  - Wallchain describes “unified wallet connection” for on-chain multipliers: connect once; use across multiple project leaderboards; wallets auto-checked for on-chain activity; visual on-chain multipliers live for some leaderboards.
+
+KEY_METRICS:
+- Cadence (operational, not financial):
+  - Quacks calculated once per day (expect up to 24h delay).
+  - Leaderboards updated daily around ~11:00 UTC (delays possible).
+- Adoption proxies (publicly visible):
+  - Chrome extension listing shows ~20,000 users and ~4.9 rating (high-level proxy only).
+  - Wallchain blog claims (as of Dec 30, 2025): 400K+ users, 70K+ creators posting about Wallchain, 24 mindshare leaderboards launched, and 30,000+ X Score installs (note: install/user counts can differ by measurement source).
+- Campaign mechanics / “epochs”:
+  - Wallchain uses “epochs” for some leaderboards/rewards cycles (e.g., “Velvet Epoch 1 rewards” summary posted in official recap).
+- Important framing:
+  - Wallchain is not TVL-first. Treat it as a social + reputation + growth analytics product; any on-chain rewards are campaign-specific.
+
+RISKS_AND_REALISM:
+- Platform dependency risk:
+  - Product value depends on X data + Wallchain’s scoring infra; policy/rate-limit/platform changes can degrade reliability or continuity.
+- Centralization + governance risk:
+  - Wallchain controls scoring rules, leaderboard definitions, enforcement decisions, bans, and campaign parameters; rankings can change due to algorithm updates and competition.
+- Anti-abuse false positives/negatives:
+  - Strong anti-farming posture implies enforcement; can create creator frustration if misclassified.
+- Incentive design risk:
+  - Rewards/points systems attract farming; “quality” scoring is inherently subjective even with LLM signals.
+- Token speculation risk:
+  - Quacks are described as points; do NOT assume token, TGE, listing, or price narrative unless Wallchain publishes official token docs.
+- On-chain multiplier risk:
+  - “On-chain footprint” weighting + wallet linking introduces privacy tradeoffs and additional trust assumptions; multipliers are leaderboard-specific and may evolve.
+
+CT_ANGLES_HOW_TO_TALK:
+- “Signal layer” framing:
+  - “This is trying to measure real influence via a graph score + quality-weighted mindshare, not follower count.”
+- “Quality + consistency” framing:
+  - “Rewards are structured around consistent contribution and meaningful engagement — not spam posting.”
+- “Growth teams” framing:
+  - “Useful for KOL discovery + campaign measurement + fraud-resistant metrics + early-stage gated leaderboards.”
+- “Realism” framing:
+  - “Centralized scoring, but the direction is credible: anti-gaming + on-chain credibility weighting is a sensible design goal.”
+
+HOOK_IDEAS_SHORT:
+- “Follower count is dead—graph proximity + smart interactions is the only metric that scales.”
+- “Mindshare leaderboards are only useful if they’re anti-cabal. That’s the bet here.”
+- “Quacks rewards consistency — daily scoring makes it a long game, not a one-post lottery.”
+- “If you’re running GTM, this is basically ‘KOL discovery + measurement’ packaged as AttentionFi.”
+- “Interesting split: mindshare = influence contribution; Quacks = content quality. Not the same thing.”
+- “On-chain footprint multipliers are a clean way to weight opinions without trusting pure social clout.”
+- “Anti-slop + anti-engagement-group posture is the right response to CT noise.”
+- “The big question: does it reward insight or just ‘well-networked’ accounts?”
+- “If you’re early-stage, gated leaderboards are an underrated growth lever.”
+- “The best part is transparency intent: optimize for what can’t be manipulated.”
+
+HOOK_IDEAS_THREAD:
+- “Why CT needs a reputation graph: from vanity metrics → connectivity + quality signals.”
+- “Mindshare vs Quacks: influence contribution vs content quality — why the distinction matters.”
+- “How growth teams should use mindshare leaderboards without getting baited by vanity metrics.”
+- “Anti-cabal design: what it means to be resistant to self-engagement loops.”
+- “On-chain footprint multipliers: when ‘usage credibility’ should matter for opinions.”
+- “The incentives problem: how to reward creators without turning the platform into a farm.”
+
+THREAD_SKELETON_4_6_TWEETS:
+- Tweet 1: The problem — CT is noisy: bots, pods, AI slop. Vanity metrics don’t measure real influence.
+- Tweet 2: Wallchain approach — X Score (0–1000) from a connectivity graph + decay; tries to be hard to game.
+- Tweet 3: Rewards layer — Quacks points (daily) + mindshare leaderboards (daily ~11:00 UTC) to reward consistency + quality.
+- Tweet 4: Why it matters — mindshare is “quality-weighted attention”; it highlights who actually moves narratives for a project/account.
+- Tweet 5: Use cases — brands: KOL discovery, fraud-resistant metrics, campaigns, gated leaderboards, APIs/heatmaps; creators: proof-of-influence + recognition.
+- Tweet 6 (optional): Realism — centralized scoring + platform dependency; avoid token/TGE assumptions; judge by transparency + enforcement quality.
+
+DOS_AND_DONTS:
+- DO:
+  - Say “aims to measure authentic influence on X” and “quality-weighted mindshare.”
+  - Mention daily cadence and that mindshare and Quacks are different mechanics.
+  - Frame it as a growth/reputation layer for both creators and web3 brands.
+  - Use careful language: “designed to…”, “positions itself as…”, “claims/notes…”.
+- DON’T:
+  - Don’t claim a confirmed token, TGE date, listings, or price targets.
+  - Don’t promise guaranteed rewards, fixed ROI, or stable ranking positions.
+  - Don’t imply “anti-gaming” means “ungameable”; treat it as a design goal.
+  - Don’t quote campaign payouts as guaranteed future outcomes; keep them as historical/posted metrics.
+
+SOURCES:
+- Official X: https://x.com/wallchain
+- Website: https://www.wallchain.xyz/about
+- Docs (Intro): https://docs.wallchain.xyz/intro
+- Docs (X Score): https://docs.wallchain.xyz/x-score
+- Docs (How to Earn Quacks): https://docs.wallchain.xyz/guide
+- Docs (FAQ): https://docs.wallchain.xyz/faq
+- Docs (Vocabulary): https://docs.wallchain.xyz/vocabulary
+- Docs (Use Cases / APIs / business): https://docs.wallchain.xyz/application  |  https://docs.wallchain.xyz/business
+- Docs (Team & backers): https://docs.wallchain.xyz/team
+- Docs (Case studies): https://docs.wallchain.xyz/studies
+- Docs (Referral): https://docs.wallchain.xyz/referral
+- Blog (Mindshare leaderboards): https://news.wallchain.xyz/p/get-your-mindshare-leaderboard-for-free-now-in-quacks-app
+- Blog (Claim Quacks leaderboard): https://news.wallchain.xyz/p/claim-your-quacks-with-wallchain
+- Blog (Product updates + mindshare history/achievements): https://news.wallchain.xyz/p/solana-to-get-first-mindshare-leaderboard
+- Blog (Onboarding pop-ups): https://news.wallchain.xyz/p/the-next-mindshare-leaderboard-is-live-with-genome
+- Blog (Quack Heads + wallet multipliers + epochs): https://news.wallchain.xyz/p/november-recap-2025
+- Blog (2025 recap numbers): https://news.wallchain.xyz/p/2025-year-recap
+- Chrome extension listing: https://chromewebstore.google.com/detail/wallchain-x-score/hmkmpdakcjpihbpfolonciflbkjkojdb
+- AllianceDAO company page: https://alliance.xyz/companies/wallchain
