@@ -16,6 +16,7 @@ from typing import Any, Callable, Dict, Iterable, List, Optional, Tuple, TypedDi
 import re
 import textwrap
 
+
 from schemas import ProjectPostRequest, ProjectPostMode
 from utils import CrownTALKError
 
@@ -457,7 +458,7 @@ def generate_project_post(
     req: ProjectPostRequest,
     lang: str,
     qmode: str,
-    chat_fn: Callable[[List[Dict[str, str]]], Dict[str, Any]],
+    chat_fn: Callable[..., Any],
 ) -> Dict[str, Any]:
     """
     Generate a project-level post or thread using the provided chat function.
@@ -474,8 +475,31 @@ def generate_project_post(
         {"role": "user", "content": user_prompt},
     ]
 
+    # Choose basic generation settings based on mode and requested quality.
+    # These are intentionally conservative to keep tokens + cost under control.
+    max_tokens = 180
+    temperature = 0.4
+
+    if mode == "short_casual":
+        max_tokens = 80 if qmode == "fast" else 96
+        temperature = 0.45 if qmode == "fast" else 0.5
+    elif mode in ("medium_casual", "medium_professional"):
+        max_tokens = 140 if qmode == "fast" else 180
+        temperature = 0.45 if mode == "medium_casual" else 0.4
+    elif mode == "long_detailed":
+        max_tokens = 260 if qmode == "pro" else 220
+        temperature = 0.35
+    elif mode == "thread_4_6":
+        # Budget for 4–6 short tweets; we still keep it tight.
+        max_tokens = 420 if qmode == "fast" else 540
+        temperature = 0.5 if qmode == "balanced" else 0.55
+
     try:
-        resp = chat_fn(messages)
+        resp = chat_fn(
+            messages=messages,
+            max_tokens=max_tokens,
+            temperature=temperature,
+        )
     except CrownTALKError:
         # Bubble up known errors unchanged
         raise
