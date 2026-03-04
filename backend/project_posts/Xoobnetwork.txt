@@ -1,0 +1,100 @@
+PROJECT_POST_CARD_V1
+
+PROJECT_ID: XOOB
+SLUG: xoobnetwork
+NAME: XOOB Network
+TICKER: XOOB
+PRIMARY_CHAIN: Chromia
+CATEGORY: Infrastructure / GameFi
+STAGE: MainnetONE_LINE_PITCH:
+A modular onchain protocol for quests and referrals, serving as a transparent, AI-powered growth engine for Web3 projects, enabling trustless rewards, gasless interactions, and verifiable user acquisition.CORE_NARRATIVE:
+XOOB Network positions itself as the foundational infrastructure for "ImpactFi," a new paradigm where creator influence, community engagement, and project growth are measured and rewarded onchain in a transparent, decentralized manner. Backed by Chromia, XOOB addresses key pain points in Web3 growth, such as opaque metrics for user acquisition, high gas fees hindering onboarding, fragmented data silos, and centralized dependencies in reward systems. By leveraging modular L2 chains, XOOB creates a trustless ecosystem where quests, referrals, and influencer campaigns are verifiable, performance-based, and aligned with incentives for all stakeholders—projects, key opinion leaders (KOLs), and users. This narrative emphasizes fairness, transparency, and unstoppable growth, transforming Web3 marketing from speculative hype to data-driven, measurable impact. The project's evolution from a Web3 gaming platform (with elements like mini-games, mystery boxes, and point farming) to a broader protocol underscores its adaptability, with a focus on real-world utility in gaming, DeFi, and community building. XOOB's story is one of innovation incubated by established blockchain players, aiming to redefine how narratives drive markets through onchain mechanics.PRODUCT_DETAILS:
+XOOB Network offers a suite of modular products built on specialized L2 chains for optimal performance and transparency:xoob.quests: An onchain quests platform running on the xoob_quests_platform L2 Chain. It allows Web3 projects to create and manage customizable quests, enabling users to participate in gamified tasks for rewards. Features include verifiable completion tracking, automated reward distribution, and integration with external chains for cross-ecosystem engagement. Users can explore and join quests via the platform's dashboard, with support for PvP/P2E gaming elements like transparent leaderboards and instant rewards.
+
+xoob.link: An onchain referral system on the xoob_link L2 Chain, designed for performance-based referrals (e.g., CPA—cost per action). It provides tools for projects to launch referral programs with real-time tracking of user actions, automated payouts, and analytics to measure ROI. This includes KOL alignment, where influencers can track campaign performance through onchain data, ensuring fair compensation based on verifiable results.
+
+xoob.evm_receiver: Infrastructure for cross-chain synchronization, operating in the background to import actions from external chains (e.g., EVM-compatible) into XOOB's ecosystem. It ensures full transparency without requiring user setup, with an explorer for viewing synced data. This enables seamless multi-chain operations, reducing friction in user experiences.
+
+
+
+Additional features include gasless interactions for zero-friction UX, AI-powered onchain data analytics for growth metrics, and solutions for specific use cases like KOL performance tracking (via Analytics Chain), referral networks (via Referral Chain), and complete network transparency (via Data Layer). The platform integrates with Telegram MiniApps for accessible mining and gaming experiences, where users earn $XOOB through quests, mini-games, and planetary exploration campaigns. XOOB also supports NFT collections, such as the Genesis Mint (1,000 NFTs), which provide utilities like multipliers on rewards and access to exclusive campaigns.KEY_METRICS:Funding Raised: $1.6 million in total (July 2024), comprising $1.4 million in an incubation round led by Chromia and $200,000 in pre-seed funding. Investors include Chromia, Mines of Dalarnia, and My Neighbor Alice.
+
+User Base: Over 300,000 users reported in some gaming-focused metrics (as of late 2024/early 2025), with high engagement in Telegram MiniApp activities. XOOB is noted as the most active dApp on Chromia Mainnet.
+
+NFT Activity: Genesis collection fully minted (1,000 NFTs) in March 2026, with high demand leading to technical scaling efforts. Previous campaigns like XPedition saw participants earning XP and minting NFTs with multipliers (e.g., x3 for Level 3 proofs).
+
+Campaign Metrics: Recent ImpactShare campaign allocates 2% of token supply to creators; XPedition campaign distributed rewards from a 100 million $XOOB pool over 90 days. Weekly quests and combos (e.g., daily milk rewards) drive consistent engagement.
+
+Network Activity: Launched on Chromia Mainnet in late 2024/early 2025; processes over 20,000 social connections in queues during high-traffic events. Trusted by leading Web3, gaming, and DeFi projects (specific partners include My Neighbor Alice for joint quests).
+
+Token Supply and Distribution: Limited public details on full tokenomics; 2% of supply dedicated to creator campaigns. No confirmed total supply, but airdrops and mining pools (e.g., 100M tokens for mining) indicate community-focused allocation.
+(Note: Metrics are derived from public posts, funding announcements, and platform activity; exact onchain data like TVL or transaction volume not publicly detailed in sources.)
+
+
+
+RISKS_AND_REALISM:Technical Risks: High-traffic events (e.g., Genesis Mint) have caused API failures, rate limits, and syncing delays, highlighting scalability challenges under load. Reliance on Chromia's relational blockchain introduces dependencies on its performance and adoption.
+
+Market Risks: As a GameFi/Infrastructure project, XOOB is exposed to crypto market volatility, regulatory changes (e.g., in stablecoins or tokenized assets), and competition from established platforms like Telegram's TON ecosystem or other quest protocols. The shift from gaming to broader ImpactFi may dilute focus if not executed well.
+
+Adoption Risks: Success hinges on KOL and project partnerships; opaque or unverified campaigns could undermine trust. Gasless features mitigate fees, but cross-chain integrations (e.g., evm_receiver) could face interoperability issues or security vulnerabilities.
+
+Token and Economic Risks: Limited tokenomics transparency raises concerns about inflation, distribution fairness, or dump risks post-airdrops. Airdrop farming could attract sybil attacks if verification isn't robust.
+
+Realism Assessment: XOOB's incubation by Chromia provides strong backing and technical credibility, with proven launches (e.g., Mainnet dApp activity). However, as a relatively young project (funding in 2024), it must demonstrate sustained user retention beyond hype-driven events. Potential for high upside in Web3 growth tools, but realistic growth may take 1-2 years amid bearish market cycles. No major red flags in security or team, but users should DYOR on token utilities.
+
+
+
+CT_ANGLES_HOW_TO_TALK:Positive Framing: Emphasize XOOB as the "onchain growth engine" revolutionizing Web3 marketing—talk about how it empowers creators with measurable impact (e.g., "Creators move narratives; XOOB measures and rewards them trustlessly"). Highlight Chromia backing and modular chains for tech-savvy audiences: "Gasless, transparent quests on dedicated L2s—XOOB is building the future of ImpactFi."
+
+Community Engagement: Use calls-to-action like "Join the XPedition" or "Mint your Genesis NFT" to drive participation. Share success stories: "Over 300K users mining $XOOB via Telegram—early adopters are shaping the narrative."
+
+Risk-Aware Tone: Be transparent about challenges: "High demand caused minor hiccups in mints, but we're scaling fast." Avoid overhyping unconfirmed tokenomics; focus on utility: "2% supply for creators—real impact, not just promises."
+
+Narrative Building: Position as anti-hype: "From gaming quests to onchain referrals, XOOB turns influence into verifiable performance." Tailor to audiences—GameFi for gamers, Infrastructure for devs.
+
+Professionalism: Always back claims with sources (e.g., official posts, docs); encourage exploration: "Check xoob.network for quests and links."
+
+
+
+HOOK_IDEAS_SHORT:"Creators: 2% of $XOOB supply awaits your impact—write, share, earn onchain!"
+
+"Gasless quests on Chromia: XOOB turns Web3 growth from guesswork to guaranteed ROI."
+
+"Missed the Genesis Mint? Next drop accounts for early supporters—join ImpactFi now!"
+
+"From Telegram mining to modular L2s: XOOB is the transparent engine powering Web3 narratives."
+
+"KOLs, track your ROI onchain: XOOB aligns incentives for fair, unstoppable rewards."
+
+
+
+HOOK_IDEAS_THREAD:Thread 1: "The Problem with Web3 Growth (Thread): Opaque metrics, high fees, centralized rewards—how XOOB fixes it with modular chains and AI data."
+
+Thread 2: "Inside XOOB's Genesis Mint: What went down, lessons learned, and what's next for ImpactFi adopters."
+
+Thread 3: "From Gaming to Infrastructure: XOOB's Evolution—quests, referrals, and why Chromia is the perfect chain."
+
+Thread 4: "Creator Campaigns on XOOB: How 2% supply turns narratives into measurable market moves."
+
+Thread 5: "Risks in GameFi Projects: A Realistic Look at XOOB—strengths, challenges, and why it's built to last."
+
+
+
+THREAD_SKELETON_4_6_TWEETS:
+Thread Skeleton (5 Tweets): XOOB's ImpactFi Revolution
+1/5: Intro Hook—"Tired of unmeasurable Web3 hype? XOOB makes growth transparent and rewarding. Backed by Chromia, here's why it's game-changing."
+2/5: Problem—"Web3 struggles: Siloed data, gas friction, unfair rewards. XOOB's modular L2s (quests, links, evm_receiver) solve this with gasless, trustless tech."
+3/5: Solution—"Key features: Onchain quests for engagement, referrals for CPA tracking, AI analytics for KOL ROI. Real use cases in gaming and DeFi."
+4/5: Metrics & Realism—"Raised $1.6M, 300K+ users, Mainnet active. Risks? Scalability under load—but we're iterating fast."
+5/5: Call to Action—"Join quests at xoob.network. Early? Mint, create, impact. #XOOB #ImpactFi"DOS_AND_DONTS:Do: Research thoroughly using official sources (xoob.network, docs.xoob.gg, @XOOBNetwork
+
+ posts). Engage authentically in campaigns for rewards. Highlight transparency and utilities over speculation.
+
+Don't: Spread unverified tokenomics or hype TGE without confirmation. Ignore technical issues—report them for community fixes. Farm airdrops unethically; focus on genuine contributions.
+
+Do: Use professional, inclusive language to build community trust. Cite funding and partnerships for credibility.
+
+Don't: Overpromise returns; emphasize risks and realism. Avoid spamming hashtags—integrate naturally.
+
+
+
