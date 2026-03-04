@@ -455,12 +455,37 @@ def _build_user_prompt(card: ProjectPostCard, req: ProjectPostRequest) -> str:
         )
     elif mode == "score_update":
         mode_lines.append(
-            "Post mode: score_update. Write a GM-style multi-line update (3-4 lines) "
-            "about an X Score move, targeting serious CT readers."
+            "Post mode: score_update. Write a personal, first-person multi-line update "
+            "about *my* Wallchain X Score move."
         )
         mode_lines.append(
-            "Each line should be a complete, compact sentence or clause. Keep it calm "
-            "and credible, not hypey."
+            "Start with a short joyful or grateful opener in first person, e.g. "
+            "Alhamdulillah, I'm happy guys, or grateful for the progress so far."
+        )
+        mode_lines.append(
+            "Then write one factual sentence in first person about the score change, "
+            "for example: 'My Wallchain X Score has increased from the previous value "
+            "to the new value over the selected period.'"
+        )
+        mode_lines.append(
+            "Next, write one sentence about consistency, routine or process being the real "
+            "driver of this change, not luck or one viral post."
+        )
+        mode_lines.append(
+            "Then, write one sentence about Wallchain helping filter noise and reward "
+            "authentic influence compared to generic campaign platforms."
+        )
+        mode_lines.append(
+            "Finally, add one closing sentence inviting others to share their own score, "
+            "for example: What's your score right now? Comment below."
+        )
+        mode_lines.append(
+            "Each sentence must be on its own line, separated by newline characters. "
+            "Do not merge them into a single paragraph."
+        )
+        mode_lines.append(
+            "Write entirely in first person (I / my), not third person. Keep it humble "
+            "and process-focused, not braggy."
         )
 
     # Optional score update payload details
@@ -546,19 +571,26 @@ def normalize_project_post_text(text: str) -> str:
 def _postprocess_score_update(text: str) -> str:
     """Post-process a multi-line score_update message.
 
-    We keep line breaks but normalise each non-empty line.
+    We keep line breaks but normalise each non-empty line and add a blank
+    line between sentences for readability.
     """
     if not text:
         return ""
 
     lines: list[str] = []
     for raw_line in str(text).splitlines():
-        if not raw_line.strip():
+        raw_line = raw_line.strip()
+        if not raw_line:
             continue
         norm = normalize_project_post_text(raw_line)
         if norm:
             lines.append(norm)
-    return "\n".join(lines)
+
+    if not lines:
+        return ""
+
+    # Use a blank line between sentences to create the GM-style spacing
+    return "\n\n".join(lines)
 
 
 def _postprocess_text(text: str) -> str:
