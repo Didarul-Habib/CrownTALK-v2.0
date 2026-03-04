@@ -297,6 +297,10 @@ class OfftopicPostRequest(BaseModel):
         default=None,
         description="Optional tone hint: 'casual' or 'professional'.",
     )
+    topic: Optional[str] = Field(
+        default=None,
+        description="Optional topic / context text for this off-topic post.",
+    )
     language: Optional[str] = Field(
         default=None,
         max_length=MAX_LANG_LEN,
@@ -306,7 +310,6 @@ class OfftopicPostRequest(BaseModel):
         default=None,
         description="Preferred quality mode: 'fast', 'balanced', or 'pro'.",
     )
-
 
 class CancelRunRequest(BaseModel):
     """Request body schema for /run/cancel endpoint."""
