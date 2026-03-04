@@ -1,0 +1,82 @@
+PROJECT_POST_CARD_V1
+====================
+
+PROJECT_ID: DUELDUCK
+SLUG: duelduck
+NAME: Duel Duck
+TICKER: DUELDUCK
+PRIMARY_CHAIN: Solana
+CATEGORY: Prediction Market
+STAGE: MainnetONE_LINE_PITCH:
+A peer-to-peer prediction market on Solana enabling users to create, share, and bet on binary outcomes in crypto, sports, and gaming for real rewards.CORE_NARRATIVE:
+Duel Duck transforms traditional betting into a decentralized, user-empowered ecosystem where anyone can become a market maker by creating duels on real-world events. Built on Solana for speed and low fees, it emphasizes transparency through smart contracts that handle instant settlements and payouts. The platform fosters community engagement via social sharing, tournaments, and a points-based system leading to a confirmed airdrop, rewarding not just accurate predictions but also creation and participation. Founded in 2023 by figures like Olympic medalist Stan Horuna and trader Cryptomannn, Duel Duck positions itself as a "Predict to Earn" model that democratizes access to prediction markets, eliminating middlemen and house edges while incentivizing creators with up to 10% commissions. This narrative appeals to crypto enthusiasts, sports fans, and gamers seeking fair, fun, and profitable ways to test their foresight, with ongoing campaigns and leaderboards driving sustained activity.PRODUCT_DETAILS:
+Duel Duck operates as a blockchain-based P2P prediction platform where users create "duels"—binary (Yes/No) questions tied to verifiable real-world outcomes across crypto (e.g., Bitcoin price thresholds), sports (e.g., match results like Chelsea vs. Aston Villa), and gaming (e.g., NFT floor prices or esports events). To create a duel, users set parameters including the question, resolution deadline (from hours to days), ticket price (in USDC, SOL, or SPL tokens like DUELDUCK), and a creator commission (1-10%). Participants buy tickets to stake on Yes or No, with odds dynamically adjusting based on stakes (e.g., 6.73% chance for Yes). The prize pool forms from all stakes, and upon resolution (via external data feeds or oracles), winners automatically split the pool minus the creator's fee through Solana smart contracts—no manual intervention needed.Key features include:Leader System: Users can copy top performers' predictions for boosted wins or become leaders to earn extra commissions from followers.
+
+Tournaments: Themed competitions (e.g., KOL tournaments with influencers like Cryptomannn) bundle multiple duels, often with dedicated prize pools (e.g., $2,500 USDC for the ongoing Rakebit tournament ending in ~11 days).
+
+Mentionboard Seasons: Social campaigns where users create X (Twitter) content with specific keywords to climb leaderboards and share USDC pools (e.g., Season 2: $20K, Season 3: $30K upcoming).
+
+Points System: Earn Duel Duck Points for airdrop eligibility through duel creation, participation, referrals, tournaments, and article submissions (e.g., $300 USDC pool for original content).
+
+Mobile-Friendly Interface: Recently launched for seamless access.
+
+Telegram Bot (Duck Alert): Notifies users of new duels and resolutions to optimize farming.
+
+Referral Program: Share links; earn points when referrals join at least one duel.
+Integrations include Solana wallets (e.g., Phantom) for connections, with no hidden fees beyond gas and commissions. The platform supports short-term duels for quick volume and long-term ones for deeper engagement, making it accessible for casual users (small stakes) and high-rollers alike.
+
+
+
+KEY_METRICS:Token Market Cap: $4,400 (as of March 4, 2026).
+
+Total Supply: 1 billion DUELDUCK.
+
+Circulating Supply: 1 billion DUELDUCK.
+
+Holders: 1 (indicative of early stage or concentrated ownership; data from Phantom token page).
+
+Active Users: Implied to be in the thousands based on "many players joined" and campaign participation (e.g., 451 replies on a single promotional post, 3986 views on launch announcements).
+
+Active Duels: Multiple ongoing (e.g., 50+ in tournaments like the inaugural KOL event; examples include Bitcoin at $100K by end of March with varying ticket prices from 0.0112 to 5 DUELDUCK).
+
+Transaction Volume: Not explicitly quantified, but recent campaigns suggest high activity—e.g., $25,000 USDC total prize pool targeted for March (including leaderboards, tournaments, and article competitions); $2,500 USDC for current Rakebit tournament; $30,000 USDC for upcoming Mentionboard Season 3.
+
+Engagement: High social traction with posts garnering 100-400 likes/replies (e.g., leaderboard tips post: 60 likes, 31 replies); X followers for @duel_duck
+
+: Not specified, but bio indicates strong Solana community ties.
+
+Airdrop Points: Distributed via activity; Season 2 wrapped February 10, 2026, with claims from February 16.
+
+Growth Indicators: Founded 2023; active since at least 2025 with escalating prize pools (e.g., Season 1 to Season 3 scaling from smaller to $30K); partnerships like Rakebit and KOLs driving user acquisition.
+
+
+
+RISKS_AND_REALISM:
+Duel Duck is an early-stage project with promising mechanics but faces typical crypto challenges. The low token market cap ($4.4K) signals extreme volatility, potential illiquidity, and rug pull risks, especially with full circulating supply and minimal holders—investors should verify tokenomics and audits. Dependency on external oracles for outcome resolutions (e.g., sports scores or crypto prices) could lead to disputes or manipulation if feeds are unreliable, though smart contracts mitigate some issues. Competition from established platforms like Polymarket or Augur is stiff, potentially limiting adoption unless Duel Duck's social and commission features differentiate it. Airdrop hype may inflate short-term activity but lead to dumps post-TGE (date unannounced), and Solana's occasional network congestion could disrupt duels. Regulatory risks loom for prediction markets resembling gambling, varying by jurisdiction. Realism: With confirmed airdrop and escalating campaigns (e.g., $25K March prizes), it shows momentum, but sustained growth depends on user retention beyond incentives—current metrics suggest niche appeal in Solana ecosystem, with potential for 10x-50x upside if adoption scales, but high failure rate for low-cap projects.CT_ANGLES_HOW_TO_TALK:
+Frame Duel Duck as the "social prediction powerhouse on Solana" to appeal to degens and traders—highlight how it's not just betting but a creator economy where users earn commissions like mini-market makers. Use angles like "Beat the market before it happens" for crypto duels, "Outsmart your friends on game day" for sports, or "Predict NFT flips like a pro" for gaming. Emphasize decentralization: "No house wins—only you do." Tie into airdrop farming: "Stack points now for the duck drop." Share user stories (e.g., "This KOL turned predictions into $USDC stacks") and tips (e.g., "Short duels for volume, long ones for big plays"). Avoid overhyping; ground in realism like "Low fees on Solana make it addictive." For threads, use visuals of active duels or leaderboards to build FOMO professionally.HOOK_IDEAS_SHORT:"Duel Duck: Create crypto predictions, earn 10% commissions, farm airdrop points—Solana's bet on the future! "
+
+"Yes or No? Stake on sports outcomes, win USDC pools, no middlemen—join the Duel Duck revolution! "
+
+"Predict gaming metas, share duels with friends, collect points for the confirmed airdrop—quack your way to gains! "
+
+
+
+HOOK_IDEAS_THREAD:"Unlocking Duel Duck: A beginner's guide to earning USDC and points"—Thread covering sign-up, duel creation, participation strategies, and airdrop tips with screenshots.
+
+"Top 5 Crypto Duels to Watch This Week on Duel Duck"—Analyze current hot predictions (e.g., BTC $100K), explain odds, and encourage joins with referral links.
+
+"From Zero to Leaderboard Hero: My Duel Duck Farming Strategy"—Personal (or hypothetical) story on consistent plays, social sharing, and tournament wins to inspire engagement.
+
+
+
+THREAD_SKELETON_4_6_TWEETS:
+1/6: Introducing Duel Duck—the Solana-powered P2P prediction market where you create Yes/No duels on crypto, sports, and gaming. No house edge, just smart contracts and commissions. Let's break it down! 
+2/6: How to create a duel: Pick a question (e.g., 'BTC > $100K by March end?'), set deadline/ticket price/commission. Share links—earn up to 10% on every stake! Pro tip: Short duels boost volume scores.
+3/6: Participating: Buy Yes/No tickets, watch odds shift. Winners auto-split pools. Join tournaments like the $2.5K Rakebit one for extra USDC—consistency wins leaderboards.
+4/6: Farm points for the confirmed airdrop: Create/participate in duels, refer friends, post on X for Mentionboard seasons ($30K Season 3 incoming), submit articles for $300 pools.
+5/6: Risks? Volatile markets, but transparency rules. Metrics: $4.4K cap token, $25K March prizes—early but growing. Mobile app live for on-the-go plays!
+6/6: Why now? Duck season is heating up—sign up via https://duelduck.com/, connect Phantom, and duel! Who's in? Tag a friend for a challenge. #DuelDuck #SolanaDOS_AND_DONTS:Do: Create clear, verifiable duels with short deadlines for quick resolutions and higher volume scores; share widely on X/socials to maximize participants and commissions; participate daily in tournaments/Mentionboard for consistent points; use small stakes to test strategies; track via Telegram bot for efficiency.
+
+Don't: Bet amounts you can't afford to lose; create ambiguous questions leading to disputes (e.g., undefined terms); ignore deadlines or resolutions; spam low-quality content for Mentionboard (focus on keywords and value); rely solely on hype—verify outcomes independently; miss claim windows for seasonal rewards.
+
+
