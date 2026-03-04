@@ -1,0 +1,117 @@
+PROJECT_POST_CARD_V1
+====================
+
+PROJECT_ID: RAKEBIT
+SLUG: rakebit
+NAME: Rakebit
+TICKER: N/A (No native token identified; platform operates as a centralized crypto-accepting service without a dedicated blockchain token)
+PRIMARY_CHAIN: Multi-chain support (accepts tokens from Ethereum, Solana, Tron, Binance Smart Chain, and others, but not built on a single primary blockchain)
+CATEGORY: Crypto Gambling / Online Casino and Sportsbook
+STAGE: Live (Operational since 2024 with full platform functionality)ONE_LINE_PITCH:
+Rakebit is a no-KYC crypto casino and sportsbook offering over 7,000 games, instant payouts, and unlimited withdrawals for seamless, private gambling with top cryptocurrencies.CORE_NARRATIVE:
+Rakebit positions itself as a cutting-edge, privacy-focused online gambling platform that leverages cryptocurrency to deliver a superior user experience. Launched in 2024, it emphasizes anonymity (no KYC requirements), security through blockchain transactions, and accessibility via VPN-friendly policies. The platform bridges traditional casino entertainment with modern crypto tech, providing fast deposits/withdrawals, provably fair games, and a wide array of betting options. Operated by Innovex Tech Holdings Ltd. (with some sources citing Tech Group BL Ltd.), it holds a gambling license from Anjouan Gaming Authority in Comoros (or Costa Rica, per varying reports), ensuring regulated operations. Rakebit appeals to crypto enthusiasts by supporting 15+ cryptocurrencies, including BTC, ETH, SOL, USDT, and more, while offering features like live dealer games, sports betting, and exclusive originals. Its narrative revolves around "redefining gambling" with unlimited freedom, high-stakes action, and community-driven events like leaderboards and tournaments, all while promoting responsible play.PRODUCT_DETAILS:
+Rakebit is a comprehensive online crypto gambling platform featuring:Casino Games: Over 7,000 titles from 50+ providers (e.g., Pragmatic Play, Evolution, Novomatic, Penguin King). Categories include slots (crypto-optimized with features like Hold & Win, Mega Flex), table games (blackjack, roulette, poker, baccarat), live dealer options (real-time streaming with crypto betting), and originals (provably fair games like Crash, Plinko, Dice, and custom titles such as Ice Fishing or Rocket Eruption).
+
+Sportsbook: Extensive crypto sports betting on traditional sports (soccer, basketball, tennis) and esports, with live betting, competitive odds, and privacy-focused wagering. Supports in-play bets and multi-event parlays.
+
+Features: Instant deposits/withdrawals (no limits, processed in minutes via blockchain), no KYC for full anonymity, VPN compatibility, mobile-optimized interface, and multi-language support. Payment options include BTC, ETH, LTC, BCH, USDT (across ERC20, TRC20, BEP20), BNB, TRX, SOL, XRP, TON, DOGE, USDC. Minimum deposits start at ~$1 equivalent.
+
+Bonuses and Promotions: Welcome bonus up to 100% match on deposits (e.g., up to $4,000), free spins, cashback (up to 25% via VIP program), rakeback, and seasonal events like monthly leaderboards (rewards: $50 cash for top ranks, free spins). VIP club with 5 ranks/21 levels offering exclusive perks, up to $40,000 in bonuses.
+
+Security and Fairness: Provably fair algorithms for originals, SSL encryption, two-factor authentication options, and automated security checks for large withdrawals. Community integration via Discord (for quests, trivia, and point-based rewards) and X (for missions and tournaments, e.g., Duel Duck collaboration).
+
+User Experience: Sleek, intuitive UI with fast loading times; 24/7 live chat support; educational content (e.g., strategy breakdowns for games like blackjack).
+
+
+
+KEY_METRICS:Launch Year: 2024
+
+Games Available: 7,000+
+
+Providers: 50+ (including Pragmatic Play, Evolution, Penguin King, Novomatic)
+
+Supported Cryptocurrencies: 15+ (BTC, ETH, SOL, USDT, LTC, BCH, BNB, TRX, XRP, TON, DOGE, USDC)
+
+User Base Indicators: Active X account (@rakebitcom
+
+) with frequent engagement (posts garner 200-500 likes on average for promotions; community events like leaderboards attract dozens of participants). Discord community for interactive quests. Estimated annual revenues: $1M+ (classified as small to medium-sized casino).
+
+Performance Metrics: High payout speeds (instant for most cryptos); complaint resolution via support (e.g., delayed withdrawals addressed promptly). DappRadar listing for blockchain analytics, showing steady activity in crypto gambling sector. VIP rewards distributed: Up to 25% rakeback/cashback; tournament prizes include cash and free spins.
+
+Growth Indicators: Recent additions (e.g., Penguin King provider in Feb 2026); monthly events (e.g., March 2026 leaderboard with point system: chat/deposit/wager boosts); partnerships (e.g., with influencers like @cryptobri_
+
+ as brand ambassador).
+
+Financials: No public token metrics (non-tokenized); focuses on transaction volume with unlimited withdrawals and low minimums.
+
+
+
+RISKS_AND_REALISM:Regulatory Risks: Licensed in Comoros (Anjouan) or Costa Rica—jurisdictions with lighter oversight compared to Malta or UK. This enables no-KYC but may expose users to limited recourse in disputes. Gambling laws vary by country; users must comply locally (e.g., restricted in some US states).
+
+Security Concerns: While provably fair and encrypted, one reported incident (June 2025) of $30,000 seizure without clear explanation, leading to unresolved complaints on forums like Bitcointalk. Potential for security checks delaying withdrawals (e.g., 4+ hour holds for high-value transactions).
+
+Market Volatility: Crypto-based; winnings/deposits tied to volatile asset prices (though USDT stability mitigates some risk).
+
+Operational Realism: Established since 2024 with positive reviews for game variety and speed, but mixed feedback on support (e.g., delays). Not a DeFi project—centralized operations could face hacks or downtime. Competition from larger platforms (e.g., Stake, Rollbit) may limit growth. Realism: Strong in niche (no-KYC crypto gambling) but relies on user trust; avoid overhyping as "risk-free" due to gambling nature.
+
+User Risks: Addiction potential—platform promotes responsible gaming (18+ only) but offers high-stakes features. No fiat support limits accessibility.
+
+
+
+CT_ANGLES_HOW_TO_TALK:Community Tone: Approach as a fun, innovative crypto hub—emphasize privacy ("Play freely without KYC hassles"), excitement ("Big wins like 100x on Ice Fishing"), and community ("Join Discord for quests and rewards"). Use engaging, degen-friendly language (e.g., "Grind smarter, play harder") while reminding of responsible play.
+
+Key Angles: Highlight crypto integration ("Bet with SOL, win in minutes"); new features ("Fresh providers like Penguin King"); events ("March leaderboard—earn points via wagers and chats"). Position as "best no-KYC casino" for privacy seekers. Collaborate with influencers (e.g., @cryptobri_
+
+) for authentic endorsements.
+
+Avoid: Don't promise guaranteed wins or downplay risks; steer clear of financial advice. Frame as entertainment, not investment.
+
+
+
+HOOK_IDEAS_SHORT:"No KYC, unlimited wins—Rakebit: Where crypto meets casino thrills! "
+
+"From $3 SOL to 300 SOL? Ice Fishing just hooked a monster payout on Rakebit. Your turn? "
+
+"New provider alert: Penguin King slots now live—spin Mega Flex for heavy hits! "
+
+"March leaderboard live: Chat, deposit, wager—win $50 cash, no wager req! "
+
+"Blackjack breakdowns with @cryptobri_
+
+—learn to hit big on Rakebit. "
+
+
+
+HOOK_IDEAS_THREAD:Thread 1: "Why Rakebit is the ultimate no-KYC crypto casino: 1/ Thread on features, wins, and why you should spin here. "
+
+Thread 2: "Big win stories from Rakebit: From 100x multipliers to tournament triumphs—real player spotlights. "
+
+Thread 3: "New games drop: Breaking down Penguin King's Mega Flex—how to play and win big. "
+
+Thread 4: "VIP perks unlocked: Rakeback, cashback, and climbing the 21 levels on Rakebit. "
+
+Thread 5: "Crypto gambling tips: Strategies for slots, sportsbook bets, and originals at Rakebit. "
+
+
+
+THREAD_SKELETON_4_6_TWEETS:
+Thread Example: "Exploring Rakebit: The No-KYC Crypto Casino Revolution"Tweet 1: "Tired of KYC drama? Rakebit lets you play anonymously with 15+ cryptos. Over 7k games, instant payouts. Let's dive in! 1/6 "
+
+Tweet 2: "Core features: Slots, live dealers, sportsbook—all provably fair. New additions like Penguin King keep it fresh. 2/6 "
+
+Tweet 3: "Big wins happen: Recent 100x on Ice Fishing turned $3 SOL into 300. Community events like leaderboards add extra rewards. 3/6 "
+
+Tweet 4: "VIP program: Up to 25% rakeback, $40k bonuses. No withdrawal limits—cash out anytime. 4/6 "
+
+Tweet 5: "Licensed and secure, but play responsibly. Supports BTC, ETH, SOL + more. VPN-friendly for global access. 5/6 "
+
+Tweet 6: "Ready to spin? Join via https://rakebit.com/ and grab your welcome bonus. What's your first game? 6/6 "
+
+
+
+DOS_AND_DONTS:Do: Promote privacy and speed ("Instant crypto payouts, no ID needed"). Highlight real features (e.g., "7,000+ games from top providers"). Encourage community engagement ("Join Discord for quests"). Always include responsible gaming reminders ("18+, play responsibly").
+
+Don't: Guarantee profits or wins ("Gambling involves risk—only wager what you can afford"). Ignore complaints (address transparently if raised). Overstate licensing strength (it's not top-tier). Promote to minors or in restricted jurisdictions. Use misleading hype (e.g., avoid "risk-free" claims).
+
+
+
