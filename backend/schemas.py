@@ -221,6 +221,58 @@ class ProjectPostRequest(BaseModel):
     )
 
 
+
+class MarketPostMode(str, Enum):
+    """Post modes for Market Post Lab.
+
+    These map 1:1 to the frontend `MarketPostMode` union and to the prompt
+    routing inside `backend/market_lab.py`.
+    """
+
+    SHORT_CASUAL = "short_casual"
+    MEDIUM_ANALYSIS = "medium_analysis"
+    THREAD_4_6 = "thread_4_6"
+
+
+class MarketPostRequest(BaseModel):
+    """Request body for /market_post endpoints.
+
+    The shape mirrors `MarketPostRequestPayload` on the frontend. Additional
+    fields should be added carefully to avoid breaking existing clients.
+    """
+
+    asset_id: Optional[str] = Field(
+        default=None,
+        max_length=16,
+        description=(
+            "Optional asset code (e.g., BTC, ETH, SOL, BNB). "
+            "If omitted, the backend may pick a random supported asset."
+        ),
+    )
+    post_mode: MarketPostMode = Field(
+        default=MarketPostMode.SHORT_CASUAL,
+        description=(
+            "Market post mode: 'short_casual', 'medium_analysis', or 'thread_4_6'."
+        ),
+    )
+    tone: Optional[str] = Field(
+        default=None,
+        description="Optional tone hint: 'casual' or 'professional'.",
+    )
+    language: Optional[str] = Field(
+        default=None,
+        max_length=MAX_LANG_LEN,
+        description=(
+            "Preferred output language code (e.g., 'en'). "
+            "If omitted, defaults to English."
+        ),
+    )
+    quality_mode: Optional[QualityMode] = Field(
+        default=None,
+        description="Preferred quality mode: 'fast', 'balanced', or 'pro'.",
+    )
+
+
 class OfftopicKind(str, Enum):
     """Kinds of off-topic / general CT posts."""
 
