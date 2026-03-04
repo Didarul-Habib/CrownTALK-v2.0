@@ -82,9 +82,10 @@ def _build_user_prompt(req: OfftopicPostRequest) -> str:
 
     lines: list[str] = []
 
-    if kind in {"gm", "gn"}:
-        when = "morning" if kind == "gm" else "night"
-        lines.append(f"You are writing a {kind.upper()} post for crypto Twitter ({when}).")
+    if kind in {"gm_morning", "gn_night"}:
+        when = "morning" if kind == "gm_morning" else "night"
+        label = "GM" if kind == "gm_morning" else "GN"
+        lines.append(f"You are writing a {label} post for crypto Twitter ({when}).")
     else:
         lines.append("You are writing an off-topic / mindset style post for CT.")
 
@@ -123,12 +124,12 @@ def _build_user_prompt(req: OfftopicPostRequest) -> str:
 
     # Kind-specific structure
     lines.append("")
-    if kind == "gm":
+    if kind == "gm_morning":
         lines.append(
             "Structure: write 2-4 short lines. Line 1 sets the GM and frame. "
             "Later lines add one or two concrete thoughts about how to approach the day."
         )
-    elif kind == "gn":
+    elif kind == "gn_night":
         lines.append(
             "Structure: write 2-4 short lines. Line 1 sets the GN and mood. "
             "Later lines reflect on what matters over a longer arc than today's PnL."
@@ -145,6 +146,7 @@ def _build_user_prompt(req: OfftopicPostRequest) -> str:
     lines.append("- Do not use emojis.")
     lines.append("- Do not use bullet lists or numbered lists.")
     lines.append("- Do not add disclaimers (NFA, DYOR, etc.).")
+    lines.append("- Vary your opening phrasing; avoid starting most posts with 'I've been' or 'I've been thinking'.")
     lines.append("- Output only the final multi-line post text, nothing else.")
 
     lines.append("")
