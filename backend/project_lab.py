@@ -129,6 +129,11 @@ _SECTION_KEYS = {
     "DOS_AND_DONTS": "dos_donts",
 }
 
+SCORE_UPDATE_SUPPORTED_PROJECT_IDS = {
+    "WALLCHAIN",
+}
+
+
 
 def _parse_body_sections(body: str) -> ProjectPostSections:
     """
@@ -259,162 +264,306 @@ def load_project_posts(directory: str) -> Dict[str, ProjectPostCard]:
     return cards
 
 
+
 def _build_system_prompt() -> str:
+    """System prompt for Project Post Lab.
+
+    This persona writes sober, CT-native project posts grounded in the research card.
+    """
+
     return (
-        "You write content for X (Twitter) about crypto and Web3 projects.\n"
-        "Your goal is to write short, human, professional posts that a CT user can copy and lightly edit.\n"
-        "No emojis. No hashtags.\n"
-        "Avoid hype slang and overpromising.\n"
-        "Use short, clear sentences and a realistic, grounded tone.\n"
+        "You are the writer behind a crypto-native account that posts thoughtful,\n"
+        "sober commentary about projects. You write like a human, not a bot.\n\n"
+        "Core traits:\n"
+        "- You are specific, grounded in the provided project card and sections.\n"
+        "- You avoid hype, memes, and cringe 'shill' language.\n"
+        "- You NEVER add hashtags or cashtags, and you NEVER add emojis.\n"
+        "- You do not add disclaimers like 'NFA', 'DYOR', or 'not financial advice'.\n"
+        "- You do not add labels such as 'Thread:', 'Summary:', or 'Takeaways:'.\n"
+        "- You do not speak about the author being an AI model.\n\n"
+        "Output contract:\n"
+        "- For standard modes you output exactly ONE X post string. No bullet list,\n"
+        "  no numbering, no extra commentary.\n"
+        "- For thread_4_6 mode you output 4-6 separate tweets separated by blank lines.\n"
+        "  Each tweet is plain text with no numeric prefixes (no '1)', '2)', '3)').\n"
+        "- For score_update mode you output a short multi-line update (3-4 lines);\n"
+        "  each line is a complete sentence or clause.\n"
+        "- All outputs must be written in the requested target language.\n"
     )
+
 
 
 def _build_user_prompt(card: ProjectPostCard, req: ProjectPostRequest) -> str:
-    meta_lines = [
-        f"Project: {card['name']} ({card['ticker']})",
-        f"Chain: {card['primary_chain'] or 'n/a'}",
-        f"Category: {card['category'] or 'n/a'}",
-        f"Stage: {card['stage'] or 'n/a'}",
-    ]
-    if card["one_line_pitch"]:
-        meta_lines.append(f"One-line pitch: {card['one_line_pitch']}")
-    meta_lines.append("")
+    """Build user prompt for project post generation."""
 
-    s = card["sections"]
-    sections_lines: List[str] = []
+    sections = card.get("sections", {}) or {}
 
-    def add_block(label: str, key: str) -> None:
-        val = s.get(key)
-        if not val:
-            return
-        sections_lines.append(f"{label}:")
-        sections_lines.append(str(val).strip())
-        sections_lines.append("")
+    def get_section(key: str) -> str:
+        value = sections.get(key)
+        if not value:
+            return ""
+        if isinstance(value, list):
+            return " ".join(str(v).strip() for v in value if str(v).strip())
+        return str(value).strip()
 
-    add_block("Core narrative", "core_narrative")
-    add_block("Product details", "product_details")
-    add_block("Key metrics", "key_metrics")
-    add_block("Risks and realism", "risks_realism")
-    add_block("How to talk about it on CT", "ct_angles")
+    name = card.get("name") or card.get("id") or ""
+    ticker = card.get("ticker") or ""
+    primary_chain = card.get("primary_chain") or ""
+    category = card.get("category") or ""
+    stage = card.get("stage") or ""
 
-    hooks_short = s.get("hooks_short") or []
-    hooks_thread = s.get("hooks_thread") or []
-    thread_skeleton = s.get("thread_skeleton") or []
+    one_liner = get_section("one_line_pitch")
+    core_narrative = get_section("core_narrative")
+    product_details = get_section("product_details")
+    ct_angles = get_section("ct_angles")
+    key_metrics = get_section("key_metrics")
+    risks_realism = get_section("risks_realism")
 
-    if hooks_short:
-        sections_lines.append("Short hook ideas (for single-tweet posts):")
-        for h in hooks_short:
-            sections_lines.append(f"- {h}")
-        sections_lines.append("")
+    # Angle mapping
+    angle = (req.angle or "").strip().lower() or "balanced"
+    angle_hints = {
+        "balanced": (
+            "Balanced overview: connect narrative, product, and real metrics into "
+            "one coherent CT-ready post. Make it feel grounded but still optimistic."
+        ),
+        "how_to_use": (
+            "How-to angle: show how a real user or team would actually use this "
+            "product today. Emphasise concrete actions and UX, not just vision."
+        ),
+        "narrative": (
+            "Narrative angle: explain where this project sits inside the current "
+            "crypto meta and why it matters for the broader story."
+        ),
+        "risk": (
+            "Risk-first angle: highlight execution, market, and structural risks "
+            "while still acknowledging why people care about the project."
+        ),
+        "builder": (
+            "Builder angle: focus on what is being shipped, what is live, how the "
+            "product and team are iterating, and why that matters."
+        ),
+    }
+    angle_explainer = angle_hints.get(angle, angle_hints["balanced"])
 
-    if hooks_thread:
-        sections_lines.append("Thread hook ideas (for 4–6 tweet threads):")
-        for h in hooks_thread:
-            sections_lines.append(f"- {h}")
-        sections_lines.append("")
+    mode = req.post_mode.value if isinstance(req.post_mode, ProjectPostMode) else str(req.post_mode)
+    tone_hint = (req.tone or "").strip().lower()
 
-    if thread_skeleton:
-        sections_lines.append("Recommended thread structure (4–6 tweets):")
-        for step in thread_skeleton:
-            sections_lines.append(f"- {step}")
-        sections_lines.append("")
+    # Meta + card context
+    lines: list[str] = []
 
-    dos_donts = s.get("dos_donts")
-    if dos_donts:
-        sections_lines.append("Do and don't guidelines:")
-        sections_lines.append(str(dos_donts).strip())
-        sections_lines.append("")
+    lines.append("You are generating an X post about the following project.")
+    lines.append("")
+    lines.append("Project meta:")
+    if name:
+        lines.append(f"- Name: {name}")
+    if ticker:
+        lines.append(f"- Ticker: {ticker}")
+    if primary_chain:
+        lines.append(f"- Primary chain: {primary_chain}")
+    if category:
+        lines.append(f"- Category: {category}")
+    if stage:
+        lines.append(f"- Stage: {stage}")
 
-    sections_lines.append(
-        "Use the ideas above as context and inspiration. Do NOT copy the bullet points verbatim."
-    )
+    if one_liner:
+        lines.append("")
+        lines.append("One line pitch:")
+        lines.append(one_liner)
 
-    prompt_lines: List[str] = []
-    prompt_lines.append("\n".join(meta_lines).strip())
-    prompt_lines.append("")
-    prompt_lines.extend(sections_lines)
+    if core_narrative:
+        lines.append("")
+        lines.append("Core narrative:")
+        lines.append(core_narrative)
 
-    # Mode-specific instructions
-    prompt_lines.append("")
-    prompt_lines.append(f"Requested post mode: {req.post_mode}")
-    tone = req.tone or "auto"
-    prompt_lines.append(f"Requested tone: {tone}")
-    prompt_lines.append("")
+    if product_details:
+        lines.append("")
+        lines.append("Product / UX details:")
+        lines.append(product_details)
 
-    mode = req.post_mode
+    if key_metrics:
+        lines.append("")
+        lines.append("Key metrics and traction signals:")
+        lines.append(key_metrics)
 
-    if mode == "short_casual":
-        prompt_lines.append(
-            "Write exactly ONE tweet. Length: ~20–35 words. Tone: casual but still professional."
+    if ct_angles:
+        lines.append("")
+        lines.append("How CT should talk about it (angles):")
+        lines.append(ct_angles)
+
+    if risks_realism:
+        lines.append("")
+        lines.append("Risks and realism:")
+        lines.append(risks_realism)
+
+    lines.append("")
+    lines.append("Angle focus:")
+    lines.append(angle_explainer)
+
+    # Tone guidance
+    tone_lines: list[str] = []
+    if tone_hint == "professional":
+        tone_lines.append(
+            "Tone: more professional and measured, like a thoughtful fund / "
+            "research account posting for CT."
         )
-        prompt_lines.append(
-            "Use one short hook idea if helpful. Mention ONE key angle or benefit. No emojis, no hashtags."
-        )
-    elif mode == "medium_casual":
-        prompt_lines.append(
-            "Write exactly ONE tweet. Length: ~40–80 words. Tone: slightly relaxed, conversational."
-        )
-        prompt_lines.append(
-            "Include: brief problem context, what the project does, and one concrete benefit or use case."
-        )
-    elif mode == "medium_professional":
-        prompt_lines.append(
-            "Write exactly ONE tweet. Length: ~40–80 words. Tone: more serious, professional CT tone."
-        )
-        prompt_lines.append(
-            "Include: problem context, what the project does, 1–2 concrete features or benefits, and optionally a realistic mention of risks or tradeoffs."
-        )
-    elif mode == "long_detailed":
-        prompt_lines.append(
-            "Write exactly ONE tweet. Length: ~120–200 words. It should feel like a mini-explainer compressed into a single post."
-        )
-        prompt_lines.append(
-            "Cover: problem, solution (the project), key features/mechanics, who it’s for, and 1–2 realistic risks or caveats."
-        )
-    elif mode == "thread_4_6":
-        prompt_lines.append(
-            "Write a numbered thread of 4–6 tweets. Use the recommended thread structure as the backbone."
-        )
-        prompt_lines.append(
-            "Format each tweet as a numbered line like '1) ...', '2) ...'. Each tweet should be ~25–60 words."
-        )
-        prompt_lines.append(
-            "Cover: problem/context, what the project does, how it works, who it’s for / how to use it, realistic risks/tradeoffs, and an optional closing or CTA."
+    elif tone_hint == "casual":
+        tone_lines.append(
+            "Tone: slightly more casual and conversational, but still sober and "
+            "non-cringe. Avoid meme slang and over-the-top hype."
         )
     else:
-        # This should be guarded before calling, but keep a fallback.
-        raise ProjectLabError("project_post_invalid_mode", f"Unsupported post_mode: {mode}")
+        tone_lines.append(
+            "Tone: credible CT-native voice. Calm, clear, and concrete. No memes, "
+            "no cringe, no fake hype."
+        )
 
-    prompt_lines.append("")
-    prompt_lines.append("General rules:")
-    prompt_lines.append("- No emojis.")
-    prompt_lines.append("- No hashtags.")
-    prompt_lines.append('- No hype memes such as "wen moon", "WAGMI", or "ape in".')
-    prompt_lines.append("- Keep claims realistic. Do not promise returns or guaranteed upside.")
-    prompt_lines.append("- Prefer short, clean sentences. Avoid unnecessary jargon.")
+    # Mode-specific instructions
+    mode_lines: list[str] = []
+    if mode == "short_casual":
+        mode_lines.append(
+            "Post mode: short_casual. Write ONE short X post (around 20-35 words)."
+        )
+        mode_lines.append(
+            "Focus on a single sharp idea or hook rather than covering everything."
+        )
+    elif mode in {"medium_casual", "medium_professional"}:
+        mode_lines.append(
+            "Post mode: medium. Write ONE medium-length X post (roughly 45-80 words)."
+        )
+        mode_lines.append(
+            "You may connect 2-3 key ideas (narrative + product + metric), but keep "
+            "it tight enough to feel like a single tweet."
+        )
+    elif mode == "long_detailed":
+        mode_lines.append(
+            "Post mode: long_detailed. Write ONE longer X post (roughly 90-150 words)."
+        )
+        mode_lines.append(
+            "You can unpack more nuance, but still keep it readable in a single tweet."
+        )
+    elif mode == "thread_4_6":
+        mode_lines.append(
+            "Post mode: thread_4_6. Write a short thread of 4-6 tweets."
+        )
+        mode_lines.append(
+            "Each tweet should be on its own line, and tweets must be separated by a "
+            "blank line. Do NOT number them, and do NOT include 'Thread:' or similar."
+        )
+        mode_lines.append(
+            "The first tweet should work as a strong hook. Subsequent tweets deepen "
+            "the narrative with concrete details and metrics."
+        )
+    elif mode == "score_update":
+        mode_lines.append(
+            "Post mode: score_update. Write a GM-style multi-line update (3-4 lines) "
+            "about an X Score move, targeting serious CT readers."
+        )
+        mode_lines.append(
+            "Each line should be a complete, compact sentence or clause. Keep it calm "
+            "and credible, not hypey."
+        )
 
-    return "\n".join(prompt_lines).strip()
+    # Optional score update payload details
+    if mode == "score_update" and req.score_update:
+        su = req.score_update
+        lines.append("")
+        lines.append("Score update context:")
+        lines.append("- Metric: X Score (0-100 scale).")
+        lines.append(f"- Previous value: {su.from_value}.")
+        lines.append(f"- New value: {su.to_value}.")
+        if su.period_label:
+            lines.append(f"- Period: {su.period_label}.")
+        lines.append(
+            "- Treat this as a scoreboard for traction and execution, not a price signal."
+        )
+        lines.append(
+            "- Do NOT mention price, pumps, or 'moon'. Do NOT tell people to buy or sell."
+        )
+
+    lines.append("")
+    lines.append("Global style rules:")
+    lines.append("- Do not use hashtags or cashtags.")
+    lines.append("- Do not use emojis.")
+    lines.append("- Do not use bullet lists or numbered lists in the final output.")
+    lines.append("- Do not add disclaimers (NFA, DYOR, etc.).")
+    lines.append(
+        "- Output only the final X post text (or thread tweets), nothing else."
+    )
+
+    lines.append("")
+    lines.extend(tone_lines)
+    lines.extend(mode_lines)
+
+    return "\n".join(l for l in lines if l.strip())
+
+
+
+def normalize_project_post_text(text: str) -> str:
+    """Normalize a single project post or tweet into a clean, CT-ready line."""
+    if text is None:
+        return ""
+
+    t = str(text).strip()
+    if not t:
+        return ""
+
+    # Strip wrapping quotes if the whole string is quoted
+    if (
+        (t.startswith('"') and t.endswith('"'))
+        or (t.startswith("“") and t.endswith("”"))
+        or (t.startswith("'") and t.endswith("'"))
+    ) and len(t) >= 2:
+        t = t[1:-1].strip()
+
+    # Trim stray leading/trailing quote characters
+    while t and t[0] in {'"', "“", "’", "'"}:
+        t = t[1:].lstrip()
+    while t and t[-1] in {'"', "”", "’", "'"}:
+        t = t[:-1].rstrip()
+
+    # Remove standalone hashtags but keep the words
+    words = t.split()
+    cleaned_words: list[str] = []
+    for w in words:
+        if w.startswith("#"):
+            # drop the hash but keep the token content if any
+            if len(w) > 1:
+                cleaned_words.append(w[1:])
+            continue
+        cleaned_words.append(w)
+    t = " ".join(cleaned_words)
+
+    # Collapse whitespace
+    t = re.sub(r"\s+", " ", t).strip()
+
+    # Ensure a terminal punctuation mark for single-line posts
+    if t and t[-1] not in ".!?":
+        t += "."
+
+    return t
+
+
+def _postprocess_score_update(text: str) -> str:
+    """Post-process a multi-line score_update message.
+
+    We keep line breaks but normalise each non-empty line.
+    """
+    if not text:
+        return ""
+
+    lines: list[str] = []
+    for raw_line in str(text).splitlines():
+        if not raw_line.strip():
+            continue
+        norm = normalize_project_post_text(raw_line)
+        if norm:
+            lines.append(norm)
+    return "\n".join(lines)
 
 
 def _postprocess_text(text: str) -> str:
-    """Apply global post-processing rules to a single post."""
-    if not isinstance(text, str):
-        text = str(text or "")
-    out = text.strip()
-
-    # Normalize whitespace
-    out = re.sub(r"\s+", " ", out)
-
-    # Remove emojis (very rough pass: strip most characters outside basic planes).
-    out = "".join(ch for ch in out if ord(ch) <= 0xFFFF)
-
-    # Drop hashtags entirely.
-    out = re.sub(r"\s*#\w+", "", out)
-
-    # Ensure final punctuation.
-    if out and out[-1] not in ".!?":
-        out = out + "."
-    return out.strip()
+    """Apply global post-processing rules to a single project post."""
+    return normalize_project_post_text(text)
 
 
 def _split_thread(raw: str) -> List[str]:
@@ -453,57 +602,71 @@ def _split_thread(raw: str) -> List[str]:
     return cleaned
 
 
+
 def generate_project_post(
     card: ProjectPostCard,
     req: ProjectPostRequest,
     lang: str,
     qmode: str,
-    chat_fn: Callable[..., Any],
-) -> Dict[str, Any]:
-    """
-    Generate a project-level post or thread using the provided chat function.
+    chat_fn,
+) -> dict:
+    """Generate a project post or thread based on a project card and request."""
 
-    chat_fn is expected to take a list of messages and return an object with at
-    least a 'content' field holding the LLM text.
-    """
-    mode = req.post_mode
-    system = _build_system_prompt()
+    mode = req.post_mode.value if isinstance(req.post_mode, ProjectPostMode) else str(req.post_mode)
+    mode = mode or "medium_casual"
+
+    # Score update is only allowed for specific projects.
+    if mode == "score_update":
+        project_label = (card.get("id") or card.get("slug") or card.get("name") or "").upper()
+        if not any(key in project_label for key in SCORE_UPDATE_SUPPORTED_PROJECT_IDS):
+            raise ProjectLabError(
+                "score_update_unsupported_project",
+                "Score update posts are only supported for specific projects (currently WALLCHAIN).",
+            )
+        if not req.score_update:
+            raise ProjectLabError(
+                "score_update_missing_payload",
+                "score_update payload is required when post_mode == 'score_update'.",
+            )
+
+    system_prompt = _build_system_prompt()
     user_prompt = _build_user_prompt(card, req)
 
-    # Language hint for the model.
     target_lang = (lang or "en").strip() or "en"
-    lang_line = ""
-    if target_lang and target_lang != "en":
-        lang_line = f"Target output language: '{target_lang}'. Write the final post entirely in this language."
-    elif target_lang:
-        lang_line = "Target output language: 'en'. Write the final post in clear, natural English."
+    if target_lang == "en":
+        lang_line = "Write the output in English."
+    else:
+        lang_line = f"Write the output in {target_lang}."
+    user_prompt = f"{lang_line}\n\n{user_prompt}"
 
-    if lang_line:
-        user_prompt = f"{lang_line}\n\n{user_prompt}"
-
-    messages = [
-        {"role": "system", "content": system},
-        {"role": "user", "content": user_prompt},
-    ]
-
-    # Choose basic generation settings based on mode and requested quality.
-    # These are intentionally conservative to keep tokens + cost under control.
-    max_tokens = 180
-    temperature = 0.4
+    quality = (qmode or "balanced").strip().lower()
+    max_tokens: int
+    temperature: float
 
     if mode == "short_casual":
-        max_tokens = 80 if qmode == "fast" else 96
-        temperature = 0.45 if qmode == "fast" else 0.5
-    elif mode in ("medium_casual", "medium_professional"):
-        max_tokens = 140 if qmode == "fast" else 180
-        temperature = 0.45 if mode == "medium_casual" else 0.4
+        max_tokens = 96 if quality == "fast" else 128
+        temperature = 0.7 if quality == "fast" else 0.75
+    elif mode in {"medium_casual", "medium_professional"}:
+        max_tokens = 160 if quality == "fast" else 220
+        temperature = 0.7 if quality == "fast" else 0.72
     elif mode == "long_detailed":
-        max_tokens = 260 if qmode == "pro" else 220
-        temperature = 0.35
+        max_tokens = 260 if quality == "fast" else 320
+        temperature = 0.68 if quality == "fast" else 0.7
     elif mode == "thread_4_6":
-        # Budget for 4–6 short tweets; we still keep it tight.
-        max_tokens = 420 if qmode == "fast" else 540
-        temperature = 0.5 if qmode == "balanced" else 0.55
+        max_tokens = 360 if quality == "fast" else 420
+        temperature = 0.72 if quality == "fast" else 0.74
+    elif mode == "score_update":
+        # Short multi-line GM-style update
+        max_tokens = 140 if quality == "fast" else 180
+        temperature = 0.65 if quality == "fast" else 0.68
+    else:
+        max_tokens = 200
+        temperature = 0.7
+
+    messages = [
+        {"role": "system", "content": system_prompt},
+        {"role": "user", "content": user_prompt},
+    ]
 
     try:
         resp = chat_fn(
@@ -512,53 +675,71 @@ def generate_project_post(
             temperature=temperature,
         )
     except CrownTALKError:
-        # Bubble up known errors unchanged
         raise
-    except Exception as exc:
-        raise ProjectLabError("llm_error", f"LLM call failed: {exc}", http_status=502)
+    except Exception as exc:  # pragma: no cover - defensive
+        raise ProjectLabError("llm_error", f"Upstream LLM error: {exc!r}") from exc
 
-    # Extract raw text from the LLM response. For Groq chat completions we
-    # mirror the main CrownTALK pipeline and read from choices[0].message.content.
-    text = None
+    text: str | None = None
+    # Groq/OpenAI-compatible response shape
+    if hasattr(resp, "choices"):
+        choice = resp.choices[0]
+        if hasattr(choice, "message"):
+            text = choice.message.content or ""
+    elif isinstance(resp, dict):
+        try:
+            text = resp["choices"][0]["message"]["content"]
+        except Exception:
+            text = None
 
-    # Groq-style response object
-    try:
-        if hasattr(resp, "choices") and resp.choices:
-            text = (resp.choices[0].message.content or "").strip()
-    except Exception:
-        text = None
+    if not text or not str(text).strip():
+        raise ProjectLabError("empty_response", "Model returned empty text for project post.")
 
-    # Dict-style or simplified response
-    if (not text) and isinstance(resp, dict):
-        text = (resp.get("content") or resp.get("text") or "").strip()
-
-    if not text:
-        raise ProjectLabError("llm_empty", "Model returned empty content.", http_status=502)
-
+    # Mode-specific post-processing
     if mode == "thread_4_6":
         tweets = _split_thread(text)
         if not tweets:
-            raise ProjectLabError("llm_empty", "Model returned empty thread.", http_status=502)
+            raise ProjectLabError("thread_parse_error", "Could not parse thread into tweets.")
         return {
-            "project_id": card["id"],
+            "project_id": card.get("id"),
             "post_mode": mode,
-            "language": lang,
+            "language": target_lang,
+            "kind": "thread_4_6",
             "tweets": tweets,
             "meta": {
-                "quality_mode": qmode,
+                "quality_mode": quality,
+            },
+        }
+
+    if mode == "score_update":
+        processed = _postprocess_score_update(text)
+        if not processed:
+            raise ProjectLabError(
+                "postprocess_error",
+                "Post-processing produced empty score_update text.",
+            )
+        return {
+            "project_id": card.get("id"),
+            "post_mode": mode,
+            "language": target_lang,
+            "kind": "single",
+            "text": processed,
+            "meta": {
+                "quality_mode": quality,
+                "mode": mode,
             },
         }
 
     processed = _postprocess_text(text)
     if not processed:
-        raise ProjectLabError("llm_empty", "Model returned empty content.", http_status=502)
+        raise ProjectLabError("postprocess_error", "Post-processing produced empty text.")
 
     return {
-        "project_id": card["id"],
+        "project_id": card.get("id"),
         "post_mode": mode,
-        "language": lang,
+        "language": target_lang,
+        "kind": "single",
         "text": processed,
         "meta": {
-            "quality_mode": qmode,
+            "quality_mode": quality,
         },
     }

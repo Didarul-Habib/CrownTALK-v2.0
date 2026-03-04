@@ -16,6 +16,7 @@ import textwrap
 import time
 
 from schemas import OfftopicPostRequest, OfftopicKind
+from project_lab import normalize_project_post_text
 from utils import CrownTALKError
 
 
@@ -27,90 +28,132 @@ class OfftopicLabError(Exception):
         self.http_status = http_status
 
 
-def _postprocess_text(text: str) -> str:
-    """Shared post-processing with market/project posts."""
-    if not isinstance(text, str):
-        text = str(text or "")
-    out = text.strip()
 
-    out = re.sub(r"\s+", " ", out)
-    out = "".join(ch for ch in out if ord(ch) <= 0xFFFF)
-    out = re.sub(r"\s*#\w+", "", out)
-    if out and out[-1] not in ".!?":
-        out = out + "."
-    banned = ["WAGMI", "wen moon", "ape in"]
-    for phrase in banned:
-        out = re.sub(phrase, "", out, flags=re.IGNORECASE)
-    return out.strip()
+
+def _postprocess_text(text: str) -> str:
+    """Post-process off-topic posts.
+
+    We keep line breaks but normalise each non-empty line using the shared project
+    normaliser so CT style is consistent.
+    """
+    if not text:
+        return ""
+
+    lines: list[str] = []
+    for raw_line in str(text).splitlines():
+        if not raw_line.strip():
+            continue
+        norm = normalize_project_post_text(raw_line)
+        if norm:
+            lines.append(norm)
+    return "\n".join(lines)
 
 
 def _build_system_prompt() -> str:
-    return textwrap.dedent(
-        """        You write short, human, professional posts for X (Twitter) that are *not*
-        tied to a single project or token.
+    """System prompt for Off-topic Post Lab.
 
-        These are time-of-day greetings and random CT-adjacent thoughts.
+    Persona: CT-native GM/GN + mindset poster, but sober and non-cringe.
+    """
 
-        Rules:
-        - No emojis.
-        - No hashtags.
-        - No hype slang (no "wen moon", "WAGMI", "ape in", etc.).
-        - Short, clear sentences.
-        - Never promise or imply guaranteed returns.
-        - Keep everything grounded and realistic.
-        """
-    ).strip()
-
-
-def _kind_label(kind: OfftopicKind) -> str:
-    if kind == OfftopicKind.GM_MORNING:
-        return "good morning"
-    if kind == OfftopicKind.NOON:
-        return "midday"
-    if kind == OfftopicKind.AFTERNOON:
-        return "afternoon"
-    if kind == OfftopicKind.EVENING:
-        return "evening"
-    if kind == OfftopicKind.GN_NIGHT:
-        return "good night"
-    return "random"
+    return (
+        "You write off-topic posts (GM, GN, mindset, general life/builder notes) for crypto Twitter (CT).\n"
+        "You sound like a real person who trades or builds in the space, not a guru or bot.\n\n"
+        "Core traits:\n"
+        "- You are grounded, specific, and not overly motivational.\n"
+        "- You avoid cringe hustle memes, 'grindset', and fake positivity.\n"
+        "- You NEVER add hashtags or cashtags, and you NEVER add emojis.\n"
+        "- You do not add disclaimers like 'NFA' or 'DYOR'.\n"
+        "- You do not speak about being an AI model.\n\n"
+        "Output contract:\n"
+        "- For all kinds, you output a small set of lines that together read as one post.\n"
+        "- Lines are separated by newlines, not bullets and not numbering.\n"
+        "- For GM/GN, default to 2-4 short lines.\n"
+        "- Output only the post text, nothing else.\n"
+    )
 
 
 def _build_user_prompt(req: OfftopicPostRequest) -> str:
-    kind_label = _kind_label(req.kind)
-    tone = (req.tone or "").strip().lower() or "casual"
+    """Build user prompt for off-topic GM/GN and mindset posts."""
 
-    base_lines: List[str] = []
-    base_lines.append(f"Write an off-topic CT post for {kind_label}.")
-    base_lines.append("It should feel like a real X user posting, not a brand account.")
-    base_lines.append("Keep it grounded in builder / trader reality: focus, execution, risk management, learning.")
-    base_lines.append("")
-    base_lines.append(f"Requested tone: {tone}.")
-    base_lines.append("No emojis, no hashtags, no degen slang.")
-    base_lines.append("")
+    kind = req.kind.value if isinstance(req.kind, OfftopicKind) else str(req.kind)
+    tone_hint = (req.tone or "").strip().lower()
+    topic = (req.topic or "").strip()
+    language = (req.language or "").strip() or "en"
 
-    if req.kind == OfftopicKind.GM_MORNING:
-        base_lines.append("Angle suggestions: starting the day, showing up, building consistently.")
-    elif req.kind == OfftopicKind.NOON:
-        base_lines.append("Angle suggestions: mid-day check-in, progress vs distraction, staying focused.")
-    elif req.kind == OfftopicKind.AFTERNOON:
-        base_lines.append("Angle suggestions: fatigue vs discipline, finishing the day properly.")
-    elif req.kind == OfftopicKind.EVENING:
-        base_lines.append("Angle suggestions: reflection on the day, lessons learned, planning tomorrow.")
-    elif req.kind == OfftopicKind.GN_NIGHT:
-        base_lines.append("Angle suggestions: winding down, logging off, and quietly setting up tomorrow.")
+    lines: list[str] = []
+
+    if kind in {"gm", "gn"}:
+        when = "morning" if kind == "gm" else "night"
+        lines.append(f"You are writing a {kind.upper()} post for crypto Twitter ({when}).")
     else:
-        base_lines.append("Angle suggestions: thoughtful, slightly contrarian, but not edgy or toxic.")
+        lines.append("You are writing an off-topic / mindset style post for CT.")
 
-    if req.post_mode == "short":
-        base_lines.append("Mode: SHORT (one tweet, ~15–30 words).")
-        base_lines.append("Keep it punchy, one core idea.")
+    if topic:
+        lines.append("")
+        lines.append("Context / topic for this post:")
+        lines.append(topic)
+
+    lines.append("")
+    lines.append("High-level goals:")
+    if kind == "gm":
+        lines.append("- Help CT start the day with a clear, grounded frame.")
+        lines.append("- Acknowledge the grind of trading/building without glorifying burnout.")
+    elif kind == "gn":
+        lines.append("- Help CT close the day with reflection and decompression.")
+        lines.append("- Acknowledge both wins and losses without drama.")
     else:
-        base_lines.append("Mode: SEMI_MID (one tweet, ~35–70 words).")
-        base_lines.append("Allow a bit more context and nuance, but keep it readable.")
+        lines.append("- Share a short reflection that would feel natural on a CT timeline.")
+        lines.append("- Make it feel honest and specific, not generic self-help.")
 
-    base_lines.append("Avoid giving explicit trading calls. No 'buy' / 'sell' / targets.")
-    return "\n".join(base_lines).strip()
+    # Tone guidance
+    lines.append("")
+    if tone_hint == "professional":
+        lines.append(
+            "Tone: more measured and low-key. Think calm, grounded builder or fund "
+            "voice talking to peers."
+        )
+    elif tone_hint == "casual":
+        lines.append(
+            "Tone: conversational and human, but still non-cringe and free of forced memes."
+        )
+    else:
+        lines.append(
+            "Tone: credible CT-native voice. Calm, clear, and grounded."
+        )
+
+    # Kind-specific structure
+    lines.append("")
+    if kind == "gm":
+        lines.append(
+            "Structure: write 2-4 short lines. Line 1 sets the GM and frame. "
+            "Later lines add one or two concrete thoughts about how to approach the day."
+        )
+    elif kind == "gn":
+        lines.append(
+            "Structure: write 2-4 short lines. Line 1 sets the GN and mood. "
+            "Later lines reflect on what matters over a longer arc than today's PnL."
+        )
+    else:
+        lines.append(
+            "Structure: write 2-4 short lines that together read as a single post. "
+            "Keep each line tight – no long paragraphs."
+        )
+
+    lines.append("")
+    lines.append("Global constraints:")
+    lines.append("- Do not use hashtags or cashtags.")
+    lines.append("- Do not use emojis.")
+    lines.append("- Do not use bullet lists or numbered lists.")
+    lines.append("- Do not add disclaimers (NFA, DYOR, etc.).")
+    lines.append("- Output only the final multi-line post text, nothing else.")
+
+    lines.append("")
+    if language == "en":
+        lines.append("Write the post in English.")
+    else:
+        lines.append(f"Write the post in {language}.")
+
+    return "\n".join(l for l in lines if l.strip())
 
 
 def generate_offtopic_post(

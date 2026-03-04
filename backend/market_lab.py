@@ -23,6 +23,7 @@ import time
 import requests
 
 from schemas import MarketPostRequest, MarketPostMode
+from project_lab import normalize_project_post_text
 from utils import CrownTALKError
 
 
@@ -86,183 +87,114 @@ def _fmt_usd(x: Optional[float]) -> str:
         return "n/a"
 
 
+
 def _postprocess_text(text: str) -> str:
-    """Apply global post-processing rules to a single post.
-
-    Keep behaviour aligned with project_lab._postprocess_text.
-    """
-    if not isinstance(text, str):
-        text = str(text or "")
-    out = text.strip()
-
-    # Normalize whitespace
-    out = re.sub(r"\s+", " ", out)
-
-    # Remove emojis (roughly: strip most characters outside basic planes).
-    out = "".join(ch for ch in out if ord(ch) <= 0xFFFF)
-
-    # Drop hashtags entirely.
-    out = re.sub(r"\s*#\w+", "", out)
-
-    # Ensure final punctuation.
-    if out and out[-1] not in ".!?":
-        out = out + "."
-
-    # Soft ban on a few hype-y phrases.
-    banned = ["WAGMI", "wen moon", "ape in"]
-    for phrase in banned:
-        out = re.sub(phrase, "", out, flags=re.IGNORECASE)
-
-    return out.strip()
+    """Apply global post-processing rules to a single market post."""
+    return normalize_project_post_text(text)
 
 
-def _split_thread(raw: str) -> List[str]:
-    """Split a model output into individual tweets for thread mode."""
-    if not isinstance(raw, str):
-        raw = str(raw or "")
-
-    text = raw.strip()
-    if not text:
-        return []
-
-    numbered_lines: List[str] = []
-    for ln in text.splitlines():
-        ln = ln.strip()
-        if not ln:
-            continue
-        if re.match(r"^\d+\)", ln):
-            numbered_lines.append(ln)
-
-    if numbered_lines:
-        tweets = numbered_lines
-    else:
-        tweets = [ln.strip() for ln in text.splitlines() if ln.strip()]
-
-    cleaned = [_postprocess_text(t) for t in tweets if t.strip()]
-    if len(cleaned) > 6:
-        cleaned = cleaned[:6]
-    return cleaned
-
-
-def _fetch_coingecko_markets(symbols: List[str]) -> Dict[str, MarketSnapshot]:
-    """Fetch a minimal market snapshot for the given symbols.
-
-    Returns a mapping from symbol -> MarketSnapshot. Missing symbols are omitted.
-    """
-    symbols = [s.upper() for s in symbols if isinstance(s, str) and s.strip()]
-    wanted = [s for s in symbols if s in ASSET_CATALOG]
-    if not wanted:
-        return {}
-
-    ids = [ASSET_CATALOG[s]["coingecko_id"] for s in wanted]
-    params = {
-        "vs_currency": "usd",
-        "ids": ",".join(ids),
-        "price_change_percentage": "1h,24h,7d",
-        "per_page": len(ids) or 1,
-        "page": 1,
-        "sparkline": "false",
-    }
-
-    try:
-        resp = requests.get(f"{COINGECKO_BASE}/coins/markets", params=params, timeout=6)
-        resp.raise_for_status()
-        data = resp.json() or []
-    except Exception as exc:
-        # We deliberately fail soft: downstream will still generate generic posts.
-        data = []
-        # Avoid spamming logs from transient upstream issues.
-        # Caller may log at a higher level if needed.
-
-    out: Dict[str, MarketSnapshot] = {}
-    by_id = {row.get("id"): row for row in data if isinstance(row, dict)}
-    for sym in wanted:
-        cfg = ASSET_CATALOG[sym]
-        row = by_id.get(cfg["coingecko_id"], {})
-        snap = MarketSnapshot(
-            symbol=sym,
-            name=cfg.get("name", sym),
-            price_usd=row.get("current_price"),
-            market_cap=row.get("market_cap"),
-            volume_24h=row.get("total_volume"),
-            change_1h=row.get("price_change_percentage_1h_in_currency"),
-            change_24h=row.get("price_change_percentage_24h_in_currency"),
-            change_7d=row.get("price_change_percentage_7d_in_currency"),
-        )
-        out[sym] = snap
-    return out
 
 
 def _build_system_prompt() -> str:
-    return textwrap.dedent(
-        """        You write short, human, professional posts for X (Twitter) about crypto markets.
+    """System prompt for Market Post Lab.
 
-        Rules:
-        - No emojis.
-        - No hashtags.
-        - No hype slang (no "wen moon", "WAGMI", "ape in", etc.).
-        - Short, clear sentences.
-        - Never promise or imply guaranteed returns.
-        - Keep everything grounded and realistic.
-        """
-    ).strip()
+    Persona: measured, risk-aware CT-native market commentator.
+    """
+
+    return (
+        "You write short market commentary posts for crypto Twitter (CT).\n"
+        "You sound like a thoughtful, sober trader / researcher, not a meme account.\n\n"
+        "Core traits:\n"
+        "- You are specific and anchored in the provided context.\n"
+        "- You are risk-aware and avoid hypey language like 'moon', 'send it', 'ape', 'cheap'.\n"
+        "- You NEVER add hashtags or cashtags, and you NEVER add emojis.\n"
+        "- You do not add disclaimers like 'NFA' or 'DYOR'.\n"
+        "- You do not speak about being an AI model.\n\n"
+        "Output contract:\n"
+        "- You always output either ONE X post or a short thread, depending on the mode.\n"
+        "- For standard modes, output exactly one tweet worth of text, no bullets, no numbering.\n"
+        "- For thread_4_6 mode, output 4-6 tweets separated by blank lines, with no numeric prefixes.\n"
+    )
 
 
-def _build_user_prompt(req: MarketPostRequest, snap: Optional[MarketSnapshot]) -> str:
-    asset_code = (req.asset_id or "").upper() if req.asset_id else None
-    mode = req.post_mode
-    tone = (req.tone or "").strip().lower() or "casual"
+def _build_user_prompt(ctx: MarketPostContext, req: MarketPostRequest) -> str:
+    """Build user prompt for market post generation."""
 
-    if asset_code and snap is not None:
-        header = f"Write a market post about {snap.name} ({snap.symbol}) based on the latest data."
-        meta_lines = [
-            f"Price (USD): {_fmt_usd(snap.price_usd)}",
-            f"Market cap: {_fmt_usd(snap.market_cap)}",
-            f"24h volume: {_fmt_usd(snap.volume_24h)}",
-            f"Change 1h: {_fmt_pct(snap.change_1h)}",
-            f"Change 24h: {_fmt_pct(snap.change_24h)}",
-            f"Change 7d: {_fmt_pct(snap.change_7d)}",
-        ]
-    elif asset_code:
-        header = f"Write a market post about {asset_code} using realistic, generic context."
-        meta_lines = [
-            "Upstream market data was temporarily unavailable.",
-            "Use general knowledge about liquid large-cap crypto assets.",
-        ]
+    asset_id = (req.asset_id or "").strip()
+    mode = req.post_mode.value if isinstance(req.post_mode, MarketPostMode) else str(req.post_mode)
+    tone_hint = (req.tone or "").strip().lower()
+
+    lines: list[str] = []
+
+    if asset_id:
+        lines.append(f"You are writing a market post about: {asset_id}.")
     else:
-        header = "Write a market post about the overall crypto market."
-        meta_lines = [
-            "You do not know exact prices right now.",
-            "Focus on structure of the market, flows, and behaviour of traders.",
-        ]
+        lines.append("You are writing a market post about the described market context.")
 
-    body_lines: List[str] = []
-    body_lines.append(header)
-    body_lines.append("")
-    body_lines.append("Tone: casual but professional, realistic, no hype.")
-    body_lines.append(f"Requested tone: {tone}.")
-    body_lines.append("")
+    lines.append("")
+    lines.append("Raw market context (from upstream data or manual notes):")
+    lines.append(ctx.context.strip())
 
-    if mode == MarketPostMode.SHORT_CASUAL:
-        body_lines.append("Mode: SHORT_CASUAL (one tweet, ~20–35 words).")
-        body_lines.append("Focus on one concrete observation or angle.")
-    elif mode == MarketPostMode.MEDIUM_ANALYSIS:
-        body_lines.append("Mode: MEDIUM_ANALYSIS (one tweet, ~40–80 words).")
-        body_lines.append("Include: brief context, what is happening, and what matters for serious participants.")
-    elif mode == MarketPostMode.THREAD_4_6:
-        body_lines.append("Mode: THREAD_4_6 (4–6 tweets).")
-        body_lines.append("Use a numbered thread: 1), 2), 3)... Each tweet 25–60 words.")
-        body_lines.append("Cover: context, current situation, drivers, who is affected, realistic risks/caveats, closing thought.")
+    lines.append("")
+    lines.append("High-level goals:")
+    lines.append("- Summarise what matters right now in a way CT cares about.")
+    lines.append("- Make it feel like a real, informed human wrote it.")
+    lines.append("- Emphasise flows, positioning, and narrative over price prediction.")
 
-    body_lines.append("")
-    body_lines.append("Market snapshot (if available):")
-    for ln in meta_lines:
-        body_lines.append(f"- {ln}")
+    # Tone
+    lines.append("")
+    if tone_hint == "professional":
+        lines.append(
+            "Tone: more professional and measured – like a research desk comment or "
+            "weekly note written for CT."
+        )
+    elif tone_hint == "casual":
+        lines.append(
+            "Tone: slightly more conversational, but still sober and non-cringe. "
+            "Avoid meme slang and forced hype."
+        )
+    else:
+        lines.append(
+            "Tone: credible CT-native voice. Calm, clear, and grounded."
+        )
 
-    body_lines.append("")
-    body_lines.append("Remember: no price predictions, no calls to buy/sell, no guarantees of future performance.")
+    # Mode-specific guidance
+    lines.append("")
+    if mode == "short_comment":
+        lines.append(
+            "Post mode: short_comment. Write ONE compact X post (around 25-40 words) "
+            "that captures the key idea or shift."
+        )
+    elif mode == "mini_blurb":
+        lines.append(
+            "Post mode: mini_blurb. Write ONE slightly longer X post (around 50-80 words) "
+            "that briefly walks through what changed and why it matters."
+        )
+    elif mode == "thread_4_6":
+        lines.append(
+            "Post mode: thread_4_6. Write a short thread of 4-6 tweets."
+        )
+        lines.append(
+            "Each tweet should be on its own line, separated by a blank line. Do NOT "
+            "number them. No 'Thread:' label."
+        )
+        lines.append(
+            "The first tweet should be a hook. The rest unpack positioning, flows, and "
+            "narrative in concrete terms."
+        )
+    else:
+        lines.append(
+            "Post mode: default. Write ONE concise, self-contained X post."
+        )
 
-    return "\n".join(body_lines).strip()
+    lines.append("")
+    lines.append("Global constraints:")
+    lines.append("- Do not mention price targets or guarantees.")
+    lines.append("- Do not explicitly tell people to buy or sell.")
+    lines.append("- Do not use hashtags, cashtags, emojis, or bullet lists.")
+    lines.append("- Output only the tweet text (or thread tweets), nothing else.")
+
+    return "\n".join(l for l in lines if l.strip())
 
 
 def generate_market_post(
