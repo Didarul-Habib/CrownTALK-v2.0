@@ -1,0 +1,15 @@
+# Development and test dependencies — NOT installed in production.
+-r requirements.txt
+
+# Testing
+pytest==8.3.4
+pytest-cov==6.0.0
+pytest-timeout==2.3.1
+responses==0.25.3       # HTTP mocking
+freezegun==1.5.1        # time mocking
+
+# Type checking
+mypy==1.13.0
+
+# Linting
+ruff==0.8.6
