@@ -1,25 +1,29 @@
-# Web framework & server
+
+
+# Web framework & WSGI server
 Flask==3.1.2
 gunicorn==21.2.0
 
-# HTTP & utils
+# HTTP client
 requests==2.32.5
 
-# Validation / schemas
+# Data validation
 pydantic==2.9.2
 
-# Auth persistence on Render Free via Supabase Postgres
+# Auth DB (Supabase Postgres on Render Free; falls back to SQLite)
 psycopg2-binary==2.9.9
 
 # LLM providers
 groq==0.37.1
 google-generativeai==0.8.5
 mistralai==0.0.12
-openai>=1.0.0
-cohere>=5.5.0
-huggingface-hub>=0.23.0
+openai>=1.59.0,<2.0.0
+cohere>=5.5.0,<6.0.0
+huggingface-hub>=0.23.0,<1.0.0
 
-
-# Optional: local .env support (Render env vars work without this too)
-python-dotenv==1.0.1
+# HTML extraction
 beautifulsoup4==4.12.3
+lxml>=4.9.0,<6.0.0
+
+# Env vars (local dev only; Render injects env vars natively)
+python-dotenv==1.0.1
