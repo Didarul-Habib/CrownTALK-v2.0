@@ -1323,15 +1323,15 @@ def signup_endpoint():
     password = (data.get("password") or "").strip()
 
     if len(name) < 2:
-        return jsonify({"error": "invalid_name", "code": "invalid_name"}), 400
+        return api_error("invalid_name", "Name must be at least 2 characters", 400)
     if not x_link:
-        return jsonify({"error": "invalid_x_link", "code": "invalid_x_link"}), 400
+        return api_error("invalid_x_link", "Invalid X profile link", 400)
     if len(password) < PASSWORD_MIN_LEN or password.lower() in COMMON_PASSWORDS:
-        return jsonify({"error": "weak_password", "code": "weak_password"}), 400
+        return api_error("weak_password", "Password is too weak", 400)
 
     salt_hex, hash_hex = _hash_password(password)
     if not salt_hex or not hash_hex:
-        return jsonify({"error": "invalid_password", "code": "invalid_password"}), 400
+        return api_error("invalid_password", "Invalid password", 400)
 
     now = int(time.time())
 
@@ -1352,7 +1352,7 @@ def signup_endpoint():
                 except Exception as e:  # noqa: BLE001
                     # Unique violation => user already exists
                     if getattr(e, "pgcode", None) == "23505":
-                        return jsonify({"error": "user_exists", "code": "user_exists"}), 409
+                        return api_error("user_exists", "An account with this X link already exists", 409)
                     # psycopg2 raises IntegrityError with .pgcode in many cases
                     raise
                 finally:
@@ -1371,11 +1371,11 @@ def signup_endpoint():
                     )
                     user_id = int(cur.lastrowid)
                 except sqlite3.IntegrityError:
-                    return jsonify({"error": "user_exists", "code": "user_exists"}), 409
+                    return api_error("user_exists", "An account with this X link already exists", 409)
 
             token, exp = _create_session(conn, user_id)
 
-        return jsonify(
+        return api_success(
             {
                 "ok": True,
                 "user": {"id": user_id, "name": name, "x_link": x_link},
@@ -1386,7 +1386,7 @@ def signup_endpoint():
 
     except Exception as e:  # noqa: BLE001
         logger.exception("Signup failed")
-        return jsonify({"error": "signup_failed", "code": "signup_failed"}), 500
+        return api_error("signup_failed", "Signup failed due to an internal error", 500)
 
 
 @app.route("/login", methods=["POST", "OPTIONS"])
@@ -1408,7 +1408,7 @@ def login_endpoint():
     password = (data.get("password") or "").strip()
 
     if not x_link or not password:
-        return jsonify({"error": "missing_fields", "code": "missing_fields"}), 400
+        return api_error("missing_fields", "X link and password are required", 400)
 
     try:
         with auth_db_conn() as conn:
@@ -1437,13 +1437,13 @@ def login_endpoint():
 
             if not row or not bool(row[5]):
                 time.sleep(0.8)
-                return jsonify({"error": "invalid_credentials", "code": "invalid_credentials"}), 401
+                return api_error("invalid_credentials", "Invalid X link or password", 401)
 
             user_id, name, x_link_db, salt_hex, hash_hex, _active = row
 
             if not _verify_password(password, salt_hex, hash_hex):
                 time.sleep(0.8)
-                return jsonify({"error": "invalid_credentials", "code": "invalid_credentials"}), 401
+                return api_error("invalid_credentials", "Invalid X link or password", 401)
 
             now = int(time.time())
             try:
@@ -1462,7 +1462,7 @@ def login_endpoint():
                 except Exception:
                     pass
 
-        return jsonify(
+        return api_success(
             {
                 "ok": True,
                 "user": {"id": int(user_id), "name": name, "x_link": x_link_db},
@@ -1472,7 +1472,7 @@ def login_endpoint():
         )
     except Exception:
         logger.exception("Login failed")
-        return jsonify({"error": "login_failed", "code": "login_failed"}), 500
+        return api_error("login_failed", "Login failed due to an internal error", 500)
 
 
 @app.route("/logout", methods=["POST", "OPTIONS"])
@@ -1486,7 +1486,7 @@ def logout_endpoint():
 
     token = _get_auth_token_from_request()
     if not token:
-        return jsonify({"ok": True}), 200
+        return api_success({"ok": True})
 
     th = _token_hash(token)
     now = int(time.time())
@@ -1505,7 +1505,7 @@ def logout_endpoint():
     except Exception:
         pass
 
-    return jsonify({"ok": True}), 200
+    return api_success({"ok": True})
 
 
 @app.route("/me", methods=["GET", "OPTIONS"])
@@ -1517,7 +1517,7 @@ def me_endpoint():
     if auth is not None:
         return auth
 
-    return jsonify({"ok": True, "user": g.user}), 200
+    return api_success({"ok": True, "user": g.user})
 
 
 @app.route("/stats", methods=["GET"])
@@ -9424,11 +9424,17 @@ def fetch_source_preview(source_url: str) -> dict:
     text = text[:18000]
     excerpt = (desc or text[:320]).strip()
 
-    out = {"url": (prev.get("url") or safe_url),
-                    "input_url": req.source_url, "title": title, "excerpt": excerpt,
+    out = {
+        "url": safe_url,
+        "input_url": source_url,
+        "title": title,
+        "excerpt": excerpt,
         "author": author,
         "published": published,
-        "language": _detect_lang_light(text), "content": text, "citations": _citation_snippets(text, safe_url, title)}
+        "language": _detect_lang_light(text),
+        "content": text,
+        "citations": _citation_snippets(text, safe_url, title),
+    }
     _ttl_set(_page_cache, cache_key, out, PAGE_CACHE_TTL_SECONDS)
     return out
 
@@ -9719,9 +9725,10 @@ def comment_from_url_stream_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
 
-    guard = _require_access_or_forbidden()
-    if guard is not None:
-        return guard
+    guard = _require_access_guard()
+    auth_error = guard.check_request(request)
+    if auth_error:
+        return auth_error
 
     payload = request.get_json(silent=True) or {}
     try:
@@ -9732,7 +9739,7 @@ def comment_from_url_stream_endpoint():
     include_alts = bool(getattr(req, "include_alternates", False))
     want_en = bool(getattr(req, "lang_en", True))
     want_native = bool(getattr(req, "lang_native", False))
-    native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
+    native_override = (getattr(req, "native_language", None) or "").strip().lower() or None
 
     # Quality mode for preview/URL stream: fall back to fast flag when present.
     quality_mode = "fast" if bool(getattr(req, "fast", False)) else "balanced"
@@ -9741,7 +9748,7 @@ def comment_from_url_stream_endpoint():
     except Exception:
         pass
 
-    run_id = getattr(g, "request_id", "") or uuid.uuid4().hex
+    run_id = getattr(g, "request_id", "") or _make_request_id()
 
     # Register this run so /run/cancel can target it and we keep per-user concurrency sane.
     user_key = _user_key_from_request()
@@ -10563,23 +10570,19 @@ def projects_catalog():
     if guard is not None:
         return guard
 
-    def _first_line(val: str) -> str:
-        return (val or "").strip().splitlines()[0].strip() if val else ""
-
     items = []
     for pid, card in PROJECT_POSTS.items():
-        raw_pitch = (card.get("one_line_pitch") or "").strip()
-        pitch = raw_pitch[:300] + ("…" if len(raw_pitch) > 300 else "")
         items.append(
             {
                 "id": card.get("id", pid),
                 "slug": card.get("slug") or "",
                 "name": card.get("name") or "",
-                "ticker": _first_line(card.get("ticker") or ""),
-                "primary_chain": _first_line(card.get("primary_chain") or ""),
-                "category": _first_line(card.get("category") or ""),
-                "stage": _first_line(card.get("stage") or ""),
-                "one_line_pitch": pitch,
+                # Hide all research-like fields from the UI; keep only basic identifiers.
+                "ticker": "",
+                "primary_chain": "",
+                "category": "",
+                "stage": "",
+                "one_line_pitch": "",
                 "has_post_card": True,
             }
         )
