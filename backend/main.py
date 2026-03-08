@@ -154,9 +154,9 @@ def _truncate_output(s: str) -> str:
     return s
 
 def _verify_hmac_signature(body: bytes) -> bool:
-    # Optional verification for trusted server-side callers only.
-    # Browser clients cannot safely keep an HMAC secret, so unsigned requests
-    # remain valid and signed requests are verified when present.
+    # HMAC is optional and only meaningful for trusted server-side callers.
+    # Browser clients cannot safely keep a signing secret, so unsigned requests
+    # remain valid. If a caller provides a signature, we verify it.
     if not CROWNTALK_HMAC_ENFORCE:
         return True
     if not CROWNTALK_HMAC_SECRET:
@@ -328,7 +328,7 @@ def _start_timer_and_limits():
     if env == "production" and origin.lower() == "null" and request.path not in ("/health", "/ready"):
         return api_error("forbidden_origin", "Origin not allowed.", 403)
 
-    # Optional request signature for sensitive routes (HMAC). Signed requests are verified when present; unsigned browser requests remain valid.
+    # Optional request signature for sensitive routes (HMAC). Enabled when CROWNTALK_HMAC_SECRET is set.
     if request.method in ("POST", "PUT", "PATCH"):
         if any((request.path or "").startswith(p) for p in SENSITIVE_PATH_PREFIXES):
             body = request.get_data(cache=True) or b""
@@ -1331,11 +1331,11 @@ def signup_endpoint():
     if not x_link:
         return api_error("invalid_x_link", "A valid X profile link is required.", 400)
     if len(password) < PASSWORD_MIN_LEN or password.lower() in COMMON_PASSWORDS:
-        return api_error("weak_password", "Password does not meet security requirements.", 400)
+        return api_error("weak_password", "Password does not meet minimum requirements.", 400)
 
     salt_hex, hash_hex = _hash_password(password)
     if not salt_hex or not hash_hex:
-        return api_error("invalid_password", "Password could not be processed securely.", 400)
+        return api_error("invalid_password", "Invalid password.", 400)
 
     now = int(time.time())
 
@@ -1356,7 +1356,7 @@ def signup_endpoint():
                 except Exception as e:  # noqa: BLE001
                     # Unique violation => user already exists
                     if getattr(e, "pgcode", None) == "23505":
-                        return api_error("user_exists", "An account already exists for this X profile.", 409)
+                        return api_error("user_exists", "A user with that X link already exists.", 409)
                     # psycopg2 raises IntegrityError with .pgcode in many cases
                     raise
                 finally:
@@ -1375,7 +1375,7 @@ def signup_endpoint():
                     )
                     user_id = int(cur.lastrowid)
                 except sqlite3.IntegrityError:
-                    return api_error("user_exists", "An account already exists for this X profile.", 409)
+                    return api_error("user_exists", "A user with that X link already exists.", 409)
 
             token, exp = _create_session(conn, user_id)
 
@@ -1490,7 +1490,7 @@ def logout_endpoint():
 
     token = _get_auth_token_from_request()
     if not token:
-        return api_success({"ok": True}, 200)
+        return api_success({"ok": True})
 
     th = _token_hash(token)
     now = int(time.time())
@@ -1509,7 +1509,7 @@ def logout_endpoint():
     except Exception:
         pass
 
-    return api_success({"ok": True}, 200)
+    return api_success({"ok": True})
 
 
 @app.route("/me", methods=["GET", "OPTIONS"])
@@ -1521,7 +1521,7 @@ def me_endpoint():
     if auth is not None:
         return auth
 
-    return api_success({"ok": True, "user": g.user}, 200)
+    return api_success({"ok": True, "user": g.user})
 
 
 @app.route("/stats", methods=["GET"])
@@ -10134,228 +10134,6 @@ def comment_from_url_stream_endpoint():
     resp.headers["X-Run-Id"] = run_id
     return resp
 
-def _process_comment_request_url(url: str, payload: dict, quality_mode: str) -> tuple[str, dict | None, dict | None]:
-    """Shared single-URL worker for batch and SSE comment generation."""
-    try:
-        try:
-            REQUEST_QUALITY_MODE.set(quality_mode)
-        except Exception:
-            pass
-        try:
-            set_request_nonce(url)
-        except Exception:
-            pass
-
-        emit_premium_event("item_stage", {"url": url, "stage": "fetching"})
-        fetch_mode = "full"
-        fetch_ms = None
-        try:
-            _fetch_t0 = time.time()
-            t = fetch_tweet_data_retry(url)
-            try:
-                fetch_ms = int(max(0.0, (time.time() - _fetch_t0) * 1000.0))
-            except Exception:
-                fetch_ms = None
-        except CrownTALKError as e:
-            fetch_mode = "full_error"
-            if getattr(e, "code", None) in {"upstream_error", "upstream_invalid_json", "upstream_timeout"}:
-                try:
-                    _fetch_t0 = time.time()
-                    t = fallback_tweet_data(url)
-                    try:
-                        fetch_ms = int(max(0.0, (time.time() - _fetch_t0) * 1000.0))
-                    except Exception:
-                        fetch_ms = None
-                    fetch_mode = "fallback"
-                except Exception:
-                    raise
-            else:
-                raise
-        emit_premium_event("item_stage", {"url": url, "stage": "generating"})
-
-        try:
-            thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
-        except Exception:
-            thread_ctx = None
-        REQUEST_THREAD_CTX.set(thread_ctx)
-
-        try:
-            research_ctx = build_research_context_for_tweet(
-                t.text or "",
-                extra_handles=[t.handle] if getattr(t, "handle", None) else None,
-            ) if ENABLE_RESEARCH else {"status": "disabled"}
-        except Exception:
-            research_ctx = {"status": "error"}
-        REQUEST_RESEARCH_CTX.set(research_ctx)
-
-        try:
-            proj = None
-            if isinstance(research_ctx, dict):
-                projs = research_ctx.get("projects") or []
-                if isinstance(projs, list) and projs:
-                    want = ("@" + (t.handle or "").lstrip("@")).lower() if t.handle else ""
-                    for p in projs:
-                        h = str((p or {}).get("handle") or "").lower()
-                        if want and h == want:
-                            proj = p
-                            break
-                    if proj is None:
-                        proj = projs[0]
-            REQUEST_PROJECT_CTX.set(proj)
-        except Exception:
-            REQUEST_PROJECT_CTX.set(None)
-
-        try:
-            style_hints = {
-                "tone": (str(payload.get("tone") or "").strip().lower() or None),
-                "intent": (str(payload.get("intent") or "").strip().lower() or None),
-                "voice_index": payload.get("voice"),
-                "tone_match": bool(payload.get("tone_match")),
-                "thread_ready": bool(payload.get("thread_ready")),
-                "anti_cringe": bool(payload.get("anti_cringe")),
-            }
-            set_request_style_hints(style_hints)
-        except Exception:
-            pass
-
-        try:
-            set_request_voice(t.text or "")
-        except Exception:
-            pass
-
-        handle = t.handle or _extract_handle_from_url(url)
-
-        want_en = bool(payload.get("lang_en", True))
-        want_native = bool(payload.get("lang_native", False))
-        native_override = (payload.get("native_lang") or "").strip().lower() or None
-
-        comments_all: list[dict] = []
-
-        if want_en:
-            comments_all.extend(
-                generate_two_comments_with_providers(
-                    tweet_text=t.text or "",
-                    author=t.author_name or None,
-                    handle=handle,
-                    lang=t.lang or None,
-                    url=url,
-                    target_lang="en",
-                    out_lang_tag="en",
-                    include_alternates=bool(payload.get("include_alternates", False)),
-                )
-            )
-
-        if want_native:
-            native_lang = (native_override or "").strip().lower() if native_override else None
-            tweet_lang = (t.lang or "").strip().lower()
-            if not native_lang or native_lang in ("auto", "detect"):
-                native_lang = tweet_lang or "en"
-            native_lang = (native_lang or "en").strip().lower()
-            if not (native_lang.startswith("en") and want_en):
-                out_tag = native_lang if not native_lang.startswith("en") else "en"
-                comments_all.extend(
-                    generate_two_comments_with_providers(
-                        tweet_text=t.text or "",
-                        author=t.author_name or None,
-                        handle=handle,
-                        lang=t.lang or None,
-                        url=url,
-                        target_lang=native_lang,
-                        out_lang_tag=out_tag,
-                        include_alternates=bool(payload.get("include_alternates", False)),
-                    )
-                )
-
-        two = comments_all or generate_two_comments_with_providers(
-            tweet_text=t.text or "",
-            author=t.author_name or None,
-            handle=handle,
-            lang=t.lang or None,
-            url=url,
-            target_lang="en",
-            out_lang_tag="en",
-            include_alternates=bool(payload.get("include_alternates", False)),
-        )
-
-        display_url = _canonical_x_url_from_tweet(url, t)
-        used_research = bool(research_ctx and research_ctx.get("status") == "ok")
-        tweet_preview = {
-            "text": (t.text or "")[:1200],
-            "author_name": t.author_name or None,
-            "handle": handle or None,
-            "lang": t.lang or None,
-            "entities": extract_entities(t.text or "") if (t.text or "") else {"cashtags": [], "handles": [], "numbers": []},
-        }
-        proj_ctx = None
-        try:
-            proj_ctx = REQUEST_PROJECT_CTX.get()
-        except Exception:
-            proj_ctx = None
-
-        tweet_id = getattr(t, "tweet_id", "") or ""
-        project_handles: list[str] = []
-        try:
-            if isinstance(research_ctx, dict):
-                for proj in (research_ctx.get("projects") or []):
-                    h = (proj.get("handle") or "").strip()
-                    if h and h not in project_handles:
-                        project_handles.append(h)
-        except Exception:
-            project_handles = []
-
-        try:
-            quality_meta = REQUEST_LAST_COMMENT_META.get()
-        except Exception:
-            quality_meta = None
-
-        if isinstance(quality_meta, dict):
-            timing = dict(quality_meta.get("timing") or {})
-            try:
-                if fetch_ms is not None:
-                    timing.setdefault("fetch_ms", fetch_ms)
-            except Exception:
-                pass
-            quality_meta["timing"] = timing
-
-        item = {
-            "url": display_url,
-            "input_url": url,
-            "status": "ok",
-            "comments": two,
-            "handle": handle,
-            "tweet_id": tweet_id,
-            "used_research": used_research,
-            "tweet": tweet_preview,
-            "project": proj_ctx,
-            "fetch_mode": fetch_mode,
-            "quality_meta": quality_meta,
-        }
-        if project_handles:
-            item["project_handles"] = project_handles
-
-        try:
-            emit_premium_event("item_stage", {"url": display_url, "stage": "done"})
-        except Exception:
-            pass
-
-        return (url, item, None)
-
-    except CrownTALKError as e:
-        try:
-            emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": getattr(e, "code", "error")})
-        except Exception:
-            pass
-        return (url, None, {"url": url, "reason": str(e), "code": e.code})
-
-    except Exception:
-        logger.exception("Unhandled error while processing %s", url)
-        try:
-            emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": "internal_error"})
-        except Exception:
-            pass
-        return (url, None, {"url": url, "reason": "internal_error", "code": "internal_error"})
-
-
 @app.route("/comment", methods=["POST", "OPTIONS"])
 def comment_endpoint():
     if request.method == "OPTIONS":
@@ -10459,13 +10237,245 @@ def comment_endpoint():
 
     done_lock = threading.Lock()
 
+    def _process_one(url: str) -> tuple[str, dict | None, dict | None]:
+        """Return (input_url, result_item_or_none, failed_item_or_none)."""
+        try:
+            # Ensure per-thread quality mode is set for this worker.
+            try:
+                REQUEST_QUALITY_MODE.set(quality_mode)
+            except Exception:
+                pass
+            try:
+                set_request_nonce(url)
+            except Exception:
+                pass
+
+            emit_premium_event("item_stage", {"url": url, "stage": "fetching"})
+            fetch_mode = "full"
+            fetch_ms = None
+            try:
+                _fetch_t0 = time.time()
+                t = fetch_tweet_data_retry(url)
+                try:
+                    fetch_ms = int(max(0.0, (time.time() - _fetch_t0) * 1000.0))
+                except Exception:
+                    fetch_ms = None
+            except CrownTALKError as e:
+                fetch_mode = "full_error"
+                # Only fall back on retryable upstream errors
+                if getattr(e, "code", None) in {"upstream_error", "upstream_invalid_json", "upstream_timeout"}:
+                    try:
+                        _fetch_t0 = time.time()
+                        t = fallback_tweet_data(url)
+                        try:
+                            fetch_ms = int(max(0.0, (time.time() - _fetch_t0) * 1000.0))
+                        except Exception:
+                            fetch_ms = None
+                        fetch_mode = "fallback"
+                    except Exception:
+                        raise
+                else:
+                    raise
+            emit_premium_event("item_stage", {"url": url, "stage": "generating"})
+
+            # Per-request context: thread, research, voice
+            try:
+                thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
+            except Exception:
+                thread_ctx = None
+            REQUEST_THREAD_CTX.set(thread_ctx)
+
+            try:
+                research_ctx = build_research_context_for_tweet(
+                    t.text or "",
+                    extra_handles=[t.handle] if getattr(t, "handle", None) else None,
+                ) if ENABLE_RESEARCH else {"status": "disabled"}
+            except Exception:
+                research_ctx = {"status": "error"}
+            REQUEST_RESEARCH_CTX.set(research_ctx)
+
+            # Best-effort project recognition (local file-backed profiles by @handle)
+            try:
+                proj = None
+                if isinstance(research_ctx, dict):
+                    projs = research_ctx.get("projects") or []
+                    if isinstance(projs, list) and projs:
+                        # Prefer an exact match to the author's handle, else first.
+                        want = ("@" + (t.handle or "").lstrip("@")).lower() if t.handle else ""
+                        for p in projs:
+                            h = str((p or {}).get("handle") or "").lower()
+                            if want and h == want:
+                                proj = p
+                                break
+                        if proj is None:
+                            proj = projs[0]
+                REQUEST_PROJECT_CTX.set(proj)
+            except Exception:
+                REQUEST_PROJECT_CTX.set(None)
+
+            try:
+                style_hints = {
+                    "tone": (str(payload.get("tone") or "").strip().lower() or None),
+                    "intent": (str(payload.get("intent") or "").strip().lower() or None),
+                    "voice_index": payload.get("voice"),
+                    "tone_match": bool(payload.get("tone_match")),
+                    "thread_ready": bool(payload.get("thread_ready")),
+                    "anti_cringe": bool(payload.get("anti_cringe")),
+                }
+                set_request_style_hints(style_hints)
+            except Exception:
+                pass
+
+            try:
+                set_request_voice(t.text or "")
+            except Exception:
+                pass
+
+            handle = t.handle or _extract_handle_from_url(url)
+
+            want_en = bool(payload.get("lang_en", True))
+            want_native = bool(payload.get("lang_native", False))
+            native_override = (payload.get("native_lang") or "").strip().lower() or None
+
+            comments_all: list[dict] = []
+
+            if want_en:
+                comments_all.extend(
+                    generate_two_comments_with_providers(
+                        tweet_text=t.text or "",
+                        author=t.author_name or None,
+                        handle=handle,
+                        lang=t.lang or None,
+                        url=url,
+                        target_lang="en",
+                        out_lang_tag="en",
+                        include_alternates=bool(payload.get("include_alternates", False)),
+                    )
+                )
+
+            if want_native:
+                native_lang = (native_override or "").strip().lower() if native_override else None
+                tweet_lang = (t.lang or "").strip().lower()
+                if not native_lang or native_lang in ("auto", "detect"):
+                    native_lang = tweet_lang or "en"
+                native_lang = (native_lang or "en").strip().lower()
+                # If native resolves to English and we already generated English, avoid duplicate + bogus translation.
+                if native_lang.startswith("en") and want_en:
+                    pass
+                else:
+                    out_tag = native_lang if not native_lang.startswith("en") else "en"
+                    comments_all.extend(
+                        generate_two_comments_with_providers(
+                            tweet_text=t.text or "",
+                            author=t.author_name or None,
+                            handle=handle,
+                            lang=t.lang or None,
+                            url=url,
+                            target_lang=native_lang,
+                            out_lang_tag=out_tag,
+                            include_alternates=bool(payload.get("include_alternates", False)),
+                        )
+                    )
+
+
+            two = comments_all or generate_two_comments_with_providers(
+                tweet_text=t.text or "",
+                author=t.author_name or None,
+                handle=handle,
+                lang=t.lang or None,
+                url=url,
+                target_lang="en",
+                out_lang_tag="en",
+                include_alternates=bool(payload.get("include_alternates", False)),
+            )
+
+            display_url = _canonical_x_url_from_tweet(url, t)
+            used_research = bool(research_ctx and research_ctx.get("status") == "ok")
+
+            # Include lightweight tweet preview + project match metadata (frontend can display).
+            tweet_preview = {
+                "text": (t.text or "")[:1200],
+                "author_name": t.author_name or None,
+                "handle": handle or None,
+                "lang": t.lang or None,
+                "entities": extract_entities(t.text or "") if (t.text or "") else {"cashtags": [], "handles": [], "numbers": []},
+            }
+            proj_ctx = None
+            try:
+                proj_ctx = REQUEST_PROJECT_CTX.get()
+            except Exception:
+                proj_ctx = None
+
+            tweet_id = getattr(t, "tweet_id", "") or ""
+            project_handles: list[str] = []
+            try:
+                if isinstance(research_ctx, dict):
+                    for proj in (research_ctx.get("projects") or []):
+                        h = (proj.get("handle") or "").strip()
+                        if h and h not in project_handles:
+                            project_handles.append(h)
+            except Exception:
+                project_handles = []
+
+            try:
+                quality_meta = REQUEST_LAST_COMMENT_META.get()
+            except Exception:
+                quality_meta = None
+
+            if isinstance(quality_meta, dict):
+                timing = dict(quality_meta.get("timing") or {})
+                try:
+                    if fetch_ms is not None:
+                        timing.setdefault("fetch_ms", fetch_ms)
+                except Exception:
+                    pass
+                quality_meta["timing"] = timing
+
+            item = {
+                "url": display_url,
+                "input_url": url,
+                "status": "ok",
+                "comments": two,
+                "handle": handle,
+                "tweet_id": tweet_id,
+                "used_research": used_research,
+                "tweet": tweet_preview,
+                "project": proj_ctx,
+                "fetch_mode": fetch_mode,
+                "quality_meta": quality_meta,
+            }
+            if project_handles:
+                item["project_handles"] = project_handles
+
+            try:
+                emit_premium_event("item_stage", {"url": display_url, "stage": "done"})
+            except Exception:
+                pass
+
+            return (url, item, None)
+
+        except CrownTALKError as e:
+            try:
+                emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": getattr(e, "code", "error")})
+            except Exception:
+                pass
+            return (url, None, {"url": url, "reason": str(e), "code": e.code})
+
+        except Exception:
+            logger.exception("Unhandled error while processing %s", url)
+            try:
+                emit_premium_event("item_stage", {"url": url, "stage": "failed", "code": "internal_error"})
+            except Exception:
+                pass
+            return (url, None, {"url": url, "reason": "internal_error", "code": "internal_error"})
+
     # Process in chunks so super large batches don't explode threads
     for batch in chunked(cleaned, batch_size):
         if not batch:
             continue
 
         with ThreadPoolExecutor(max_workers=workers) as ex:
-            futs = [ex.submit(_process_comment_request_url, u, payload, quality_mode) for u in batch]
+            futs = [ex.submit(_process_one, u) for u in batch]
 
             for fut in as_completed(futs):
                 in_url, item, fail = fut.result()
@@ -10788,25 +10798,26 @@ def comment_stream_endpoint():
         )
 
     raw_urls: list[str] = []
+    if getattr(req, "url", None):
+        raw_urls.append((req.url or "").strip())
     if getattr(req, "urls", None):
-        raw_urls = [u for u in (req.urls or []) if isinstance(u, str) and u.strip()]
-    elif getattr(req, "url", None):
-        raw_urls = [str(req.url or "").strip()]
+        raw_urls.extend([str(u or "").strip() for u in (req.urls or []) if str(u or "").strip()])
 
     if not raw_urls:
-        return api_error("bad_request", "Missing url or urls field", 400)
+        return api_error("bad_request", "Missing 'url' or 'urls' field", 400)
 
     try:
         cleaned = clean_and_normalize_urls(raw_urls)
+        urls, skipped_duplicates = dedupe_urls_by_tweet_id(cleaned)
     except CrownTALKError as e:
         return api_error(e.code, str(e), 400)
     except Exception:
         return api_error("url_clean_error", "Failed to normalize URLs.", 400)
 
-    if not cleaned:
+    if not urls:
         return api_error("no_valid_urls", "No valid X/Twitter status URLs found in input.", 400)
 
-    if len(cleaned) > MAX_URLS_PER_REQUEST:
+    if len(urls) > MAX_URLS_PER_REQUEST:
         return api_error(
             "too_many_urls",
             f"Too many URLs in one request; send at most {MAX_URLS_PER_REQUEST} links at a time.",
@@ -10815,14 +10826,21 @@ def comment_stream_endpoint():
         )
 
     preset = (req.preset or "").strip()
+    output_language = (req.output_language or "").strip().lower() or None
+
     quality_mode_raw = getattr(req, "quality_mode", None)
-    quality_mode = ""
+    quality_mode: str = ""
     if isinstance(quality_mode_raw, str):
         qm = quality_mode_raw.strip().lower()
         if qm in ("fast", "balanced", "pro"):
             quality_mode = qm
     if not quality_mode:
         quality_mode = "fast" if bool(getattr(req, "fast", False)) else "balanced"
+
+    include_alts = bool(getattr(req, "include_alternates", False))
+    want_en = bool(getattr(req, "lang_en", True))
+    want_native = bool(getattr(req, "lang_native", False))
+    native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
 
     try:
         REQUEST_QUALITY_MODE.set(quality_mode)
@@ -10838,174 +10856,311 @@ def comment_stream_endpoint():
             409,
         )
 
-    total = len(cleaned)
-    request_payload = dict(payload)
-    request_payload["urls"] = cleaned
-    request_payload.pop("url", None)
-
-    started_at = time.monotonic()
-    emit_premium_event("run_start", {"total": total, "preset": preset})
-
-    def gen():
-        results: list[dict] = []
-        failed: list[dict] = []
-        done_count = 0
-
-        def emit_status(stage: str, current_url: str, *, cancelled: bool = False):
-            return sse_event(
-                "status",
-                {
-                    "type": "status",
-                    "stage": stage,
-                    "index": done_count + 1 if done_count < total else total,
-                    "total": total,
-                    "done": done_count,
-                    "url": current_url,
-                    "cancelled": cancelled,
-                },
-            )
-
-        def persist_snapshot(cancelled: bool = False):
-            response_obj = {"results": results, "failed": failed}
-            try:
-                _persist_generation("urls", request_payload, response_obj)
-            except Exception as exc:
-                logger.warning("failed to persist streaming generation: %s", exc)
-            try:
-                duration_sec = time.monotonic() - started_at
-                emit_premium_event(
-                    "run_finish",
-                    {
-                        "tweets": len(results),
-                        "failed": len(failed),
-                        "duration_sec": duration_sec,
-                        "total_urls": total,
-                        "preset": preset,
-                        "cancelled": cancelled,
-                    },
-                )
-            except Exception:
-                pass
-
-        yield sse_event(
-            "meta",
+    def emit_status(stage: str, index: int, total: int, done: int, url: str, *, cancelled: bool = False):
+        return sse_event(
+            "status",
             {
-                "type": "meta",
-                "run_id": run_id,
+                "type": "status",
+                "stage": stage,
+                "index": index,
                 "total": total,
-                "quality_mode": quality_mode,
-            },
-        )
-
-        for index, url in enumerate(cleaned, start=1):
-            if _is_run_cancelled(run_id):
-                persist_snapshot(cancelled=True)
-                yield sse_event(
-                    "done",
-                    {
-                        "type": "done",
-                        "ok": False,
-                        "run_id": run_id,
-                        "total": total,
-                        "done": done_count,
-                        "ok_count": len(results),
-                        "cancelled": True,
-                    },
-                )
-                return
-
-            yield emit_status("fetching", url)
-            yield sse_event(
-                "status",
-                {
-                    "type": "status",
-                    "stage": "generating",
-                    "index": index,
-                    "total": total,
-                    "done": done_count,
-                    "url": url,
-                },
-            )
-
-            input_url, item, fail = _process_comment_request_url(url, request_payload, quality_mode)
-
-            if item:
-                results.append(item)
-                yield sse_event(
-                    "status",
-                    {
-                        "type": "status",
-                        "stage": "polishing",
-                        "index": index,
-                        "total": total,
-                        "done": done_count,
-                        "url": input_url,
-                    },
-                )
-                yield sse_event("result", {"type": "result", "item": item})
-                try:
-                    for c in item.get("comments") or []:
-                        _save_comment(item.get("url") or input_url, c.get("lang"), c.get("text"))
-                except Exception:
-                    pass
-            else:
-                error_item = {
-                    "url": input_url,
-                    "input_url": input_url,
-                    "status": "error",
-                    "reason": (fail or {}).get("reason") or "Failed to generate comment",
-                    "error_code": (fail or {}).get("code"),
-                    "error_message": (fail or {}).get("reason") or "Failed to generate comment",
-                    "comments": [],
-                }
-                failed.append(error_item)
-                yield sse_event(
-                    "error",
-                    {
-                        "type": "error",
-                        "code": error_item.get("error_code") or "generation_error",
-                        "message": error_item["error_message"],
-                        "url": input_url,
-                    },
-                )
-                yield sse_event("result", {"type": "result", "item": error_item})
-
-            done_count += 1
-            try:
-                percent = int(round((done_count * 100.0) / float(total))) if total else 100
-                emit_premium_event("run_progress", {"done": done_count, "total": total, "percent": max(0, min(100, percent))})
-            except Exception:
-                pass
-
-            yield sse_event(
-                "status",
-                {
-                    "type": "status",
-                    "stage": "finalizing",
-                    "index": index,
-                    "total": total,
-                    "done": done_count,
-                    "url": input_url,
-                },
-            )
-
-        persist_snapshot(cancelled=False)
-        yield sse_event(
-            "done",
-            {
-                "type": "done",
-                "ok": len(failed) == 0,
-                "run_id": run_id,
-                "total": total,
-                "done": done_count,
-                "ok_count": len(results),
-                "cancelled": False,
+                "done": done,
+                "url": url,
+                "cancelled": cancelled,
             },
         )
 
     def stream():
+        total = len(urls)
+        done_count = 0
+        ok_count = 0
+        results: list[dict] = []
+        failed: list[dict] = []
+
+        def cancelled_now(index: int, current_url: str):
+            if not _is_run_cancelled(run_id):
+                return False
+            yield emit_status("cancelled", index, total, done_count, current_url, cancelled=True)
+            yield sse_event(
+                "done",
+                {
+                    "type": "done",
+                    "ok": False,
+                    "run_id": run_id,
+                    "total": total,
+                    "done": done_count,
+                    "ok_count": ok_count,
+                    "cancelled": True,
+                },
+            )
+            return True
+
+        def process_one(url: str, index: int):
+            nonlocal done_count, ok_count, results, failed
+
+            def fail(code: str, message: str):
+                nonlocal done_count
+                err_item = {
+                    "url": url,
+                    "input_url": url,
+                    "status": "error",
+                    "reason": message,
+                    "error_code": code,
+                    "error_message": message,
+                    "comments": [],
+                }
+                failed.append({"url": url, "reason": message, "code": code, "status": "error"})
+                logger.warning("comment/stream failed code=%s url=%s msg=%s", code, url, message)
+                yield sse_event("error", {"code": code, "message": message, "url": url})
+                yield sse_event("result", {"type": "result", "item": err_item})
+                done_count += 1
+                yield emit_status("finalizing", index, total, done_count, url)
+                yield emit_status("done", index, total, done_count, url)
+
+            if (yield from cancelled_now(index, url)):
+                return True
+
+            yield emit_status("queued", index, total, done_count, url)
+            yield emit_status("fetching", index, total, done_count, url)
+
+            try:
+                set_request_nonce(url)
+            except Exception:
+                pass
+
+            try:
+                t = fetch_tweet_data_retry(url)
+            except CrownTALKError as e:
+                try:
+                    t = fallback_tweet_data(url)
+                except Exception:
+                    yield from fail(e.code, str(e))
+                    return False
+            except Exception:
+                try:
+                    t = fallback_tweet_data(url)
+                except Exception:
+                    yield from fail("fetch_error", "Failed to fetch tweet")
+                    return False
+
+            try:
+                thread_ctx = fetch_thread_context(url, t) if ENABLE_THREAD_CONTEXT else None
+            except Exception:
+                thread_ctx = None
+            try:
+                REQUEST_THREAD_CTX.set(thread_ctx)
+            except Exception:
+                pass
+
+            try:
+                research_ctx = build_research_context_for_tweet(
+                    t.text or "",
+                    extra_handles=[t.handle] if getattr(t, "handle", None) else None,
+                ) if ENABLE_RESEARCH else {"status": "disabled"}
+            except Exception:
+                research_ctx = {"status": "error"}
+            try:
+                REQUEST_RESEARCH_CTX.set(research_ctx)
+            except Exception:
+                pass
+
+            if (yield from cancelled_now(index, url)):
+                return True
+
+            try:
+                proj = None
+                if isinstance(research_ctx, dict):
+                    projs = research_ctx.get("projects") or []
+                    if isinstance(projs, list) and projs:
+                        want = ("@" + (t.handle or "").lstrip("@")).lower() if t.handle else ""
+                        for p in projs:
+                            h = str((p or {}).get("handle") or "").lower()
+                            if want and h == want:
+                                proj = p
+                                break
+                        if proj is None:
+                            proj = projs[0]
+                REQUEST_PROJECT_CTX.set(proj)
+            except Exception:
+                REQUEST_PROJECT_CTX.set(None)
+
+            try:
+                style_hints = {
+                    "tone": (str(req.tone or "").strip().lower() or None),
+                    "intent": (str(req.intent or "").strip().lower() or None),
+                    "voice_index": req.voice,
+                    "tone_match": bool(req.tone_match),
+                    "thread_ready": bool(req.thread_ready),
+                    "anti_cringe": bool(req.anti_cringe),
+                }
+                set_request_style_hints(style_hints)
+            except Exception:
+                pass
+
+            try:
+                set_request_voice(t.text or "")
+            except Exception:
+                pass
+
+            yield emit_status("generating", index, total, done_count, url)
+            handle = t.handle or _extract_handle_from_url(url)
+            input_url = url
+            display_url = t.canonical_url or (f"https://x.com/{handle}/status/{t.tweet_id}" if handle and getattr(t, "tweet_id", None) else url)
+            target = output_language or "en"
+            if target in ("auto", "detect"):
+                target = (t.lang or "en").strip().lower() if (t.lang or "").strip() else "en"
+
+            try:
+                comments: list[dict] = []
+
+                if want_en:
+                    comments.extend(
+                        generate_two_comments_with_providers(
+                            tweet_text=t.text or "",
+                            author=t.author_name or None,
+                            handle=handle,
+                            lang=t.lang or None,
+                            url=display_url,
+                            target_lang="en",
+                            out_lang_tag="en",
+                            include_alternates=include_alts,
+                        )
+                    )
+
+                if want_native:
+                    native_lang = (native_override or "").strip().lower() if native_override else None
+                    tweet_lang = (t.lang or "").strip().lower()
+                    if not native_lang or native_lang in ("auto", "detect"):
+                        native_lang = tweet_lang or "en"
+                    native_lang = (native_lang or "en").strip().lower()
+                    if not (native_lang.startswith("en") and want_en):
+                        out_tag = native_lang if not native_lang.startswith("en") else "en"
+                        comments.extend(
+                            generate_two_comments_with_providers(
+                                tweet_text=t.text or "",
+                                author=t.author_name or None,
+                                handle=handle,
+                                lang=t.lang or None,
+                                url=display_url,
+                                target_lang=native_lang,
+                                out_lang_tag=out_tag,
+                                include_alternates=include_alts,
+                            )
+                        )
+
+                if not comments:
+                    fallback_target = "en" if target == "en" else target
+                    comments = generate_two_comments_with_providers(
+                        tweet_text=t.text or "",
+                        author=t.author_name or None,
+                        handle=handle,
+                        lang=t.lang or None,
+                        url=display_url,
+                        target_lang=fallback_target,
+                        out_lang_tag=fallback_target,
+                        include_alternates=include_alts,
+                    )
+
+                yield emit_status("polishing", index, total, done_count, url)
+
+                tweet_preview = {
+                    "text": (t.text or "")[:1200],
+                    "author_name": t.author_name or None,
+                    "handle": handle or None,
+                    "lang": t.lang or None,
+                    "entities": extract_entities(t.text or "") if (t.text or "") else {"cashtags": [], "handles": [], "numbers": []},
+                }
+                try:
+                    proj_ctx = REQUEST_PROJECT_CTX.get()
+                except Exception:
+                    proj_ctx = None
+
+                tweet_id = getattr(t, "tweet_id", "") or ""
+                used_research = False
+                project_handles: list[str] = []
+                try:
+                    used_research = bool(research_ctx and isinstance(research_ctx, dict) and research_ctx.get("status") == "ok")
+                    if isinstance(research_ctx, dict):
+                        for proj_item in (research_ctx.get("projects") or []):
+                            h = (proj_item.get("handle") or "").strip()
+                            if h and h not in project_handles:
+                                project_handles.append(h)
+                except Exception:
+                    used_research = False
+                    project_handles = []
+
+                result_item = {
+                    "url": display_url,
+                    "input_url": input_url,
+                    "status": "ok",
+                    "comments": comments,
+                    "handle": handle,
+                    "tweet_id": tweet_id,
+                    "used_research": used_research,
+                    "tweet": tweet_preview,
+                    "project": proj_ctx,
+                }
+                if project_handles:
+                    result_item["project_handles"] = project_handles
+
+                results.append(result_item)
+                ok_count += 1
+                yield sse_event("result", {"type": "result", "item": result_item})
+                done_count += 1
+                yield emit_status("finalizing", index, total, done_count, input_url or url)
+                yield emit_status("done", index, total, done_count, input_url or url)
+
+                try:
+                    for c in comments:
+                        _save_comment(url, c.get("lang"), c.get("text"))
+                except Exception:
+                    pass
+            except Exception:
+                yield from fail("generation_error", "Failed to generate comment")
+
+            return False
+
         try:
-            yield from gen()
+            yield sse_event(
+                "meta",
+                {
+                    "type": "meta",
+                    "run_id": run_id,
+                    "total": total,
+                    "skipped_duplicates": skipped_duplicates,
+                    "quality_mode": quality_mode,
+                },
+            )
+
+            for index, url in enumerate(urls, start=1):
+                if (yield from process_one(url, index)):
+                    return
+
+            snapshot_request = dict(payload or {})
+            snapshot_request["urls"] = list(urls)
+            snapshot_request["preset"] = preset
+            snapshot_request["output_language"] = output_language
+            snapshot_request["fast"] = quality_mode == "fast"
+            snapshot_request["quality_mode"] = quality_mode
+            snapshot_request["mode"] = "stream"
+            snapshot_response = {"results": results, "failed": failed}
+            try:
+                _persist_generation("urls", snapshot_request, snapshot_response)
+            except Exception as exc:  # noqa: BLE001
+                logger.warning("failed to persist streaming generation: %s", exc)
+
+            yield sse_event(
+                "done",
+                {
+                    "type": "done",
+                    "ok": True,
+                    "run_id": run_id,
+                    "total": total,
+                    "done": done_count,
+                    "ok_count": ok_count,
+                    "cancelled": False,
+                },
+            )
         finally:
             try:
                 _mark_run_done(run_id)
