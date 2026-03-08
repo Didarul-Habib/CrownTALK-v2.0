@@ -9719,10 +9719,9 @@ def comment_from_url_stream_endpoint():
     if request.method == "OPTIONS":
         return ("", 204)
 
-    guard = _require_access_guard()
-    auth_error = guard.check_request(request)
-    if auth_error:
-        return auth_error
+    guard = _require_access_or_forbidden()
+    if guard is not None:
+        return guard
 
     payload = request.get_json(silent=True) or {}
     try:
@@ -9733,7 +9732,7 @@ def comment_from_url_stream_endpoint():
     include_alts = bool(getattr(req, "include_alternates", False))
     want_en = bool(getattr(req, "lang_en", True))
     want_native = bool(getattr(req, "lang_native", False))
-    native_override = (getattr(req, "native_language", None) or "").strip().lower() or None
+    native_override = (getattr(req, "native_lang", None) or "").strip().lower() or None
 
     # Quality mode for preview/URL stream: fall back to fast flag when present.
     quality_mode = "fast" if bool(getattr(req, "fast", False)) else "balanced"
@@ -9742,7 +9741,7 @@ def comment_from_url_stream_endpoint():
     except Exception:
         pass
 
-    run_id = getattr(g, "request_id", "") or _make_request_id()
+    run_id = getattr(g, "request_id", "") or uuid.uuid4().hex
 
     # Register this run so /run/cancel can target it and we keep per-user concurrency sane.
     user_key = _user_key_from_request()
@@ -10564,19 +10563,23 @@ def projects_catalog():
     if guard is not None:
         return guard
 
+    def _first_line(val: str) -> str:
+        return (val or "").strip().splitlines()[0].strip() if val else ""
+
     items = []
     for pid, card in PROJECT_POSTS.items():
+        raw_pitch = (card.get("one_line_pitch") or "").strip()
+        pitch = raw_pitch[:300] + ("…" if len(raw_pitch) > 300 else "")
         items.append(
             {
                 "id": card.get("id", pid),
                 "slug": card.get("slug") or "",
                 "name": card.get("name") or "",
-                # Hide all research-like fields from the UI; keep only basic identifiers.
-                "ticker": "",
-                "primary_chain": "",
-                "category": "",
-                "stage": "",
-                "one_line_pitch": "",
+                "ticker": _first_line(card.get("ticker") or ""),
+                "primary_chain": _first_line(card.get("primary_chain") or ""),
+                "category": _first_line(card.get("category") or ""),
+                "stage": _first_line(card.get("stage") or ""),
+                "one_line_pitch": pitch,
                 "has_post_card": True,
             }
         )
